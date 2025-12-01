@@ -69,7 +69,7 @@ const Interview = () => {
           </div>
 
           <div className="flex gap-4 justify-center">
-            <Button size="lg" variant="outline" onClick={() => navigate("/dashboard")}>
+            <Button size="lg" variant="outline" onClick={() => navigate("/interview")}>
               Cancel
             </Button>
             <Button size="xl" className="gradient-primary" onClick={handleStart}>

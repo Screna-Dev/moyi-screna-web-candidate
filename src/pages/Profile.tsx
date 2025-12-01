@@ -1,71 +1,276 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   Upload,
   FileText,
   Briefcase,
   Target,
   Award,
-  Plus,
   Shield,
-  Info,
-  MapPin,
-  GraduationCap,
-  Folder,
-  CheckCircle2,
-  Circle,
+  Loader2,
   Sparkles,
+  Info,
+  CheckCircle2,
+  Users,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ProfileService } from "../services";
+import {
+  VISA_STATUS_OPTIONS,
+} from "@/types/profile";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+
+interface ProfileData {
+  profile: {
+    full_name: string;
+    headline: string;
+    email: string;
+    phone: string;
+    location: string;
+    visa_status: string;
+    website: string;
+    summary: string;
+    total_years_experience: number;
+  };
+  job_titles: string[];
+  skills: any[];
+  experience: any[];
+  education: any[];
+  certifications: any[];
+  projects: any[];
+  links: {
+    linkedin: string;
+    github: string;
+    website: string;
+    other: string[];
+  };
+}
 
 const Profile = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [hasProfileData, setHasProfileData] = useState(false);
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  
+  // Modal states
   const [showTipsModal, setShowTipsModal] = useState(false);
   const [showPasteDialog, setShowPasteDialog] = useState(false);
-  const [showSkillsDrawer, setShowSkillsDrawer] = useState(false);
-  const [showExperienceDrawer, setShowExperienceDrawer] = useState(false);
-  const [showTitleDrawer, setShowTitleDrawer] = useState(false);
-  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  const [showExamplesModal, setShowExamplesModal] = useState(false);
+  const [showVisaStatusDialog, setShowVisaStatusDialog] = useState(false);
+  const [pastedText, setPastedText] = useState("");
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      setLoading(true);
+      const response = await ProfileService.getProfile();
+      
+      const profileDataResponse = response.data?.data || response.data;
+      
+      if (profileDataResponse && profileDataResponse.structured_resume) {
+        setProfileData(profileDataResponse.structured_resume);
+        setHasProfileData(true);
+        // If profile exists with visa status, redirect to completed page
+        if (profileDataResponse.structured_resume.profile.visa_status) {
+          navigate('/profile_completed');
+        }
+      } else {
+        setHasProfileData(false);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      setHasProfileData(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setUploading(true);
+      toast({
+        title: "Processing resume...",
+        description: "AI is extracting information from your resume.",
+      });
+
+      const response = await ProfileService.uploadResume(file);
+      const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
+      
+      if (structuredResume) {
+        setProfileData(structuredResume);
+        setHasProfileData(true);
+
+        // Check if visa status is missing and prompt user
+        if (!structuredResume.profile.visa_status) {
+          setShowVisaStatusDialog(true);
+        }
+
         toast({
-          title: "File too large",
-          description: "Please upload a file smaller than 5MB",
+          title: "Resume parsed successfully!",
+          description: "Review the extracted information and make any necessary edits.",
+        });
+      } else {
+        toast({
+          title: "Warning",
+          description: "Resume uploaded but no data was extracted. Please add information manually.",
           variant: "destructive",
         });
-        return;
       }
+    } catch (error) {
+      console.error("Error uploading resume:", error);
       toast({
-        title: "Resume ready to parse",
-        description: "Your resume is being processed...",
+        title: "Error processing resume",
+        description: "Please try again or add information manually.",
+        variant: "destructive",
       });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePasteText = async () => {
+    if (!pastedText.trim()) return;
+
+    try {
+      setUploading(true);
+      toast({
+        title: "Processing text...",
+        description: "AI is extracting information from your resume text.",
+      });
+
+      const blob = new Blob([pastedText], { type: "text/plain" });
+      const file = new File([blob], "resume.txt", { type: "text/plain" });
+      
+      const response = await ProfileService.uploadResume(file);
+      const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
+      
+      if (structuredResume) {
+        setProfileData(structuredResume);
+        setHasProfileData(true);
+
+        // Check if visa status is missing and prompt user
+        if (!structuredResume.profile.visa_status) {
+          setShowVisaStatusDialog(true);
+        }
+
+        toast({
+          title: "Resume parsed successfully!",
+          description: "Review the extracted information and make any necessary edits.",
+        });
+        setShowPasteDialog(false);
+        setPastedText("");
+      } else {
+        toast({
+          title: "Warning",
+          description: "Text uploaded but no data was extracted. Please try again or add information manually.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error processing text:", error);
+      toast({
+        title: "Error processing text",
+        description: "Please try again or add information manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSkipVisaStatus = async () => {
+    if (!profileData) return;
+
+    try {
+      setSaving(true);
+
+      // Save the profile data to backend even without visa status
+      await ProfileService.updateProfile(profileData);
+      
+      setShowVisaStatusDialog(false);
+      
+      toast({ 
+        title: "Profile saved!",
+        description: "You can add work authorization later in settings."
+      });
+      
+      // Navigate to the completed profile page
+      navigate('/profile_completed');
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast({
+        title: "Error saving profile",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleVisaStatusSave = async () => {
+    if (!profileData?.profile.visa_status) {
+      toast({
+        title: "Please select a status",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSaving(true);
+   
+      // Save the profile data to backend
+      await ProfileService.updateProfile(profileData);
+      
+      setShowVisaStatusDialog(false);
+      
+      toast({ 
+        title: "Profile saved successfully!",
+        description: "Your work authorization has been saved."
+      });
+      
+      // Navigate to the completed profile page
+      navigate('/profile_completed');
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast({
+        title: "Error saving profile",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -73,6 +278,15 @@ const Profile = () => {
     document.getElementById("resume-uploader")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // Show the upload/creation UI
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -80,102 +294,159 @@ const Profile = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">My Profile</h1>
+              <h1 className="text-3xl font-bold">Create Your Profile</h1>
               <p className="text-muted-foreground mt-1">
-                Upload your resume to auto-fill skills and experience. You can also add details manually.
+                Get discovered by top employers with an AI-powered profile
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setShowTipsModal(true)}>
-                <Info className="mr-2 w-4 h-4" />
-                View Tips
-              </Button>
-              <Button onClick={scrollToUploader}>
-                <Upload className="mr-2 w-4 h-4" />
-                Upload Resume
-              </Button>
-            </div>
+            <Button variant="ghost" onClick={() => setShowTipsModal(true)}>
+              <Info className="mr-2 w-4 h-4" />
+              View Tips
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Empty Summary Banner */}
-        <Card className="mb-8 shadow-card">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row gap-6">
-              <Avatar className="w-24 h-24">
-                <AvatarFallback className="text-2xl bg-gradient-primary text-primary-foreground">
-                  AC
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1 space-y-4">
-                <div>
-                  <h2 className="text-2xl font-bold">Alex Carter</h2>
-                  <p className="text-muted-foreground italic">Your professional headline will appear here.</p>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Why Create a Profile Section */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold text-center mb-8">Why Create Your Profile?</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
+                  <Users className="w-6 h-6 text-primary" />
                 </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Email verified
-                  </Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <MapPin className="w-3 h-3" />
-                    Location not set
-                  </Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <Circle className="w-3 h-3" />
-                    Work authorization not set
-                  </Badge>
-                </div>
+                <CardTitle className="text-lg">Get Discovered</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Top employers and recruiters can find you based on your skills and experience
+                </p>
+              </CardContent>
+            </Card>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">Profile completeness</span>
-                    <span className="text-muted-foreground">0%</span>
-                  </div>
-                  <Progress value={0} className="h-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Upload a resume to jump to 60%
-                  </p>
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
+                  <Target className="w-6 h-6 text-primary" />
                 </div>
+                <CardTitle className="text-lg">Match Opportunities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Receive personalized job matches tailored to your qualifications
+                </p>
+              </CardContent>
+            </Card>
 
-                <Button onClick={scrollToUploader} className="w-full sm:w-auto">
-                  Upload Resume
-                </Button>
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
+                  <TrendingUp className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle className="text-lg">Track Progress</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Monitor your interview performance and skill development over time
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* How It Works */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold text-center mb-8">How It Works</h2>
+          <div className="space-y-6">
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
+                1
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Upload Your Resume</h3>
+                <p className="text-sm text-muted-foreground">
+                  Our AI instantly extracts your skills, experience, and qualifications
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Resume Uploader - Primary CTA */}
-        <Card id="resume-uploader" className="mb-8 border-primary/20 shadow-glow">
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
+                2
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Complete Work Authorization</h3>
+                <p className="text-sm text-muted-foreground">
+                  Provide your visa status to help employers understand your eligibility
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
+                3
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Review & Customize</h3>
+                <p className="text-sm text-muted-foreground">
+                  Verify the extracted information and add any additional details
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold">
+                4
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Start Getting Matches</h3>
+                <p className="text-sm text-muted-foreground">
+                  Receive personalized job opportunities and recruiter inquiries
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Resume Uploader */}
+        <Card id="resume-uploader" className="mb-8 border-primary/20 shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-xl">
               <Sparkles className="w-5 h-5 text-primary" />
-              Upload your resume (PDF/DOC)
+              Upload Your Resume
             </CardTitle>
             <CardDescription>
-              Screna AI will extract your skills, experience and suggest job titles.
+              AI will automatically extract your skills, experience, and suggest relevant job titles
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="border-2 border-dashed rounded-lg p-12 text-center hover:border-primary/50 transition-smooth cursor-pointer bg-gradient-hero">
+            <div className="border-2 border-dashed rounded-lg p-12 text-center hover:border-primary/50 transition-all duration-200 cursor-pointer bg-gradient-to-br from-primary/5 to-primary/10">
               <input
                 type="file"
                 id="resume-upload"
                 className="hidden"
                 accept=".pdf,.doc,.docx"
                 onChange={handleFileUpload}
+                disabled={uploading}
               />
               <label htmlFor="resume-upload" className="cursor-pointer">
-                <Upload className="w-12 h-12 mx-auto mb-4 text-primary" />
-                <p className="text-lg font-medium mb-2">Drop your resume here or click to browse</p>
-                <p className="text-sm text-muted-foreground">
-                  PDF, DOC, DOCX • Max 5MB • English or bilingual supported
-                </p>
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
+                    <p className="text-lg font-medium mb-2">Processing your resume...</p>
+                    <p className="text-sm text-muted-foreground">This may take a few moments</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-12 h-12 mx-auto mb-4 text-primary" />
+                    <p className="text-lg font-medium mb-2">Drop your resume here or click to browse</p>
+                    <p className="text-sm text-muted-foreground">
+                      PDF, DOC, DOCX • Max 5MB • English or bilingual supported
+                    </p>
+                  </>
+                )}
               </label>
             </div>
 
@@ -184,6 +455,7 @@ const Profile = () => {
                 variant="default"
                 className="flex-1"
                 onClick={() => document.getElementById("resume-upload")?.click()}
+                disabled={uploading}
               >
                 <Upload className="mr-2 w-4 h-4" />
                 Choose File
@@ -192,6 +464,7 @@ const Profile = () => {
                 variant="secondary"
                 className="flex-1"
                 onClick={() => setShowPasteDialog(true)}
+                disabled={uploading}
               >
                 <FileText className="mr-2 w-4 h-4" />
                 Paste Text
@@ -200,244 +473,24 @@ const Profile = () => {
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
               <Shield className="w-4 h-4 flex-shrink-0" />
-              <span>Files are processed locally in your session preview. You control what to save.</span>
+              <span>Your files are processed securely and privately. You control what information to save.</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Start - Manual Add */}
-        <div className="mb-8">
-          <h3 className="text-xl font-bold mb-4">Quick Start (Manual Add)</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            You can upload a resume later to enrich details.
-          </p>
-          
-          <div className="grid md:grid-cols-3 gap-4">
-            <Card className="hover:shadow-card transition-smooth cursor-pointer" onClick={() => setShowSkillsDrawer(true)}>
-              <CardContent className="pt-6 text-center space-y-3">
-                <Target className="w-10 h-10 mx-auto text-primary" />
-                <h4 className="font-semibold">Add Skills Manually</h4>
-                <p className="text-sm text-muted-foreground">Create skill chips with proficiency levels</p>
-              </CardContent>
-            </Card>
-
-            <Card className="hover:shadow-card transition-smooth cursor-pointer" onClick={() => setShowExperienceDrawer(true)}>
-              <CardContent className="pt-6 text-center space-y-3">
-                <Briefcase className="w-10 h-10 mx-auto text-primary" />
-                <h4 className="font-semibold">Add Work Experience</h4>
-                <p className="text-sm text-muted-foreground">Build your timeline with roles and achievements</p>
-              </CardContent>
-            </Card>
-
-            <Card className="hover:shadow-card transition-smooth cursor-pointer" onClick={() => setShowTitleDrawer(true)}>
-              <CardContent className="pt-6 text-center space-y-3">
-                <Award className="w-10 h-10 mx-auto text-primary" />
-                <h4 className="font-semibold">Set Your Job Title</h4>
-                <p className="text-sm text-muted-foreground">Choose from suggestions or add custom titles</p>
-              </CardContent>
-            </Card>
+        {/* Stats Section */}
+        <div className="grid md:grid-cols-3 gap-4 text-center">
+          <div className="p-4 bg-card rounded-lg border">
+            <div className="text-2xl font-bold text-primary mb-1">10K+</div>
+            <div className="text-sm text-muted-foreground">Active Profiles</div>
           </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
-          {/* Titles Block - Empty State */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Job Titles</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-center py-12">
-                <Award className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-muted-foreground mb-4">No titles yet</p>
-                <Button variant="outline" onClick={() => setShowTitleDrawer(true)}>
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add a Title
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 opacity-50 pointer-events-none">
-                <Badge variant="secondary">Marketing Manager</Badge>
-                <Badge variant="secondary">Data Analyst</Badge>
-                <Badge variant="secondary">Project Coordinator</Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Skills Block - Empty State */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Key Skills</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <Target className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-muted-foreground mb-4">No skills added yet</p>
-                <Button variant="outline" onClick={() => setShowSkillsDrawer(true)}>
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Skills
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Experience - Empty State */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Experience</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <Briefcase className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-              <p className="text-muted-foreground mb-2">Your roles will appear here</p>
-              <p className="text-sm text-muted-foreground mb-4">
-                Add your work history to showcase your career journey
-              </p>
-              <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setShowExperienceDrawer(true)}>
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Your First Role
-                </Button>
-                <Button variant="ghost" onClick={() => setShowExamplesModal(true)}>
-                  See examples of impact bullets (STAR)
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-4 opacity-30 pointer-events-none mt-8">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex gap-4 pb-4 border-b last:border-0">
-                  <div className="w-2 h-2 mt-2 rounded-full bg-primary flex-shrink-0" />
-                  <div className="flex-1 space-y-1">
-                    <div className="h-5 w-48 bg-muted rounded" />
-                    <div className="h-4 w-32 bg-muted rounded" />
-                    <div className="h-4 w-24 bg-muted rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Education & Certifications */}
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GraduationCap className="w-5 h-5" />
-                Education
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-4">No education added</p>
-                <Button variant="outline" size="sm">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Education
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="w-5 h-5" />
-                Certifications
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-4">No certifications added</p>
-                <Button variant="outline" size="sm">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Certification
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Portfolio - Empty State */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Folder className="w-5 h-5" />
-              Portfolio
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <div className="grid grid-cols-3 gap-4 mb-6 opacity-30 pointer-events-none">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="aspect-video bg-muted rounded-lg" />
-                ))}
-              </div>
-              <Button variant="outline">
-                <Plus className="mr-2 w-4 h-4" />
-                Add Project/Case Study
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Privacy & Consent */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5" />
-              Privacy & Consent
-            </CardTitle>
-            <CardDescription>
-              Control who can see your profile and metrics
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="profile-preview">Allow recruiters to view my Profile preview</Label>
-                <p className="text-sm text-muted-foreground">
-                  Share your profile highlights with potential employers
-                </p>
-              </div>
-              <Switch id="profile-preview" />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="metrics-preview">Allow recruiters to view my Metrics summary</Label>
-                <p className="text-sm text-muted-foreground">
-                  Share your interview performance insights
-                </p>
-              </div>
-              <Switch id="metrics-preview" />
-            </div>
-
-            <Separator />
-
-            <Button variant="ghost" onClick={() => setShowPrivacyModal(true)} className="w-full">
-              Learn about data privacy
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-lg z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground hidden sm:block">
-              Upload your resume to auto-fill your profile
-            </p>
-            <div className="flex gap-2 ml-auto">
-              <Button variant="secondary" onClick={() => setShowSkillsDrawer(true)}>
-                Add Manually
-              </Button>
-              <Button onClick={scrollToUploader}>
-                <Upload className="mr-2 w-4 h-4" />
-                Upload Resume
-              </Button>
-            </div>
+          <div className="p-4 bg-card rounded-lg border">
+            <div className="text-2xl font-bold text-primary mb-1">500+</div>
+            <div className="text-sm text-muted-foreground">Partner Companies</div>
+          </div>
+          <div className="p-4 bg-card rounded-lg border">
+            <div className="text-2xl font-bold text-primary mb-1">95%</div>
+            <div className="text-sm text-muted-foreground">Success Rate</div>
           </div>
         </div>
       </div>
@@ -494,247 +547,89 @@ const Profile = () => {
             placeholder="Paste your resume text here..."
             rows={12}
             className="font-mono text-sm"
+            value={pastedText}
+            onChange={(e) => setPastedText(e.target.value)}
+            disabled={uploading}
           />
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={() => setShowPasteDialog(false)}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPasteDialog(false)} disabled={uploading}>
               Cancel
             </Button>
-            <Button
-              onClick={() => {
-                toast({
-                  title: "Resume ready to parse",
-                  description: "Processing your resume text...",
-                });
-                setShowPasteDialog(false);
-              }}
-            >
-              Process Text
+            <Button onClick={handlePasteText} disabled={uploading || !pastedText.trim()}>
+              {uploading ? (
+                <>
+                  <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Process Text"
+              )}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Skills Drawer */}
-      <Sheet open={showSkillsDrawer} onOpenChange={setShowSkillsDrawer}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Add Skills</SheetTitle>
-            <SheetDescription>
-              Add your technical and soft skills with proficiency levels
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-2">
-              <Label htmlFor="skill-name">Skill Name</Label>
-              <Input id="skill-name" placeholder="e.g., React, Python, Leadership" />
-            </div>
-            <div className="space-y-2">
-              <Label>Proficiency Level</Label>
-              <div className="flex gap-2">
-                <Badge variant="outline" className="cursor-pointer">Beginner</Badge>
-                <Badge variant="outline" className="cursor-pointer">Intermediate</Badge>
-                <Badge variant="outline" className="cursor-pointer">Advanced</Badge>
-                <Badge variant="outline" className="cursor-pointer">Expert</Badge>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-4">
-              <Button variant="outline" onClick={() => setShowSkillsDrawer(false)} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  toast({ title: "Skill added", description: "Your skill has been added to your profile." });
-                  setShowSkillsDrawer(false);
-                }}
-                className="flex-1"
-              >
-                Save
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Experience Drawer */}
-      <Sheet open={showExperienceDrawer} onOpenChange={setShowExperienceDrawer}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Add Work Experience</SheetTitle>
-            <SheetDescription>
-              Add a role with dates and key achievements
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-2">
-              <Label htmlFor="job-title">Job Title</Label>
-              <Input id="job-title" placeholder="e.g., Senior Developer" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="company">Company</Label>
-              <Input id="company" placeholder="e.g., Tech Corp" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start Date</Label>
-                <Input id="start-date" type="month" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="end-date">End Date</Label>
-                <Input id="end-date" type="month" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="achievements">Key Achievements</Label>
-              <Textarea id="achievements" placeholder="Use bullet points for impact..." rows={4} />
-            </div>
-            <div className="flex gap-2 pt-4">
-              <Button variant="outline" onClick={() => setShowExperienceDrawer(false)} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  toast({ title: "Experience added", description: "Your role has been added to your timeline." });
-                  setShowExperienceDrawer(false);
-                }}
-                className="flex-1"
-              >
-                Save
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Title Drawer */}
-      <Sheet open={showTitleDrawer} onOpenChange={setShowTitleDrawer}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Set Your Job Title</SheetTitle>
-            <SheetDescription>
-              Choose from suggestions or add a custom title
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-2">
-              <Label>Suggested Titles</Label>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="cursor-pointer">Marketing Manager</Badge>
-                <Badge variant="secondary" className="cursor-pointer">Data Analyst</Badge>
-                <Badge variant="secondary" className="cursor-pointer">Project Coordinator</Badge>
-                <Badge variant="secondary" className="cursor-pointer">Software Engineer</Badge>
-                <Badge variant="secondary" className="cursor-pointer">Product Designer</Badge>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="custom-title">Or add custom title</Label>
-              <Input id="custom-title" placeholder="Enter your job title" />
-            </div>
-            <div className="flex gap-2 pt-4">
-              <Button variant="outline" onClick={() => setShowTitleDrawer(false)} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  toast({ title: "Title added", description: "Your job title has been added to your profile." });
-                  setShowTitleDrawer(false);
-                }}
-                className="flex-1"
-              >
-                Save
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Privacy Modal */}
-      <Dialog open={showPrivacyModal} onOpenChange={setShowPrivacyModal}>
+      {/* Visa Status Dialog */}
+      <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Data Privacy & Security</DialogTitle>
-            <DialogDescription>How Screna AI protects your information</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="flex gap-3">
-              <Shield className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium">Your data is encrypted</h4>
-                <p className="text-sm text-muted-foreground">
-                  All profile data is encrypted at rest and in transit using industry-standard protocols.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Shield className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium">You control sharing</h4>
-                <p className="text-sm text-muted-foreground">
-                  Your profile and metrics are private by default. You decide what to share and with whom.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Shield className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-medium">No data selling</h4>
-                <p className="text-sm text-muted-foreground">
-                  We never sell your personal information to third parties. Your data is yours.
-                </p>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Examples Modal */}
-      <Dialog open={showExamplesModal} onOpenChange={setShowExamplesModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>STAR Method Examples</DialogTitle>
+            <DialogTitle>Set Your Work Authorization</DialogTitle>
             <DialogDescription>
-              Structure your achievements for maximum impact
+              Please select your current work authorization status to help employers understand your eligibility
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Badge variant="secondary">Example 1</Badge>
-              <p className="text-sm">
-                <strong>Situation:</strong> E-commerce checkout had 35% abandonment rate.
-                <br />
-                <strong>Task:</strong> Reduce friction in payment flow.
-                <br />
-                <strong>Action:</strong> Redesigned checkout to single-page, added guest checkout.
-                <br />
-                <strong>Result:</strong> Reduced abandonment by 22%, increased revenue by $1.2M annually.
-              </p>
+              <Label>Work Authorization Status</Label>
+              <Select
+                value={profileData?.profile.visa_status}
+                onValueChange={(value) => {
+                  if (profileData) {
+                    setProfileData({
+                      ...profileData,
+                      profile: { ...profileData.profile, visa_status: value },
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISA_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Separator />
-            <div className="space-y-2">
-              <Badge variant="secondary">Example 2</Badge>
-              <p className="text-sm">
-                <strong>Situation:</strong> Customer support response time averaged 48 hours.
-                <br />
-                <strong>Task:</strong> Improve response speed without hiring.
-                <br />
-                <strong>Action:</strong> Implemented AI chatbot for common queries, trained team on triage.
-                <br />
-                <strong>Result:</strong> Reduced average response time to 4 hours, improved CSAT by 35%.
-              </p>
-            </div>
-            <Separator />
-            <div className="space-y-2">
-              <Badge variant="secondary">Example 3</Badge>
-              <p className="text-sm">
-                <strong>Situation:</strong> Marketing campaigns lacked data-driven insights.
-                <br />
-                <strong>Task:</strong> Build analytics dashboard for campaign performance.
-                <br />
-                <strong>Action:</strong> Integrated Google Analytics, created custom dashboards in Looker.
-                <br />
-                <strong>Result:</strong> Enabled data-driven decisions, increased ROI by 40% in 6 months.
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                <Shield className="w-4 h-4 inline mr-1" />
+                This information helps match you with employers who can sponsor your work status
               </p>
             </div>
           </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={handleSkipVisaStatus}
+              disabled={saving}
+            >
+              Skip for Now
+            </Button>
+            <Button onClick={handleVisaStatusSave} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save & Continue"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

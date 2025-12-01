@@ -1,12 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -14,26 +11,29 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { 
-  Search, MapPin, Briefcase, DollarSign, Lock, Send, FileText, Filter,
-  TrendingUp, CheckCircle2, Clock, Tag, X, Info, Sparkles, Target
+  Search, MapPin, Briefcase, Lock, Send, FileText,
+  TrendingUp, CheckCircle2, Clock, Tag, Sparkles, Target, Loader2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import {JobService} from '../services';
 
 export default function Jobs() {
   const { toast } = useToast();
-  const [selectedJobs, setSelectedJobs] = useState<number[]>([]);
-  const [autoPushEnabled, setAutoPushEnabled] = useState(false);
-  const [showAutoPushModal, setShowAutoPushModal] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [pushModalOpen, setPushModalOpen] = useState(false);
   const [bulkPushModalOpen, setBulkPushModalOpen] = useState(false);
   const [jobDetailOpen, setJobDetailOpen] = useState(false);
   const [currentJob, setCurrentJob] = useState<any>(null);
-  const [salaryRange, setSalaryRange] = useState([0, 200]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
-  const [employmentType, setEmploymentType] = useState('all');
-  const [sortBy, setSortBy] = useState('relevance');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('RELEVANCE');
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
   const userPlan = 'free'; // or 'premium'
   const activeTitle = { id: 1, name: 'Backend Engineer' };
@@ -46,107 +46,100 @@ export default function Jobs() {
     'Learn cloud architecture'
   ];
 
-  const jobs = [
-    {
-      id: 1, 
-      title: 'Senior Backend Engineer', 
-      company: 'Acme Corp', 
-      location: 'Remote',
-      postedAt: '2 days ago', 
-      employmentType: 'full_time' as const,
-      salaryMin: 75, 
-      salaryMax: 95, 
-      salaryUnit: 'hr' as const,
-      descriptionShort: 'Build scalable microservices with Node.js and PostgreSQL...',
-      descriptionFull: `We are seeking a Senior Backend Engineer to join our growing team. You will be responsible for designing, developing, and maintaining our core backend services using modern technologies.
-
-Key Responsibilities:
-• Design and implement scalable microservices architecture
-• Work with Node.js, PostgreSQL, and AWS cloud infrastructure
-• Collaborate with frontend teams to build robust APIs
-• Ensure high performance and responsiveness of applications
-• Implement security and data protection measures
-
-Requirements:
-• 5+ years of backend development experience
-• Strong proficiency in Node.js and PostgreSQL
-• Experience with AWS cloud services
-• Excellent problem-solving skills
-• Strong communication and teamwork abilities`,
-      matchScore: 86, 
-      rankingPercentile: 18, 
-      skills: ['Node.js', 'PostgreSQL', 'AWS'],
-      mustHaveSkills: ['Node.js', 'PostgreSQL', 'REST APIs'],
-      niceToHaveSkills: ['AWS Lambda', 'Docker', 'GraphQL'],
-      isNew: true
-    },
-    {
-      id: 2, 
-      title: 'Backend Developer', 
-      company: 'TechStart', 
-      location: 'New York, NY',
-      postedAt: '5 days ago', 
-      employmentType: 'contract' as const,
-      salaryMin: 120, 
-      salaryMax: 140, 
-      salaryUnit: 'yr' as const,
-      descriptionShort: 'Join our team building the future of fintech APIs...',
-      descriptionFull: `TechStart is revolutionizing the fintech industry with cutting-edge APIs. We're looking for a talented Backend Developer to help us build the next generation of financial technology solutions.
-
-Key Responsibilities:
-• Develop and maintain high-performance Python/Django applications
-• Design RESTful APIs for financial transactions
-• Implement secure payment processing systems
-• Work with Docker and containerization technologies
-• Participate in code reviews and technical discussions
-
-Requirements:
-• 3+ years of Python/Django development
-• Experience with financial or payment systems
-• Strong understanding of security best practices
-• Knowledge of Docker and containerization
-• Bachelor's degree in Computer Science or related field`,
-      matchScore: 92, 
-      rankingPercentile: 12, 
-      skills: ['Python', 'Django', 'Docker'],
-      mustHaveSkills: ['Python', 'Django', 'PostgreSQL'],
-      niceToHaveSkills: ['Redis', 'Kubernetes', 'CI/CD'],
-      isNew: false
-    },
-    {
-      id: 3,
-      title: 'Backend Software Engineer',
-      company: 'CloudTech Solutions',
-      location: 'San Francisco, CA',
-      postedAt: '1 week ago',
-      employmentType: 'part_time' as const,
-      salaryMin: 80,
-      salaryMax: 110,
-      salaryUnit: 'hr' as const,
-      descriptionShort: 'Part-time role building cloud-native backend services...',
-      descriptionFull: `Looking for a part-time Backend Software Engineer to help build our cloud-native infrastructure. Flexible hours, remote-friendly.
-
-Key Responsibilities:
-• Design cloud-native backend services
-• Implement microservices using Go and Kubernetes
-• Work with team to ensure scalability and reliability
-• Contribute to technical documentation
-
-Requirements:
-• 4+ years backend development experience
-• Strong Go programming skills
-• Experience with Kubernetes and cloud platforms
-• Self-motivated and able to work independently`,
-      matchScore: 78,
-      rankingPercentile: 25,
-      skills: ['Go', 'Kubernetes', 'AWS'],
-      mustHaveSkills: ['Go', 'Kubernetes', 'Microservices'],
-      niceToHaveSkills: ['Terraform', 'Prometheus', 'gRPC'],
-      isNew: false
-    }
+  // Location options
+  const locations = [
+    'All Locations',
+    'Remote',
+    'New York, NY',
+    'San Francisco, CA',
+    'Los Angeles, CA',
+    'Chicago, IL',
+    'Austin, TX',
+    'Seattle, WA',
+    'Boston, MA',
+    'Denver, CO'
   ];
 
-  const handlePushProfile = (jobId: number) => {
+  // Debounce search query - wait 800ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 800); // 800ms pause time
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+    setJobs([]);
+    setHasMore(true);
+  }, [debouncedSearchQuery, locationFilter, timeFilter, sortBy]);
+  
+  // Fetch jobs from API
+  useEffect(() => {
+    fetchJobs(page);
+  }, [page, debouncedSearchQuery, locationFilter, timeFilter, sortBy]);
+  
+  // Infinite scroll handler
+  useEffect(() => {
+    const handleScroll = () => {
+      if (loading || !hasMore) return;
+
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = document.documentElement.clientHeight;
+
+      // Load more when user scrolls to bottom (with 200px threshold)
+      if (scrollTop + clientHeight >= scrollHeight - 200) {
+        setPage(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loading, hasMore]);
+
+  const fetchJobs = async (currentPage: number) => {
+    setLoading(true);
+    try {
+      const response = await JobService.searchJobs({
+        query: debouncedSearchQuery ? debouncedSearchQuery : activeTitle.name || undefined,
+        location: locationFilter !== 'all' ? locationFilter : undefined,
+        postedDate: timeFilter !== 'all' ? {
+          'today': 'TODAY',
+          'week': 'DAYS_7',
+          'month': 'DAYS_30'
+        }[timeFilter] : undefined,
+        sortBy: sortBy,
+        page: currentPage
+      });
+      
+      if (response.data?.status === 'SUCCESS' && response.data?.data) {
+        const newJobs = response.data.data;
+        
+        if (currentPage === 1) {
+          setJobs(newJobs);
+        } else {
+          setJobs(prev => [...prev, ...newJobs]);
+        }
+        
+        if (newJobs.length < 10) {
+          setHasMore(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load jobs. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePushProfile = (jobId: string) => {
     if (userPlan === 'free') {
       toast({
         title: 'Premium Required',
@@ -188,27 +181,8 @@ Requirements:
     setSelectedJobs([]);
   };
 
-  const toggleSelection = (id: number) => {
+  const toggleSelection = (id: string) => {
     setSelectedJobs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleAutoPushToggle = (enabled: boolean) => {
-    if (userPlan === 'free') return;
-    
-    if (enabled && !autoPushEnabled) {
-      setShowAutoPushModal(true);
-    } else {
-      setAutoPushEnabled(enabled);
-    }
-  };
-
-  const confirmAutoPush = () => {
-    setAutoPushEnabled(true);
-    setShowAutoPushModal(false);
-    toast({
-      title: 'Auto-push enabled',
-      description: 'Your profile will be automatically pushed to top new matches.'
-    });
   };
 
   const viewJobDetail = (job: any) => {
@@ -217,40 +191,28 @@ Requirements:
   };
 
   const getEmploymentTypeLabel = (type: string) => {
-    const labels = {
-      'full_time': 'Full-time',
+    const labels: { [key: string]: string } = {
+      'full-time': 'Full-time',
       'contract': 'Contract',
-      'part_time': 'Part-time'
+      'part-time': 'Part-time',
+      'temporary': 'Temporary',
+      'internship': 'Internship'
     };
-    return labels[type as keyof typeof labels] || type;
+    return labels[type] || type;
   };
 
-  const filteredJobs = jobs.filter(job => {
-    const matchesSearch = !searchQuery || 
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.location.toLowerCase().includes(searchQuery.toLowerCase());
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    const matchesLocation = !locationFilter || 
-      job.location.toLowerCase().includes(locationFilter.toLowerCase());
-    
-    const matchesEmployment = employmentType === 'all' || 
-      job.employmentType === employmentType;
-    
-    const salaryValue = job.salaryUnit === 'hr' ? job.salaryMax : job.salaryMax / 1000;
-    const matchesSalary = salaryValue >= salaryRange[0] && salaryValue <= salaryRange[1];
-    
-    return matchesSearch && matchesLocation && matchesEmployment && matchesSalary;
-  });
-
-  const sortedJobs = [...filteredJobs].sort((a, b) => {
-    if (sortBy === 'relevance') {
-      return b.matchScore - a.matchScore;
-    } else {
-      // Sort by newest (posted date)
-      return a.id - b.id; // Simulated - in real app would use actual dates
-    }
-  });
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return `${Math.floor(diffDays / 30)} months ago`;
+  };
 
   return (
     <TooltipProvider>
@@ -274,84 +236,51 @@ Requirements:
 
             {/* Controls */}
             <Card className="p-4">
-              <div className="grid md:grid-cols-4 gap-4 mb-4">
+              <div className="grid md:grid-cols-3 gap-4 mb-4">
                 <div className="md:col-span-2 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search matched jobs (keywords, company, location)" 
+                    placeholder="Search matched jobs (keywords, company)" 
                     className="pl-10"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <Input 
-                  placeholder="Location" 
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                />
-                <Select value={employmentType} onValueChange={setEmploymentType}>
+                <Select value={locationFilter} onValueChange={setLocationFilter}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Types" />
+                    <SelectValue placeholder="All Locations" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="full_time">Full-time</SelectItem>
-                    <SelectItem value="contract">Contract</SelectItem>
-                    <SelectItem value="part_time">Part-time</SelectItem>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {locations.map(loc => (
+                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">Salary/Rate Range</label>
-                  <span className="text-sm text-muted-foreground">
-                    ${salaryRange[0]}k - ${salaryRange[1]}k/yr
-                  </span>
-                </div>
-                <Slider
-                  min={0}
-                  max={200}
-                  step={10}
-                  value={salaryRange}
-                  onValueChange={setSalaryRange}
-                  className="w-full"
-                />
-              </div>
+              <div className="flex items-center justify-between gap-4">
+                <Select value={timeFilter} onValueChange={setTimeFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Within 7 Days</SelectItem>
+                    <SelectItem value="month">Within 30 Days</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <div className="flex items-center justify-between">
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-48">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="relevance">Sort by: Relevance</SelectItem>
-                    <SelectItem value="newest">Sort by: Newest</SelectItem>
+                    <SelectItem value="RELEVANCE">Sort by: Relevance</SelectItem>
+                    <SelectItem value="NEWEST">Sort by: Newest</SelectItem>
                   </SelectContent>
                 </Select>
-                
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium">Auto-push matches</label>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="w-4 h-4 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs">Automatically push your profile to top new matches for your active title</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Switch 
-                    checked={autoPushEnabled} 
-                    onCheckedChange={handleAutoPushToggle}
-                    disabled={userPlan === 'free'}
-                  />
-                  {userPlan === 'free' && (
-                    <Link to="/pricing" className="text-xs text-muted-foreground hover:underline">
-                      <Lock className="w-3 h-3 inline mr-1" />
-                      Upgrade to enable
-                    </Link>
-                  )}
-                </div>
               </div>
             </Card>
 
@@ -364,7 +293,7 @@ Requirements:
                     <TooltipTrigger asChild>
                       <Button onClick={handleBulkPush} disabled={userPlan === 'free'}>
                         <Send className="w-4 h-4 mr-2" />
-                        Push Selected Profiles
+                        Apply to Selected Positions
                         {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
                       </Button>
                     </TooltipTrigger>
@@ -385,7 +314,7 @@ Requirements:
                   <div className="flex items-center gap-3">
                     <Lock className="w-5 h-5 text-primary" />
                     <p className="text-sm font-medium">
-                      Upgrade to push your profile to recruiters and enable auto-push.
+                      Upgrade to apply to positions and push your profile to recruiters.
                     </p>
                   </div>
                   <Button variant="cta" asChild>
@@ -394,31 +323,56 @@ Requirements:
                 </div>
               </Card>
             )}
-
             {/* Job List */}
-            {sortedJobs.length === 0 ? (
+            {jobs.length === 0 && !loading ? (
+              // Empty state - no jobs and not loading
               <Card className="p-12 text-center">
                 <div className="flex flex-col items-center gap-4">
                   <Briefcase className="w-16 h-16 text-muted-foreground opacity-50" />
                   <div>
-                    <h3 className="text-xl font-semibold mb-2">No matches yet for your active title</h3>
+                    <h3 className="text-xl font-semibold mb-2">No jobs found</h3>
                     <p className="text-muted-foreground mb-6">
-                      Try adjusting your filters or improve your ranking to get more matches
+                      {searchQuery || locationFilter !== 'all' || timeFilter !== 'all' 
+                        ? 'Try adjusting your filters to see more results'
+                        : 'No jobs available at the moment. Check back later!'}
                     </p>
                   </div>
-                  <div className="flex gap-3">
-                    <Button variant="outline" asChild>
-                      <Link to="/metrics">
-                        <TrendingUp className="w-4 h-4 mr-2" />
-                        Improve Your Ranking
-                      </Link>
+                  {(searchQuery || locationFilter !== 'all' || timeFilter !== 'all') && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setSearchQuery('');
+                        setLocationFilter('all');
+                        setTimeFilter('all');
+                      }}
+                    >
+                      Clear All Filters
                     </Button>
-                  </div>
+                  )}
+                </div>
+              </Card>
+            ) : jobs.length === 0 && loading ? (
+              // Initial loading (page 1, empty list) - show full page loading
+              <Card className="p-12 text-center">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-16 h-16 text-primary animate-spin" />
+                  <p className="text-muted-foreground">Loading jobs...</p>
                 </div>
               </Card>
             ) : (
+              // Has data - always show the list
               <div className="space-y-4">
-                {sortedJobs.map(job => (
+                {/* Results count */}
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>
+                    {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
+                    {!debouncedSearchQuery && locationFilter === 'all' && timeFilter === 'all' && (
+                      <span className="ml-1">(showing all available jobs)</span>
+                    )}
+                  </span>
+                </div>
+                
+                {jobs.map(job => (
                   <Card key={job.id} className="p-6 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5">
                     <div className="flex gap-6">
                       <div className="flex items-start pt-2">
@@ -431,56 +385,42 @@ Requirements:
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-xl font-bold">{job.title}</h3>
-                              {job.isNew && (
-                                <Badge variant="default" className="text-xs">New</Badge>
-                              )}
+                              <h3 className="text-xl font-bold">{job.job_title}</h3>
                             </div>
                             <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                              <span className="font-medium">{job.company}</span>
+                              <span className="font-medium">{job.company_name}</span>
                               <span className="flex items-center gap-1">
                                 <MapPin className="w-4 h-4" />
                                 {job.location}
                               </span>
-                              <span className="flex items-center gap-1">
-                                <Briefcase className="w-4 h-4" />
-                                {getEmploymentTypeLabel(job.employmentType)}
-                              </span>
+                              {job.job_type && (
+                                <span className="flex items-center gap-1">
+                                  <Briefcase className="w-4 h-4" />
+                                  {getEmploymentTypeLabel(job.job_type)}
+                                </span>
+                              )}
                               <span className="flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
-                                {job.postedAt}
+                                {formatDate(job.posted_date)}
                               </span>
                             </div>
                           </div>
-                          <Badge className="text-lg px-4 py-1 bg-primary/10 text-primary border-primary/20">
-                            Match {job.matchScore}%
-                          </Badge>
                         </div>
                         
                         <div className="mb-3">
-                          <div className="flex items-center gap-2 text-lg font-semibold text-primary mb-2">
-                            <DollarSign className="w-5 h-5" />
-                            ${job.salaryMin}–${job.salaryMax}{job.salaryUnit === 'hr' ? '/hr' : 'k/yr'}
-                          </div>
-                          <p className="text-muted-foreground text-sm line-clamp-2">{job.descriptionShort}</p>
-                        </div>
-                        
-                        <div className="mb-4 bg-muted/30 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm font-medium">Your ranking for this role</p>
-                            <span className="text-lg font-bold text-primary">Top {job.rankingPercentile}%</span>
-                          </div>
-                          <Progress value={100 - job.rankingPercentile} className="h-2.5" />
+                          <p className="text-muted-foreground text-sm line-clamp-2">
+                            {job.job_description?.substring(0, 200)}...
+                          </p>
                         </div>
                         
                         <div className="flex items-center justify-between">
                           <div className="flex gap-2 flex-wrap">
-                            {job.skills.map(skill => (
-                              <Badge key={skill} variant="outline" className="text-xs">
+                            {job.source && (
+                              <Badge variant="outline" className="text-xs">
                                 <Tag className="w-3 h-3 mr-1" />
-                                {skill}
+                                {job.source}
                               </Badge>
-                            ))}
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <Button 
@@ -499,7 +439,7 @@ Requirements:
                                   disabled={userPlan === 'free'}
                                 >
                                   <Send className="w-4 h-4 mr-2" />
-                                  Push Profile
+                                  Apply Position
                                   {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
                                 </Button>
                               </TooltipTrigger>
@@ -515,6 +455,25 @@ Requirements:
                     </div>
                   </Card>
                 ))}
+
+                {/* Loading indicator for infinite scroll - only at bottom */}
+                {loading && (
+                  <Card className="p-8 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                      <p className="text-sm text-muted-foreground">Loading more jobs...</p>
+                    </div>
+                  </Card>
+                )}
+
+                {/* End of results indicator */}
+                {!hasMore && !loading && (
+                  <Card className="p-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      You've reached the end of the results
+                    </p>
+                  </Card>
+                )}
               </div>
             )}
           </div>
@@ -532,7 +491,6 @@ Requirements:
                   <span className="text-sm text-muted-foreground">Overall Score</span>
                   <span className="text-lg font-bold text-primary">{overallScore}</span>
                 </div>
-                <Progress value={overallScore} className="h-2" />
                 <p className="text-xs text-muted-foreground">
                   Last session: {lastSessionId}
                 </p>
@@ -631,31 +589,12 @@ Requirements:
         </DialogContent>
       </Dialog>
 
-      {/* Auto-Push First-Time Modal */}
-      <Dialog open={showAutoPushModal} onOpenChange={setShowAutoPushModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Enable Auto-push</DialogTitle>
-            <DialogDescription>
-              Automatically push your profile to top new matches for your active title. You can disable anytime.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowAutoPushModal(false)}>Cancel</Button>
-            <Button onClick={confirmAutoPush}>
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Enable
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Job Detail Drawer */}
       <Sheet open={jobDetailOpen} onOpenChange={setJobDetailOpen}>
         <SheetContent className="w-full sm:max-w-2xl overflow-hidden flex flex-col">
           <SheetHeader>
-            <SheetTitle className="text-2xl">{currentJob?.title}</SheetTitle>
-            <p className="text-muted-foreground font-medium">{currentJob?.company}</p>
+            <SheetTitle className="text-2xl">{currentJob?.job_title}</SheetTitle>
+            <p className="text-muted-foreground font-medium">{currentJob?.company_name}</p>
           </SheetHeader>
           
           <ScrollArea className="flex-1 pr-4">
@@ -666,40 +605,21 @@ Requirements:
                   <MapPin className="w-3 h-3 mr-1" />
                   {currentJob?.location}
                 </Badge>
-                <Badge variant="outline" className="text-sm">
-                  <Briefcase className="w-3 h-3 mr-1" />
-                  {getEmploymentTypeLabel(currentJob?.employmentType)}
-                </Badge>
+                {currentJob?.job_type && (
+                  <Badge variant="outline" className="text-sm">
+                    <Briefcase className="w-3 h-3 mr-1" />
+                    {getEmploymentTypeLabel(currentJob?.job_type)}
+                  </Badge>
+                )}
                 <Badge variant="outline" className="text-sm">
                   <Clock className="w-3 h-3 mr-1" />
-                  {currentJob?.postedAt}
+                  {currentJob?.posted_date && formatDate(currentJob.posted_date)}
                 </Badge>
-                <Badge variant="outline" className="text-sm">
-                  Job ID: {currentJob?.id}
-                </Badge>
-              </div>
-
-              {/* Salary Block */}
-              <Card className="p-4 bg-primary/5 border-primary/20">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Salary Range</span>
-                  <div className="flex items-center gap-2 text-xl font-bold text-primary">
-                    <DollarSign className="w-5 h-5" />
-                    ${currentJob?.salaryMin}–${currentJob?.salaryMax}{currentJob?.salaryUnit === 'hr' ? '/hr' : 'k/yr'}
-                  </div>
-                </div>
-              </Card>
-
-              {/* Ranking */}
-              <div className="bg-muted/30 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Your ranking for this role</p>
-                  <span className="text-lg font-bold text-primary">Top {currentJob?.rankingPercentile}%</span>
-                </div>
-                <Progress value={currentJob ? 100 - currentJob.rankingPercentile : 0} className="h-2.5" />
-                <p className="text-xs text-muted-foreground mt-2">
-                  Match Score: {currentJob?.matchScore}%
-                </p>
+                {currentJob?.source && (
+                  <Badge variant="outline" className="text-sm">
+                    Source: {currentJob.source}
+                  </Badge>
+                )}
               </div>
 
               <Separator />
@@ -708,33 +628,51 @@ Requirements:
               <div>
                 <h4 className="font-semibold mb-3">Job Description</h4>
                 <div className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
-                  {currentJob?.descriptionFull}
+                  {currentJob?.job_description}
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Skills */}
-              <div>
-                <h4 className="font-semibold mb-3">Must-have Skills</h4>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {currentJob?.mustHaveSkills?.map((skill: string) => (
-                    <Badge key={skill} variant="default" className="text-xs">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-
-                <h4 className="font-semibold mb-3">Nice-to-have Skills</h4>
-                <div className="flex flex-wrap gap-2">
-                  {currentJob?.niceToHaveSkills?.map((skill: string) => (
-                    <Badge key={skill} variant="outline" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              {/* Links */}
+              {(currentJob?.url || currentJob?.apply_link || currentJob?.company_url) && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="font-semibold mb-3">Links</h4>
+                    <div className="space-y-2">
+                      {currentJob?.url && (
+                        <a 
+                          href={currentJob.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline block"
+                        >
+                          View Job Posting →
+                        </a>
+                      )}
+                      {currentJob?.apply_link && (
+                        <a 
+                          href={currentJob.apply_link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline block"
+                        >
+                          Apply Now →
+                        </a>
+                      )}
+                      {currentJob?.company_url && (
+                        <a 
+                          href={currentJob.company_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline block"
+                        >
+                          Company Website →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </ScrollArea>
 
@@ -755,7 +693,7 @@ Requirements:
                     className="flex-1"
                   >
                     <Send className="w-4 h-4 mr-2" />
-                    Push Profile
+                    Apply Position
                     {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
                   </Button>
                 </TooltipTrigger>

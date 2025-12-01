@@ -22,30 +22,30 @@ import { Link } from 'react-router-dom';
 import heroImage from "@/assets/hero-interview.jpg";
 import dashboardPreview from "@/assets/dashboard-preview.jpg";
 import aiBrain from "@/assets/ai-brain.png";
-import logo from "@/assets/logo.png";
+import Logo from "@/assets/logo.png"
 
 const StickyNav = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-background/80 border-b border-border shadow-sm">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src={logo} alt="Screna AI" className="w-8 h-8" />
+        <div className="flex items-center gap-2">         
+          <img src = {Logo} alt = "Logo" className="w-7 h-7 text-primary" />
           <span className="font-bold text-xl">Screna AI</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm">
           <a href="#features" className="hover:text-primary transition-smooth">Features</a>
           <a href="#how-it-works" className="hover:text-primary transition-smooth">How It Works</a>
           <a href="#categories" className="hover:text-primary transition-smooth">Job Categories</a>
-          <a href="#recruiter-network" className="hover:text-primary transition-smooth">Recruiter Network</a>
-          <Link to="/pricing" className="hover:text-primary transition-smooth">Pricing</Link>
+          <a href="#why-screna" className="hover:text-primary transition-smooth">Why Screna</a>
+          <a href="#pricing" className="hover:text-primary transition-smooth">Pricing</a>
           <a href="#faq" className="hover:text-primary transition-smooth">FAQ</a>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost" asChild>
-            <Link to="/signup">Login</Link>
+            <Link to="/auth">Login</Link>
           </Button>
           <Button asChild variant="cta">
-            <Link to="/signup">Start Free</Link>
+            <Link to="/auth">Start Free</Link>
           </Button>
         </div>
       </div>
@@ -67,15 +67,15 @@ export default function Landing() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="animate-fade-in">
               <h1 className="text-5xl lg:text-6xl font-bold mb-6 leading-tight">
-                Your AI Career Coach — Interview, Improve, and Get Discovered
+                Ace Your Interview with Structured Preparation
               </h1>
               <p className="text-xl text-muted-foreground mb-8">
-                Train with Screna AI, refine your answers, and rise in recruiter rankings — for any industry, any role.
+                Comprehensive, multi-dimensional training with expert mentors, tailored practice paths, and daily job insights — your all-in-one interview preparation platform.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <Button size="lg" className="gradient-primary shadow-glow hover:scale-105 transition-all" asChild>
-                  <Link to="/signup">
-                    Start Free AI Interview
+                  <Link to="/auth">
+                    Start Your Preparation Journey
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Link>
                 </Button>
@@ -100,14 +100,14 @@ export default function Landing() {
               <div className="relative">
                 <img 
                   src={heroImage} 
-                  alt="AI-powered interview platform" 
+                  alt="AI-powered interview preparation platform" 
                   className="rounded-2xl shadow-card w-full"
                 />
                 <div className="absolute -bottom-4 -left-4 bg-background/95 backdrop-blur-lg border border-border rounded-xl p-4 shadow-glow">
-                  <p className="text-sm font-semibold text-primary">+12% avg improvement</p>
+                  <p className="text-sm font-semibold text-primary">+35% avg improvement</p>
                 </div>
                 <div className="absolute -top-4 -right-4 bg-background/95 backdrop-blur-lg border border-border rounded-xl p-4 shadow-glow">
-                  <p className="text-sm font-semibold text-primary">5,000+ contractors</p>
+                  <p className="text-sm font-semibold text-primary">10,000+ candidates</p>
                 </div>
               </div>
             </div>
@@ -115,47 +115,36 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Social Proof Bar */}
-      <section className="py-8 bg-muted/30 border-y border-border">
-        <div className="container mx-auto px-4">
-          <p className="text-center text-sm text-muted-foreground mb-6">Trusted by contractors from</p>
-          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
-            {["Randstad", "TEKsystems", "Apex Systems", "Insight Global", "Kforce", "Robert Half", "Capgemini", "Infosys"].map((company) => (
-              <span key={company} className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-smooth">{company}</span>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Value Proposition Grid */}
       <section id="features" className="py-20">
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-center mb-4">
-            Tired of unpredictable interviews?
+            Stop Guessing, Start Preparing
           </h2>
           <p className="text-xl text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
-            Traditional interview prep is expensive, slow, and lacks personalized feedback.
+            Traditional interview prep lacks structure, personalization, and real-time job insights.
           </p>
           
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <Card className="p-8 bg-destructive/5 border-destructive/20">
               <div className="flex items-center gap-3 mb-6">
                 <XCircle className="w-8 h-8 text-destructive" />
-                <h3 className="text-2xl font-bold">Traditional Interview</h3>
+                <h3 className="text-2xl font-bold">Traditional Prep</h3>
               </div>
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
                   <span className="text-destructive font-bold">💸</span>
-                  <span className="text-muted-foreground">High cost for mock interviews</span>
+                  <span className="text-muted-foreground">Expensive coaching sessions</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-destructive font-bold">⏱️</span>
-                  <span className="text-muted-foreground">Slow feedback turnaround</span>
+                  <span className="text-muted-foreground">Generic, one-size-fits-all approach</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-destructive font-bold">⚙️</span>
-                  <span className="text-muted-foreground">No data-driven insights</span>
+                  <span className="text-muted-foreground">No job market integration</span>
                 </li>
               </ul>
             </Card>
@@ -168,15 +157,15 @@ export default function Landing() {
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
                   <span className="text-primary font-bold">✓</span>
-                  <span className="font-medium">Free AI-powered interviews</span>
+                  <span className="font-medium">Personalized AI prep sessions</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-primary font-bold">✓</span>
-                  <span className="font-medium">Instant detailed feedback</span>
+                  <span className="font-medium">Real mentors + daily job matches</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-primary font-bold">✓</span>
-                  <span className="font-medium">AI-driven performance analytics</span>
+                  <span className="font-medium">Progressive performance tracking</span>
                 </li>
               </ul>
             </Card>
@@ -185,26 +174,21 @@ export default function Landing() {
       </section>
 
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-6 max-w-6xl mx-auto">
-            <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
-              <Target className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">Objective and Fair Background Evaluation</h3>
-              <p className="text-sm text-muted-foreground">Unbiased assessment of your skills and experience</p>
-            </Card>
+          <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
               <Brain className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">Continuous Q&A-Based Training</h3>
-              <p className="text-sm text-muted-foreground">Ongoing assessment to sharpen your interview skills</p>
+              <h3 className="font-bold mb-2">AI-Assisted Preparation</h3>
+              <p className="text-sm text-muted-foreground">Auto-generated session lists tailored to your target role and interview date</p>
             </Card>
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
-              <TrendingUp className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">New Training Sessions Generated</h3>
-              <p className="text-sm text-muted-foreground">Fresh content based on your evaluation and training results</p>
+              <Users className="w-10 h-10 text-primary mb-4" />
+              <h3 className="font-bold mb-2">Mentorship Library</h3>
+              <p className="text-sm text-muted-foreground">Connect with experienced mentors for 1-on-1 coaching and personalized feedback</p>
             </Card>
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
-              <Award className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">Personalized Course Recommendations</h3>
-              <p className="text-sm text-muted-foreground">Third-party courses tailored to your career goals</p>
+              <Briefcase className="w-10 h-10 text-primary mb-4" />
+              <h3 className="font-bold mb-2">Daily Job Matching</h3>
+              <p className="text-sm text-muted-foreground">Latest positions from multiple platforms, matched to your target role daily</p>
             </Card>
           </div>
         </div>
@@ -218,13 +202,13 @@ export default function Landing() {
               <img src={aiBrain} alt="AI Interview Demo" className="rounded-2xl shadow-card w-full" />
             </div>
             <div>
-              <h2 className="text-3xl font-bold mb-4">See AI in action</h2>
+              <h2 className="text-3xl font-bold mb-4">See Your Progress Dashboard</h2>
               <p className="text-muted-foreground mb-6">
-                Watch how our AI evaluates responses in real-time, providing instant feedback on communication, structure, and technical depth.
+                Track your profile score, session completion, and performance improvements in real-time as you prepare for your target interview.
               </p>
-              <img src={dashboardPreview} alt="Report Preview" className="rounded-xl shadow-card mb-6" />
+              <img src={dashboardPreview} alt="Progress Dashboard" className="rounded-xl shadow-card mb-6" />
               <Button className="gradient-primary" asChild>
-                <Link to="/signup">Try Your Free Interview</Link>
+                <Link to="/auth">Start Your Prep Journey</Link>
               </Button>
             </div>
           </div>
@@ -235,39 +219,39 @@ export default function Landing() {
       <section id="how-it-works" className="py-20 relative overflow-hidden">
         <div className="absolute inset-0 gradient-subtle opacity-50" />
         <div className="container mx-auto px-4 relative z-10">
-          <h2 className="text-4xl font-bold text-center mb-4">How It Works</h2>
+          <h2 className="text-4xl font-bold text-center mb-4">Your Preparation Journey</h2>
           <p className="text-center text-muted-foreground mb-16 max-w-2xl mx-auto">
-            Get started in minutes and see results immediately
+            From registration to interview day — a complete preparation roadmap
           </p>
-          <div className="max-w-5xl mx-auto">
-            <div className="grid md:grid-cols-4 gap-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid md:grid-cols-4 gap-6">
               {[
                 { 
                   step: "1", 
-                  icon: Users,
-                  title: "Register", 
-                  desc: "Create your profile in under 2 minutes",
+                  icon: FileText,
+                  title: "Upload & Profile", 
+                  desc: "Register, upload resume, set target job & interview date",
                   color: "from-blue-500 to-cyan-500"
                 },
                 { 
                   step: "2", 
-                  icon: Brain,
-                  title: "AI Interview", 
-                  desc: "Complete technical + behavioral questions",
+                  icon: Target,
+                  title: "AI Scoring", 
+                  desc: "Get initial profile score based on your background",
                   color: "from-purple-500 to-pink-500"
                 },
                 { 
                   step: "3", 
-                  icon: BarChart3,
-                  title: "Get Report", 
-                  desc: "Instant feedback with charts and insights",
+                  icon: Brain,
+                  title: "AI Sessions", 
+                  desc: "Auto-generated prep sessions matched to your role",
                   color: "from-orange-500 to-red-500"
                 },
                 { 
                   step: "4", 
                   icon: TrendingUp,
-                  title: "Retake & Improve", 
-                  desc: "Practice until you're confident and see improvement",
+                  title: "Track Progress", 
+                  desc: "Complete sessions, get reports, improve your score",
                   color: "from-green-500 to-emerald-500"
                 }
               ].map((item, i) => (
@@ -287,12 +271,30 @@ export default function Landing() {
                     <p className="text-sm text-muted-foreground">{item.desc}</p>
                   </Card>
                   {i < 3 && (
-                    <div className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 z-20">
+                    <div className="hidden md:block absolute top-1/2 -right-3 transform -translate-y-1/2 z-20">
                       <ChevronRight className="w-8 h-8 text-primary animate-pulse" />
                     </div>
                   )}
                 </div>
               ))}
+            </div>
+            
+            <div className="mt-16 grid md:grid-cols-3 gap-6">
+              <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30">
+                <Video className="w-10 h-10 text-primary mb-3" />
+                <h3 className="font-bold mb-2">Post-Session Reports</h3>
+                <p className="text-sm text-muted-foreground">Question-by-question analysis with strengths, weaknesses, and improvement tips</p>
+              </Card>
+              <Card className="p-6 bg-gradient-to-br from-secondary/10 to-primary/10 border-secondary/30">
+                <Users className="w-10 h-10 text-secondary mb-3" />
+                <h3 className="font-bold mb-2">Mentor Guidance</h3>
+                <p className="text-sm text-muted-foreground">Access experienced mentors from our library for personalized coaching</p>
+              </Card>
+              <Card className="p-6 bg-gradient-to-br from-primary/10 to-accent/10 border-accent/30">
+                <Briefcase className="w-10 h-10 text-accent mb-3" />
+                <h3 className="font-bold mb-2">Job Recommendations</h3>
+                <p className="text-sm text-muted-foreground">Receive daily job matches tailored to your profile and target role</p>
+              </Card>
             </div>
           </div>
         </div>
@@ -301,23 +303,23 @@ export default function Landing() {
       {/* Job Categories Carousel */}
       <section id="categories" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-center mb-4">Choose Your STEM Role</h2>
-          <p className="text-center text-muted-foreground mb-12">AI interviews tailored for Science, Technology, Engineering & Mathematics professionals</p>
+          <h2 className="text-4xl font-bold text-center mb-4">Choose Your Career Field</h2>
+          <p className="text-center text-muted-foreground mb-12">Tailored preparation sessions for professionals across all industries and roles</p>
           <Carousel className="max-w-5xl mx-auto">
             <CarouselContent>
               {[
                 { role: "Software Engineer", icon: Code, rate: "$100-160/hr" },
-                { role: "Data Scientist", icon: BarChart3, rate: "$110-180/hr" },
-                { role: "Research Scientist", icon: TestTube, rate: "$90-150/hr" },
-                { role: "Mechanical Engineer", icon: Zap, rate: "$85-140/hr" },
-                { role: "Electrical Engineer", icon: Zap, rate: "$90-145/hr" },
-                { role: "DevOps Engineer", icon: Cloud, rate: "$110-170/hr" },
-                { role: "Biomedical Engineer", icon: Target, rate: "$85-135/hr" },
-                { role: "Civil Engineer", icon: Layout, rate: "$80-130/hr" },
-                { role: "Chemical Engineer", icon: TestTube, rate: "$90-140/hr" },
-                { role: "Quality Engineer", icon: CheckCircle2, rate: "$75-125/hr" },
-                { role: "Environmental Engineer", icon: Globe, rate: "$80-130/hr" },
-                { role: "Statistician", icon: BarChart3, rate: "$85-140/hr" }
+                { role: "Product Manager", icon: Target, rate: "$110-180/hr" },
+                { role: "Marketing Manager", icon: TrendingUp, rate: "$90-150/hr" },
+                { role: "Financial Analyst", icon: BarChart3, rate: "$85-140/hr" },
+                { role: "Sales Executive", icon: Users, rate: "$90-145/hr" },
+                { role: "Data Scientist", icon: Database, rate: "$110-170/hr" },
+                { role: "UX Designer", icon: Palette, rate: "$85-135/hr" },
+                { role: "Project Manager", icon: Briefcase, rate: "$95-150/hr" },
+                { role: "HR Manager", icon: Users, rate: "$80-130/hr" },
+                { role: "Consultant", icon: Award, rate: "$120-200/hr" },
+                { role: "Account Manager", icon: CheckCircle2, rate: "$75-125/hr" },
+                { role: "Operations Manager", icon: Layout, rate: "$85-140/hr" }
               ].map((cat) => (
                 <CarouselItem key={cat.role} className="md:basis-1/3 lg:basis-1/4">
                   <Card className="p-6 text-center hover:shadow-glow transition-all hover:-translate-y-1">
@@ -325,7 +327,7 @@ export default function Landing() {
                     <h3 className="font-bold mb-2">{cat.role}</h3>
                     <p className="text-sm text-muted-foreground mb-4">{cat.rate}</p>
                     <Button size="sm" variant="outline" asChild>
-                      <Link to="/signup">Start Interview</Link>
+                      <Link to="/auth">Start Prep</Link>
                     </Button>
                   </Card>
                 </CarouselItem>
@@ -340,16 +342,16 @@ export default function Landing() {
       {/* Role-Based Outcomes */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-center mb-4">Built for Every STEM Experience Level</h2>
+          <h2 className="text-4xl font-bold text-center mb-4">Built for Every Experience Level</h2>
           <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-            From entry-level scientists to senior engineers, our AI adapts to your expertise
+            Personalized prep sessions that adapt to your experience — from entry-level to executive roles
           </p>
           <div className="grid md:grid-cols-4 gap-6 max-w-6xl mx-auto">
             {[
-              { title: "Entry-Level STEM", outcome: "Master interview fundamentals and technical communication", icon: Rocket },
-              { title: "Mid-Level Professional", outcome: "Demonstrate expertise with data-driven insights", icon: Trophy },
-              { title: "Senior Engineer/Scientist", outcome: "Showcase leadership, system thinking & research depth", icon: Award },
-              { title: "Specialized Roles", outcome: "Domain-specific scenarios for QA, Data, Research & more", icon: Target }
+              { title: "Entry-Level", outcome: "Build confidence with foundational interview prep and Q&A practice", icon: Rocket },
+              { title: "Mid-Level Professional", outcome: "Sharpen expertise and structured communication skills", icon: Trophy },
+              { title: "Senior Leadership", outcome: "Prepare for leadership scenarios and strategic problem-solving", icon: Award },
+              { title: "Specialized Roles", outcome: "Domain-specific prep sessions for any industry or function", icon: Target }
             ].map((persona) => (
               <Card key={persona.title} className="p-6 text-center bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all hover:-translate-y-1 border-primary/20">
                 <persona.icon className="w-10 h-10 mx-auto mb-4 text-primary" />
@@ -362,7 +364,7 @@ export default function Landing() {
       </section>
 
       {/* Comparison Table */}
-      <section className="py-20 bg-muted/30">
+      <section id="why-screna" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-center mb-12">Why Choose Screna AI?</h2>
           <div className="max-w-5xl mx-auto overflow-x-auto">
@@ -372,18 +374,18 @@ export default function Landing() {
                   <th className="p-4 text-left font-bold">Feature</th>
                   <th className="p-4 text-center font-bold text-primary">Screna AI</th>
                   <th className="p-4 text-center text-muted-foreground">Job Boards</th>
-                  <th className="p-4 text-center text-muted-foreground">Human Mock</th>
-                  <th className="p-4 text-center text-muted-foreground">Recruiter Screen</th>
+                  <th className="p-4 text-center text-muted-foreground">Human Coach</th>
+                  <th className="p-4 text-center text-muted-foreground">DIY Prep</th>
                 </tr>
               </thead>
               <tbody>
                 {[
-                  { feature: "Cost", vr: "Free/Low", job: "Free", human: "$100+/session", recruiter: "N/A" },
-                  { feature: "Feedback Speed", vr: "Instant", job: "None", human: "Days", recruiter: "Never" },
-                  { feature: "Objectivity", vr: "AI-driven", job: "None", human: "Subjective", recruiter: "Biased" },
-                  { feature: "Video Evidence", vr: "✓", job: "✗", human: "Maybe", recruiter: "✗" },
-                  { feature: "Repeatability", vr: "Unlimited", job: "N/A", human: "Limited", recruiter: "Once" },
-                  { feature: "Real Job Matching", vr: "✓", job: "✓", human: "✗", recruiter: "Maybe" }
+                  { feature: "Cost", vr: "Free/Low", job: "Free", human: "$150+/hr", recruiter: "N/A" },
+                  { feature: "Personalized Sessions", vr: "AI-generated", job: "None", human: "Generic", recruiter: "N/A" },
+                  { feature: "Mentor Access", vr: "Large database", job: "None", human: "1-on-1 only", recruiter: "None" },
+                  { feature: "Progress Tracking", vr: "Real-time scores", job: "None", human: "Manual notes", recruiter: "None" },
+                  { feature: "Job Matching", vr: "Daily updates", job: "Search-based", human: "None", recruiter: "Limited" },
+                  { feature: "Detailed Reports", vr: "✓ Per session", job: "✗", human: "Maybe", recruiter: "✗" }
                 ].map((row, i) => (
                   <tr key={i} className="border-b border-border/50">
                     <td className="p-4 font-medium">{row.feature}</td>
@@ -432,15 +434,15 @@ export default function Landing() {
       {/* Testimonials Carousel */}
       <section id="testimonials" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-center mb-12">Trusted by IT Professionals</h2>
+          <h2 className="text-4xl font-bold text-center mb-12">Trusted by Professionals Worldwide</h2>
           <Carousel className="max-w-5xl mx-auto">
             <CarouselContent>
               {[
-                { name: "Sarah Chen", role: "Full-Stack Developer", company: "Independent", quote: "I landed a contract in 3 weeks after using the AI reports to fix my behavioral answers." },
-                { name: "Marcus Rodriguez", role: "DevOps Engineer", company: "H-1B Contractor", quote: "The real-time analytics gave me confidence. I improved my score by 35% in two weeks." },
-                { name: "Emily Park", role: "Data Engineer", company: "C2C Professional", quote: "Finally, a platform that understands contractor interviews. Connected me with 3 perfect opportunities." },
-                { name: "David Kim", role: "Backend Developer", company: "Freelancer", quote: "Virtual Recruiter helped me land a $120/hr contract. The AI feedback was spot-on." },
-                { name: "Lisa Johnson", role: "QA Engineer", company: "Contract", quote: "The video replay feature showed me exactly where I was losing points. Game changer!" }
+                { name: "Sarah Chen", role: "Product Manager", company: "Tech Startup", quote: "I landed my dream PM role in 3 weeks after using the AI prep sessions. The structured approach made all the difference." },
+                { name: "Marcus Rodriguez", role: "Marketing Director", company: "Fortune 500", quote: "The personalized feedback gave me confidence. I improved my interview performance by 40% in two weeks." },
+                { name: "Emily Park", role: "Financial Analyst", company: "Investment Bank", quote: "Finally, a platform that understands what hiring managers look for. Connected me with my ideal role." },
+                { name: "David Kim", role: "Software Engineer", company: "FAANG", quote: "Screna AI helped me prepare for technical interviews. The mentor access was invaluable." },
+                { name: "Lisa Johnson", role: "Sales Manager", company: "SaaS Company", quote: "The daily job matches feature showed me opportunities I never would have found. Game changer!" }
               ].map((t) => (
                 <CarouselItem key={t.name} className="md:basis-1/2 lg:basis-1/3">
                   <Card className="p-6 h-full">
@@ -473,13 +475,13 @@ export default function Landing() {
           <Card className="max-w-4xl mx-auto p-8 md:p-12 gradient-primary text-white">
             <div className="grid md:grid-cols-2 gap-8 items-center">
               <div>
-                <h2 className="text-3xl font-bold mb-4">Real Results in 14 Days</h2>
-                <p className="mb-6 opacity-90">See how contractors improve their interview performance with AI-powered practice</p>
+                <h2 className="text-3xl font-bold mb-4">Real Progress in 14 Days</h2>
+                <p className="mb-6 opacity-90">See how candidates improve their profile scores with structured AI preparation</p>
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="font-semibold">Communication</span>
-                      <span>+12%</span>
+                      <span className="font-semibold">Profile Score</span>
+                      <span>+25%</span>
                     </div>
                     <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                       <div className="h-full bg-white rounded-full w-3/4" />
@@ -487,11 +489,20 @@ export default function Landing() {
                   </div>
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="font-semibold">Structure</span>
-                      <span>+18%</span>
+                      <span className="font-semibold">Session Completion</span>
+                      <span>+40%</span>
                     </div>
                     <div className="h-2 bg-white/20 rounded-full overflow-hidden">
                       <div className="h-full bg-white rounded-full w-4/5" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="font-semibold">Interview Readiness</span>
+                      <span>+35%</span>
+                    </div>
+                    <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-white rounded-full w-[85%]" />
                     </div>
                   </div>
                 </div>
@@ -506,35 +517,158 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Pricing Teaser */}
+      {/* Pricing Plans */}
       <section id="pricing" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-center mb-12">Start Free, Upgrade Anytime</h2>
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <Card className="p-8">
-              <h3 className="text-2xl font-bold mb-4">Free</h3>
-              <ul className="space-y-3 mb-6">
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> 1 role category</li>
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> 2 AI interviews</li>
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> 1 detailed report</li>
-              </ul>
-              <Button variant="outline" className="w-full" asChild>
-                <Link to="/signup">Get Started Free</Link>
+          <h2 className="text-4xl font-bold text-center mb-4">Choose Your Plan</h2>
+          <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+            Select the plan that best fits your interview preparation needs
+          </p>
+          
+          <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            {/* Free Plan */}
+            <Card className="p-8 border-2 hover:shadow-glow transition-all">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-4">Free Plan</h3>
+                <div className="mb-4">
+                  <span className="text-4xl font-bold">$0</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+                <p className="text-muted-foreground">Perfect for getting started</p>
+              </div>
+              
+              <Button size="lg" variant="outline" className="w-full mb-6" asChild>
+                <Link to="/auth">Get Started Free</Link>
               </Button>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">30 Credits (≈30 mins) monthly</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">+2 daily bonus credits</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">1 basic AI interview</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Basic job matching (3 jobs/day)</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">7 days data retention</span>
+                </div>
+              </div>
             </Card>
-            <Card className="p-8 border-primary shadow-glow relative overflow-hidden">
-              <div className="absolute top-4 right-4 bg-primary text-white text-xs px-3 py-1 rounded-full">Popular</div>
-              <h3 className="text-2xl font-bold mb-4">Premium</h3>
-              <ul className="space-y-3 mb-6">
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> Unlimited interviews</li>
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> Full report archive</li>
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> Advanced analytics</li>
-                <li className="flex items-center gap-2"><Check className="w-5 h-5 text-primary" /> Real job matching</li>
-              </ul>
-              <Button className="w-full gradient-primary" asChild>
-                <Link to="/pricing">See Pricing</Link>
+
+            {/* Pro Plan */}
+            <Card className="p-8 border-2 border-primary shadow-glow relative">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-sm px-4 py-1 rounded-full font-semibold">
+                Most Popular
+              </div>
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-4">Pro Plan</h3>
+                <div className="mb-4">
+                  <span className="text-4xl font-bold">$19.9</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+                <p className="text-muted-foreground">For serious candidates</p>
+              </div>
+              
+              <Button size="lg" className="w-full mb-6 gradient-primary" asChild>
+                <Link to="/pricing">Get Pro</Link>
               </Button>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">200 Credits (≈200 mins) monthly</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">+5 daily bonus credits</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Unlimited AI interviews</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Auto-generated training plan</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Full report with feedback</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Smart matching (10 jobs/day)</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">90 days data retention</span>
+                </div>
+              </div>
             </Card>
+
+            {/* Elite Plan */}
+            <Card className="p-8 border-2 hover:shadow-glow transition-all">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-4">Elite Plan</h3>
+                <div className="mb-4">
+                  <span className="text-4xl font-bold">$39.9</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+                <p className="text-muted-foreground">Maximum preparation power</p>
+              </div>
+              
+              <Button size="lg" variant="outline" className="w-full mb-6" asChild>
+                <Link to="/pricing">Get Elite</Link>
+              </Button>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">500 Credits (≈500 mins) monthly</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">+10 daily bonus credits</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Priority queue access</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Advanced adaptive plan</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Video replay with timestamps</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Advanced matching (20 jobs/day)</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Unlimited data retention</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+          
+          <div className="text-center mt-12">
+            <Button variant="link" asChild>
+              <Link to="/pricing" className="text-primary hover:underline">
+                View detailed comparison →
+              </Link>
+            </Button>
           </div>
         </div>
       </section>
@@ -545,39 +679,39 @@ export default function Landing() {
           <h2 className="text-4xl font-bold text-center mb-12">Frequently Asked Questions</h2>
           <Accordion type="single" collapsible className="max-w-3xl mx-auto">
             <AccordionItem value="item-1">
-              <AccordionTrigger>How does the AI grade my interview?</AccordionTrigger>
+              <AccordionTrigger>How does the AI create my prep sessions?</AccordionTrigger>
               <AccordionContent>
-                Our AI analyzes your responses across multiple dimensions: communication clarity, technical depth, structure (STAR method), confidence, and relevance. It compares your answers to thousands of successful contractor interviews.
+                After you upload your resume and set your target job, our AI analyzes your profile and generates a customized session list. Each session includes targeted questions aligned with your role, experience level, and interview timeline.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-2">
-              <AccordionTrigger>Is my video private?</AccordionTrigger>
+              <AccordionTrigger>How does the mentor library work?</AccordionTrigger>
               <AccordionContent>
-                Absolutely. Your interview videos are encrypted and only visible to you. You control if and when to share reports with recruiters. We never sell or share your data with third parties.
+                Our mentor database includes experienced professionals across STEM fields. You can browse mentors by specialty, schedule 1-on-1 sessions, and receive personalized coaching to complement your AI prep sessions.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-3">
               <AccordionTrigger>What roles are supported?</AccordionTrigger>
               <AccordionContent>
-                We support 8+ IT roles: Backend, Frontend, Full-Stack, Data Engineer, DevOps, QA, Mobile, and Product/Design. Each has role-specific technical and behavioral questions.
+                We support all career fields including Technology, Business, Finance, Marketing, Sales, Operations, HR, and more. Each role has customized prep sessions with industry-specific questions and scenarios.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-4">
-              <AccordionTrigger>Will this help with real jobs?</AccordionTrigger>
+              <AccordionTrigger>How does daily job matching work?</AccordionTrigger>
               <AccordionContent>
-                Yes! Premium users get matched with active contract roles based on their skills and interview performance. We partner with staffing agencies across North America.
+                Based on your target job title and profile, our system scans multiple job platforms daily and recommends the latest positions that match your criteria. You'll receive personalized job alerts to keep your applications timely.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-5">
               <AccordionTrigger>What's included in Premium?</AccordionTrigger>
               <AccordionContent>
-                Premium includes unlimited interviews across all roles, full report archive, advanced analytics dashboards, peer benchmarking, and access to real job matching with our staffing partners.
+                Premium includes unlimited prep sessions, full access to the mentor database, daily job recommendations across all platforms, detailed post-session reports, and advanced progress analytics to track your improvement.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-6">
-              <AccordionTrigger>Can I export my report?</AccordionTrigger>
+              <AccordionTrigger>How is my profile score calculated?</AccordionTrigger>
               <AccordionContent>
-                Yes, all reports can be downloaded as PDF. Premium users also get video highlights and timestamped coaching notes they can share with recruiters or hiring managers.
+                Your profile score is initially calculated based on your resume, experience, and target role. As you complete prep sessions, the score is dynamically updated based on your performance, improvement trends, and session completion rate.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -589,19 +723,19 @@ export default function Landing() {
         <div className="container mx-auto px-4 text-center">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-4xl lg:text-5xl font-bold mb-6">
-              Join 5,000+ Contractors Boosting Their Interview Skills
+              Join 10,000+ Professionals Preparing Smarter
             </h2>
             <p className="text-xl text-muted-foreground mb-8">
-              Start practicing with AI today and land your dream contract role
+              Start your personalized prep journey and ace your next interview
             </p>
             <Button size="xl" className="gradient-primary shadow-glow hover:shadow-glow hover:scale-105 transition-all duration-300 mb-4" asChild>
               <Link to="/register">
-                Start Free AI Interview Now
+                Begin Your Preparation Journey
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             </Button>
             <p className="text-sm text-muted-foreground">
-              Free for first 2 interviews • Upgrade anytime for unlimited access
+              Free for 5 prep sessions • Upgrade anytime for unlimited access
             </p>
           </div>
         </div>
@@ -612,15 +746,14 @@ export default function Landing() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <h4 className="font-bold mb-4">Virtual Recruiter</h4>
+              <h4 className="font-bold mb-4">Screna AI</h4>
               <p className="text-sm text-muted-foreground">
-                AI-powered mock interviews for IT contractors
+                Your complete interview preparation platform for any career
               </p>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/dashboard" className="hover:text-foreground transition-smooth">Dashboard</Link></li>
                 <li><Link to="/pricing" className="hover:text-foreground transition-smooth">Pricing</Link></li>
               </ul>
             </div>

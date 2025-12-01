@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -5,46 +6,78 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { AuthLayout } from "./components/AuthLayout";
-import Landing from "./pages/Landing";
-import Auth from "./pages/Auth";
-import Profile from "./pages/Profile";
-import ProfileCompleted from "./pages/ProfileCompleted";
-import ProfileEdit from "./pages/ProfileEdit";
-import Interview from "./pages/Interview";
-import Pricing from "./pages/Pricing";
-import Metrics from "./pages/Metrics";
-import Jobs from "./pages/Jobs";
-import Messages from "./pages/Messages";
-import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+// Lazy load all pages
+const Landing = lazy(() => import("./pages/Landing"));
+const Auth = lazy(() => import("./pages/Auth"));
+const ForgotPassword = lazy(() => import("./pages/ForgetPassword"));
+const Profile = lazy(() => import("./pages/Profile"));
+const ProfileCompleted = lazy(() => import("./pages/ProfileCompleted"));
+const ProfileEdit = lazy(() => import("./pages/ProfileEdit"));
+const Interview = lazy(() => import("./pages/Interview"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Jobs = lazy(() => import("./pages/Jobs"));
+const InterviewPrep = lazy(() => import("./pages/InterviewPrep"));
+const InterviewPrepEmpty = lazy(() => import("./pages/InterviewPrepEmpty"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const GoogleCallback = lazy(()=> import("./pages/GoogleCallback"))
+// AI Interview component (direct access, not protected)
+const AIInterview = lazy(() => import("./pages/ai-interview"));
 
 const queryClient = new QueryClient();
 
+// Loading component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route element={<AuthLayout />}>
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/profile_completed" element={<ProfileCompleted />} />
-              <Route path="/profile/edit" element={<ProfileEdit />} />
-              <Route path="/interview" element={<Interview />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/metrics" element={<Metrics />} />
-              <Route path="/jobs" element={<Jobs />} />
-              <Route path="/messages" element={<Messages />} />
-            </Route>
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<Landing />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              
+              {/* AI Interview routes (direct access, not protected) */}
+              <Route 
+                path="/interview/:screeningId" 
+                element={<AIInterview isDirectAccess={true} />} 
+              />
+              <Route path="/auth/google/callback" element={<GoogleCallback />} />
+              
+              {/* Protected routes */}
+              <Route element={
+                <ProtectedRoute>
+                  <AuthLayout />
+                </ProtectedRoute>
+              }>
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile_completed" element={<ProfileCompleted />} />
+                <Route path="/profile/edit" element={<ProfileEdit />} />
+                <Route path="/interview" element={<Interview />} />
+                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/jobs" element={<Jobs />} />
+                <Route path="/interview-prep" element={<InterviewPrep />} />
+                <Route path="/interview-prep/empty" element={<InterviewPrepEmpty />} />
+              </Route>
+              
+              {/* Catch-all routes */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </TooltipProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 

@@ -3,27 +3,44 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, Sparkles, Zap, Crown, Star } from "lucide-react";
-import { Navbar } from "@/components/Navbar";
+
 
 const Pricing = () => {
   const features = {
     free: [
-      "1 job category",
-      "2 AI interviews per month",
-      "Basic performance report",
-      "Email support",
+      "30 Credits (≈30 mins) monthly included",
+      "+2 daily bonus credits (≈60/month)",
+      "1 basic AI interview (lite report)",
+      "Basic metrics (strengths/weaknesses)",
+      "Basic job matching (3 jobs/day)",
+      "1 job title only",
+      "7 days data retention",
+      "Email support only",
     ],
-    premium: [
-      "All job categories",
-      "Unlimited AI interviews",
-      "Full detailed reports with charts",
-      "Real job match recommendations",
-      "Advanced analytics dashboard",
+    pro: [
+      "200 Credits (≈200 mins) monthly included",
+      "+5 daily bonus credits (≈150/month)",
+      "Unlimited AI interviews (credit-based)",
+      "Auto-generated AI training plan",
+      "Full report with per-question feedback",
+      "Smart job matching (10 jobs/day)",
+      "Up to 3 job titles",
+      "Progress tracking & reminders",
+      "90 days data retention",
+      "Priority email support",
+    ],
+    elite: [
+      "500 Credits (≈500 mins) monthly included",
+      "+10 daily bonus credits (≈300/month)",
+      "Unlimited interviews + priority queue",
+      "Advanced adaptive plan (multi-position)",
+      "Advanced report (tone, emotion, behavior)",
       "Video replay with timestamps",
-      "AI improvement suggestions",
-      "Priority support",
-      "Weekly progress tracking",
-      "Interview practice library",
+      "Advanced matching (20 jobs/day + priority)",
+      "Unlimited job titles & roles",
+      "Personalized alerts & reminders",
+      "Unlimited data retention",
+      "Dedicated priority support channel",
     ],
   };
 
@@ -37,15 +54,13 @@ const Pricing = () => {
     {
       name: "Rachel Martinez",
       role: "DevOps Specialist",
-      quote: "The unlimited interviews helped me master my pitch. Totally worth the $19/month.",
+      quote: "The unlimited interviews helped me master my pitch. Totally worth the Pro plan!",
       rating: 5,
     },
   ];
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      
       <div className="container mx-auto px-4 pt-24 pb-20">
         {/* Header */}
         <div className="text-center mb-16">
@@ -59,7 +74,7 @@ const Pricing = () => {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
+        <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto mb-16">
           {/* Free Plan */}
           <Card className="p-8 border-2">
             <div className="mb-6">
@@ -90,7 +105,7 @@ const Pricing = () => {
             </div>
           </Card>
 
-          {/* Premium Plan */}
+          {/* Pro Plan */}
           <Card className="p-8 border-2 border-primary relative overflow-hidden shadow-glow">
             <div className="absolute top-0 right-0 bg-gradient-primary text-primary-foreground px-4 py-1 rounded-bl-lg text-sm font-semibold">
               Most Popular
@@ -98,11 +113,11 @@ const Pricing = () => {
             
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-4">
-                <Crown className="w-6 h-6 text-primary" />
-                <h3 className="text-2xl font-bold">Premium Plan</h3>
+                <Zap className="w-6 h-6 text-primary" />
+                <h3 className="text-2xl font-bold">Pro Plan</h3>
               </div>
               <div className="mb-4">
-                <span className="text-4xl font-bold">$19</span>
+                <span className="text-4xl font-bold">$19.9</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <p className="text-muted-foreground">Everything you need to excel</p>
@@ -111,15 +126,48 @@ const Pricing = () => {
             <Button size="lg" className="w-full mb-6 gradient-primary" asChild>
               <Link to="/register">
                 <Zap className="mr-2 w-4 h-4" />
-                Upgrade Now
+                Upgrade to Pro
               </Link>
             </Button>
 
             <div className="space-y-3">
-              {features.premium.map((feature, index) => (
+              {features.pro.map((feature, index) => (
                 <div key={index} className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Check className="w-3 h-3 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium">{feature}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Elite Plan */}
+          <Card className="p-8 border-2 border-secondary relative overflow-hidden">
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Crown className="w-6 h-6 text-secondary" />
+                <h3 className="text-2xl font-bold">Elite Plan</h3>
+              </div>
+              <div className="mb-4">
+                <span className="text-4xl font-bold">$39.9</span>
+                <span className="text-muted-foreground">/month</span>
+              </div>
+              <p className="text-muted-foreground">Maximum power & priority</p>
+            </div>
+
+            <Button size="lg" variant="secondary" className="w-full mb-6" asChild>
+              <Link to="/register">
+                <Crown className="mr-2 w-4 h-4" />
+                Upgrade to Elite
+              </Link>
+            </Button>
+
+            <div className="space-y-3">
+              {features.elite.map((feature, index) => (
+                <div key={index} className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-secondary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Check className="w-3 h-3 text-secondary" />
                   </div>
                   <span className="text-sm font-medium">{feature}</span>
                 </div>
@@ -138,23 +186,29 @@ const Pricing = () => {
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-semibold">Feature</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold">Free</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold bg-primary/5">Premium</th>
+                    <th className="px-6 py-4 text-center text-sm font-semibold bg-primary/5">Pro</th>
+                    <th className="px-6 py-4 text-center text-sm font-semibold">Elite</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {[
-                    { name: "AI Interviews per month", free: "2", premium: "Unlimited" },
-                    { name: "Job Categories", free: "1", premium: "All" },
-                    { name: "Performance Reports", free: "Basic", premium: "Full + Charts" },
-                    { name: "Job Recommendations", free: "—", premium: "✓" },
-                    { name: "Video Replay", free: "—", premium: "✓" },
-                    { name: "Advanced Analytics", free: "—", premium: "✓" },
-                    { name: "Priority Support", free: "—", premium: "✓" },
+                    { name: "Monthly Included Credits", free: "30 (≈30 mins)", pro: "200 (≈200 mins)", elite: "500 (≈500 mins)" },
+                    { name: "Daily Bonus Credits", free: "+2/day (≈60/mo)", pro: "+5/day (≈150/mo)", elite: "+10/day (≈300/mo)" },
+                    { name: "Extra Credit Price", free: "$0.12/min", pro: "$0.09/min", elite: "$0.07/min" },
+                    { name: "AI Interview Sessions", free: "1 basic (lite)", pro: "Unlimited", elite: "Unlimited + priority" },
+                    { name: "AI Training Plan", free: "—", pro: "Auto-generated", elite: "Advanced adaptive" },
+                    { name: "Metrics Report", free: "Basic", pro: "Full detailed", elite: "Advanced + emotion" },
+                    { name: "Job Matching Engine", free: "3 jobs/day", pro: "10 jobs/day", elite: "20 jobs/day + priority" },
+                    { name: "Job Title Library", free: "1 title only", pro: "Up to 3 titles", elite: "Unlimited" },
+                    { name: "Progress Tracking", free: "—", pro: "✓", elite: "✓ Personalized" },
+                    { name: "Data Retention", free: "7 days", pro: "90 days", elite: "Unlimited" },
+                    { name: "Customer Support", free: "Email only", pro: "Priority email", elite: "Dedicated channel" },
                   ].map((row, index) => (
                     <tr key={index}>
                       <td className="px-6 py-4 font-medium">{row.name}</td>
-                      <td className="px-6 py-4 text-center text-muted-foreground">{row.free}</td>
-                      <td className="px-6 py-4 text-center font-semibold bg-primary/5">{row.premium}</td>
+                      <td className="px-6 py-4 text-center text-muted-foreground text-sm">{row.free}</td>
+                      <td className="px-6 py-4 text-center font-semibold bg-primary/5 text-sm">{row.pro}</td>
+                      <td className="px-6 py-4 text-center font-semibold text-sm">{row.elite}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -165,7 +219,7 @@ const Pricing = () => {
 
         {/* Testimonials */}
         <div className="mb-16">
-          <h2 className="text-3xl font-bold text-center mb-8">What Premium Users Say</h2>
+          <h2 className="text-3xl font-bold text-center mb-8">What Our Users Say</h2>
           <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {testimonials.map((testimonial, index) => (
               <Card key={index} className="p-6">
@@ -198,11 +252,11 @@ const Pricing = () => {
               },
               {
                 q: "Do you offer refunds?",
-                a: "We offer a 7-day money-back guarantee if you're not satisfied with Premium.",
+                a: "We offer a 7-day money-back guarantee if you're not satisfied with your plan.",
               },
               {
                 q: "How do I upgrade?",
-                a: "Click 'Upgrade Now' and enter your payment details. Your Premium access starts immediately.",
+                a: "Click the upgrade button on your chosen plan and enter your payment details. Your access starts immediately.",
               },
               {
                 q: "Is my payment secure?",
@@ -222,11 +276,11 @@ const Pricing = () => {
           <Card className="p-12 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20 max-w-3xl mx-auto">
             <h2 className="text-3xl font-bold mb-4">Ready to level up your interview game?</h2>
             <p className="text-xl text-muted-foreground mb-8">
-              Join thousands of contractors who upgraded to Premium
+              Join thousands of professionals who upgraded their career game
             </p>
             <Button size="xl" className="gradient-primary" asChild>
               <Link to="/register">
-                Start Your Premium Trial
+                Start Your Free Trial
                 <Zap className="ml-2 w-5 h-5" />
               </Link>
             </Button>

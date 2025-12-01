@@ -13,14 +13,14 @@ import {
   SidebarFooter,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { User, Briefcase, MessageSquare, BarChart3, DollarSign, LogOut, Sparkles } from 'lucide-react';
+import { User, Briefcase, Target, DollarSign, LogOut, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Logo from "@/assets/logo.png"
 
 const navItems = [
   { title: 'Profile', url: '/profile', icon: User },
-  { title: 'Metrics', url: '/metrics', icon: BarChart3 },
+  { title: 'Interview Prep', url: '/interview-prep', icon: Target },
   { title: 'Jobs', url: '/jobs', icon: Briefcase },
-  { title: 'Messages', url: '/messages', icon: MessageSquare },
   { title: 'Pricing', url: '/pricing', icon: DollarSign },
 ];
 
@@ -33,7 +33,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-border p-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-6 h-6 text-primary" />
+          <img src = {Logo} alt = "Logo" className="w-6 h-6 text-primary" />
           {!isCollapsed && <span className="font-bold text-lg">Virtual Recruiter</span>}
         </div>
       </SidebarHeader>
