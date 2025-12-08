@@ -307,7 +307,7 @@ export default function Auth() {
           <div className="flex justify-center mb-4">
             <img src = {Logo} alt = "Logo" className="w-12 h-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Virtual Recruiter</CardTitle>
+          <CardTitle className="text-2xl">Screna AI</CardTitle>
           <CardDescription>
             {showVerification 
               ? 'Verify your email address' 

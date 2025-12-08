@@ -19,11 +19,58 @@ import {
   BarChart3,
   MessageSquare,
 } from "lucide-react";
+import { InterviewService } from "../services";
+import { useToast } from "@/components/ui/use-toast";
 
 const InterviewPrepEmpty = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [addJobModalOpen, setAddJobModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Form state
+  const [jobTitle, setJobTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+
+  const handleCreateTrainingPlan = async () => {
+    if (!jobTitle || !jobDescription) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide at least a job title and job description.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await InterviewService.createTrainingPlan({
+        jobTitle,
+        company: company || undefined,
+        jobDescription,
+      });
+
+      if (response.data.status === "success" || response.data.data) {
+        toast({
+          title: "Success!",
+          description: "Your training plan has been created successfully.",
+        });
+        
+        // Navigate to the main interview prep page
+        navigate("/interview-prep");
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to create training plan. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleGetStarted = () => {
     // After completing setup, navigate to the main dashboard
@@ -136,26 +183,32 @@ const InterviewPrepEmpty = () => {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="jobTitle">Job Title</Label>
-                    <Input id="jobTitle" placeholder="e.g., Senior Product Manager" />
+                    <Input 
+                      id="jobTitle" 
+                      placeholder="e.g., Senior Product Manager" 
+                      value={jobTitle}
+                      onChange={(e) => setJobTitle(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="company">Company (Optional)</Label>
-                    <Input id="company" placeholder="e.g., Google" />
+                    <Input 
+                      id="company" 
+                      placeholder="e.g., Google" 
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="jobDescription">Job Description</Label>
-                    <Textarea id="jobDescription" placeholder="Paste the job description here..." rows={4} />
+                    <Textarea 
+                      id="jobDescription" 
+                      placeholder="Paste the job description here..." 
+                      rows={4} 
+                      value={jobDescription}
+                      onChange={(e) => setJobDescription(e.target.value)}
+                    />
                   </div>
-                  {/* <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="interviewDate">Interview Date</Label>
-                      <Input id="interviewDate" type="date" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="prepTime">Daily Prep Time (hrs)</Label>
-                      <Input id="prepTime" type="number" min="0.5" step="0.5" placeholder="2" />
-                    </div>
-                  </div> */}
                   <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
                     <p className="text-sm flex items-start gap-2">
                       <Sparkles className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
@@ -167,11 +220,19 @@ const InterviewPrepEmpty = () => {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => setAddJobModalOpen(false)}>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setAddJobModalOpen(false)}
+                    disabled={isLoading}
+                  >
                     Cancel
                   </Button>
-                  <Button className="gradient-primary" onClick={handleGetStarted}>
-                    Generate Plan
+                  <Button 
+                    className="gradient-primary" 
+                    onClick={handleCreateTrainingPlan}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Generating..." : "Generate Plan"}
                   </Button>
                 </div>
               </DialogContent>

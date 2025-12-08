@@ -25,6 +25,11 @@ const GoogleCallback = lazy(()=> import("./pages/GoogleCallback"))
 // AI Interview component (direct access, not protected)
 const AIInterview = lazy(() => import("./pages/ai-interview"));
 
+// Mentor
+const Mentors = lazy(()=> import("./pages/Mentors"))
+const MentorApply = lazy(()=> import("./pages/MentorApply"))
+const MentorDashboard = lazy(()=> import("./pages/MentorDashboard"))
+
 const queryClient = new QueryClient();
 
 // Loading component
@@ -69,6 +74,9 @@ const App = () => (
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/interview-prep" element={<InterviewPrep />} />
                 <Route path="/interview-prep/empty" element={<InterviewPrepEmpty />} />
+                <Route path="/mentors" element={<Mentors />} />
+                <Route path="/mentor/apply" element={<MentorApply />} />
+                <Route path="/mentor/dashboard" element={<MentorDashboard />} />
               </Route>
               
               {/* Catch-all routes */}
