@@ -16,7 +16,7 @@ import {
   Search, MapPin, Briefcase, Lock, Send, FileText,
   Plus, CheckCircle2, Clock, Tag, Sparkles, Target, Loader2
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import {JobService} from '../services';
 import { InterviewService } from "@/services";
@@ -38,12 +38,9 @@ export default function Jobs() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  const [addJobModalOpen, setAddJobModalOpen] = useState(false);
   // Form state for creating new job
-  const [jobTitle, setJobTitle] = useState("");
-  const [company, setCompany] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false)
+  const navigate = useNavigate();
 
   const userPlan = 'free'; // or 'premium'
   const activeTitle = { id: 1, name: 'Backend Engineer' };
@@ -222,70 +219,6 @@ export default function Jobs() {
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
     return `${Math.floor(diffDays / 30)} months ago`;
-  };
-  
-  const handleCreateTrainingPlan = async () => {
-    if (!jobTitle || !jobDescription) {
-      toast({
-        title: "Missing Information",
-        description: "Please provide at least a job title and job description.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsCreatingPlan(true);
-    try {
-      const response = await InterviewService.createTrainingPlan({
-        jobTitle,
-        company: company || undefined,
-        jobDescription,
-      });
-
-      // Debug: Log the response
-      console.log("Create training plan response:", response);
-      console.log("Response data:", response.data);
-
-      // Check various success indicators
-      const isSuccess = 
-        response.data?.status === "success" || 
-        response.data?.data || 
-        response.status === 200 ||
-        response.status === 201;
-
-      if (isSuccess) {
-        toast({
-          title: "Success!",
-          description: "Your training plan has been created successfully.",
-        });
-        
-        // Reset form
-        setJobTitle("");
-        setCompany("");
-        setJobDescription("");
-        setAddJobModalOpen(false);
-        
-        // Reload training plans
-        await loadTrainingPlans();
-      } else {
-        console.warn("Unexpected response format:", response);
-        toast({
-          title: "Warning",
-          description: "Training plan may have been created. Please refresh to check.",
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error("Error creating training plan:", error);
-      console.error("Error response:", error.response);
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to create training plan. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingPlan(false);
-    }
   };
 
   return (
@@ -505,76 +438,53 @@ export default function Jobs() {
                               <FileText className="w-4 h-4 mr-2" />
                               View Job Detail
                             </Button>
-                            <Dialog open={addJobModalOpen} onOpenChange={setAddJobModalOpen}>
-                            <DialogTrigger asChild>
                             <Button 
                               variant="ghost" 
-                              size="sm" 
+                              size="sm"
+                              onClick={async () => {
+                                setIsCreatingPlan(true);
+                                try {
+                                  const response = await InterviewService.createTrainingPlanFromJobId(job.id);
+                                  
+                                  console.log("Create training plan from job ID response:", response);
+                                  
+                                  const isSuccess = 
+                                    response.data?.status === "success" || 
+                                    response.data?.data || 
+                                    response.status === 200 ||
+                                    response.status === 201;
+
+                                  if (isSuccess) {
+                                    toast({
+                                      title: "Success!",
+                                      description: "Training plan created for this job position.",
+                                    });
+                                    navigate("/interview-prep")
+                                  } else {
+                                    toast({
+                                      title: "Warning",
+                                      description: "Training plan may have been created. Check interview prep page.",
+                                      variant: "default",
+                                    });
+                                  }
+                                } catch (error) {
+                                  console.error("Error creating training plan:", error);
+                                  toast({
+                                    title: "Error",
+                                    description: error.response?.data?.message || "Failed to create training plan.",
+                                    variant: "destructive",
+                                  });
+                                } finally {
+                                  setIsCreatingPlan(false);
+                                }
+                              }}
+                              disabled={isCreatingPlan}
                             >
-                              <Plus className="mr-2 h-5 w-5" />
-                              Add Target Job
+                                <>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Add Target Job
+                                </>
                             </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-[500px]">
-                            <DialogHeader>
-                              <DialogTitle>Add New Target Job</DialogTitle>
-                              <DialogDescription>Enter details for your target job position</DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="jobTitle">Job Title</Label>
-                                <Input 
-                                  id="jobTitle" 
-                                  placeholder="e.g., Senior Product Manager" 
-                                  value={jobTitle}
-                                  onChange={(e) => setJobTitle(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="company">Company (Optional)</Label>
-                                <Input 
-                                  id="company" 
-                                  placeholder="e.g., Google" 
-                                  value={company}
-                                  onChange={(e) => setCompany(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="jobDescription">Job Description</Label>
-                                <Textarea 
-                                  id="jobDescription" 
-                                  placeholder="Paste the job description here..." 
-                                  rows={4} 
-                                  value={jobDescription}
-                                  onChange={(e) => setJobDescription(e.target.value)}
-                                />
-                              </div>
-                            </div>
-                            <div className="flex justify-end gap-3">
-                              <Button 
-                                variant="outline" 
-                                onClick={() => setAddJobModalOpen(false)}
-                                disabled={isCreatingPlan}
-                              >
-                                Cancel
-                              </Button>
-                              <Button 
-                                className="gradient-primary" 
-                                onClick={handleCreateTrainingPlan}
-                                disabled={isCreatingPlan}
-                              >
-                                {isCreatingPlan ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Generating...
-                                  </>
-                                ) : (
-                                  "Generate Plan"
-                                )}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button 

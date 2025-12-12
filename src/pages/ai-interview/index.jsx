@@ -5,29 +5,19 @@ import {
   Chip, Avatar
 } from '@mui/material';
 import HourglassTopIcon from '@mui/icons-material/HourglassTop';
-import { MeetingService } from '../../services';
+import { InterviewSessionService } from '../../services';
 
 // Import step components
 import MediaSetupStep from './MediaSetupStep';
 import InterviewStep from './InterviewStep';
-import EmailVerificationStep from './EmailVerificationStep';
-
-// Import browser events monitoring component
-import BrowserEventsMonitor from './components/BrowserEventsMonitor';
 
 function AIInterview() {
   const params = useParams();
-  const screeningId = params.screeningId;
+  const interviewId = params.interviewId;
 
   // Step state
   const [activeStep, setActiveStep] = useState(0);
   const steps = ['Media Setup', 'Interview'];
-
-  // 🔧 邮箱验证状态
-  const [verificationStep, setVerificationStep] = useState('initial'); // 'initial' | 'email_verification' | 'creating_meeting' | 'completed'
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationError, setVerificationError] = useState('');
-  const [candidateEmail, setCandidateEmail] = useState('');
 
   // Validation state
   const [isValidating, setIsValidating] = useState(true);
@@ -43,16 +33,13 @@ function AIInterview() {
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [currentMeeting, setCurrentMeeting] = useState(null);
+  const [currentSession, setCurrentSession] = useState(null);
   const [websocket, setWebsocket] = useState(null);
   const [interviewEnded, setInterviewEnded] = useState(false);
   const [volume] = useState(50);
   const [aiSpeaking, setAISpeaking] = useState(false);
 
-  // Browser events monitoring state
-  const [isMonitoringActive, setIsMonitoringActive] = useState(false);
-
-  // 初始 mediaState（用于复位）
+  // Initial mediaState (for reset)
   const initialMediaState = {
     audioReady: false,
     videoReady: false,
@@ -85,7 +72,7 @@ function AIInterview() {
     nextStartTime: 0
   });
 
-  // 自动重连控制
+  // Auto-reconnect control
   const aiReconnectAttemptsRef = useRef(0);
   const aiReconnectTimerRef = useRef(null);
   const MAX_AI_RECONNECT_ATTEMPTS = 5;
@@ -124,27 +111,11 @@ function AIInterview() {
     isRecordingRef.current = interviewState.isRecording;
   }, [interviewState.isRecording]);
 
-  // 🔧 修改：验证面试状态 - 只验证 URL，不创建 meeting
+  // Validate interview status on mount
   useEffect(() => {
     validateInterviewStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screeningId]);
-
-  // Start browser monitoring when interview is validated
-  useEffect(() => {
-    if (interviewStatus === 'valid' && currentMeeting && !isMonitoringActive) {
-      setIsMonitoringActive(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interviewStatus, currentMeeting]);
-
-  // Stop browser monitoring when interview ends
-  useEffect(() => {
-    if (interviewEnded && isMonitoringActive) {
-      setIsMonitoringActive(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interviewEnded]);
+  }, [interviewId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -154,7 +125,7 @@ function AIInterview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 初始化音频播放（仅一次）
+  // Initialize audio playback (only once)
   useEffect(() => {
     initAudioPlayback();
     
@@ -163,22 +134,9 @@ function AIInterview() {
     };
   }, []);
 
-  // Browser events monitoring callbacks
-  const handleMonitoringStart = () => {
-    console.log('🔍 Browser events monitoring started successfully');
-  };
-
-  const handleMonitoringStop = () => {
-    console.log('🔍 Browser events monitoring stopped successfully');
-  };
-
-  const handleMonitoringError = (error) => {
-    console.error('❌ Browser events monitoring error:', error);
-  };
-
-  // 🔧 修改：只验证 URL 参数，不调用 API
+  // Validate interview and create session directly
   const validateInterviewStatus = async () => {
-    if (!screeningId) {
+    if (!interviewId) {
       setInterviewStatus('invalid');
       setValidationError('Missing interview parameters. Please check the URL.');
       setIsValidating(false);
@@ -188,139 +146,59 @@ function AIInterview() {
     try {
       setIsValidating(true);
       
-      // ✅ 正确流程：不尝试创建 meeting，直接进入邮箱验证步骤
-      console.log('✅ Screening ID valid:', screeningId);
-      console.log('➡️ Proceeding to email verification step');
+      console.log('✅ Interview ID valid:', interviewId);
+      console.log('🔄 Creating interview session...');
       
-      // 标记为需要邮箱验证
-      setVerificationStep('email_verification');
-      setInterviewStatus('pending_verification');
+      // Create interview session using the new API
+      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
       
-    } catch (error) {
-      console.error("Interview validation error:", error);
-      setInterviewStatus('error');
-      setValidationError(`Unable to access interview: ${error.message}`);
-    } finally {
-      setIsValidating(false);
-    }
-  };
-
-  // 🔧 新增：处理邮箱验证的函数（正确顺序）
-  const handleEmailVerification = async (email) => {
-    setIsVerifying(true);
-    setVerificationError('');
-    
-    try {
-      console.log('📧 Step 1: Verifying email for screening:', screeningId);
+      console.log('Session response:', sessionResponse);
       
-      // ✅ 步骤 1: 先调用验证接口
-      const verifyResponse = await MeetingService.verifyScreening(screeningId, email);
-      
-      console.log('✅ Email verification successful:', verifyResponse);
-      
-      // 验证成功，保存邮箱
-      setCandidateEmail(email);
-      
-      // ✅ 步骤 2: 验证通过后才创建 meeting
-      console.log('🔄 Step 2: Creating meeting after email verification');
-      setVerificationStep('creating_meeting');
-      
-      const meetingResponse = await MeetingService.createMeeting(screeningId);
-      
-      if (!meetingResponse.data || !meetingResponse.data.data) {
-        setVerificationError('Failed to create interview session after verification.');
-        setIsVerifying(false);
-        setVerificationStep('email_verification');
+      if (!sessionResponse.data || !sessionResponse.data.data) {
+        setInterviewStatus('error');
+        setValidationError('Failed to create interview session.');
+        setIsValidating(false);
         return;
       }
       
-      const meetingData = meetingResponse.data.data;
+      const sessionData = sessionResponse.data.data;
       
-      // ✅ 步骤 3: Meeting 创建成功，完成验证流程
-      console.log('✅ Meeting created successfully:', meetingData.meetingId);
+      console.log('✅ Interview session created successfully:', sessionData.session_id);
       setInterviewStatus('valid');
-      setCurrentMeeting(meetingData);
-      setVerificationStep('completed');
-      setSuccess('Email verified and interview session created successfully!');
+      setCurrentSession({
+        sessionId: sessionData.session_id,
+        websocketUrl: sessionData.websocket_url,
+        status: sessionData.status,
+        createdAt: sessionData.created_at
+      });
+      setSuccess('Interview session created successfully!');
       setOpenSnackbar(true);
       
     } catch (error) {
-      console.error('❌ Email verification or meeting creation error:', error);
+      console.error("Interview validation error:", error);
       
-      const errorMessage = error.response?.data?.message || error.message || 'Verification failed';
+      const errorMessage = error.response?.data?.message || error.message || 'Unable to access interview';
       const errorCode = error.response?.data?.errorCode;
       
       console.log('Error code:', errorCode);
       
-      // 🔧 处理不同的错误代码
-      if (errorCode === 'SCREENING_ALREADY_VERIFIED') {
-        console.log('ℹ️ Screening already verified, creating meeting directly...');
-        
-        // 已经验证过，直接创建 meeting
-        try {
-          setCandidateEmail(email);
-          setVerificationStep('creating_meeting');
-          
-          const meetingResponse = await MeetingService.createMeeting(screeningId);
-          
-          if (meetingResponse.data && meetingResponse.data.data) {
-            const meetingData = meetingResponse.data.data;
-            setInterviewStatus('valid');
-            setCurrentMeeting(meetingData);
-            setVerificationStep('completed');
-            setSuccess('Interview session created successfully!');
-            setOpenSnackbar(true);
-          } else {
-            setVerificationError('Failed to create interview session.');
-            setVerificationStep('email_verification');
-          }
-        } catch (createError) {
-          console.error('❌ Failed to create meeting after ALREADY_VERIFIED:', createError);
-          const createErrorMsg = createError.response?.data?.message || createError.message;
-          
-          // 检查是否是因为已经使用过
-          if (createErrorMsg.toLowerCase().includes('used') || 
-              createErrorMsg.toLowerCase().includes('already')) {
-            setInterviewStatus('used');
-            setValidationError('This interview session has already been used.');
-            setVerificationStep('completed');
-          } else if (createErrorMsg.toLowerCase().includes('expired')) {
-            setInterviewStatus('expired');
-            setValidationError('This interview session has expired.');
-            setVerificationStep('completed');
-          } else {
-            setVerificationError('Failed to create interview session. Please try again.');
-            setVerificationStep('email_verification');
-          }
-        }
-        
-      } else if (errorCode === 'SCREENING_VERIFY_EMAIL_MISMATCH') {
-        setVerificationError('The email address you entered does not match our records. Please check and try again.');
-        setVerificationStep('email_verification');
-        
+      // Handle different error scenarios
+      if (errorMessage.toLowerCase().includes('used') || 
+          errorMessage.toLowerCase().includes('already')) {
+        setInterviewStatus('used');
+        setValidationError('This interview session has already been used.');
+      } else if (errorMessage.toLowerCase().includes('expired')) {
+        setInterviewStatus('expired');
+        setValidationError('This interview session has expired.');
       } else if (errorCode === 'BAD_REQUEST') {
-        // 检查具体的错误信息
-        if (errorMessage.toLowerCase().includes('expired')) {
-          setInterviewStatus('expired');
-          setValidationError('This interview session has expired.');
-          setVerificationStep('completed');
-        } else if (errorMessage.toLowerCase().includes('used') || 
-                   errorMessage.toLowerCase().includes('already')) {
-          setInterviewStatus('used');
-          setValidationError('This interview session has already been used.');
-          setVerificationStep('completed');
-        } else {
-          setVerificationError('Unable to verify your email. Please contact support if this issue persists.');
-          setVerificationStep('email_verification');
-        }
-        
+        setInterviewStatus('invalid');
+        setValidationError(errorMessage);
       } else {
-        setVerificationError(`Verification failed: ${errorMessage}`);
-        setVerificationStep('email_verification');
+        setInterviewStatus('error');
+        setValidationError(`Unable to access interview: ${errorMessage}`);
       }
-      
     } finally {
-      setIsVerifying(false);
+      setIsValidating(false);
     }
   };
 
@@ -337,21 +215,9 @@ function AIInterview() {
       
       let finalWebsocketUrl = websocketUrl;
       if (websocketUrl.startsWith('https://')) {
-        if (finalWebsocketUrl.startsWith('ws://')) {
-          finalWebsocketUrl = 'wss://' + finalWebsocketUrl.substring('ws://'.length);
-        } else if (finalWebsocketUrl.startsWith('http://')) {
-          finalWebsocketUrl = 'wss://' + finalWebsocketUrl.substring('http://'.length);
-        } else if (finalWebsocketUrl.startsWith('https://')) {
-          finalWebsocketUrl = 'wss://' + finalWebsocketUrl.substring('https://'.length);
-        }
+        finalWebsocketUrl = 'wss://' + websocketUrl.substring('https://'.length);
       } else if (websocketUrl.startsWith('http://')) {
-        if (finalWebsocketUrl.startsWith('wss://')) {
-          finalWebsocketUrl = 'ws://' + finalWebsocketUrl.substring('wss://'.length);
-        } else if (finalWebsocketUrl.startsWith('https://')) {
-          finalWebsocketUrl = 'ws://' + finalWebsocketUrl.substring('https://'.length);
-        } else if (finalWebsocketUrl.startsWith('http://')) {
-          finalWebsocketUrl = 'ws://' + finalWebsocketUrl.substring('http://'.length);
-        }
+        finalWebsocketUrl = 'ws://' + websocketUrl.substring('http://'.length);
       }
       
       return new Promise((resolve, reject) => {
@@ -636,6 +502,7 @@ function AIInterview() {
       setOpenSnackbar(true);
     } else if (message.event === 'session_end' || message.event === 'interview_complete') {
       setSuccess('Interview completed: ' + (message.data?.reason || 'successfully'));
+      endMeeting()
       setOpenSnackbar(true);
       setInterviewEnded(true);
     } else if (message.event === 'processing_start') {
@@ -661,14 +528,14 @@ function AIInterview() {
   };
 
   const connectToInterview = async () => {
-    if (isConnected || !currentMeeting) {
+    if (isConnected || !currentSession) {
       return websocket;
     }
 
     setIsConnecting(true);
     
     try {
-      const wsConnection = await connectWebSocket(currentMeeting.aiAudioUrl, currentMeeting.aiSessionId);
+      const wsConnection = await connectWebSocket(currentSession.websocketUrl, currentSession.sessionId);
       setIsJoined(true);
       return wsConnection;
     } catch (error) {
@@ -703,6 +570,8 @@ function AIInterview() {
   };
 
   const cleanupConnectionResources = () => {
+    console.log('🧹 Cleaning up connection resources...');
+    
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
@@ -714,12 +583,40 @@ function AIInterview() {
     }
     
     if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-      websocket.close(1000, 'Normal closure');
+      try {
+        websocket.close(1000, 'Normal closure');
+        console.log('✅ AI WebSocket closed');
+      } catch (err) {
+        console.warn('⚠️ Error closing AI WebSocket:', err);
+      }
       setWebsocket(null);
     }
     
     setIsConnected(false);
     setIsJoined(false);
+  };
+
+  const cleanupMediaStreams = () => {
+    console.log('🧹 Cleaning up media streams...');
+    
+    if (mediaState.audioTestStream) {
+      console.log('🔇 Stopping audio stream tracks');
+      mediaState.audioTestStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped audio track:', track.label);
+      });
+    }
+    
+    if (mediaState.videoTestStream) {
+      console.log('📹 Stopping video stream tracks');
+      mediaState.videoTestStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped video track:', track.label);
+      });
+    }
+    
+    setMediaState(initialMediaState);
+    console.log('✅ Media state reset to initial values');
   };
 
   const cleanupAllResources = () => {
@@ -728,26 +625,16 @@ function AIInterview() {
     stopAutoReconnectAI();
     cleanupConnectionResources();
     cleanupAudioPlayback();
-
-    if (mediaState.audioTestStream) {
-      console.log('🔇 Stopping audio stream tracks');
-      mediaState.audioTestStream.getTracks().forEach(track => track.stop());
-    }
+    cleanupMediaStreams();
     
-    if (mediaState.videoTestStream) {
-      console.log('📹 Stopping video stream tracks');
-      mediaState.videoTestStream.getTracks().forEach(track => track.stop());
-    }
+    setCurrentSession(null);
     
-    setMediaState(initialMediaState);
-    console.log('✅ Media state reset to initial values');
-    
-    setCurrentMeeting(null);
+    console.log('✅ All resources cleaned up');
   };
 
   const endMeeting = async () => {
-    if (!currentMeeting?.meetingId) {
-      setError('No active meeting');
+    if (!currentSession?.sessionId) {
+      setError('No active session');
       setOpenSnackbar(true);
       return;
     }
@@ -755,12 +642,16 @@ function AIInterview() {
     setIsLoading(true);
     
     try {
+      console.log('🔴 Ending meeting...');
+      
+      // Cleanup all resources
       cleanupAllResources();
-      cleanupAudioPlayback();
 
       setSuccess("Interview ended. Thank you for your participation!");
       setOpenSnackbar(true);
       setInterviewEnded(true);
+      
+      console.log('✅ Meeting ended successfully');
     } catch (error) {
       setError(`Error ending interview: ${error.message}`);
       setOpenSnackbar(true);
@@ -822,7 +713,8 @@ function AIInterview() {
     setInterviewState,
     websocket,
     isConnected,
-    currentMeeting,
+    currentSession,
+    currentMeeting: currentSession, // For backward compatibility with child components
     interviewEnded,
     audioDataBufferRef,
     isRecordingRef,
@@ -837,7 +729,7 @@ function AIInterview() {
     isLoading: isLoading || isConnecting
   };
 
-  // ========== RENDER 部分 ==========
+  // ========== RENDER ==========
 
   // Show loading during validation
   if (isValidating) {
@@ -854,44 +746,7 @@ function AIInterview() {
         <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
           <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
           <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
-            Validating Interview Session
-          </Typography>
-          <Typography variant="body1" color="#64748b">
-            Please wait while we verify your interview session...
-          </Typography>
-        </Card>
-      </Box>
-    );
-  }
-
-  // 🔧 Show email verification if pending
-  if (verificationStep === 'email_verification' && interviewStatus === 'pending_verification') {
-    return (
-      <EmailVerificationStep
-        screeningId={screeningId}
-        onVerify={handleEmailVerification}
-        isVerifying={isVerifying}
-        error={verificationError}
-      />
-    );
-  }
-
-  // 🔧 Show creating meeting loading state
-  if (verificationStep === 'creating_meeting') {
-    return (
-      <Box 
-        sx={{
-          minHeight: '100vh',
-          backgroundColor: '#f8fafc',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
-          <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
-            Creating Interview Session
+            Preparing Interview Session
           </Typography>
           <Typography variant="body1" color="#64748b">
             Please wait while we set up your interview...
@@ -942,31 +797,6 @@ function AIInterview() {
     }
   }
 
-  // 🔧 Only show interview interface when verification is completed and status is valid
-  if (verificationStep !== 'completed' || interviewStatus !== 'valid') {
-    return (
-      <Box 
-        sx={{
-          minHeight: '100vh',
-          backgroundColor: '#f8fafc',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
-          <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
-            Loading Interview
-          </Typography>
-          <Typography variant="body1" color="#64748b">
-            Please wait...
-          </Typography>
-        </Card>
-      </Box>
-    );
-  }
-
   const connectionStatus = getConnectionStatus();
 
   // Main render - Interview Interface
@@ -974,7 +804,7 @@ function AIInterview() {
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <Container maxWidth="xl" sx={{ py: 3 }}>
 
-        {/* 顶部重连提示条 */}
+        {/* Reconnecting banner */}
         {isReconnecting && !interviewEnded && (
           <Box
             sx={{
@@ -995,22 +825,6 @@ function AIInterview() {
           </Box>
         )}
 
-        {/* Browser Events Monitor */}
-        <BrowserEventsMonitor
-          screeningId={screeningId}
-          meetingId={currentMeeting?.meetingId}
-          isActive={isMonitoringActive && !interviewEnded}
-          onStart={handleMonitoringStart}
-          onStop={handleMonitoringStop}
-          onError={handleMonitoringError}
-          showUI={false}
-          options={{
-            autoSubmitInterval: 30000,
-            maxEventsBuffer: 50,
-            format: 'json'
-          }}
-        />
-
         {/* Modern Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
           <Box display="flex" alignItems="center" gap={2}>
@@ -1022,7 +836,7 @@ function AIInterview() {
                 AI Interview
               </Typography>
               <Typography variant="body2" color="#64748b">
-                Session ID: {currentMeeting?.aiSessionId?.substring(0, 12) || "Unknown"} • Secure
+                Session ID: {currentSession?.sessionId?.substring(0, 12) || "Unknown"} • Secure
               </Typography>
             </Box>
           </Box>
@@ -1046,19 +860,6 @@ function AIInterview() {
                 Network: Good
               </Typography>
             </Box>
-            {isMonitoringActive && (
-              <Chip 
-                label="Monitoring ON" 
-                size="small" 
-                sx={{ 
-                  bgcolor: '#1de9b6', 
-                  color: 'white',
-                  fontWeight: 600,
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase'
-                }} 
-              />
-            )}
           </Box>
         </Box>
 

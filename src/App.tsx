@@ -52,12 +52,6 @@ const App = () => (
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
-              
-              {/* AI Interview routes (direct access, not protected) */}
-              <Route 
-                path="/interview/:screeningId" 
-                element={<AIInterview isDirectAccess={true} />} 
-              />
               <Route path="/auth/google/callback" element={<GoogleCallback />} />
               
               {/* Protected routes */}
@@ -77,6 +71,10 @@ const App = () => (
                 <Route path="/mentors" element={<Mentors />} />
                 <Route path="/mentor/apply" element={<MentorApply />} />
                 <Route path="/mentor/dashboard" element={<MentorDashboard />} />
+                <Route 
+                  path="/interview/:interviewId" 
+                  element={<AIInterview isDirectAccess={true} />} 
+                />
               </Route>
               
               {/* Catch-all routes */}

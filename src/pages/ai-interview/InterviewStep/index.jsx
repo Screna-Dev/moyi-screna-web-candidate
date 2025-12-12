@@ -8,18 +8,14 @@ import {
   Mic,
   ExitToApp,
   ArrowBack,
-  VideocamOff,
   Person,
   SmartToy,
   RadioButtonChecked,
   Circle,
-  CheckCircle,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
 } from '@mui/icons-material';
 import CircularProgress from '@mui/material/CircularProgress';
 import { generateRandomAI } from '../../../utils/randomAI';
-import { MeetingService } from '../../../services';
+import { useParams } from 'react-router-dom';
 
 function InterviewStep({
   mediaState,
@@ -41,12 +37,14 @@ function InterviewStep({
   isLoading,
   aiSpeaking
 }) {
+  const params = useParams();
+  const interviewId = params.interviewId;
+  
   // Local state
   const [openEndDialog, setOpenEndDialog] = useState(false);
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [aiProfile] = useState(generateRandomAI());
-  const [isSubmittingEvents, setIsSubmittingEvents] = useState(false);
   
   // Audio level detection state
   const [audioLevel, setAudioLevel] = useState(0);
@@ -55,7 +53,7 @@ function InterviewStep({
   const audioAnalyserRef = useRef(null);
   const audioLevelIntervalRef = useRef(null);
   
-  //倒计时
+  // Countdown state
   const [showCountdown, setShowCountdown] = useState(false);
   const [countdown, setCountdown] = useState(5);
 
@@ -72,19 +70,14 @@ function InterviewStep({
   const lastAudioDataRef = useRef(Date.now());
   const lastJeffDataRef = useRef(Date.now());
 
-  // Browser events tracking
-  const [browserEvents, setBrowserEvents] = useState([]);
-  const browserEventsRef = useRef([]);
-  const interviewStartTimeRef = useRef(null);
-
   // AI communication audio context (separate from MediaRecorder mixing)
   const [audioContext, setAudioContext] = useState(null);
 
-  // ====== 🔧 新增：AI 音频播放管理器（参考 HTML 测试页）======
-  const audioPlaybackContextRef = useRef(null);  // 全局复用的 AudioContext
-  const audioQueueRef = useRef([]);              // 音频队列
-  const isPlayingRef = useRef(false);            // 是否正在播放
-  const nextStartTimeRef = useRef(0);            // 下一个音频块的开始时间
+  // AI audio playback manager
+  const audioPlaybackContextRef = useRef(null);
+  const audioQueueRef = useRef([]);
+  const isPlayingRef = useRef(false);
+  const nextStartTimeRef = useRef(0);
 
   // Unified MediaRecorder state (video + mixed audio) - for Jeff's WebSocket
   const mixedCtxRef = useRef(null);
@@ -104,24 +97,22 @@ function InterviewStep({
   // Video refs for local preview
   const localVideoRef = useRef(null);
 
-  // ====== 🔧 初始化 AI 音频播放上下文（全局复用）======
+  // Initialize AI audio playback context
   const initAudioPlaybackContext = () => {
     if (!audioPlaybackContextRef.current) {
-      // 🔧 关键修复：复用 Jeff 的混音上下文，而不是创建新的
       if (mixedCtxRef.current) {
         audioPlaybackContextRef.current = mixedCtxRef.current;
-        console.log('✅ AI 音频播放复用 Jeff 的混音上下文');
+        console.log('✅ AI audio playback reusing Jeff mixing context');
       } else {
-        // 如果混音上下文还不存在，创建新的（但这不应该发生）
         audioPlaybackContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        console.warn('⚠️ AI 音频播放创建了独立上下文（可能不会被录制）');
+        console.warn('⚠️ AI audio playback created independent context');
       }
       nextStartTimeRef.current = audioPlaybackContextRef.current.currentTime;
-      console.log('✅ AI 音频播放上下文已初始化');
+      console.log('✅ AI audio playback context initialized');
     }
   };
 
-  // ====== 🔧 音频播放调度器 - 确保无缝播放（参考 HTML 测试页）======
+  // Audio playback scheduler
   const scheduleAudioPlayback = async () => {
     if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
     
@@ -132,39 +123,28 @@ function InterviewStep({
       const audioData = audioQueueRef.current.shift();
       
       try {
-        // 创建音频源
         const source = ctx.createBufferSource();
         source.buffer = audioData.buffer;
         
-        // 创建增益节点用于淡入淡出
         const gainNode = ctx.createGain();
         gainNode.gain.value = 1.0;
         
-        // 🔧 关键修复：连接到两个目标
         source.connect(gainNode);
-        
-        // 1️⃣ 连接到扬声器（用户听到）
         gainNode.connect(ctx.destination);
         
-        // 2️⃣ 连接到 Jeff 的混音流（录制使用）
         if (mixedDestRef.current) {
           gainNode.connect(mixedDestRef.current);
-          console.log('✅ AI 音频已连接到录制流');
-        } else {
-          console.warn('⚠️ 混音目标不可用，AI 音频不会被录制');
+          console.log('✅ AI audio connected to recording stream');
         }
         
-        // 计算播放时间
         const currentTime = ctx.currentTime;
         const startTime = Math.max(currentTime, nextStartTimeRef.current);
         
-        // 如果有间隙，应用短暂的淡入
         if (startTime > nextStartTimeRef.current + 0.01) {
           gainNode.gain.setValueAtTime(0, startTime);
           gainNode.gain.linearRampToValueAtTime(1, startTime + 0.01);
         }
         
-        // 在结束前应用淡出
         const duration = audioData.buffer.duration;
         const fadeOutTime = startTime + duration - 0.01;
         if (fadeOutTime > startTime) {
@@ -172,42 +152,36 @@ function InterviewStep({
           gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
         }
         
-        // 播放音频
         source.start(startTime);
-        
-        // 更新下一个播放时间
         nextStartTimeRef.current = startTime + duration;
         
-        // 等待播放完成
         await new Promise(resolve => {
           source.onended = resolve;
         });
         
-        console.log('✅ AI 音频块播放完成，duration:', duration.toFixed(3), 's');
+        console.log('✅ AI audio chunk played, duration:', duration.toFixed(3), 's');
         
       } catch (error) {
-        console.error('❌ 播放音频块失败:', error);
+        console.error('❌ Failed to play audio chunk:', error);
       }
     }
     
     isPlayingRef.current = false;
   };
 
-  // ====== 🔧 处理 AI 音频消息（替换原有的 playReceivedAudio）======
+  // Handle AI audio message
   const handleAIAudioMessage = async (audioMessage) => {
     try {
-      // 初始化播放上下文（仅一次）
       initAudioPlaybackContext();
       const ctx = audioPlaybackContextRef.current;
       
-      console.log('📨 收到 AI 音频消息:', {
+      console.log('📨 Received AI audio message:', {
         format: audioMessage.format,
         encoding: audioMessage.encoding,
         sampleRate: audioMessage.sample_rate,
         dataLength: audioMessage.data?.length
       });
       
-      // 解码 Base64 数据
       const audioData = atob(audioMessage.data);
       const arrayBuffer = new ArrayBuffer(audioData.length);
       const view = new Uint8Array(arrayBuffer);
@@ -218,18 +192,14 @@ function InterviewStep({
       
       let audioBuffer;
       
-      // 根据格式处理音频
       if (audioMessage.format === 'wav') {
-        // WAV 格式直接解码
         audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         
       } else if (audioMessage.sample_rate && audioMessage.encoding) {
-        // 处理 PCM 格式
         const sampleRate = audioMessage.sample_rate;
         const channels = audioMessage.channels || 1;
         
         if (audioMessage.encoding.includes('f32le')) {
-          // 32 位浮点 PCM
           const floatData = new Float32Array(arrayBuffer.byteLength / 4);
           const dataView = new DataView(arrayBuffer);
           
@@ -237,11 +207,9 @@ function InterviewStep({
             floatData[i] = dataView.getFloat32(i * 4, true);
           }
           
-          // 创建 AudioBuffer
           audioBuffer = ctx.createBuffer(channels, floatData.length, sampleRate);
           const channelData = audioBuffer.getChannelData(0);
           
-          // 应用高通滤波器去除 DC 偏移
           let previousSample = 0;
           const alpha = 0.98;
           
@@ -251,7 +219,6 @@ function InterviewStep({
             channelData[i] = Math.max(-0.99, Math.min(0.99, channelData[i]));
           }
           
-          // 应用淡入淡出
           const fadeLength = Math.min(100, floatData.length / 10);
           for (let i = 0; i < fadeLength; i++) {
             const fadeFactor = i / fadeLength;
@@ -260,7 +227,6 @@ function InterviewStep({
           }
           
         } else {
-          // 16 位 PCM（默认）
           const int16Data = new Int16Array(arrayBuffer.byteLength / 2);
           const dataView = new DataView(arrayBuffer);
           
@@ -276,58 +242,134 @@ function InterviewStep({
           }
         }
       } else {
-        console.error('❌ 不支持的音频格式:', audioMessage);
+        console.error('❌ Unsupported audio format:', audioMessage);
         return;
       }
       
-      // 将音频缓冲添加到队列
       audioQueueRef.current.push({
         buffer: audioBuffer,
         timestamp: Date.now()
       });
       
-      console.log('✅ 音频块已加入队列，当前队列长度:', audioQueueRef.current.length);
+      console.log('✅ Audio chunk queued, queue length:', audioQueueRef.current.length);
       
-      // 开始播放调度
       scheduleAudioPlayback();
       
     } catch (error) {
-      console.error('❌ 处理 AI 音频消息失败:', error);
-      setError('AI 音频播放失败: ' + error.message);
+      console.error('❌ Failed to process AI audio message:', error);
+      setError('AI audio playback failed: ' + error.message);
       setOpenSnackbar(true);
     }
   };
 
-  // ====== 🔧 清理音频播放资源 ======
+  // Cleanup audio playback resources
   const cleanupAudioPlayback = () => {
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     
-    if (audioPlaybackContextRef.current && audioPlaybackContextRef.current.state !== 'closed') {
+    if (audioPlaybackContextRef.current && 
+        audioPlaybackContextRef.current !== mixedCtxRef.current &&
+        audioPlaybackContextRef.current.state !== 'closed') {
       audioPlaybackContextRef.current.close().then(() => {
-        console.log('✅ AI 音频播放上下文已关闭');
+        console.log('✅ AI audio playback context closed');
         audioPlaybackContextRef.current = null;
         nextStartTimeRef.current = 0;
       }).catch(err => {
-        console.error('❌ 关闭音频上下文失败:', err);
+        console.error('❌ Failed to close audio context:', err);
       });
+    } else {
+      audioPlaybackContextRef.current = null;
+      nextStartTimeRef.current = 0;
     }
   };
 
-  // ====== 组件卸载时清理 ======
+  // Cleanup mixed audio context
+  const cleanupMixedAudioContext = () => {
+    if (mixedCtxRef.current && mixedCtxRef.current.state !== 'closed') {
+      mixedCtxRef.current.close().then(() => {
+        console.log('✅ Mixed audio context closed');
+      }).catch(err => {
+        console.error('❌ Failed to close mixed audio context:', err);
+      });
+    }
+    mixedCtxRef.current = null;
+    mixedDestRef.current = null;
+  };
+
+  // Cleanup combined stream
+  const cleanupCombinedStream = () => {
+    if (combinedStreamRef.current) {
+      combinedStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped combined stream track:', track.kind);
+      });
+      combinedStreamRef.current = null;
+    }
+  };
+
+  // Cleanup Jeff WebSocket and MediaRecorder
+  const cleanupJeffResources = () => {
+    // Stop MediaRecorder first
+    if (recordingStateRef.current.jeffMediaRecorder) {
+      try {
+        if (recordingStateRef.current.jeffMediaRecorder.state !== 'inactive') {
+          recordingStateRef.current.jeffMediaRecorder.stop();
+          console.log('✅ Jeff MediaRecorder stopped');
+        }
+      } catch (err) {
+        console.warn('⚠️ Error stopping Jeff MediaRecorder:', err);
+      }
+    }
+
+    // Close Jeff WebSocket
+    if (recordingStateRef.current.jeffWebSocket) {
+      try {
+        if (recordingStateRef.current.jeffWebSocket.readyState === WebSocket.OPEN ||
+            recordingStateRef.current.jeffWebSocket.readyState === WebSocket.CONNECTING) {
+          recordingStateRef.current.jeffWebSocket.close(1000, 'Interview ended');
+          console.log('✅ Jeff WebSocket closed');
+        }
+      } catch (err) {
+        console.warn('⚠️ Error closing Jeff WebSocket:', err);
+      }
+    }
+
+    setRecordingState({
+      jeffMediaRecorder: null,
+      jeffWebSocket: null,
+      isJeffRecording: false
+    });
+    
+    jeffMediaChunksRef.current = [];
+  };
+
+  // Cleanup AI audio context
+  const cleanupAIAudioContext = () => {
+    if (audioContext && audioContext.state !== 'closed') {
+      audioContext.close().then(() => {
+        console.log('✅ AI audio context closed');
+      }).catch(err => {
+        console.error('❌ Failed to close AI audio context:', err);
+      });
+    }
+    setAudioContext(null);
+  };
+
+  // Component unmount cleanup
   useEffect(() => {
     return () => {
       cleanupAudioPlayback();
       stopAudioLevelDetection();
       stopConnectionMonitoring();
+      cleanupJeffResources();
+      cleanupMixedAudioContext();
+      cleanupCombinedStream();
+      cleanupAIAudioContext();
     };
   }, []);
 
-  // ====== 🔧 监听 WebSocket 音频消息（需要在父组件中调用）======
-  // 注意：这个函数需要在父组件接收到 WebSocket 消息时调用
-  // 示例：if (message.type === 'audio') handleAIAudioMessage(message);
+  // Expose AI audio handler to parent
   useEffect(() => {
-    // 将处理函数暴露给父组件
     window.__handleAIAudioMessage = handleAIAudioMessage;
     
     return () => {
@@ -399,13 +441,6 @@ function InterviewStep({
       
       if (prev[component] !== status) {
         console.log(`🔄 Connection Status Changed: ${component} -> ${status}`);
-        
-        addBrowserEvent('connection_status_change', {
-          component,
-          oldStatus: prev[component],
-          newStatus: status,
-          timestamp: Date.now()
-        });
 
         if (status === 'error' || status === 'disconnected') {
           if (component === 'jeffWebSocket') {
@@ -494,171 +529,6 @@ function InterviewStep({
     if (connectionMonitorRef.current) {
       clearInterval(connectionMonitorRef.current);
       connectionMonitorRef.current = null;
-    }
-  };
-
-  const retryJeffConnection = async () => {
-    if (!currentMeeting?.meetingId) return;
-
-    try {
-      updateConnectionStatus('jeffWebSocket', 'connecting');
-      
-      if (recordingStateRef.current.jeffWebSocket) {
-        recordingStateRef.current.jeffWebSocket.close();
-      }
-
-      const jeffSocket = await setupJeffWebSocket();
-      if (jeffSocket) {
-        setRecordingState(prev => ({
-          ...prev,
-          jeffWebSocket: jeffSocket
-        }));
-        
-        if (combinedStreamRef.current) {
-          const jeffMediaRecorder = setupJeffMediaRecorder(combinedStreamRef.current, jeffSocket);
-          setRecordingState(prev => ({
-            ...prev,
-            jeffMediaRecorder: jeffMediaRecorder
-          }));
-
-          if (jeffMediaRecorder && interviewStarted) {
-            jeffMediaRecorder.start(1000);
-          }
-        }
-
-        setSuccess('Recording connection restored!');
-        setOpenSnackbar(true);
-      }
-    } catch (error) {
-      console.error('Failed to retry Jeff connection:', error);
-      updateConnectionStatus('jeffWebSocket', 'error');
-    }
-  };
-
-  const retryAIConnection = async () => {
-    try {
-      updateConnectionStatus('aiWebSocket', 'connecting');
-      await connectToInterview();
-      setSuccess('AI connection restored!');
-      setOpenSnackbar(true);
-    } catch (error) {
-      console.error('Failed to retry AI connection:', error);
-      updateConnectionStatus('aiWebSocket', 'error');
-    }
-  };
-
-  const addBrowserEvent = (eventType, eventData = {}) => {
-    if (!interviewStarted || !interviewStartTimeRef.current) return;
-    
-    const timestamp = Date.now();
-    const relativeTime = timestamp - interviewStartTimeRef.current;
-    
-    const event = {
-      type: eventType,
-      timestamp: new Date(timestamp).toISOString(),
-      relativeTimeMs: relativeTime,
-      data: eventData
-    };
-    
-    browserEventsRef.current.push(event);
-    setBrowserEvents(prev => [...prev, event]);
-    
-    console.log('Browser Event Captured:', event);
-  };
-
-  useEffect(() => {
-    if (!interviewStarted) return;
-
-    const handleVisibilityChange = () => {
-      const isHidden = document.hidden;
-      addBrowserEvent(isHidden ? 'tab_hidden' : 'tab_visible', {
-        hidden: isHidden,
-        visibilityState: document.visibilityState
-      });
-    };
-
-    const handleFocus = () => {
-      addBrowserEvent('focus_gained', { 
-        focused: true,
-        timestamp: Date.now()
-      });
-    };
-
-    const handleBlur = () => {
-      addBrowserEvent('focus_lost', { 
-        focused: false,
-        timestamp: Date.now()
-      });
-    };
-
-    const handleWindowFocus = () => {
-      addBrowserEvent('window_focus_gained', { 
-        windowFocused: true,
-        timestamp: Date.now()
-      });
-    };
-
-    const handleWindowBlur = () => {
-      addBrowserEvent('window_focus_lost', { 
-        windowFocused: false,
-        timestamp: Date.now()
-      });
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
-    window.addEventListener('focus', handleWindowFocus, { passive: true });
-    window.addEventListener('blur', handleWindowBlur, { passive: true });
-    document.addEventListener('focus', handleFocus, { passive: true, capture: true });
-    document.addEventListener('blur', handleBlur, { passive: true, capture: true });
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('blur', handleWindowBlur);
-      document.removeEventListener('focus', handleFocus, true);
-      document.removeEventListener('blur', handleBlur, true);
-    };
-  }, [interviewStarted]);
-
-  const submitBrowserEvents = async () => {
-    if (!currentMeeting?.meetingId || browserEventsRef.current.length === 0) {
-      console.log('No browser events to submit or missing meeting ID');
-      return;
-    }
-
-    setIsSubmittingEvents(true);
-    
-    try {
-      const eventData = {
-        events: browserEventsRef.current,
-        summary: {
-          totalEvents: browserEventsRef.current.length,
-          interviewDurationMs: interviewStartTimeRef.current ? 
-            Date.now() - interviewStartTimeRef.current : 0,
-          eventTypes: [...new Set(browserEventsRef.current.map(e => e.type))],
-          connectionIssues: browserEventsRef.current.filter(e => e.type === 'connection_status_change').length
-        }
-      };
-
-      await MeetingService.submitBrowserEvents(
-        currentMeeting.screeningId, 
-        currentMeeting.meetingId, 
-        eventData
-      );
-
-      console.log('Browser events submitted successfully:', eventData.summary);
-      setSuccess(`Submitted ${browserEventsRef.current.length} browser events`);
-      setOpenSnackbar(true);
-      
-      browserEventsRef.current = [];
-      setBrowserEvents([]);
-      
-    } catch (error) {
-      console.error('Failed to submit browser events:', error);
-      setError('Failed to submit browser events: ' + (error.response?.data?.message || error.message));
-      setOpenSnackbar(true);
-    } finally {
-      setIsSubmittingEvents(false);
     }
   };
 
@@ -764,14 +634,13 @@ function InterviewStep({
 
   const setupJeffWebSocket = async () => {
     try {
-      if (!currentMeeting?.meetingId) {
+      if (!interviewId) {
         console.warn('⚠️ Meeting ID not available for Jeff WebSocket setup');
         return null;
       }
 
-      const baseUrl = 'wss://api.screencheckr.com/api/v1/ws';
-      const mediaRecordingUrl = `${baseUrl}/media?meetingId=${currentMeeting.meetingId}`;
-      
+      const baseUrl = 'wss://api-staging.screna.ai/api/v1/ws';
+      const mediaRecordingUrl = `${baseUrl}/media?interviewId=${interviewId}`;
       const jeffSocket = await createWebSocketWithRetry(mediaRecordingUrl, 'Jeff MediaRecorder WebSocket', 3);
       
       if (jeffSocket) {
@@ -853,14 +722,11 @@ function InterviewStep({
   };
 
   const pickRecorderOptions = () => {
-    // 根据后端转换参数优化的格式配置
-    // maxBitrate是4Mb/s，实际设置应该更低以避免不必要的质量损失
-    
     const safariFormats = [
       {
         mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-        videoBitsPerSecond: 2500000,  // 2.5Mb/s - 低于maxBitrate(4Mb/s)
-        audioBitsPerSecond: 28000     // 28kb/s - 匹配转换参数
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 28000
       },
       {
         mimeType: 'video/mp4',
@@ -872,13 +738,13 @@ function InterviewStep({
     const chromeFormats = [
       {
         mimeType: 'video/webm;codecs=vp9,opus',
-        videoBitsPerSecond: 2000000,  // 2Mb/s - VP9压缩效率更高
-        audioBitsPerSecond: 28000     // 28kb/s - 匹配转换参数
+        videoBitsPerSecond: 2000000,
+        audioBitsPerSecond: 28000
       },
       {
         mimeType: 'video/webm;codecs=vp8,opus',
-        videoBitsPerSecond: 2500000,  // 2.5Mb/s - VP8需要稍高比特率
-        audioBitsPerSecond: 28000     // 28kb/s
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 28000
       },
       {
         mimeType: 'video/webm',
@@ -887,21 +753,17 @@ function InterviewStep({
       }
     ];
 
-    // 检测浏览器并返回合适的格式
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const formats = isSafari ? safariFormats : chromeFormats;
     
-    // 找到第一个支持的格式
     for (const format of formats) {
       if (MediaRecorder.isTypeSupported(format.mimeType)) {
-        console.log('选择的录制格式:', format);
-        console.log('预期输出: 640x480@30fps, 视频:', format.videoBitsPerSecond/1000000, 'Mb/s, 音频:', format.audioBitsPerSecond/1000, 'kb/s');
+        console.log('Selected recording format:', format);
         return format;
       }
     }
     
-    // 如果没有找到支持的格式，返回默认配置
-    console.warn('未找到优化的录制格式，使用默认配置');
+    console.warn('No optimized recording format found, using default');
     return {
       videoBitsPerSecond: 2500000,
       audioBitsPerSecond: 28000
@@ -1098,7 +960,6 @@ function InterviewStep({
           aspectRatio: { ideal: 4/3 }
         };
 
-        
         try {
           await originalVideoTrack.applyConstraints(videoConstraints);
           tracks.push(originalVideoTrack);
@@ -1124,41 +985,6 @@ function InterviewStep({
     return combined;
   };
 
-  const flushAudioBuffer = () => {
-    if (!interviewStarted || audioDataBufferRef.current.length === 0) {
-      return;
-    }
-    
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-      console.warn("⚠️ Cannot flush: AI WebSocket not connected");
-      audioDataBufferRef.current = [];
-      updateConnectionStatus('aiWebSocket', 'error');
-      return;
-    }
-    
-    try {
-      const totalLength = audioDataBufferRef.current.reduce((acc, curr) => acc + curr.length, 0);
-      const combined = new Int16Array(totalLength);
-      
-      let offset = 0;
-      for (const buffer of audioDataBufferRef.current) {
-        combined.set(buffer, offset);
-        offset += buffer.length;
-      }
-      
-      const bufferCount = audioDataBufferRef.current.length;
-      audioDataBufferRef.current = [];
-      
-      websocket.send(combined.buffer);
-      lastAudioDataRef.current = Date.now();
-
-    } catch (sendError) {
-      console.error("❌ AI buffer send error:", sendError);
-      audioDataBufferRef.current = [];
-      updateConnectionStatus('aiWebSocket', 'error');
-    }
-  };
-
   const startInterview = async () => {
     try {
       if (!mediaState.mediaReady) {
@@ -1176,16 +1002,6 @@ function InterviewStep({
       setIsConnecting(true);
       updateConnectionStatus('aiWebSocket', 'connecting');
 
-      interviewStartTimeRef.current = Date.now();
-      addBrowserEvent('interview_started', {
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-        viewport: {
-          width: window.innerWidth,
-          height: window.innerHeight
-        }
-      });
-
       let ws = websocket;
       if (!isConnected || !websocket) {
         try {
@@ -1202,7 +1018,8 @@ function InterviewStep({
       } else {
         updateConnectionStatus('aiWebSocket', 'connected');
       }
-      //倒计时逻辑
+
+      // Countdown logic
       setShowCountdown(true);
       setCountdown(5);
       for (let i = 5; i > 0; i--) {
@@ -1393,7 +1210,7 @@ function InterviewStep({
         }
       };
 
-      setSuccess('Interview started! Recording media and tracking browser events.');
+      setSuccess('Interview started! Recording media.');
       setOpenSnackbar(true);
       setIsConnecting(false);
 
@@ -1411,21 +1228,55 @@ function InterviewStep({
   };
 
   const endInterview = async () => {
-    addBrowserEvent('interview_ended', {
-      timestamp: new Date().toISOString(),
-      duration: interviewStartTimeRef.current ? 
-        Date.now() - interviewStartTimeRef.current : 0
-    });
-
-    stopConnectionMonitoring();
-    stopAudioLevelDetection();
-    cleanupAudioPlayback();  // 🔧 清理 AI 音频播放资源
+    console.log('🔴 Ending interview...');
     
+    // Stop connection monitoring
+    stopConnectionMonitoring();
+    
+    // Stop audio level detection
+    stopAudioLevelDetection();
+    
+    // Cleanup AI audio playback
+    cleanupAudioPlayback();
+    
+    // Cleanup Jeff resources (MediaRecorder and WebSocket)
+    cleanupJeffResources();
+    
+    // Cleanup combined stream
+    cleanupCombinedStream();
+    
+    // Cleanup mixed audio context
+    cleanupMixedAudioContext();
+    
+    // Cleanup AI audio context
+    cleanupAIAudioContext();
+    
+    // Clear video element
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    
+    // Clean up global functions
+    delete window.__registerAIAudioElement;
+    delete window.__registerAIAudioNode;
+    delete window.__injectAIPCM;
+    delete window.__decodePCM_F32LE_Base64ToFloat32;
+    
+    // Update state
     setInterviewState(prev => ({ ...prev, isRecording: false }));
     setInterviewStarted(false);
-
-    await submitBrowserEvents();
     
+    // Update connection status
+    setConnectionStatus({
+      aiWebSocket: 'disconnected',
+      jeffWebSocket: 'disconnected',
+      mediaStream: 'disconnected',
+      recording: 'stopped'
+    });
+
+    console.log('✅ All interview resources cleaned up');
+    
+    // Call parent's endMeeting
     endMeeting();
   };
 
@@ -1449,80 +1300,80 @@ function InterviewStep({
   return (
     <Box>
       {showCountdown && (
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          bgcolor: 'rgba(0, 0, 0, 0.85)',
-          zIndex: 9999,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backdropFilter: 'blur(10px)'
-        }}
-      >
-        <Typography
-          variant="h1"
-          sx={{
-            fontSize: '120px',
-            fontWeight: 700,
-            color: '#fff',
-            textShadow: '0 0 40px rgba(83, 65, 244, 0.8)',
-            animation: 'pulse 1s ease-in-out',
-            '@keyframes pulse': {
-              '0%': { transform: 'scale(0.8)', opacity: 0 },
-              '50%': { transform: 'scale(1.1)', opacity: 1 },
-              '100%': { transform: 'scale(1)', opacity: 1 }
-            }
-          }}
-        >
-          {countdown}
-        </Typography>
-        
-        <Typography
-          variant="h5"
-          sx={{
-            mt: 4,
-            color: 'rgba(255, 255, 255, 0.8)',
-            fontWeight: 500,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase'
-          }}
-        >
-          {countdown === 1 ? 'Get Ready!' : 'Starting in...'}
-        </Typography>
-        
         <Box
           sx={{
-            mt: 4,
-            width: '200px',
-            height: '4px',
-            bgcolor: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: 2,
-            overflow: 'hidden'
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            bgcolor: 'rgba(0, 0, 0, 0.85)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(10px)'
           }}
         >
+          <Typography
+            variant="h1"
+            sx={{
+              fontSize: '120px',
+              fontWeight: 700,
+              color: '#fff',
+              textShadow: '0 0 40px rgba(83, 65, 244, 0.8)',
+              animation: 'pulse 1s ease-in-out',
+              '@keyframes pulse': {
+                '0%': { transform: 'scale(0.8)', opacity: 0 },
+                '50%': { transform: 'scale(1.1)', opacity: 1 },
+                '100%': { transform: 'scale(1)', opacity: 1 }
+              }
+            }}
+          >
+            {countdown}
+          </Typography>
+          
+          <Typography
+            variant="h5"
+            sx={{
+              mt: 4,
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontWeight: 500,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase'
+            }}
+          >
+            {countdown === 1 ? 'Get Ready!' : 'Starting in...'}
+          </Typography>
+          
           <Box
             sx={{
-              height: '100%',
-              width: `${((6 - countdown) / 5) * 100}%`,
-              bgcolor: '#5341f4',
-              transition: 'width 1s linear',
-              boxShadow: '0 0 20px rgba(83, 65, 244, 0.6)'
+              mt: 4,
+              width: '200px',
+              height: '4px',
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              borderRadius: 2,
+              overflow: 'hidden'
             }}
-          />
+          >
+            <Box
+              sx={{
+                height: '100%',
+                width: `${((6 - countdown) / 5) * 100}%`,
+                bgcolor: '#5341f4',
+                transition: 'width 1s linear',
+                boxShadow: '0 0 20px rgba(83, 65, 244, 0.6)'
+              }}
+            />
+          </Box>
         </Box>
-      </Box>
-    )}
+      )}
 
       {/* Main Interview Interface */}
       <Grid container spacing={4} sx={{ mb: 4 }}>
         {/* Candidate Panel */}
-        <Grid item xs={12} md={6}>
+        <Grid item size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: '100%', border: 'none', boxShadow:'3px 1px 1px #f0f0f0' }}>
             <Box sx={{ p: 3 }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" >
@@ -1659,7 +1510,7 @@ function InterviewStep({
         </Grid>
 
         {/* AI Interviewer Panel */}
-        <Grid item xs={12} md={6}>
+        <Grid item size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: '100%', border: 'none', boxShadow:'3px 1px 1px #f0f0f0' }}>
             <Box sx={{ p: 3 }}>
               <Box display="flex" justifyContent="space-between" alignItems="center">
@@ -1784,7 +1635,7 @@ function InterviewStep({
                     variant="outlined"
                     size="large"
                     onClick={handleEndDialogOpen}
-                    disabled={isLoading || isConnecting || !interviewStarted || isSubmittingEvents}
+                    disabled={isLoading || isConnecting || !interviewStarted}
                     startIcon={<ExitToApp />}
                     sx={{
                       py: 1.5,
@@ -1893,7 +1744,6 @@ function InterviewStep({
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button 
             onClick={handleEndDialogClose} 
-            disabled={isSubmittingEvents}
             sx={{ color: '#6b7280' }}
           >
             Cancel
@@ -1905,8 +1755,7 @@ function InterviewStep({
             }} 
             variant="contained"
             color="error"
-            disabled={isSubmittingEvents}
-            startIcon={isSubmittingEvents ? <CircularProgress size={16} /> : <ExitToApp />}
+            startIcon={<ExitToApp />}
             sx={{
               color:"#F0F0F0",
               bgcolor: '#ef4444',
@@ -1915,7 +1764,7 @@ function InterviewStep({
               }
             }}
           >
-            {isSubmittingEvents ? 'Ending...' : 'End Interview'}
+            End Interview
           </Button>
         </DialogActions>
       </Dialog>

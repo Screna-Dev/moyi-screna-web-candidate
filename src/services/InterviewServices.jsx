@@ -1,7 +1,7 @@
 import API from "./api";
 
 // Base endpoint for interviews
-const BASE_URL = '/interviews/training-plans';
+const BASE_URL = '/training-plans';
 
 // GET /interviews/training-plans - List training plans
 export const getTrainingPlans = () => {
@@ -10,7 +10,7 @@ export const getTrainingPlans = () => {
 
 // POST /interviews/training-plans - Create training plan
 export const createTrainingPlan = (data) => {
-  return API.post(`${BASE_URL}`, {
+  return API.post(`${BASE_URL}/from-input`, {
     jobTitle: data.jobTitle,
     company: data.company,
     jobDescription: data.jobDescription,
@@ -22,10 +22,23 @@ export const getTrainingPlanById = (trainingPlanId) => {
   return API.get(`${BASE_URL}/${trainingPlanId}`);
 };
 
+// DELETE /training-plans/{trainingPlanId} - Delete training plan
+export const deleteTrainingPlan = (trainingPlanId) => {
+  return API.delete(`/training-plans/${trainingPlanId}`);
+};
+
+export const createTrainingPlanFromJobId = (jobId) => {
+  return API.post(`${BASE_URL}`, {
+    jobId: jobId,
+  });
+};
+
 const InterviewServices = {
   getTrainingPlans,
   createTrainingPlan,
   getTrainingPlanById,
+  deleteTrainingPlan,
+  createTrainingPlanFromJobId
 };
 
 export default InterviewServices;

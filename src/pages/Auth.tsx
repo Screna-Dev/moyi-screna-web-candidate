@@ -141,7 +141,7 @@ export default function Auth() {
     // Check if this is an "email exists but not verified" error
     // Check both errorCode and message to handle different API responses
     const isEmailNotVerified = 
-      error.response?.data?.errorCode === 'EMAIL_NOT_VERIFIED' || 
+      error.response?.data?.errorCode === 'AUTH_EMAIL_NOT_VERIFIED' || 
       error.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED' ||
       error.response?.data?.errorCode === 'BAD_REQUEST' && 
       error.response?.data?.message?.toLowerCase().includes('email not verified');

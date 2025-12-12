@@ -1,7 +1,7 @@
 // components/MediaSetupStep.js - 修复状态更新和 AudioContext 资源管理 + Video Ref Fix
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Box, Typography, Grid, CircularProgress, Alert, Button, Card
+  Box, Typography, CircularProgress, Alert, Button, Card, Grid
 } from '@mui/material';
 import {
   Mic,
@@ -475,7 +475,7 @@ function MediaSetupStep({
       
       <Grid container spacing={4}>
         {/* Left Column - Controls */}
-        <Grid item xs={12} md={6}>
+        <Grid item size={{ xs: 12, md: 6 }}>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b', mb: 3 }}>
               Test Your Devices
@@ -660,7 +660,7 @@ function MediaSetupStep({
         </Grid>
 
         {/* Right Column - Video Preview */}
-        <Grid item xs={12} md={6}>
+        <Grid item size={{ xs: 12, md: 6 }}>
           <Card sx={{ p: 3, border: 'none',  boxShadow:'3px 1px 1px #f0f0f0', height: 'fit-content' }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b' }}>

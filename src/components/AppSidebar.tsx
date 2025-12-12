@@ -19,7 +19,7 @@ import Logo from "@/assets/logo.png"
 
 const candidateNavItems = [
   { title: 'Profile', url: '/profile', icon: User },
-  // { title: 'Mentors', url: '/mentors', icon: GraduationCap },
+  { title: 'Mentors', url: '/mentors', icon: GraduationCap },
   { title: 'Interview Prep', url: '/interview-prep', icon: Target },
   { title: 'Jobs', url: '/jobs', icon: Briefcase },
   { title: 'Pricing', url: '/pricing', icon: DollarSign },
