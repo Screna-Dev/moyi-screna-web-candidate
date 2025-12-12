@@ -16,7 +16,7 @@ const Profile = lazy(() => import("./pages/Profile"));
 const ProfileCompleted = lazy(() => import("./pages/ProfileCompleted"));
 const ProfileEdit = lazy(() => import("./pages/ProfileEdit"));
 const Interview = lazy(() => import("./pages/Interview"));
-const Pricing = lazy(() => import("./pages/Pricing"));
+// const Pricing = lazy(() => import("./pages/Pricing"));
 const Jobs = lazy(() => import("./pages/Jobs"));
 const InterviewPrep = lazy(() => import("./pages/InterviewPrep"));
 const InterviewPrepEmpty = lazy(() => import("./pages/InterviewPrepEmpty"));
@@ -29,6 +29,9 @@ const AIInterview = lazy(() => import("./pages/ai-interview"));
 const Mentors = lazy(()=> import("./pages/Mentors"))
 const MentorApply = lazy(()=> import("./pages/MentorApply"))
 const MentorDashboard = lazy(()=> import("./pages/MentorDashboard"))
+
+const Settings = lazy(()=> import("./pages/Settings"))
+const Admin = lazy(()=> import("./pages/Admin"))
 
 const queryClient = new QueryClient();
 
@@ -64,7 +67,7 @@ const App = () => (
                 <Route path="/profile_completed" element={<ProfileCompleted />} />
                 <Route path="/profile/edit" element={<ProfileEdit />} />
                 <Route path="/interview" element={<Interview />} />
-                <Route path="/pricing" element={<Pricing />} />
+                {/* <Route path="/pricing" element={<Pricing />} /> */}
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/interview-prep" element={<InterviewPrep />} />
                 <Route path="/interview-prep/empty" element={<InterviewPrepEmpty />} />
@@ -75,6 +78,8 @@ const App = () => (
                   path="/interview/:interviewId" 
                   element={<AIInterview isDirectAccess={true} />} 
                 />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/admin" element={<Admin />} />
               </Route>
               
               {/* Catch-all routes */}

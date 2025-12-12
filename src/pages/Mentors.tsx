@@ -30,6 +30,12 @@ interface Mentor {
   availability: string;
 }
 
+interface SessionReview {
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
 interface MentorSession {
   id: string;
   mentorId: string;
@@ -45,6 +51,7 @@ interface MentorSession {
     summary: string;
     actionItems: string[];
   };
+  review?: SessionReview;
 }
 
 export default function Mentors() {
@@ -57,6 +64,11 @@ export default function Mentors() {
   const [mentorSpecialtyFilter, setMentorSpecialtyFilter] = useState("all");
   const [mentorPriceFilter, setMentorPriceFilter] = useState("all");
   const [mentorSortBy, setMentorSortBy] = useState("rating");
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedSessionForReview, setSelectedSessionForReview] = useState<MentorSession | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [sessionReviews, setSessionReviews] = useState<Record<string, SessionReview>>({});
 
   // Get all unique expertises and topics for filters
   const allExpertises = Array.from(
@@ -218,6 +230,61 @@ export default function Mentors() {
   const upcomingSessions = mentorSessions.filter((s) => s.status === "upcoming");
   const completedSessions = mentorSessions.filter((s) => s.status === "completed");
 
+  const handleOpenReviewDialog = (session: MentorSession) => {
+    setSelectedSessionForReview(session);
+    const existingReview = sessionReviews[session.id];
+    if (existingReview) {
+      setReviewRating(existingReview.rating);
+      setReviewComment(existingReview.comment);
+    } else {
+      setReviewRating(5);
+      setReviewComment("");
+    }
+    setReviewDialogOpen(true);
+  };
+
+  const handleSubmitReview = () => {
+    if (!selectedSessionForReview) return;
+    
+    const newReview: SessionReview = {
+      rating: reviewRating,
+      comment: reviewComment,
+      createdAt: new Date().toISOString(),
+    };
+    
+    setSessionReviews(prev => ({
+      ...prev,
+      [selectedSessionForReview.id]: newReview,
+    }));
+    
+    setReviewDialogOpen(false);
+    setSelectedSessionForReview(null);
+  };
+
+  const renderStars = (rating: number, interactive: boolean = false, onRate?: (rating: number) => void) => {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            disabled={!interactive}
+            onClick={() => interactive && onRate?.(star)}
+            className={`${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : 'cursor-default'}`}
+          >
+            <Star
+              className={`h-5 w-5 ${
+                star <= rating
+                  ? 'fill-yellow-400 text-yellow-400'
+                  : 'text-muted-foreground'
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
@@ -229,13 +296,23 @@ export default function Mentors() {
               Browse mentors, manage your sessions, and connect with experienced professionals
             </p>
           </div>
-          <Button 
-            onClick={() => navigate('/mentor/apply')}
-            className="gap-2"
-          >
-            <GraduationCap className="w-4 h-4" />
-            Become a Mentor
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/mentor/dashboard')}
+              className="gap-2"
+            >
+              <Users className="w-4 h-4" />
+              My Mentor Dashboard
+            </Button>
+            <Button 
+              onClick={() => navigate('/mentor/apply')}
+              className="gap-2"
+            >
+              <GraduationCap className="w-4 h-4" />
+              Become a Mentor
+            </Button>
+          </div>
         </div>
 
         {/* Main Tabs */}
@@ -798,6 +875,37 @@ export default function Mentors() {
                                   <p className="text-sm text-muted-foreground italic">"{session.notes}"</p>
                                 )}
 
+                                {/* Review Section */}
+                                {sessionReviews[session.id] ? (
+                                  <div className="bg-muted/50 p-3 rounded-lg mt-2">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-sm font-medium">Your Review</span>
+                                      {renderStars(sessionReviews[session.id].rating)}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      "{sessionReviews[session.id].comment}"
+                                    </p>
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost" 
+                                      className="mt-2 text-xs"
+                                      onClick={() => handleOpenReviewDialog(session)}
+                                    >
+                                      Edit Review
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="mt-2"
+                                    onClick={() => handleOpenReviewDialog(session)}
+                                  >
+                                    <Star className="h-4 w-4 mr-2" />
+                                    Leave a Review
+                                  </Button>
+                                )}
+
                                 {session.coachingReport && (
                                   <Sheet>
                                     <SheetTrigger asChild>
@@ -855,6 +963,45 @@ export default function Mentors() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Review Dialog */}
+        <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {sessionReviews[selectedSessionForReview?.id || ''] ? 'Edit Review' : 'Leave a Review'}
+              </DialogTitle>
+              <DialogDescription>
+                Share your experience with {selectedSessionForReview?.mentorName}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Rating</label>
+                <div className="flex justify-center py-2">
+                  {renderStars(reviewRating, true, setReviewRating)}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Your Review</label>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Share your experience with this mentor..."
+                  className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmitReview} disabled={!reviewComment.trim()}>
+                {sessionReviews[selectedSessionForReview?.id || ''] ? 'Update Review' : 'Submit Review'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

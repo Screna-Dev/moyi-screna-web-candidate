@@ -35,10 +35,29 @@ export default function MentorDashboard() {
   // Calculate KPIs
   const upcomingSessions = sessions.filter(s => s.status === 'pending' || s.status === 'confirmed').length;
   const completedThisMonth = sessions.filter(s => s.status === 'completed').length;
-  const avgRating = sessions
-    .filter(s => s.rating > 0)
-    .reduce((acc, s) => acc + s.rating, 0) / sessions.filter(s => s.rating > 0).length || 0;
+  const reviewedSessions = sessions.filter(s => s.rating > 0);
+  const avgRating = reviewedSessions.length > 0
+    ? reviewedSessions.reduce((acc, s) => acc + s.rating, 0) / reviewedSessions.length
+    : 0;
   const earningsThisMonth = earnings.reduce((acc, e) => acc + e.netAmount, 0);
+
+  // Helper to render stars
+  const renderStars = (rating: number) => {
+    return (
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`h-4 w-4 ${
+              star <= rating
+                ? 'fill-yellow-400 text-yellow-400'
+                : 'text-muted-foreground'
+            }`}
+          />
+        ))}
+      </div>
+    );
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -96,6 +115,10 @@ export default function MentorDashboard() {
             <TabsTrigger value="referrals">
               <UserCheck className="w-4 h-4 mr-2" />
               Job Referrals
+            </TabsTrigger>
+            <TabsTrigger value="reviews">
+              <Star className="w-4 h-4 mr-2" />
+              Reviews
             </TabsTrigger>
             <TabsTrigger value="profile">
               <Settings className="w-4 h-4 mr-2" />
@@ -524,6 +547,138 @@ export default function MentorDashboard() {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Reviews Tab */}
+          <TabsContent value="reviews" className="space-y-6">
+            {/* Review Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold">{avgRating.toFixed(1)}</span>
+                    <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total Reviews</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{reviewedSessions.length}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">5-Star Reviews</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {reviewedSessions.filter(s => s.rating === 5).length}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Response Rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">100%</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Rating Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Rating Distribution</CardTitle>
+                <CardDescription>Breakdown of ratings received</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = reviewedSessions.filter(s => Math.floor(s.rating) === star).length;
+                    const percentage = reviewedSessions.length > 0 ? (count / reviewedSessions.length) * 100 : 0;
+                    return (
+                      <div key={star} className="flex items-center gap-3">
+                        <div className="flex items-center gap-1 w-16">
+                          <span className="text-sm font-medium">{star}</span>
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        </div>
+                        <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-yellow-400 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-muted-foreground w-12 text-right">
+                          {count} ({percentage.toFixed(0)}%)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* All Reviews */}
+            <Card>
+              <CardHeader>
+                <CardTitle>All Reviews</CardTitle>
+                <CardDescription>Feedback from your candidates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {reviewedSessions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Star className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground">No reviews yet</p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Complete sessions to start receiving feedback from candidates
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {reviewedSessions.map(session => (
+                      <div key={session.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarFallback>{session.candidateName[0]}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{session.candidateName}</p>
+                              <p className="text-sm text-muted-foreground">{session.type}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {renderStars(session.rating)}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(new Date(session.date), 'MMM dd, yyyy')}
+                            </p>
+                          </div>
+                        </div>
+                        {session.ratingComment && (
+                          <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+                            "{session.ratingComment}"
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="w-3 h-3" />
+                          <span>{session.durationMinutes} minutes session</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

@@ -142,10 +142,6 @@ const InterviewPrep = () => {
     try {
       const response = await InterviewService.getTrainingPlans();
       
-      // Debug: Log the full response to see structure
-      console.log("API Response:", response);
-      console.log("Response data:", response.data);
-      
       // Handle different response structures
       let plansData = null;
       
@@ -447,6 +443,7 @@ const InterviewPrep = () => {
     if (!plan?.focus_areas || plan.focus_areas.length === 0) return "N/A";
     
     const avgScore = plan.focus_areas.reduce((sum: number, area: any) => sum + (area.score || 0), 0) / plan.focus_areas.length;
+
     return Math.round(avgScore);
   };
 
@@ -455,7 +452,9 @@ const InterviewPrep = () => {
     if (!plan?.modules || plan.modules.length === 0) return 0;
     
     const completedModules = plan.modules.filter((m: any) => m.status === "completed").length;
-    return Math.round((completedModules / plan.modules.length));
+    console.log("plan:", completedModules)
+    console.log("modules length", plan.modules.length)
+    return Math.round((completedModules / plan.modules.length) * 100);
   };
 
   // Get status display info
@@ -670,7 +669,7 @@ const InterviewPrep = () => {
                         <div key={q.question_id || index} className="border rounded-lg p-4 space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-medium flex-1">
-                              Q{q.seq || index + 1}: {q.question_text}
+                              Q{q.question_id || index + 1}: {q.question_text}
                             </p>
                             <div className="flex items-center gap-2">
                               {q.duration_sec && (

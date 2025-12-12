@@ -13,7 +13,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { User, Briefcase, Target, DollarSign, LogOut, GraduationCap, Users } from 'lucide-react';
+import { User, Briefcase, Target, DollarSign, LogOut, GraduationCap, Users, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Logo from "@/assets/logo.png"
 
@@ -22,7 +22,7 @@ const candidateNavItems = [
   { title: 'Mentors', url: '/mentors', icon: GraduationCap },
   { title: 'Interview Prep', url: '/interview-prep', icon: Target },
   { title: 'Jobs', url: '/jobs', icon: Briefcase },
-  { title: 'Pricing', url: '/pricing', icon: DollarSign },
+  { title: 'Settings & Payment', url: '/settings', icon: Settings },
 ];
 
 const mentorNavItems = [

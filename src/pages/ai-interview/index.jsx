@@ -912,7 +912,7 @@ function AIInterview() {
                 Thank you for participating in this AI interview session.
               </Typography>
               <Typography variant="body1" color="#64748b">
-                Your responses have been recorded successfully. You may now close this window.
+                Your responses have been recorded successfully. Your report is currently being processed. Estimated completion time: 5-10 minutes. You may close this window; your report will be available upon completion.
               </Typography>
             </Box>
           </Card>
