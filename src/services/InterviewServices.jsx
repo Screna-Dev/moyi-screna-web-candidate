@@ -24,7 +24,7 @@ export const getTrainingPlanById = (trainingPlanId) => {
 
 // DELETE /training-plans/{trainingPlanId} - Delete training plan
 export const deleteTrainingPlan = (trainingPlanId) => {
-  return API.delete(`/training-plans/${trainingPlanId}`);
+  return API.delete(`${BASE_URL}/${trainingPlanId}`);
 };
 
 export const createTrainingPlanFromJobId = (jobId) => {
@@ -33,12 +33,19 @@ export const createTrainingPlanFromJobId = (jobId) => {
   });
 };
 
+export const endTrainingModule = (moduleId)=> {
+    return API.post(`${BASE_URL}/modules/${moduleId}`, {
+    moduleId: moduleId,
+  });
+}
+
 const InterviewServices = {
   getTrainingPlans,
   createTrainingPlan,
   getTrainingPlanById,
   deleteTrainingPlan,
-  createTrainingPlanFromJobId
+  createTrainingPlanFromJobId,
+  endTrainingModule
 };
 
 export default InterviewServices;

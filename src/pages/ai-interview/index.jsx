@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Card, Container, CircularProgress, Alert, Snackbar, Box, Typography,
-  Chip, Avatar
+  Avatar
 } from '@mui/material';
 import HourglassTopIcon from '@mui/icons-material/HourglassTop';
-import { InterviewSessionService } from '../../services';
+import { InterviewSessionService, InterviewService } from '../../services';
+import PipecatService from '../../services/PipecatService';
 
 // Import step components
 import MediaSetupStep from './MediaSetupStep';
@@ -31,13 +32,16 @@ function AIInterview() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [openSnackbar, setOpenSnackbar] = useState(false);
-  const [isJoined, setIsJoined] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [currentSession, setCurrentSession] = useState(null);
-  const [websocket, setWebsocket] = useState(null);
   const [interviewEnded, setInterviewEnded] = useState(false);
-  const [volume] = useState(50);
   const [aiSpeaking, setAISpeaking] = useState(false);
+
+  const isConnectedRef = useRef(false);
+  const isReconnectingRef = useRef(false);
+
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+  useEffect(() => { isReconnectingRef.current = isReconnecting; }, [isReconnecting]);
 
   // Initial mediaState (for reset)
   const initialMediaState = {
@@ -53,45 +57,36 @@ function AIInterview() {
   // Media state - shared between steps
   const [mediaState, setMediaState] = useState(initialMediaState);
 
-  // Interview state
-  const [interviewState, setInterviewState] = useState({
-    isRecording: false,
-    isWaitingForAI: false,
-    transcripts: []
-  });
-
-  // Refs
-  const heartbeatIntervalRef = useRef(null);
-  const keepaliveIntervalRef = useRef(null);
-  const audioDataBufferRef = useRef([]);
-  const isRecordingRef = useRef(false);
-  const audioPlaybackRef = useRef({
-    context: null,
-    queue: [],
-    isPlaying: false,
-    nextStartTime: 0
-  });
-
   // Auto-reconnect control
   const aiReconnectAttemptsRef = useRef(0);
   const aiReconnectTimerRef = useRef(null);
   const MAX_AI_RECONNECT_ATTEMPTS = 5;
 
   const startAutoReconnectAI = () => {
+    console.log("⚠️ startAutoReconnectAI called", {
+      ended: interviewEndedRef.current,
+    });
+
     if (aiReconnectTimerRef.current) return;
+
     setIsReconnecting(true);
+
     aiReconnectTimerRef.current = setInterval(async () => {
-      if (!isConnected && !interviewEnded && aiReconnectAttemptsRef.current < MAX_AI_RECONNECT_ATTEMPTS) {
-        console.log(`🔄 Auto-reconnect AI attempt ${aiReconnectAttemptsRef.current + 1}`);
+      // Hard exit if ended
+      if (interviewEndedRef.current) {
+        stopAutoReconnectAI();
+        return;
+      }
+
+      const connected = PipecatService.getIsConnected();
+
+      if (!connected && aiReconnectAttemptsRef.current < MAX_AI_RECONNECT_ATTEMPTS) {
         aiReconnectAttemptsRef.current++;
         try {
           await connectToInterview();
-          console.log('✅ Auto-reconnect AI success');
           stopAutoReconnectAI();
-          setSuccess("AI connection restored!");
-          setOpenSnackbar(true);
-        } catch (err) {
-          console.warn("❌ Auto-reconnect AI failed:", err);
+        } catch (e) {
+          // ignore
         }
       }
     }, 5000);
@@ -103,13 +98,10 @@ function AIInterview() {
       aiReconnectTimerRef.current = null;
     }
     aiReconnectAttemptsRef.current = 0;
-    setIsReconnecting(false);
-  };
 
-  // Sync recording state to ref
-  useEffect(() => {
-    isRecordingRef.current = interviewState.isRecording;
-  }, [interviewState.isRecording]);
+    setIsReconnecting(false);
+    isReconnectingRef.current = false;
+  };
 
   // Validate interview status on mount
   useEffect(() => {
@@ -123,15 +115,6 @@ function AIInterview() {
       cleanupAllResources();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Initialize audio playback (only once)
-  useEffect(() => {
-    initAudioPlayback();
-    
-    return () => {
-      cleanupAudioPlayback();
-    };
   }, []);
 
   // Validate interview and create session directly
@@ -202,351 +185,47 @@ function AIInterview() {
     }
   };
 
-  // Connect to AI WebSocket with Deepgram keepalive
-  const connectWebSocket = async (websocketUrl, sessionId) => {
-    try {
-      if (websocket) {
-        try {
-          websocket.close();
-        } catch (e) {
-          console.log('Closing existing websocket:', e);
-        }
-      }
-      
-      let finalWebsocketUrl = websocketUrl;
-      if (websocketUrl.startsWith('https://')) {
-        finalWebsocketUrl = 'wss://' + websocketUrl.substring('https://'.length);
-      } else if (websocketUrl.startsWith('http://')) {
-        finalWebsocketUrl = 'ws://' + websocketUrl.substring('http://'.length);
-      }
-      
-      return new Promise((resolve, reject) => {
-        const ws = new WebSocket(finalWebsocketUrl);
-        ws.binaryType = 'arraybuffer';
-        
-        const connectionTimeout = setTimeout(() => {
-          if (ws.readyState !== WebSocket.OPEN) {
-            ws.close();
-            reject(new Error('Connection timeout'));
-          }
-        }, 10000);
-        
-        ws.onopen = () => {
-          clearTimeout(connectionTimeout);
-          setIsConnected(true);
+  // Ref to track interview ended state for callbacks
+  const interviewEndedRef = useRef(false);
+  
+  // Sync interviewEnded to ref
+  useEffect(() => {
+    interviewEndedRef.current = interviewEnded;
+  }, [interviewEnded]);
 
-          stopAutoReconnectAI();
-          
-          try {
-            const config = {
-              type: 'configuration',
-              data: {
-                encoding: 'linear16',
-                sample_rate: 16000,
-                channels: 1,
-                interim_results: true,
-                endpointing: 500,
-                utterance_end_ms: 1500,
-                vad_events: true,
-                smart_format: true
-              }
-            };
-            
-            ws.send(JSON.stringify(config));
-            
-            const keepalive = {
-              type: 'keepalive',
-              timestamp: new Date().toISOString()
-            };
-            ws.send(JSON.stringify(keepalive));
-            
-          } catch (configError) {
-            console.warn('⚠️ Configuration send failed:', configError);
-          }
-          
-          heartbeatIntervalRef.current = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              try {
-                ws.send(JSON.stringify({
-                  type: 'heartbeat',
-                  timestamp: new Date().toISOString()
-                }));
-              } catch (e) {
-                console.error('Heartbeat error:', e);
-              }
-            }
-          }, 5000);
-          
-          keepaliveIntervalRef.current = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              try {
-                const silenceBuffer = new Int16Array(1600).fill(0);
-                ws.send(silenceBuffer.buffer);
-              } catch (e) {
-                console.error('Keepalive audio error:', e);
-              }
-            }
-          }, 10000);
-          
-          setWebsocket(ws);
-          resolve(ws);
-        };
-        
-        ws.onclose = (event) => {
-          clearTimeout(connectionTimeout);
-          setIsConnected(false);
-          
-          if (heartbeatIntervalRef.current) {
-            clearInterval(heartbeatIntervalRef.current);
-            heartbeatIntervalRef.current = null;
-          }
-          if (keepaliveIntervalRef.current) {
-            clearInterval(keepaliveIntervalRef.current);
-            keepaliveIntervalRef.current = null;
-          }
-          
-          console.error('❌ WebSocket closed:', {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          });
-          
-          if (event.code === 1011) {
-            console.error('🚨 DEEPGRAM TIMEOUT ERROR - Despite keepalives');
-            setError('Connection timeout: Please try starting the interview again. If this persists, refresh the page.');
-            setOpenSnackbar(true);
-          } else if (event.code !== 1000 && isJoined && !interviewEnded) {
-            setError(`Connection closed: ${event.reason || 'Unknown reason'}`);
-            setOpenSnackbar(true);
-            startAutoReconnectAI();
-          }
-          
-          reject(new Error(`Connection closed: ${event.reason || 'Unknown'}`));
-        };
-        
-        ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
-          if (!interviewEnded) {
-            setError('WebSocket connection error. Retrying...');
-            setOpenSnackbar(true);
-            startAutoReconnectAI();
-          }
-        };
-        
-        ws.onmessage = handleWebSocketMessage;
-      });
-    } catch (error) {
-      console.error('❌ WebSocket setup error:', error);
-      throw error;
-    }
-  };
-
-  // Handle WebSocket messages from AI system
-  const handleWebSocketMessage = (event) => {
-    try {
-      if (event.data instanceof ArrayBuffer) {
-        console.log('🤖 Received binary audio data from AI:', event.data.byteLength, 'bytes');
-        return;
-      }
-      
-      const message = JSON.parse(event.data);
-      switch (message.type) {
-        case 'transcript':
-          setInterviewState(prev => ({
-            ...prev,
-            transcripts: [...prev.transcripts, message],
-            isWaitingForAI: message.speaker === 'ai' ? false : prev.isWaitingForAI
-          }));
-          break;
-
-        case 'audio': {
-          if (window.__handleAIAudioMessage) {
-            window.__handleAIAudioMessage(message);
-          } else {
-            if (message?.format === 'raw' && message?.encoding === 'pcm_f32le' && typeof message.data === 'string') {
-              const f32 = window.__decodePCM_F32LE_Base64ToFloat32?.(message.data);
-              if (f32 && window.__injectAIPCM) {
-                window.__injectAIPCM(f32, message.sample_rate || 24000);
-                break;
-              }
-            }
-            
-            const b64 = atob(message.data);
-            const buf = new ArrayBuffer(b64.length);
-            const u8 = new Uint8Array(buf);
-            for (let i = 0; i < b64.length; i++) u8[i] = b64.charCodeAt(i);
-            playReceivedAudio(buf, message.sample_rate, message.encoding);
-          }
-          break;
-        }
-
-        case 'event':
-          handleEventMessage(message);
-          break;
-          
-        case 'heartbeat':
-          break;
-          
-        default:
-          console.log('❓ Unknown AI message type:', message.type, message);
-      }
-    } catch (error) {
-      console.error('❌ AI Message handling error:', error);
-    }
-  };
-
-  const initAudioPlayback = () => {
-    if (!audioPlaybackRef.current.context) {
-      const context = new (window.AudioContext || window.webkitAudioContext)();
-      audioPlaybackRef.current.context = context;
-      audioPlaybackRef.current.nextStartTime = context.currentTime;
-      console.log('✅ Audio playback context initialized');
-    }
-    return audioPlaybackRef.current.context;
-  };
-
-  const playReceivedAudio = (audioData, sampleRate = 16000, encoding = 'pcm_s16le') => {
-    if (!audioData) return;
-
-    try {
-      const context = audioPlaybackRef.current.context;
-      if (!context) {
-        console.error('❌ Audio context not initialized');
-        return;
-      }
-
-      let audioBuffer;
-      if (encoding === 'pcm_f32le') {
-        const floatArray = new Float32Array(audioData.byteLength / 4);
-        const dataView = new DataView(audioData);
-
-        for (let i = 0; i < floatArray.length; i++) {
-          floatArray[i] = dataView.getFloat32(i * 4, true);
-        }
-
-        audioBuffer = context.createBuffer(1, floatArray.length, sampleRate);
-        const channelData = audioBuffer.getChannelData(0);
-
-        const fadeLength = Math.min(100, floatArray.length / 10);
-        for (let i = 0; i < floatArray.length; i++) {
-          let sample = floatArray[i];
-          if (i < fadeLength) sample *= i / fadeLength;
-          else if (i >= floatArray.length - fadeLength) sample *= (floatArray.length - i) / fadeLength;
-          channelData[i] = Math.max(-0.99, Math.min(0.99, sample));
-        }
-
-      } else {
-        const int16Array = new Int16Array(audioData);
-        const floatArray = new Float32Array(int16Array.length);
-
-        for (let i = 0; i < int16Array.length; i++) {
-          floatArray[i] = int16Array[i] / 32768.0;
-        }
-
-        audioBuffer = context.createBuffer(1, floatArray.length, sampleRate);
-        audioBuffer.getChannelData(0).set(floatArray);
-      }
-
-      audioPlaybackRef.current.queue.push({
-        buffer: audioBuffer,
-        timestamp: Date.now()
-      });
-
-      scheduleAudioPlayback();
-
-    } catch (error) {
-      console.error('Audio playback error:', error);
-    }
-  };
-
-  const scheduleAudioPlayback = async () => {
-    if (audioPlaybackRef.current.isPlaying || audioPlaybackRef.current.queue.length === 0) return;
-
-    audioPlaybackRef.current.isPlaying = true;
-    setAISpeaking(true);
-
-    while (audioPlaybackRef.current.queue.length > 0) {
-      const audioData = audioPlaybackRef.current.queue.shift();
-
-      try {
-        const context = audioPlaybackRef.current.context;
-        const source = context.createBufferSource();
-        source.buffer = audioData.buffer;
-
-        const gainNode = context.createGain();
-        gainNode.gain.value = volume / 100;
-
-        source.connect(gainNode);
-        gainNode.connect(context.destination);
-
-        const currentTime = context.currentTime;
-        const startTime = Math.max(currentTime, audioPlaybackRef.current.nextStartTime);
-
-        source.start(startTime);
-
-        audioPlaybackRef.current.nextStartTime = startTime + audioData.buffer.duration;
-
-        await new Promise(resolve => source.onended = resolve);
-      } catch (error) {
-        console.error('Audio playback chunk error:', error);
-      }
-    }
-
-    audioPlaybackRef.current.isPlaying = false;
-    setAISpeaking(false);
-  };
-
-  const handleEventMessage = (message) => {
-    if (message.event === 'error') {
-      setError(message.data?.message || "Unknown error occurred");
-      setOpenSnackbar(true);
-    } else if (message.event === 'session_end' || message.event === 'interview_complete') {
-      setSuccess('Interview completed: ' + (message.data?.reason || 'successfully'));
-      endMeeting()
-      setOpenSnackbar(true);
-      setInterviewEnded(true);
-    } else if (message.event === 'processing_start') {
-      setInterviewState(prev => ({ ...prev, isWaitingForAI: true }));
-    } else if (message.event === 'ai_response_start') {
-      setInterviewState(prev => ({ ...prev, isWaitingForAI: false }));
-    }
-  };
-
-  const cleanupAudioPlayback = () => {
-    audioPlaybackRef.current.queue = [];
-    audioPlaybackRef.current.isPlaying = false;
-
-    if (audioPlaybackRef.current.context && audioPlaybackRef.current.context.state !== 'closed') {
-      audioPlaybackRef.current.context.close().then(() => {
-        console.log('✅ Audio playback context closed');
-        audioPlaybackRef.current.context = null;
-        audioPlaybackRef.current.nextStartTime = 0;
-      }).catch(err => {
-        console.error('❌ AudioContext cleanup error:', err);
-      });
-    }
-  };
-
+  // Connect to Pipecat using the SDK
   const connectToInterview = async () => {
-    if (isConnected || !currentSession) {
-      return websocket;
-    }
+    if (interviewEndedRef.current) return;
+    if (PipecatService.getIsConnected() || !currentSession) return;
 
     setIsConnecting(true);
-    
     try {
-      const wsConnection = await connectWebSocket(currentSession.websocketUrl, currentSession.sessionId);
-      setIsJoined(true);
-      return wsConnection;
-    } catch (error) {
-      console.error("AI connection failed:", error);
-      setError("Failed to connect to AI interview system. Please try again.");
-      setOpenSnackbar(true);
-      throw error;
+      await PipecatService.connect(currentSession.websocketUrl, {
+        onDisconnected: (info) => {
+          setIsConnected(false);
+          console.log("Disconnected info:", info);
+          // Do not reconnect if user ended intentionally
+          if (info?.intentional || interviewEndedRef.current || info?.code === null) {
+            endMeeting();
+            return;
+          }
+
+          startAutoReconnectAI();
+        },
+        onError: (err) => {
+          // Ignore errors during intentional ending
+          if (interviewEndedRef.current) return;
+          setError(`AI connection error: ${err.message || 'Unknown'}`);
+          setOpenSnackbar(true);
+        },
+      });
+      setIsConnected(true);
+      return true;
     } finally {
       setIsConnecting(false);
     }
   };
+
 
   const handleNextStep = async () => {
     if (activeStep === 0 && mediaState.mediaReady && interviewStatus === 'valid') {
@@ -569,31 +248,13 @@ function AIInterview() {
     }
   };
 
-  const cleanupConnectionResources = () => {
+  const cleanupConnectionResources = async () => {
     console.log('🧹 Cleaning up connection resources...');
     
-    if (heartbeatIntervalRef.current) {
-      clearInterval(heartbeatIntervalRef.current);
-      heartbeatIntervalRef.current = null;
-    }
-    
-    if (keepaliveIntervalRef.current) {
-      clearInterval(keepaliveIntervalRef.current);
-      keepaliveIntervalRef.current = null;
-    }
-    
-    if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-      try {
-        websocket.close(1000, 'Normal closure');
-        console.log('✅ AI WebSocket closed');
-      } catch (err) {
-        console.warn('⚠️ Error closing AI WebSocket:', err);
-      }
-      setWebsocket(null);
-    }
+    // Disconnect Pipecat
+    await PipecatService.disconnect();
     
     setIsConnected(false);
-    setIsJoined(false);
   };
 
   const cleanupMediaStreams = () => {
@@ -619,12 +280,11 @@ function AIInterview() {
     console.log('✅ Media state reset to initial values');
   };
 
-  const cleanupAllResources = () => {
+  const cleanupAllResources = async () => {
     console.log('🧹 Cleaning up all resources...');
     
     stopAutoReconnectAI();
-    cleanupConnectionResources();
-    cleanupAudioPlayback();
+    await cleanupConnectionResources();
     cleanupMediaStreams();
     
     setCurrentSession(null);
@@ -638,22 +298,30 @@ function AIInterview() {
       setOpenSnackbar(true);
       return;
     }
-    
+
     setIsLoading(true);
-    
+
     try {
-      console.log('🔴 Ending meeting...');
+      // Mark ended first
+      setInterviewEnded(true);
+      interviewEndedRef.current = true;
+
+      // Hard stop reconnect first
+      stopAutoReconnectAI();
+
+      // Tell Pipecat this is intentional
+      await PipecatService.disconnect({ intentional: true });
+
+      // End module - let the backend change the module status
+      await InterviewService.endTrainingModule(interviewId);
       
-      // Cleanup all resources
-      cleanupAllResources();
+      // Then stop media
+      cleanupMediaStreams();
 
       setSuccess("Interview ended. Thank you for your participation!");
       setOpenSnackbar(true);
-      setInterviewEnded(true);
-      
-      console.log('✅ Meeting ended successfully');
-    } catch (error) {
-      setError(`Error ending interview: ${error.message}`);
+    } catch (e) {
+      setError(`Error ending interview: ${e.message}`);
       setOpenSnackbar(true);
     } finally {
       setIsLoading(false);
@@ -701,23 +369,16 @@ function AIInterview() {
     return {
       aiService: isConnected ? 'connected' : 'disconnected',
       audioStream: mediaState.audioReady ? 'connected' : 'disconnected',
-      videoStream: mediaState.videoReady ? 'connected' : 'disconnected',
-      recordingServer: isJoined ? 'connected' : 'disconnected'
+      videoStream: mediaState.videoReady ? 'connected' : 'disconnected'
     };
   };
 
   const sharedProps = {
     mediaState,
     setMediaState,
-    interviewState,
-    setInterviewState,
-    websocket,
     isConnected,
     currentSession,
-    currentMeeting: currentSession, // For backward compatibility with child components
     interviewEnded,
-    audioDataBufferRef,
-    isRecordingRef,
     error,
     setError,
     success,
@@ -870,8 +531,7 @@ function AIInterview() {
               {Object.entries({
                 'AI Service': connectionStatus.aiService,
                 'Audio Stream': connectionStatus.audioStream,
-                'Video Stream': connectionStatus.videoStream,
-                'Recording Server': connectionStatus.recordingServer
+                'Video Stream': connectionStatus.videoStream
               }).map(([label, status]) => (
                 <Box key={label} display="flex" alignItems="center" gap={1.5}>
                   <Box 

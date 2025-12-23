@@ -419,7 +419,7 @@ const InterviewPrep = () => {
       category: module.category,
       difficulty: module.difficulty,
       duration: module.duration_minutes || 30,
-      completed: module.status === "completed",
+      status: module.status,
       score: module.score,
       persona: module.persona,
       topic: module.topic,
@@ -501,7 +501,7 @@ const InterviewPrep = () => {
     successRate: calculateSuccessRate(plan),
     progress: calculateProgress(plan),
     categoryScores: getCategoryScores(plan),
-    status: plan.status || "pending",
+    status: plan.status,
   }));
 
   const currentJob = targetJobs.find((job) => job.id === selectedJob);
@@ -1084,7 +1084,7 @@ const InterviewPrep = () => {
                                 <CardTitle className="text-lg">{session.title}</CardTitle>
                                 <CardDescription className="mt-1">{session.category}</CardDescription>
                               </div>
-                              {session.completed && (
+                              {session.status === "completed" && (
                                 <Badge variant="secondary" className="bg-secondary/20">
                                   <CheckCircle2 className="h-3 w-3 mr-1" />
                                   Completed
@@ -1100,7 +1100,7 @@ const InterviewPrep = () => {
                               </span>
                               <Badge variant="outline">{session.difficulty}</Badge>
                             </div>
-                            {session.completed ? (
+                            {session.status === "completed" && (
                               <div className="space-y-3">
                                 {session.score !== undefined && (
                                   <div className="flex items-center justify-between">
@@ -1124,7 +1124,8 @@ const InterviewPrep = () => {
                                   </Button>
                                 </div>
                               </div>
-                            ) : (
+                            )}
+                            {session.status === "pending" && (
                               <Button 
                                 className="w-full gradient-primary"
                                 onClick={() => navigate(`/interview/${session.id}`)}
@@ -1133,6 +1134,13 @@ const InterviewPrep = () => {
                                 Start Session
                               </Button>
                             )}
+                            {
+                              session.status === "processing" && (
+                                <div>
+                                  <p className="text-muted-foreground">Your interview result is processing...</p>
+                                </div>
+                              )
+                            }
                           </CardContent>
                         </Card>
                       ))}
