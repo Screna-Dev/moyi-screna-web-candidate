@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AdminUser } from '@/data/adminMockData';
 import {
   FileText,
   Video,
@@ -12,7 +11,8 @@ import {
   Calendar,
   Clock,
   ChevronRight,
-  X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Dialog,
@@ -20,14 +20,109 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { getUserReports } from '@/services/adminService';
 
-interface ReportsVideosTabProps {
-  user: AdminUser;
-}
+export function ReportsVideosTab({ user }) {
+  const [reports, setReports] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState(null);
 
-export function ReportsVideosTab({ user }: ReportsVideosTabProps) {
-  const [selectedReport, setSelectedReport] = useState<typeof user.reports[0] | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState<typeof user.videos[0] | null>(null);
+  // Fetch reports when user changes
+  useEffect(() => {
+    const fetchReports = async () => {
+      if (!user?.id) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await getUserReports(user.id);
+        const apiReports = response.data.data?.reports || [];
+        
+        // Transform API reports to match UI structure
+        const transformedReports = apiReports.map((report) => ({
+          id: report.interview_id,
+          date: formatDate(report.generated_at),
+          type: 'AI Mock Interview Report',
+          summary: report.feedback_summary || '',
+          readinessImpact: Math.round((report.score_overall || 0) * 100),
+          scores: transformScores(report.scores),
+          strengths: report.strengths || [],
+          weaknesses: report.areas_for_improvement || [],
+          recommendations: report.recommendations ? [report.recommendations] : [],
+        }));
+
+        setReports(transformedReports);
+      } catch (err) {
+        console.error('Failed to fetch reports:', err);
+        setError('Failed to load reports');
+        setReports([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReports();
+  }, [user?.id]);
+
+  // Helper: Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Helper: Transform scores object to array
+  const transformScores = (scores) => {
+    if (!scores) return [];
+    const result = [];
+    if (scores.resume_background !== undefined) {
+      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background * 100) });
+    }
+    if (scores.domain_knowledge !== undefined) {
+      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge * 100) });
+    }
+    if (scores.technical_skills !== undefined) {
+      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills * 100) });
+    }
+    if (scores.behavioral !== undefined) {
+      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral * 100) });
+    }
+    return result;
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500 opacity-50" />
+            <h3 className="font-semibold mb-2">Error Loading Reports</h3>
+            <p className="text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -40,14 +135,14 @@ export function ReportsVideosTab({ user }: ReportsVideosTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {user.reports.length === 0 ? (
+          {reports.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="w-10 h-10 mx-auto mb-3 opacity-50" />
               <p>No reports available</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {user.reports.map((report) => (
+              {reports.map((report) => (
                 <div
                   key={report.id}
                   className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer"
@@ -85,7 +180,7 @@ export function ReportsVideosTab({ user }: ReportsVideosTabProps) {
         </CardContent>
       </Card>
 
-      {/* Videos Section */}
+      {/* Videos Section - No API endpoint available yet */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -94,14 +189,14 @@ export function ReportsVideosTab({ user }: ReportsVideosTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {user.videos.length === 0 ? (
+          {user.videos?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Video className="w-10 h-10 mx-auto mb-3 opacity-50" />
               <p>No recorded sessions available</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {user.videos.map((video) => (
+              {user.videos?.map((video) => (
                 <div
                   key={video.id}
                   className="rounded-lg border border-border overflow-hidden hover:border-primary/50 transition-colors cursor-pointer"
@@ -225,7 +320,7 @@ export function ReportsVideosTab({ user }: ReportsVideosTabProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Video Player Modal */}
+      {/* Video Player Modal - kept for future use when video API is available */}
       <Dialog open={!!selectedVideo} onOpenChange={() => setSelectedVideo(null)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>

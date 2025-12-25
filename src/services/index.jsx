@@ -5,6 +5,7 @@ import * as JobService from './JobServices'
 import * as InterviewService from './InterviewServices'
 import * as InterviewSessionService from './IntervewSesstionServices'
 import * as PipecatService from './PipecatService'
+import * as adminService from './adminService'
 // Export the API instance and all services
 export {
   MeetingService,
@@ -12,5 +13,6 @@ export {
   JobService,
   InterviewService,
   InterviewSessionService,
-  PipecatService
+  PipecatService,
+  adminService
 };

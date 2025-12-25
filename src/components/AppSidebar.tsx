@@ -13,7 +13,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { User, Briefcase, Target, DollarSign, LogOut, GraduationCap, Users, Settings } from 'lucide-react';
+import { User, Briefcase, Target, DollarSign, LogOut, GraduationCap, Users, Settings, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Logo from "@/assets/logo.png"
 
@@ -31,25 +31,42 @@ const mentorNavItems = [
   { title: 'Pricing', url: '/pricing', icon: DollarSign },
 ];
 
+const adminNavItems = [
+  { title: 'Admin Dashboard', url: '/admin', icon: ShieldCheck },
+];
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const { logout, user } = useAuth();
   const isCollapsed = state === 'collapsed';
 
-  const navItems = user?.role === 'mentor' ? mentorNavItems : candidateNavItems;
+  // Determine which nav items to show based on user role
+  const getNavItems = () => {
+    if (user?.role === 'admin') {
+      return adminNavItems;
+    }
+    if (user?.role === 'mentor') {
+      return mentorNavItems;
+    }
+    return candidateNavItems;
+  };
+
+  const navItems = getNavItems();
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-border p-4">
         <div className="flex items-center gap-2">
-          <img src = {Logo} alt = "Logo" className="w-6 h-6 text-primary" />
+          <img src={Logo} alt="Logo" className="w-6 h-6 text-primary" />
           {!isCollapsed && <span className="font-bold text-lg">Screna AI</span>}
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {user?.role === 'admin' ? 'Admin' : 'Navigation'}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
@@ -77,6 +94,11 @@ export function AppSidebar() {
           <div className="text-sm mb-2 px-2">
             <p className="font-medium text-foreground">{user.name}</p>
             <p className="text-muted-foreground text-xs">{user.email}</p>
+            {user.role === 'admin' && (
+              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                Admin
+              </span>
+            )}
           </div>
         )}
         <Button

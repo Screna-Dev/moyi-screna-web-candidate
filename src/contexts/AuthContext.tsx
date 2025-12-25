@@ -7,6 +7,7 @@ interface User {
   email: string;
   name: string;
   avatar?: string;
+  role?: string;
 }
 
 interface AuthContextType {
@@ -50,13 +51,19 @@ const decodeToken = (token: string): User | null => {
     
     const payload = JSON.parse(jsonPayload);
     
-    // Extract user info from token
-    // Adjust these fields based on your JWT structure
+    // Extract role - check common JWT field names for admin status
+    let role = 'candidate';
+
+    if (Array.isArray(payload.roles) && payload.roles.includes('ADMIN')) {
+      role = 'admin';
+    }
+    
     return {
       id: payload.sub || payload.userId || payload.id || '',
       email: payload.email || '',
       name: payload.name || payload.username || '',
       avatar: payload.avatar || payload.picture || undefined,
+      role: role,
     };
   } catch (error) {
     console.error('Failed to decode token:', error);

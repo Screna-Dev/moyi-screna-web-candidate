@@ -1,3 +1,137 @@
+// ============================================
+// API Response Types (from your backend)
+// ============================================
+
+export interface ApiResponse<T> {
+  status: string;
+  message: string;
+  errorCode?: string;
+  data: T;
+}
+
+// User Search API Response
+export interface ApiUserListItem {
+  id: string;
+  email: string;
+  name: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'BANNED' | 'TRIAL';
+  createdAt: string;
+  lastActiveAt: string;
+  roles: string[];
+}
+
+export interface PageMeta {
+  pageNumber: number;
+  pageSize: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+}
+
+export interface UserSearchResponse {
+  content: ApiUserListItem[];
+  pageMeta: PageMeta;
+}
+
+export interface UserSearchParams {
+  page?: number;
+  size?: number;
+  search?: string;
+  role?: string;
+  status?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+// Training Plan API Response
+export interface ApiFocusArea {
+  name: string;
+  dimension: string;
+  score: number;
+  reason: string;
+  recommended_resources: string[];
+}
+
+export interface ApiSessionQuestion {
+  question: string;
+  description: string;
+  type: string;
+  purpose: string;
+}
+
+export interface ApiSessionConfig {
+  persona: string;
+  topic: string;
+  objectives: string[];
+  evaluation_dimensions: string[];
+  question_type: string[];
+  purposes: string[];
+  questions: ApiSessionQuestion[];
+}
+
+export interface ApiTrainingModule {
+  module_id: string;
+  title: string;
+  category: string;
+  difficulty: string;
+  duration_minutes: number;
+  status: string;
+  persona: string;
+  topic: string;
+  score: number;
+  report_id: string;
+  session_outcome: string;
+  session_config: ApiSessionConfig;
+}
+
+export interface ApiTrainingPlan {
+  id: number;
+  user_id: string;
+  target_job_id: string;
+  target_job_title: string;
+  target_company: string;
+  metrics_ref_id: number;
+  status: string;
+  progress: number;
+  error: string;
+  summary: string;
+  focus_areas: ApiFocusArea[];
+  pending_modules: number;
+  modules: ApiTrainingModule[];
+  created_at: string;
+  updated_at: string;
+}
+
+// Reports API Response
+export interface ApiReportScores {
+  resume_background: number;
+  domain_knowledge: number;
+  technical_skills: number;
+  behavioral: number;
+}
+
+export interface ApiInterviewReport {
+  interview_id: string;
+  generated_at: string;
+  score_overall: number;
+  scores: ApiReportScores;
+  feedback_summary: string;
+  strengths: string[];
+  areas_for_improvement: string[];
+  recommendations: string;
+}
+
+export interface ApiUserReportsResponse {
+  user_id: string;
+  total: number;
+  reports: ApiInterviewReport[];
+}
+
+// ============================================
+// UI Types (matching your existing AdminUser interface)
+// ============================================
+
 export interface AdminUser {
   id: string;
   name: string;
@@ -124,6 +258,14 @@ export interface AdminUser {
   lastActive: string;
   totalRevenue: number;
   lifetimeSpend: number;
+}
+
+// Extended type for admin page with loading state and raw API data
+export interface AdminUserWithApiData extends AdminUser {
+  isLoadingDetails?: boolean;
+  // Raw API data (useful for components that need original structure)
+  _apiTrainingPlans?: ApiTrainingPlan[];
+  _apiReports?: ApiInterviewReport[];
 }
 
 export const mockAdminUsers: AdminUser[] = [

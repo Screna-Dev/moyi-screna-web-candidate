@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AdminUser } from '@/data/adminMockData';
+import type { AdminUser } from '@/data/adminMockData';
 import { TrendingUp, TrendingDown, Brain, Clock, Users, CheckCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -8,7 +8,7 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ user }: OverviewTabProps) {
-  const scoreDiff = user.metrics.readinessScore - user.metrics.previousScore;
+  const scoreDiff = user.metrics?.readinessScore - user.metrics?.previousScore;
   const isImproving = scoreDiff > 0;
 
   return (
@@ -20,12 +20,12 @@ export function OverviewTab({ user }: OverviewTabProps) {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            {user.profile.targetRole} targeting{' '}
-            {user.profile.targetCompanies.length > 0
-              ? user.profile.targetCompanies.join(', ')
+            {user.profile?.targetRole} targeting{' '}
+            {user.profile?.targetCompanies.length > 0
+              ? user.profile?.targetCompanies.join(', ')
               : 'various companies'}
             . {user.trainingPlan ? `Started training on ${user.trainingPlan.startDate}. ` : ''}
-            Currently at {user.metrics.readinessScore}/100 Readiness Score
+            Currently at {user.metrics?.readinessScore}/100 Readiness Score
             {isImproving && `, with strong progress in recent weeks.`}
           </p>
         </CardContent>
@@ -38,7 +38,7 @@ export function OverviewTab({ user }: OverviewTabProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Readiness Score</p>
-                <p className="text-4xl font-bold">{user.metrics.readinessScore}</p>
+                <p className="text-4xl font-bold">{user.metrics?.readinessScore}</p>
               </div>
               <div
                 className={`flex items-center gap-1 ${
@@ -68,21 +68,21 @@ export function OverviewTab({ user }: OverviewTabProps) {
                   <Brain className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">AI Sessions</span>
                 </div>
-                <span className="font-semibold">{user.metrics.last30Days.aiMockSessions}</span>
+                <span className="font-semibold">{user.metrics?.last30Days.aiMockSessions}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Practice Hours</span>
                 </div>
-                <span className="font-semibold">{user.metrics.last30Days.practiceHours}</span>
+                <span className="font-semibold">{user.metrics?.last30Days.practiceHours}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Mentor Sessions</span>
                 </div>
-                <span className="font-semibold">{user.metrics.last30Days.mentorSessions}</span>
+                <span className="font-semibold">{user.metrics?.last30Days.mentorSessions}</span>
               </div>
             </div>
           </CardContent>
@@ -91,9 +91,9 @@ export function OverviewTab({ user }: OverviewTabProps) {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground mb-2">Progress Trend</p>
-            {user.metrics.trendOverTime.length > 0 ? (
+            {user.metrics?.trendOverTime.length > 0 ? (
               <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={user.metrics.trendOverTime}>
+                <LineChart data={user.metrics?.trendOverTime}>
                   <XAxis dataKey="week" hide />
                   <YAxis domain={[0, 100]} hide />
                   <Tooltip
@@ -134,32 +134,32 @@ export function OverviewTab({ user }: OverviewTabProps) {
                 </span>
               </li>
             )}
-            {user.trainingPlan && user.trainingPlan.progressPercent > 50 && (
+            {user.trainingPlan && user.trainingPlan?.progressPercent > 50 && (
               <li className="flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                 <span>
-                  Training plan {user.trainingPlan.progressPercent}% complete
+                  Training plan {user.trainingPlan?.progressPercent}% complete
                 </span>
               </li>
             )}
-            {user.mentorSessions.upcoming.length > 0 && (
+            {user.mentorSessions?.upcoming.length > 0 && (
               <li className="flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
                 <span>
-                  Has {user.mentorSessions.upcoming.length} upcoming mentor session
-                  {user.mentorSessions.upcoming.length > 1 ? 's' : ''}
+                  Has {user.mentorSessions?.upcoming.length} upcoming mentor session
+                  {user.mentorSessions?.upcoming.length > 1 ? 's' : ''}
                 </span>
               </li>
             )}
-            {user.metrics.totalAIMockSessions > 20 && (
+            {user.metrics?.totalAIMockSessions > 20 && (
               <li className="flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                 <span>
-                  Completed over {user.metrics.totalAIMockSessions} AI mock sessions
+                  Completed over {user.metrics?.totalAIMockSessions} AI mock sessions
                 </span>
               </li>
             )}
-            {user.reports.length === 0 && user.metrics.readinessScore === 0 && (
+            {user.reports?.length === 0 && user.metrics?.readinessScore === 0 && (
               <li className="flex items-start gap-3 text-muted-foreground">
                 <span>No highlights available yet - user is just getting started</span>
               </li>

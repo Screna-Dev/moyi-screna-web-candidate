@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AdminUser } from '@/data/adminMockData';
+import type { AdminUser } from '@/data/adminMockData';
 import {
   Calendar,
   Clock,

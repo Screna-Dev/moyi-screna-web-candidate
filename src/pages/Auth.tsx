@@ -35,7 +35,7 @@ export default function Auth() {
   const [verificationCode, setVerificationCode] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
   
-  const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
+  const { user, login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -118,8 +118,12 @@ export default function Auth() {
           title: 'Welcome back!',
           description: 'You have successfully signed in.'
         });
-        // Navigate after login succeeds
-        navigate('/profile');
+
+        if (user?.role === "admin"){
+          navigate('/admin');
+        } else {
+          navigate('/profile');
+        }
       } else {
         // Signup process
         await signup(email, password, name);

@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { AdminUser } from '@/data/adminMockData';
+import type { AdminUser } from '@/data/adminMockData';
 import {
   CreditCard,
   Calendar,

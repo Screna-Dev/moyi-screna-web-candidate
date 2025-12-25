@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { AdminUser } from '@/data/adminMockData';
+import type { AdminUser } from '@/data/adminMockData';
 import {
   Shield,
   UserX,

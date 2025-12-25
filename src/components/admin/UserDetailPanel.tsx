@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AdminUser } from '@/data/adminMockData';
+import type { AdminUser } from '@/data/adminMockData';
 import { CreditCard, Users, Brain, DollarSign, TrendingUp } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';
 import { TrainingPlanTab } from './tabs/TrainingPlanTab';
@@ -16,6 +16,7 @@ interface UserDetailPanelProps {
 }
 
 export function UserDetailPanel({ user }: UserDetailPanelProps) {
+
   if (!user) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -80,12 +81,12 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
             <p className="text-muted-foreground">{user.email}</p>
             <p className="text-sm text-muted-foreground">ID: {user.id}</p>
             <div className="flex flex-wrap gap-2 mt-2">
-              {user.role.map((r) => (
+              {user?.role?.map((r) => (
                 <Badge key={r} variant="secondary" className={getRoleColor(r)}>
                   {r}
                 </Badge>
               ))}
-              {user.tags.map((tag) => (
+              {user?.tags?.map((tag) => (
                 <Badge key={tag} variant="outline">
                   {tag}
                 </Badge>
@@ -102,10 +103,10 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
                 <CreditCard className="w-4 h-4" />
                 <span className="text-xs">Plan</span>
               </div>
-              <p className="font-semibold">{user.plan.name}</p>
+              <p className="font-semibold">{user?.plan?.name}</p>
             </CardContent>
           </Card>
-          <Card>
+          {/* <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <TrendingUp className="w-4 h-4" />
@@ -113,8 +114,8 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
               </div>
               <p className="font-semibold">{user.credits.remaining}</p>
             </CardContent>
-          </Card>
-          <Card>
+          </Card> */}
+          {/* <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <Brain className="w-4 h-4" />
@@ -122,8 +123,8 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
               </div>
               <p className="font-semibold">{user.metrics.totalAIMockSessions}</p>
             </CardContent>
-          </Card>
-          <Card>
+          </Card> */}
+          {/* <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <Users className="w-4 h-4" />
@@ -131,8 +132,8 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
               </div>
               <p className="font-semibold">{user.metrics.totalMentorSessions}</p>
             </CardContent>
-          </Card>
-          <Card>
+          </Card> */}
+          {/* <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <DollarSign className="w-4 h-4" />
@@ -140,7 +141,7 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
               </div>
               <p className="font-semibold">${user.lifetimeSpend}</p>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
 
