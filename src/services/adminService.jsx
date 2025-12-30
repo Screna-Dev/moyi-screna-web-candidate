@@ -3,6 +3,10 @@ import API from './api';
 // Base endpoint for admin operations
 const BASE_URL = '/admin';
 
+// GET /admin/users/{userId}/overview - Get user training plans
+export const getUserOverview = (userId) => {
+  return API.get(`${BASE_URL}/users/${userId}/overview`);
+};
 // GET /admin/users/{userId}/training-plans - Get user training plans
 export const getUserTrainingPlans = (userId) => {
   return API.get(`${BASE_URL}/users/${userId}/training-plans`);
@@ -19,6 +23,7 @@ export const searchUsers = (params = {}) => {
 };
 
 const adminService = {
+  getUserOverview,
   getUserTrainingPlans,
   getUserReports,
   searchUsers

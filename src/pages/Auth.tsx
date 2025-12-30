@@ -118,11 +118,11 @@ export default function Auth() {
           title: 'Welcome back!',
           description: 'You have successfully signed in.'
         });
-
-        if (user?.role === "admin"){
-          navigate('/admin');
-        } else {
+        console.log(user?.role)
+        if (user?.role === "candidate"){
           navigate('/profile');
+        } else {
+          navigate('/admin');
         }
       } else {
         // Signup process

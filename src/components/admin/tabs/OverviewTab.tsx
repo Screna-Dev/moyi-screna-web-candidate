@@ -1,15 +1,86 @@
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { AdminUser } from '@/data/adminMockData';
-import { TrendingUp, TrendingDown, Brain, Clock, Users, CheckCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Brain, Clock, Users, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { adminService } from '@/services';
 
-interface OverviewTabProps {
-  user: AdminUser;
-}
+export function OverviewTab({ user }) {
+  const [overview, setOverview] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-export function OverviewTab({ user }: OverviewTabProps) {
-  const scoreDiff = user.metrics?.readinessScore - user.metrics?.previousScore;
-  const isImproving = scoreDiff > 0;
+  // Fetch overview when user changes
+  useEffect(() => {
+    const fetchOverview = async () => {
+      if (!user?.id) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await adminService.getUserOverview(user.id);
+        setOverview(response.data.data);
+      } catch (err) {
+        console.error('Failed to fetch overview:', err);
+        setError('Failed to load overview');
+        setOverview(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOverview();
+  }, [user?.id]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500 opacity-50" />
+            <h3 className="font-semibold mb-2">Error Loading Overview</h3>
+            <p className="text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // No data state
+  if (!overview) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <h3 className="font-semibold mb-2">No Overview Data</h3>
+            <p className="text-muted-foreground">Overview data is not available for this user.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Calculate score difference (using previous score from user if available, otherwise show as positive)
+  const previousScore = user?.metrics?.previousScore || 0;
+  const scoreDiff = overview.readinessScore - previousScore;
+  const isImproving = scoreDiff >= 0;
+
+  // Transform progressTrend array to chart data
+  const trendData = (overview.progressTrend || []).map((score, index) => ({
+    week: `Week ${index + 1}`,
+    score: score,
+  }));
 
   return (
     <div className="p-6 space-y-6">
@@ -20,13 +91,7 @@ export function OverviewTab({ user }: OverviewTabProps) {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            {user.profile?.targetRole} targeting{' '}
-            {user.profile?.targetCompanies.length > 0
-              ? user.profile?.targetCompanies.join(', ')
-              : 'various companies'}
-            . {user.trainingPlan ? `Started training on ${user.trainingPlan.startDate}. ` : ''}
-            Currently at {user.metrics?.readinessScore}/100 Readiness Score
-            {isImproving && `, with strong progress in recent weeks.`}
+            {overview.journeySummary || 'No journey summary available.'}
           </p>
         </CardContent>
       </Card>
@@ -38,23 +103,25 @@ export function OverviewTab({ user }: OverviewTabProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Readiness Score</p>
-                <p className="text-4xl font-bold">{user.metrics?.readinessScore}</p>
+                <p className="text-4xl font-bold">{overview.readinessScore || 0}</p>
               </div>
-              <div
-                className={`flex items-center gap-1 ${
-                  isImproving ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {isImproving ? (
-                  <TrendingUp className="w-5 h-5" />
-                ) : (
-                  <TrendingDown className="w-5 h-5" />
-                )}
-                <span className="text-lg font-semibold">
-                  {isImproving ? '+' : ''}
-                  {scoreDiff}
-                </span>
-              </div>
+              {scoreDiff !== 0 && (
+                <div
+                  className={`flex items-center gap-1 ${
+                    isImproving ? 'text-green-600' : 'text-red-600'
+                  }`}
+                >
+                  {isImproving ? (
+                    <TrendingUp className="w-5 h-5" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5" />
+                  )}
+                  <span className="text-lg font-semibold">
+                    {isImproving ? '+' : ''}
+                    {scoreDiff}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -68,21 +135,21 @@ export function OverviewTab({ user }: OverviewTabProps) {
                   <Brain className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">AI Sessions</span>
                 </div>
-                <span className="font-semibold">{user.metrics?.last30Days.aiMockSessions}</span>
+                <span className="font-semibold">{overview.aiSessions || 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Practice Hours</span>
                 </div>
-                <span className="font-semibold">{user.metrics?.last30Days.practiceHours}</span>
+                <span className="font-semibold">{overview.practiceHours || 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Mentor Sessions</span>
                 </div>
-                <span className="font-semibold">{user.metrics?.last30Days.mentorSessions}</span>
+                <span className="font-semibold">{overview.mentorSessions || 0}</span>
               </div>
             </div>
           </CardContent>
@@ -91,9 +158,9 @@ export function OverviewTab({ user }: OverviewTabProps) {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground mb-2">Progress Trend</p>
-            {user.metrics?.trendOverTime.length > 0 ? (
+            {trendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={user.metrics?.trendOverTime}>
+                <LineChart data={trendData}>
                   <XAxis dataKey="week" hide />
                   <YAxis domain={[0, 100]} hide />
                   <Tooltip
@@ -126,40 +193,14 @@ export function OverviewTab({ user }: OverviewTabProps) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {scoreDiff > 0 && (
-              <li className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                <span>
-                  Readiness improved +{scoreDiff} points in recent period
-                </span>
-              </li>
-            )}
-            {user.trainingPlan && user.trainingPlan?.progressPercent > 50 && (
-              <li className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                <span>
-                  Training plan {user.trainingPlan?.progressPercent}% complete
-                </span>
-              </li>
-            )}
-            {user.mentorSessions?.upcoming.length > 0 && (
-              <li className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                <span>
-                  Has {user.mentorSessions?.upcoming.length} upcoming mentor session
-                  {user.mentorSessions?.upcoming.length > 1 ? 's' : ''}
-                </span>
-              </li>
-            )}
-            {user.metrics?.totalAIMockSessions > 20 && (
-              <li className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                <span>
-                  Completed over {user.metrics?.totalAIMockSessions} AI mock sessions
-                </span>
-              </li>
-            )}
-            {user.reports?.length === 0 && user.metrics?.readinessScore === 0 && (
+            {overview.highlights && overview.highlights.length > 0 ? (
+              overview.highlights.map((highlight, index) => (
+                <li key={index} className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                  <span>{highlight}</span>
+                </li>
+              ))
+            ) : (
               <li className="flex items-start gap-3 text-muted-foreground">
                 <span>No highlights available yet - user is just getting started</span>
               </li>

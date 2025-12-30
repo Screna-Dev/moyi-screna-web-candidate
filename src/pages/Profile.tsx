@@ -168,10 +168,7 @@ const Profile = () => {
         description: "AI is extracting information from your resume text.",
       });
 
-      const blob = new Blob([pastedText], { type: "text/plain" });
-      const file = new File([blob], "resume.txt", { type: "text/plain" });
-      
-      const response = await ProfileService.uploadResume(file);
+      const response = await ProfileService.parseResumeText(pastedText);
       const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
       
       if (structuredResume) {
@@ -192,7 +189,7 @@ const Profile = () => {
       } else {
         toast({
           title: "Warning",
-          description: "Text uploaded but no data was extracted. Please try again or add information manually.",
+          description: "Text processed but no data was extracted. Please try again or add information manually.",
           variant: "destructive",
         });
       }
