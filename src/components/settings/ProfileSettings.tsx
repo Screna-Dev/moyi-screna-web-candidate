@@ -370,6 +370,7 @@ const ProfileSettings = () => {
                 value={profile.name}
                 onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                 disabled={!isEditing}
+                required
               />
             </div>
             <div className="space-y-2">
@@ -381,6 +382,7 @@ const ProfileSettings = () => {
                   value={profile.email}
                   className="pl-10"
                   disabled
+                  required
                 />
               </div>
               <p className="text-xs text-muted-foreground">Email cannot be changed. Contact support if needed.</p>
@@ -410,6 +412,7 @@ const ProfileSettings = () => {
                 value={profile.timezone}
                 onValueChange={(value) => setProfile({ ...profile, timezone: value })}
                 disabled={!isEditing}
+                required
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select timezone" />
