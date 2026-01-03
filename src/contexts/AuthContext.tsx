@@ -17,6 +17,7 @@ interface AuthContextType {
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   loginWithGoogle: () => void;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
@@ -50,13 +51,10 @@ const decodeToken = (token: string): User | null => {
     );
     
     const payload = JSON.parse(jsonPayload);
-    
+    console.log(payload)
     // Extract role - check common JWT field names for admin status
-    let role = 'candidate';
+    const role = payload.roles[0];
 
-    if (Array.isArray(payload.roles) && payload.roles.includes('ADMIN')) {
-      role = 'admin';
-    }
     
     return {
       id: payload.sub || payload.userId || payload.id || '',
@@ -138,6 +136,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Fallback if token decode fails
       setUser({ id: '', email, name: '', avatar: '' });
     }
+    return userData;
   };
 
   const signup = async (email: string, password: string, name: string) => {
@@ -185,17 +184,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = async () => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('refreshToken');
+    setUser(null);
+    navigate('/auth');
     try {
-      await API.post('/auth/logout');
+      await API.post('/auth/signout');
     } catch (error) {
       console.error('Logout error:', error);
-    } finally {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      sessionStorage.removeItem('authToken');
-      sessionStorage.removeItem('refreshToken');
-      setUser(null);
-      navigate('/auth');
     }
   };
 

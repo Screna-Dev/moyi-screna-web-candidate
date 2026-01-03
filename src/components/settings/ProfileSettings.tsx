@@ -76,6 +76,7 @@ const ProfileSettings = () => {
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      if (profile.name === "" || profile.country === "" || profile.timezone ==="") return;
       const response = await ProfileService.savePersonalInfo({
         name: profile.name,
         country: profile.country,

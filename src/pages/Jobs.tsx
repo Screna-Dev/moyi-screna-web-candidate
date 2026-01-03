@@ -18,8 +18,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import {JobService} from '../services';
-import { InterviewService } from "@/services";
+import { InterviewService, ProfileService, JobService } from "@/services";
 
 export default function Jobs() {
   const { toast } = useToast();
@@ -42,8 +41,7 @@ export default function Jobs() {
   const [isCreatingPlan, setIsCreatingPlan] = useState(false)
   const navigate = useNavigate();
 
-  const userPlan = 'free'; // or 'premium'
-  const activeTitle = { id: 1, name: 'Backend Engineer' };
+  const userPlan = 'free';
   const overallScore = 83;
   const lastSessionId = 'ABC123';
   
@@ -66,7 +64,27 @@ export default function Jobs() {
     'Boston, MA',
     'Denver, CO'
   ];
+  const [activeTitle, setActiveTitle] = useState<{ id: number; name: string }>({ id: 1, name: '' });
 
+  useEffect(() => {
+    const fetchActiveTitle = async () => {
+      try {
+        const response = await ProfileService.getProfile();
+        const profileData = response.data?.data || response.data;
+        
+        if (profileData?.structured_resume?.job_titles?.length > 0) {
+          setActiveTitle({
+            id: 1,
+            name: profileData.structured_resume.job_titles[0]
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
+    };
+    
+    fetchActiveTitle();
+  }, []);
   // Debounce search query - wait 800ms after user stops typing
   useEffect(() => {
     const timer = setTimeout(() => {

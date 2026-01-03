@@ -113,15 +113,16 @@ export default function Auth() {
     
     try {
       if (isLogin) {
-        await login(email, password, rememberMe);
+        const loggedInUser = await login(email, password, rememberMe);
         toast({ 
           title: 'Welcome back!',
           description: 'You have successfully signed in.'
         });
         console.log(user?.role)
-        if (user?.role === "candidate"){
+        if (loggedInUser?.role === "CANDIDATE"){
           navigate('/profile');
-        } else {
+        } 
+        if (loggedInUser?.role === "ADMIN"){
           navigate('/admin');
         }
       } else {

@@ -42,7 +42,7 @@ export function AppSidebar() {
 
   // Determine which nav items to show based on user role
   const getNavItems = () => {
-    if (user?.role === 'admin') {
+    if (user?.role === 'ADMIN') {
       return adminNavItems;
     }
     if (user?.role === 'mentor') {
@@ -65,7 +65,7 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>
-            {user?.role === 'admin' ? 'Admin' : 'Navigation'}
+            {user?.role === 'ADMIN' ? 'Admin' : 'Navigation'}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
