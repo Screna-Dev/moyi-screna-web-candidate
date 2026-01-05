@@ -1,4 +1,4 @@
-// InterviewStep.js - Refactored to use Pipecat SDK for AI communication
+// InterviewStep.js - Creates session only when user clicks "Start Interview"
 import React, { useRef, useEffect, useState } from 'react';
 import {
   Box, Typography, Button, Grid, Dialog, DialogActions,
@@ -25,6 +25,10 @@ function InterviewStep({
   endMeeting,
   onPreviousStep,
   connectToInterview,
+  createInterviewSession,
+  setInterviewStatus,
+  setValidationError,
+  currentSession,
   isLoading,
   aiSpeaking
 }) {
@@ -32,6 +36,7 @@ function InterviewStep({
   const [openEndDialog, setOpenEndDialog] = useState(false);
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [aiProfile] = useState(generateRandomAI());
   
   // Audio level detection state
@@ -205,6 +210,7 @@ function InterviewStep({
     };
   }, [interviewStarted]);
 
+  // Creates session ONLY when user clicks "Start Interview"
   const startInterview = async () => {
     try {
       if (!mediaState.mediaReady) {
@@ -233,11 +239,37 @@ function InterviewStep({
         console.log('✅ Local video preview set up in startInterview');
       }
 
-      // Connect to Pipecat
+      // ============================================
+      // STEP 1: CREATE SESSION (This is the key change!)
+      // Session is created HERE, not on page load
+      // ============================================
+      setIsCreatingSession(true);
       updateConnectionStatus('aiWebSocket', 'connecting');
+      
+      let session;
+      try {
+        console.log('📝 Creating interview session...');
+        session = await createInterviewSession();
+        console.log('✅ Session created:', session?.sessionId);
+        setIsCreatingSession(false);
+      } catch (sessionError) {
+        console.error("❌ Session creation failed:", sessionError);
+        setIsCreatingSession(false);
+        updateConnectionStatus('aiWebSocket', 'error');
+        setIsConnecting(false);
+        
+        // The error will be handled by createInterviewSession which updates
+        // interviewStatus and validationError, causing the parent to show error page
+        return;
+      }
+
+      // ============================================
+      // STEP 2: Connect to Pipecat
+      // ============================================
       if (!PipecatService.getIsConnected()) {
         try {
-          await connectToInterview();
+          console.log('🔌 Connecting to Pipecat...');
+          await connectToInterview(session);
           updateConnectionStatus('aiWebSocket', 'connected');
         } catch (connectError) {
           console.error("❌ AI connection failed:", connectError);
@@ -251,7 +283,9 @@ function InterviewStep({
         updateConnectionStatus('aiWebSocket', 'connected');
       }
 
-      // Countdown
+      // ============================================
+      // STEP 3: Countdown
+      // ============================================
       setShowCountdown(true);
       setCountdown(3);
       for (let i = 3; i > 0; i--) {
@@ -260,7 +294,9 @@ function InterviewStep({
       }
       setShowCountdown(false);
       
-      // Mark interview as started
+      // ============================================
+      // STEP 4: Start the interview
+      // ============================================
       setInterviewStarted(true);
       
       // Start audio level detection for UI feedback
@@ -276,6 +312,7 @@ function InterviewStep({
       setOpenSnackbar(true);
       setInterviewStarted(false);
       setIsConnecting(false);
+      setIsCreatingSession(false);
       updateConnectionStatus('aiWebSocket', 'error');
     }
   };
@@ -311,6 +348,14 @@ function InterviewStep({
     if (interviewEnded) return 'ended';
     if (aiSpeaking) return 'speaking';
     return 'listening';
+  };
+
+  // Get button text based on current state
+  const getStartButtonText = () => {
+    if (isCreatingSession) return 'Creating Session...';
+    if (isConnecting) return 'Connecting...';
+    if (interviewStarted) return 'Interview Active';
+    return 'Start Interview';
   };
 
   return (
@@ -585,6 +630,7 @@ function InterviewStep({
                 <Typography variant="body2" sx={{ color: '#64748b' }}>
                   {interviewEnded ? 'Interview Complete' : 
                    !interviewStarted ? 'Ready to Begin' : 
+                   isCreatingSession ? 'Creating Session...' :
                    isConnecting ? 'Connecting...' : 'Online'}
                 </Typography>
 
@@ -620,8 +666,8 @@ function InterviewStep({
                     variant="contained"
                     size="large"
                     onClick={startInterview}
-                    disabled={!mediaState.mediaReady || interviewEnded || isLoading || isConnecting || interviewStarted}
-                    startIcon={isConnecting ? <CircularProgress size={20} color="inherit" /> : <Mic />}
+                    disabled={!mediaState.mediaReady || interviewEnded || isLoading || isConnecting || isCreatingSession || interviewStarted}
+                    startIcon={(isConnecting || isCreatingSession) ? <CircularProgress size={20} color="inherit" /> : <Mic />}
                     sx={{
                       py: 1.5,
                       px: 4,
@@ -640,15 +686,14 @@ function InterviewStep({
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    {isConnecting ? 'Starting...' : 
-                     interviewStarted ? 'Interview Active' : 'Start Interview'}
+                    {getStartButtonText()}
                   </Button>
                   
                   <Button
                     variant="outlined"
                     size="large"
                     onClick={handleEndDialogOpen}
-                    disabled={isLoading || isConnecting || !interviewStarted}
+                    disabled={isLoading || isConnecting || isCreatingSession || !interviewStarted}
                     startIcon={<ExitToApp />}
                     sx={{
                       py: 1.5,
@@ -670,7 +715,7 @@ function InterviewStep({
                 <Button
                   variant="text"
                   onClick={onPreviousStep}
-                  disabled={isLoading || isConnecting || interviewStarted}
+                  disabled={isLoading || isConnecting || isCreatingSession || interviewStarted}
                   startIcon={<ArrowBack />}
                   sx={{
                     mt: 2,
@@ -697,11 +742,36 @@ function InterviewStep({
                     }}
                   />
                 )}
+                
+                {/* Session info - only show when session exists */}
+                {currentSession && (
+                  <Typography variant="caption" color="#64748b">
+                    Session: {currentSession.sessionId?.substring(0, 8)}...
+                  </Typography>
+                )}
               </Box>
             </Grid>
           </Grid>
         </Box>
       </Box>
+
+      {/* Info Alert - Show when no session yet */}
+      {!currentSession && !interviewStarted && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mt: 2, 
+            mx: 3,
+            bgcolor: '#eff6ff',
+            border: '1px solid #bfdbfe'
+          }}
+        >
+          <Typography variant="body2">
+            <strong>Ready to start:</strong> Your interview session will be created when you click "Start Interview". 
+            You can safely go back to media setup without using your interview token.
+          </Typography>
+        </Alert>
+      )}
 
       {/* End Interview Dialog */}
       <Dialog 

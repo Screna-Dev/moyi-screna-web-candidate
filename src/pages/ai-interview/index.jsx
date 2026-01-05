@@ -20,7 +20,7 @@ function AIInterview() {
   const [activeStep, setActiveStep] = useState(0);
   const steps = ['Media Setup', 'Interview'];
 
-  // Validation state
+  // Validation state - simplified, just check if interviewId exists
   const [isValidating, setIsValidating] = useState(true);
   const [interviewStatus, setInterviewStatus] = useState(null);
   const [validationError, setValidationError] = useState('');
@@ -103,9 +103,9 @@ function AIInterview() {
     isReconnectingRef.current = false;
   };
 
-  // Validate interview status on mount
+  // Simple check on mount - just verify interviewId exists (NO API CALL)
   useEffect(() => {
-    validateInterviewStatus();
+    checkInterviewId();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interviewId]);
 
@@ -117,8 +117,8 @@ function AIInterview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Validate interview and create session directly
-  const validateInterviewStatus = async () => {
+  // SIMPLIFIED: Just check if interviewId is present (no API call)
+  const checkInterviewId = () => {
     if (!interviewId) {
       setInterviewStatus('invalid');
       setValidationError('Missing interview parameters. Please check the URL.');
@@ -126,46 +126,63 @@ function AIInterview() {
       return;
     }
 
+    // Basic format validation (optional - adjust as needed)
+    const isValidFormat = interviewId.length > 0;
+    
+    if (!isValidFormat) {
+      setInterviewStatus('invalid');
+      setValidationError('Invalid interview ID format.');
+      setIsValidating(false);
+      return;
+    }
+
+    console.log('✅ Interview ID present:', interviewId);
+    console.log('📝 Session will be created when user clicks "Start Interview"');
+    
+    // Mark as valid - actual validation happens when creating session
+    setInterviewStatus('valid');
+    setIsValidating(false);
+  };
+
+  // Create interview session (called when starting interview)
+  const createInterviewSession = async () => {
+    if (currentSession) {
+      console.log('✅ Session already exists:', currentSession.sessionId);
+      return currentSession;
+    }
+
+    console.log('🔄 Creating interview session...');
+    
     try {
-      setIsValidating(true);
-      
-      console.log('✅ Interview ID valid:', interviewId);
-      console.log('🔄 Creating interview session...');
-      
-      // Create interview session using the new API
       const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
       
       console.log('Session response:', sessionResponse);
       
       if (!sessionResponse.data || !sessionResponse.data.data) {
-        setInterviewStatus('error');
-        setValidationError('Failed to create interview session.');
-        setIsValidating(false);
-        return;
+        throw new Error('Failed to create interview session.');
       }
       
       const sessionData = sessionResponse.data.data;
       
       console.log('✅ Interview session created successfully:', sessionData.session_id);
-      setInterviewStatus('valid');
-      setCurrentSession({
+      
+      const session = {
         sessionId: sessionData.session_id,
         websocketUrl: sessionData.websocket_url,
         status: sessionData.status,
         createdAt: sessionData.created_at
-      });
-      setSuccess('Interview session created successfully!');
-      setOpenSnackbar(true);
+      };
+      
+      setCurrentSession(session);
+      return session;
       
     } catch (error) {
-      console.error("Interview validation error:", error);
+      console.error("Session creation error:", error);
       
-      const errorMessage = error.response?.data?.message || error.message || 'Unable to access interview';
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create session';
       const errorCode = error.response?.data?.errorCode;
       
-      console.log('Error code:', errorCode);
-      
-      // Handle different error scenarios
+      // Handle session creation errors - update status to show error page
       if (errorMessage.toLowerCase().includes('used') || 
           errorMessage.toLowerCase().includes('already')) {
         setInterviewStatus('used');
@@ -173,15 +190,14 @@ function AIInterview() {
       } else if (errorMessage.toLowerCase().includes('expired')) {
         setInterviewStatus('expired');
         setValidationError('This interview session has expired.');
-      } else if (errorCode === 'BAD_REQUEST') {
+      } else if (errorMessage.toLowerCase().includes('not found') ||
+                 errorCode === 'NOT_FOUND' ||
+                 error.response?.status === 404) {
         setInterviewStatus('invalid');
-        setValidationError(errorMessage);
-      } else {
-        setInterviewStatus('error');
-        setValidationError(`Unable to access interview: ${errorMessage}`);
+        setValidationError('Interview not found. Please check the URL.');
       }
-    } finally {
-      setIsValidating(false);
+      
+      throw error;
     }
   };
 
@@ -194,13 +210,22 @@ function AIInterview() {
   }, [interviewEnded]);
 
   // Connect to Pipecat using the SDK
-  const connectToInterview = async () => {
+  const connectToInterview = async (session = null) => {
     if (interviewEndedRef.current) return;
-    if (PipecatService.getIsConnected() || !currentSession) return;
+    
+    const sessionToUse = session || currentSession;
+    
+    if (PipecatService.getIsConnected() || !sessionToUse) {
+      console.log('Cannot connect: already connected or no session', {
+        isConnected: PipecatService.getIsConnected(),
+        hasSession: !!sessionToUse
+      });
+      return;
+    }
 
     setIsConnecting(true);
     try {
-      await PipecatService.connect(currentSession.websocketUrl, {
+      await PipecatService.connect(sessionToUse.websocketUrl, {
         onDisconnected: (info) => {
           setIsConnected(false);
           console.log("Disconnected info:", info);
@@ -387,12 +412,15 @@ function AIInterview() {
     setOpenSnackbar,
     endMeeting,
     connectToInterview,
+    createInterviewSession,
+    setInterviewStatus,      // Pass so InterviewStep can update status on error
+    setValidationError,      // Pass so InterviewStep can set error message
     isLoading: isLoading || isConnecting
   };
 
   // ========== RENDER ==========
 
-  // Show loading during validation
+  // Show loading during initial check (very brief, no API call)
   if (isValidating) {
     return (
       <Box 
@@ -407,10 +435,10 @@ function AIInterview() {
         <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
           <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
           <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
-            Preparing Interview Session
+            Loading Interview
           </Typography>
           <Typography variant="body1" color="#64748b">
-            Please wait while we set up your interview...
+            Please wait...
           </Typography>
         </Card>
       </Box>
@@ -497,7 +525,10 @@ function AIInterview() {
                 AI Interview
               </Typography>
               <Typography variant="body2" color="#64748b">
-                Session ID: {currentSession?.sessionId?.substring(0, 12) || "Unknown"} • Secure
+                {currentSession ? 
+                  `Session ID: ${currentSession.sessionId?.substring(0, 12) || "Unknown"} • Secure` :
+                  `Interview ID: ${interviewId?.substring(0, 12) || "Unknown"} • Ready`
+                }
               </Typography>
             </Box>
           </Box>
