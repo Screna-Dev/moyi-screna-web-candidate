@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card, Container, CircularProgress, Alert, Snackbar, Box, Typography,
   Avatar
 } from '@mui/material';
-import HourglassTopIcon from '@mui/icons-material/HourglassTop';
+import { Button } from "@/components/ui/button";
 import { InterviewSessionService, InterviewService } from '../../services';
 import PipecatService from '../../services/PipecatService';
 
@@ -13,6 +13,8 @@ import MediaSetupStep from './MediaSetupStep';
 import InterviewStep from './InterviewStep';
 
 function AIInterview() {
+  const navigate = useNavigate();
+  
   const params = useParams();
   const interviewId = params.interviewId;
 
@@ -28,7 +30,6 @@ function AIInterview() {
   // Core interview state
   const [isLoading, setIsLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [openSnackbar, setOpenSnackbar] = useState(false);
@@ -38,10 +39,10 @@ function AIInterview() {
   const [aiSpeaking, setAISpeaking] = useState(false);
 
   const isConnectedRef = useRef(false);
-  const isReconnectingRef = useRef(false);
+  const currentSessionRef = useRef(null);
 
   useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
-  useEffect(() => { isReconnectingRef.current = isReconnecting; }, [isReconnecting]);
+  useEffect(() => { currentSessionRef.current = currentSession; }, [currentSession]);
 
   // Initial mediaState (for reset)
   const initialMediaState = {
@@ -56,52 +57,6 @@ function AIInterview() {
 
   // Media state - shared between steps
   const [mediaState, setMediaState] = useState(initialMediaState);
-
-  // Auto-reconnect control
-  const aiReconnectAttemptsRef = useRef(0);
-  const aiReconnectTimerRef = useRef(null);
-  const MAX_AI_RECONNECT_ATTEMPTS = 5;
-
-  const startAutoReconnectAI = () => {
-    console.log("⚠️ startAutoReconnectAI called", {
-      ended: interviewEndedRef.current,
-    });
-
-    if (aiReconnectTimerRef.current) return;
-
-    setIsReconnecting(true);
-
-    aiReconnectTimerRef.current = setInterval(async () => {
-      // Hard exit if ended
-      if (interviewEndedRef.current) {
-        stopAutoReconnectAI();
-        return;
-      }
-
-      const connected = PipecatService.getIsConnected();
-
-      if (!connected && aiReconnectAttemptsRef.current < MAX_AI_RECONNECT_ATTEMPTS) {
-        aiReconnectAttemptsRef.current++;
-        try {
-          await connectToInterview();
-          stopAutoReconnectAI();
-        } catch (e) {
-          // ignore
-        }
-      }
-    }, 5000);
-  };
-
-  const stopAutoReconnectAI = () => {
-    if (aiReconnectTimerRef.current) {
-      clearInterval(aiReconnectTimerRef.current);
-      aiReconnectTimerRef.current = null;
-    }
-    aiReconnectAttemptsRef.current = 0;
-
-    setIsReconnecting(false);
-    isReconnectingRef.current = false;
-  };
 
   // Simple check on mount - just verify interviewId exists (NO API CALL)
   useEffect(() => {
@@ -173,7 +128,9 @@ function AIInterview() {
         createdAt: sessionData.created_at
       };
       
+      // Set both state and ref (ref is needed for callbacks due to stale closure)
       setCurrentSession(session);
+      currentSessionRef.current = session;
       return session;
       
     } catch (error) {
@@ -182,20 +139,23 @@ function AIInterview() {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to create session';
       const errorCode = error.response?.data?.errorCode;
       
-      // Handle session creation errors - update status to show error page
-      if (errorMessage.toLowerCase().includes('used') || 
-          errorMessage.toLowerCase().includes('already')) {
-        setInterviewStatus('used');
-        setValidationError('This interview session has already been used.');
-      } else if (errorMessage.toLowerCase().includes('expired')) {
-        setInterviewStatus('expired');
-        setValidationError('This interview session has expired.');
-      } else if (errorMessage.toLowerCase().includes('not found') ||
-                 errorCode === 'NOT_FOUND' ||
-                 error.response?.status === 404) {
-        setInterviewStatus('invalid');
-        setValidationError('Interview not found. Please check the URL.');
-      }
+      // Wrap in setTimeout to avoid setState during render cycle
+      // These state updates will cause the parent to show error page
+      setTimeout(() => {
+        if (errorMessage.toLowerCase().includes('used') || 
+            errorMessage.toLowerCase().includes('already')) {
+          setInterviewStatus('used');
+          setValidationError('This interview session has already been used.');
+        } else if (errorMessage.toLowerCase().includes('expired')) {
+          setInterviewStatus('expired');
+          setValidationError('This interview session has expired.');
+        } else if (errorMessage.toLowerCase().includes('not found') ||
+                   errorCode === 'NOT_FOUND' ||
+                   error.response?.status === 404) {
+          setInterviewStatus('invalid');
+          setValidationError('Interview not found. Please check the URL.');
+        }
+      }, 0);
       
       throw error;
     }
@@ -210,6 +170,7 @@ function AIInterview() {
   }, [interviewEnded]);
 
   // Connect to Pipecat using the SDK
+  // Per Pipecat design: any disconnect = session ends (no reconnection)
   const connectToInterview = async (session = null) => {
     if (interviewEndedRef.current) return;
     
@@ -227,21 +188,28 @@ function AIInterview() {
     try {
       await PipecatService.connect(sessionToUse.websocketUrl, {
         onDisconnected: (info) => {
-          setIsConnected(false);
-          console.log("Disconnected info:", info);
-          // Do not reconnect if user ended intentionally
-          if (info?.intentional || interviewEndedRef.current || info?.code === null) {
-            endMeeting();
-            return;
-          }
-
-          startAutoReconnectAI();
+          // Wrap in setTimeout to avoid setState during render cycle
+          setTimeout(() => {
+            console.log("Disconnected info:", info);
+            setIsConnected(false);
+            
+            // Per Pipecat design: any disconnect = session ends
+            // No reconnection attempts - just end the meeting
+            if (!interviewEndedRef.current) {
+              console.log("🔴 WebSocket disconnected - ending session (Pipecat design: disconnect = session end)");
+              endMeeting();
+            }
+          }, 0);
         },
         onError: (err) => {
-          // Ignore errors during intentional ending
-          if (interviewEndedRef.current) return;
-          setError(`AI connection error: ${err.message || 'Unknown'}`);
-          setOpenSnackbar(true);
+          // Wrap in setTimeout to avoid setState during render cycle
+          setTimeout(() => {
+            // Ignore errors during intentional ending
+            if (interviewEndedRef.current) return;
+            console.error("WebSocket error:", err);
+            setError(`AI connection error: ${err.message || 'Unknown'}`);
+            setOpenSnackbar(true);
+          }, 0);
         },
       });
       setIsConnected(true);
@@ -308,45 +276,59 @@ function AIInterview() {
   const cleanupAllResources = async () => {
     console.log('🧹 Cleaning up all resources...');
     
-    stopAutoReconnectAI();
     await cleanupConnectionResources();
     cleanupMediaStreams();
     
     setCurrentSession(null);
+    currentSessionRef.current = null;
     
     console.log('✅ All resources cleaned up');
   };
 
   const endMeeting = async () => {
-    if (!currentSession?.sessionId) {
-      setError('No active session');
-      setOpenSnackbar(true);
+    // Prevent duplicate calls
+    if (interviewEndedRef.current) {
+      console.log('⚠️ endMeeting already called, skipping...');
       return;
     }
 
+    console.log('🔴 Ending meeting...');
+
+    // Mark ended first to prevent any further actions
+    setInterviewEnded(true);
+    interviewEndedRef.current = true;
+
+    // Use ref to get current session (avoids stale closure issue)
+    const session = currentSessionRef.current;
+    
+    // If no session was ever created, just show completion
+    if (!session?.sessionId) {
+      console.log('No active session - showing completion');
+      setSuccess("Interview session ended.");
+      setOpenSnackbar(true);
+      cleanupMediaStreams();
+      return;
+    }
+
+    console.log('📝 Ending session:', session.sessionId);
     setIsLoading(true);
 
     try {
-      // Mark ended first
-      setInterviewEnded(true);
-      interviewEndedRef.current = true;
-
-      // Hard stop reconnect first
-      stopAutoReconnectAI();
-
-      // Tell Pipecat this is intentional
+      // Disconnect Pipecat (intentional)
       await PipecatService.disconnect({ intentional: true });
 
       // End module - let the backend change the module status
       await InterviewService.endTrainingModule(interviewId);
       
-      // Then stop media
+      // Stop media
       cleanupMediaStreams();
 
       setSuccess("Interview ended. Thank you for your participation!");
       setOpenSnackbar(true);
     } catch (e) {
-      setError(`Error ending interview: ${e.message}`);
+      console.error("Error ending interview:", e);
+      // Still show completion even if there's an error
+      setSuccess("Interview ended. Thank you for your participation!");
       setOpenSnackbar(true);
     } finally {
       setIsLoading(false);
@@ -493,27 +475,6 @@ function AIInterview() {
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <Container maxWidth="xl" sx={{ py: 3 }}>
 
-        {/* Reconnecting banner */}
-        {isReconnecting && !interviewEnded && (
-          <Box
-            sx={{
-              mb: 2,
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: '#facc15',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1.5
-            }}
-          >
-            <HourglassTopIcon sx={{ color: '#78350f' }} fontSize="small" />
-            <Typography variant="body2" sx={{ fontWeight: 600, color: '#78350f' }}>
-              Reconnecting to AI service... Please wait
-            </Typography>
-          </Box>
-        )}
-
         {/* Modern Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
           <Box display="flex" alignItems="center" gap={2}>
@@ -605,7 +566,13 @@ function AIInterview() {
               <Typography variant="body1" color="#64748b">
                 Your responses have been recorded successfully. Your report is currently being processed. Estimated completion time: 5-10 minutes. You may close this window; your report will be available upon completion.
               </Typography>
+              <Box className = "mt-6">
+                <Button size="xl" className="gradient-primary " onClick={() => navigate("/interview-prep")}>
+                  Back to Interview Preparation 
+                </Button>
+              </Box>
             </Box>
+            
           </Card>
         ) : (
           <Box>

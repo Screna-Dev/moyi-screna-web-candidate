@@ -457,7 +457,7 @@ const Profile = () => {
                 <Upload className="mr-2 w-4 h-4" />
                 Choose File
               </Button>
-              <Button
+              {/* <Button
                 variant="secondary"
                 className="flex-1"
                 onClick={() => setShowPasteDialog(true)}
@@ -465,7 +465,7 @@ const Profile = () => {
               >
                 <FileText className="mr-2 w-4 h-4" />
                 Paste Text
-              </Button>
+              </Button> */}
             </div>
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">

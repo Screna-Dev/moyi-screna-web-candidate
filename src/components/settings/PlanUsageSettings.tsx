@@ -7,7 +7,14 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -30,9 +37,8 @@ const PlanUsageSettings = () => {
         "30 Credits (≈30 mins) monthly",
         "+0 daily bonus credits",
         "$0.15 per extra credit",
-        "1 Interview Preparation Seat",
+        "1 Interview Preparation",
         "30% Mentorship Service Charge",
-        "Basic job matching (3 jobs/day)",
         "7 days data retention",
       ],
       current: false,
@@ -47,11 +53,11 @@ const PlanUsageSettings = () => {
         "200 Credits (≈200 mins) monthly",
         "+2 daily bonus credits",
         "$0.10 per extra credit",
-        "3 Interview Preparation Seats",
+        "3 Interview Preparations",
         "15% Mentorship Service Charge",
-        "Smart matching (10 jobs/day)",
         "90 days data retention",
         "Full report with feedback",
+        "Job Smart matching",
       ],
       current: true,
       popular: true,
@@ -66,12 +72,12 @@ const PlanUsageSettings = () => {
         "500 Credits (≈500 mins) monthly",
         "+5 daily bonus credits",
         "$0.07 per extra credit",
-        "10 Interview Preparation Seats",
+        "5 Interview Preparations",
         "5% Mentorship Service Charge",
-        "Advanced matching (Unlimited)",
         "Unlimited data retention",
         "Full report with feedback",
         "Video replay with timestamps",
+        "Job Smart matching",
       ],
       current: false,
     },
@@ -92,7 +98,7 @@ const PlanUsageSettings = () => {
   ];
 
   const calculatePrice = (credits: number) => {
-    const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.10 : 0.15;
+    const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.1 : 0.15;
     return (credits * pricePerCredit).toFixed(2);
   };
 
@@ -156,13 +162,19 @@ const PlanUsageSettings = () => {
               <p className="text-sm text-muted-foreground">Credit Balance</p>
               <h3 className="text-2xl font-bold text-primary">{creditBalance} credits</h3>
               <Progress value={(creditBalance / totalCredits) * 100} className="h-2 mt-2" />
-              <p className="text-xs text-muted-foreground">{creditBalance} of {totalCredits} remaining</p>
+              <p className="text-xs text-muted-foreground">
+                {creditBalance} of {totalCredits} remaining
+              </p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">This Month Usage</p>
               <div className="space-y-1">
-                <p className="text-sm"><span className="font-semibold">8</span> AI Mocks completed</p>
-                <p className="text-sm"><span className="font-semibold">58</span> credits used</p>
+                <p className="text-sm">
+                  <span className="font-semibold">8</span> AI Mocks completed
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold">58</span> credits used
+                </p>
               </div>
             </div>
           </div>
@@ -188,7 +200,8 @@ const PlanUsageSettings = () => {
               Buy Extra Credits
             </DialogTitle>
             <DialogDescription>
-              Enter the number of credits you want to purchase. Price: ${currentPlan === "Elite" ? "0.07" : currentPlan === "Pro" ? "0.10" : "0.15"}/credit
+              Enter the number of credits you want to purchase. Price: $
+              {currentPlan === "Elite" ? "0.07" : currentPlan === "Pro" ? "0.10" : "0.15"}/credit
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
@@ -206,13 +219,11 @@ const PlanUsageSettings = () => {
               />
               <p className="text-xs text-muted-foreground">Minimum: 10 credits, Maximum: 10,000 credits</p>
             </div>
-            
+
             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
               <div>
                 <p className="text-sm text-muted-foreground">Total Price</p>
-                <p className="text-2xl font-bold text-primary">
-                  ${calculatePrice(parseInt(customCreditsInput) || 0)}
-                </p>
+                <p className="text-2xl font-bold text-primary">${calculatePrice(parseInt(customCreditsInput) || 0)}</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Credits</p>
@@ -235,7 +246,9 @@ const PlanUsageSettings = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBuyCreditsDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setBuyCreditsDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={handlePurchaseCustomCredits} className="gap-2">
               <CreditCard className="h-4 w-4" />
               Checkout with Stripe
@@ -254,7 +267,10 @@ const PlanUsageSettings = () => {
         <TabsContent value="plans">
           <div className="grid gap-6 md:grid-cols-3">
             {plans.map((plan) => (
-              <Card key={plan.name} className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""}`}>
+              <Card
+                key={plan.name}
+                className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""}`}
+              >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="gap-1">
@@ -281,13 +297,15 @@ const PlanUsageSettings = () => {
                       </li>
                     ))}
                   </ul>
-                  <Button 
-                    className="w-full gap-2" 
+                  <Button
+                    className="w-full gap-2"
                     variant={plan.current ? "outline" : "default"}
                     disabled={plan.current}
                     onClick={() => handleUpgrade(plan.name)}
                   >
-                    {plan.current ? "Current Plan" : (
+                    {plan.current ? (
+                      "Current Plan"
+                    ) : (
                       <>
                         Select Plan
                         <ArrowRight className="h-4 w-4" />
@@ -333,20 +351,24 @@ const PlanUsageSettings = () => {
             <CardContent className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
                 {creditPackages.map((pkg) => (
-                  <div 
-                    key={pkg.credits} 
+                  <div
+                    key={pkg.credits}
                     className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
                     onClick={() => handleBuyCredits(pkg.credits, pkg.price)}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-2xl font-bold">{pkg.credits}</span>
                       {pkg.savings && (
-                        <Badge variant="secondary" className="text-green-600">{pkg.savings}</Badge>
+                        <Badge variant="secondary" className="text-green-600">
+                          {pkg.savings}
+                        </Badge>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">credits</p>
                     <p className="text-xl font-semibold mt-2">${pkg.price}</p>
-                    <Button className="w-full mt-3" size="sm">Buy Now</Button>
+                    <Button className="w-full mt-3" size="sm">
+                      Buy Now
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -356,18 +378,18 @@ const PlanUsageSettings = () => {
                 <div className="flex items-center justify-between mb-4">
                   <p className="font-medium">Custom Amount</p>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
+                    <Button
+                      variant="outline"
+                      size="icon"
                       className="h-8 w-8"
                       onClick={() => setSelectedCredits(Math.max(100, selectedCredits - 100))}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
                     <span className="text-2xl font-bold w-20 text-center">{selectedCredits}</span>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
+                    <Button
+                      variant="outline"
+                      size="icon"
                       className="h-8 w-8"
                       onClick={() => setSelectedCredits(Math.min(2000, selectedCredits + 100))}
                     >
@@ -392,7 +414,9 @@ const PlanUsageSettings = () => {
                     <p className="text-sm text-muted-foreground">Total Price</p>
                     <p className="text-2xl font-bold">${calculatePrice(selectedCredits)}</p>
                   </div>
-                  <Button onClick={() => handleBuyCredits(selectedCredits, parseFloat(calculatePrice(selectedCredits)))}>
+                  <Button
+                    onClick={() => handleBuyCredits(selectedCredits, parseFloat(calculatePrice(selectedCredits)))}
+                  >
                     Buy with Stripe
                   </Button>
                 </div>
@@ -411,9 +435,11 @@ const PlanUsageSettings = () => {
                 {transactions.map((tx) => (
                   <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                     <div className="flex items-center gap-3">
-                      <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                        tx.type === "credit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                      }`}>
+                      <div
+                        className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                          tx.type === "credit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                        }`}
+                      >
                         {tx.type === "credit" ? <Plus className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
                       </div>
                       <div>
@@ -421,10 +447,9 @@ const PlanUsageSettings = () => {
                         <p className="text-sm text-muted-foreground">{tx.date}</p>
                       </div>
                     </div>
-                    <span className={`font-semibold ${
-                      tx.amount > 0 ? "text-green-600" : "text-red-600"
-                    }`}>
-                      {tx.amount > 0 ? "+" : ""}{tx.amount} credits
+                    <span className={`font-semibold ${tx.amount > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {tx.amount > 0 ? "+" : ""}
+                      {tx.amount} credits
                     </span>
                   </div>
                 ))}

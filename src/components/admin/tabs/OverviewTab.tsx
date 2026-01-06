@@ -1,213 +1,210 @@
-import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Brain, Clock, Users, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { adminService } from '@/services';
+import type { AdminUser } from '@/data/adminMockData';
+import { User, Briefcase, Building2, MapPin, Clock, Mail, Calendar, Tag, FileText, Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 
-export function OverviewTab({ user }) {
-  const [overview, setOverview] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+interface OverviewTabProps {
+  user: AdminUser;
+}
 
-  // Fetch overview when user changes
-  useEffect(() => {
-    const fetchOverview = async () => {
-      if (!user?.id) return;
+export function OverviewTab({ user }: OverviewTabProps) {
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'Admin':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'Mentor':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'Candidate':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  };
 
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await adminService.getUserOverview(user.id);
-        setOverview(response.data.data);
-      } catch (err) {
-        console.error('Failed to fetch overview:', err);
-        setError('Failed to load overview');
-        setOverview(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchOverview();
-  }, [user?.id]);
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="p-6 flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-12 text-center">
-            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500 opacity-50" />
-            <h3 className="font-semibold mb-2">Error Loading Overview</h3>
-            <p className="text-muted-foreground">{error}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // No data state
-  if (!overview) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-12 text-center">
-            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h3 className="font-semibold mb-2">No Overview Data</h3>
-            <p className="text-muted-foreground">Overview data is not available for this user.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Calculate score difference (using previous score from user if available, otherwise show as positive)
-  const previousScore = user?.metrics?.previousScore || 0;
-  const scoreDiff = overview.readinessScore - previousScore;
-  const isImproving = scoreDiff >= 0;
-
-  // Transform progressTrend array to chart data
-  const trendData = (overview.progressTrend || []).map((score, index) => ({
-    week: `Week ${index + 1}`,
-    score: score,
-  }));
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Active':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'Inactive':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+      case 'Banned':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'Trial':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
-      {/* Journey Summary */}
+      {/* User Profile Header */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Journey Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            {overview.journeySummary || 'No journey summary available.'}
-          </p>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-6">
+            <Avatar className="h-20 w-20">
+              <AvatarFallback className="text-2xl bg-primary/10 text-primary">
+                {user.name.split(' ').map(n => n[0]).join('')}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-2xl font-bold">{user.name}</h2>
+                <Badge className={getStatusColor(user.status)} variant="secondary">
+                  {user.status}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                <Mail className="w-4 h-4" />
+                <span>{user.email}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {user?.role?.map((role) => (
+                  <Badge key={role} className={getRoleColor(role)} variant="secondary">
+                    {role}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Profile Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Career Information */}
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Readiness Score</p>
-                <p className="text-4xl font-bold">{overview.readinessScore || 0}</p>
-              </div>
-              {scoreDiff !== 0 && (
-                <div
-                  className={`flex items-center gap-1 ${
-                    isImproving ? 'text-green-600' : 'text-red-600'
-                  }`}
-                >
-                  {isImproving ? (
-                    <TrendingUp className="w-5 h-5" />
-                  ) : (
-                    <TrendingDown className="w-5 h-5" />
-                  )}
-                  <span className="text-lg font-semibold">
-                    {isImproving ? '+' : ''}
-                    {scoreDiff}
-                  </span>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Briefcase className="w-5 h-5" />
+              Career Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Target Role</p>
+              <p className="font-medium">{user?.profile?.targetRole || 'Not specified'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Target Companies</p>
+              {user?.profile?.targetCompanies.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {user?.profile?.targetCompanies?.map((company) => (
+                    <Badge key={company} variant="outline" className="flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />
+                      {company}
+                    </Badge>
+                  ))}
                 </div>
+              ) : (
+                <p className="text-muted-foreground">No target companies specified</p>
+              )}
+            </div>
+            {/* Resume Download */}
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Resume</p>
+              {user?.profile?.resumeUrl ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                  onClick={() => window.open(user?.profile?.resumeUrl, '_blank')}
+                >
+                  <FileText className="w-4 h-4" />
+                  Download Resume
+                  <Download className="w-4 h-4" />
+                </Button>
+              ) : (
+                <p className="text-muted-foreground">No resume uploaded</p>
               )}
             </div>
           </CardContent>
         </Card>
 
+        {/* Location & Time */}
         <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground mb-4">Last 30 Days</p>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Brain className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">AI Sessions</span>
-                </div>
-                <span className="font-semibold">{overview.aiSessions || 0}</span>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              Location & Timezone
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3">
+              <MapPin className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Location</p>
+                <p className="font-medium">{user?.profile?.location || 'Not specified'}</p>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Practice Hours</span>
-                </div>
-                <span className="font-semibold">{overview.practiceHours || 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Mentor Sessions</span>
-                </div>
-                <span className="font-semibold">{overview.mentorSessions || 0}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Timezone</p>
+                <p className="font-medium">{user?.profile?.timezone || 'Not specified'}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Progress Trend</p>
-            {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={trendData}>
-                  <XAxis dataKey="week" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--popover))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground">No trend data available</p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Highlights */}
+      {/* Account Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Highlights</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <User className="w-5 h-5" />
+            Account Information
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-3">
-            {overview.highlights && overview.highlights.length > 0 ? (
-              overview.highlights.map((highlight, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                  <span>{highlight}</span>
-                </li>
-              ))
-            ) : (
-              <li className="flex items-start gap-3 text-muted-foreground">
-                <span>No highlights available yet - user is just getting started</span>
-              </li>
-            )}
-          </ul>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Signup Date</p>
+                <p className="font-medium">{user?.signupDate}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Last Active</p>
+                <p className="font-medium">{user?.lastActive}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Tag className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">User ID</p>
+                <p className="font-medium font-mono text-sm">{user?.id}</p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Tags */}
+      {user?.tags?.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Tag className="w-5 h-5" />
+              Tags
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {user?.tags?.map((tag) => (
+                <Badge key={tag} variant="secondary">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

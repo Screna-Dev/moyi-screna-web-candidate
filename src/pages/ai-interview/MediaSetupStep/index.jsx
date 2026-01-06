@@ -1,7 +1,8 @@
-// components/MediaSetupStep.js - 修复状态更新和 AudioContext 资源管理 + Video Ref Fix
+// MediaSetupStep.js - With Permission Help Guide at Top (English Only, Using Screenshots)
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Box, Typography, CircularProgress, Alert, Button, Card, Grid
+  Box, Typography, CircularProgress, Alert, Button, Card, Grid,
+  Collapse, IconButton
 } from '@mui/material';
 import {
   Mic,
@@ -10,8 +11,15 @@ import {
   CheckCircle,
   Error as ErrorIcon,
   ArrowForward,
-  Person
+  Person,
+  Help,
+  Close,
+  ExpandMore
 } from '@mui/icons-material';
+
+import permissionStep2 from '@/assets/images/aiInterviewSetup/permission-step2.png';
+import permissionStep3 from '@/assets/images/aiInterviewSetup/permission-step3.png';
+
 
 function MediaSetupStep({ 
   mediaState, 
@@ -27,20 +35,22 @@ function MediaSetupStep({
   const localVideoRef = useRef(null);
   const audioLevelIndicatorRef = useRef(null);
   
-  // 🔧 新增：保存 AudioContext 和音频分析器
+  // AudioContext refs
   const audioContextRef = useRef(null);
   const audioAnalyserRef = useRef(null);
   const audioSourceRef = useRef(null);
   const monitoringAnimationRef = useRef(null);
-  
-  // 🔧 新增：用 ref 追踪最新的 audioEnabled 状态
   const audioEnabledRef = useRef(false);
   
-  // Local state for debugging
+  // Local state
   const [videoDebugInfo, setVideoDebugInfo] = useState('');
   const [videoLoading, setVideoLoading] = useState(false);
+  
+  // Permission help state
+  const [showPermissionHelp, setShowPermissionHelp] = useState(false);
+  const [permissionError, setPermissionError] = useState(null);
 
-  // 🔧 同步 audioEnabled 到 ref
+  // Sync audioEnabled to ref
   useEffect(() => {
     audioEnabledRef.current = mediaState.audioEnabled;
   }, [mediaState.audioEnabled]);
@@ -58,7 +68,6 @@ function MediaSetupStep({
     }
   }, [mediaState.videoTestStream]);
 
-  // 🔧 修复：使用 prev 读取最新状态
   const updateMediaReadyState = () => {
     setMediaState(prev => ({
       ...prev,
@@ -66,15 +75,13 @@ function MediaSetupStep({
     }));
   };
 
-  // 🔧 新增：清理音频资源的函数
+  // Cleanup audio resources
   const cleanupAudioResources = () => {
-    // 停止动画帧
     if (monitoringAnimationRef.current) {
       cancelAnimationFrame(monitoringAnimationRef.current);
       monitoringAnimationRef.current = null;
     }
 
-    // 断开音频节点连接
     if (audioSourceRef.current) {
       try {
         audioSourceRef.current.disconnect();
@@ -84,7 +91,6 @@ function MediaSetupStep({
       audioSourceRef.current = null;
     }
 
-    // 关闭 AudioContext
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().then(() => {
         console.log('✅ AudioContext closed successfully');
@@ -94,31 +100,21 @@ function MediaSetupStep({
       audioContextRef.current = null;
     }
 
-    // 清理分析器引用
     audioAnalyserRef.current = null;
 
-    // 重置音量指示器
     if (audioLevelIndicatorRef.current) {
       audioLevelIndicatorRef.current.style.width = '0%';
     }
-
-    console.log('🧹 Audio resources cleaned up');
   };
 
-  // 🔧 组件卸载时清理资源
   useEffect(() => {
     return () => {
       cleanupAudioResources();
     };
   }, []);
 
-  // Debug video setup environment
+  // Debug video setup
   const debugVideoSetup = async () => {
-    console.log("🔍 Video Setup Debug Info:");
-    console.log("- HTTPS:", window.location.protocol === 'https:');
-    console.log("- MediaDevices support:", !!navigator.mediaDevices);
-    console.log("- getUserMedia support:", !!navigator.mediaDevices?.getUserMedia);
-    
     let debugInfo = `Protocol: ${window.location.protocol}\n`;
     debugInfo += `MediaDevices: ${!!navigator.mediaDevices}\n`;
     debugInfo += `getUserMedia: ${!!navigator.mediaDevices?.getUserMedia}\n`;
@@ -126,18 +122,11 @@ function MediaSetupStep({
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      console.log(`- Video devices found: ${videoDevices.length}`);
-      console.log("- Device details:", videoDevices.map(d => ({ 
-        label: d.label || 'Unknown Camera', 
-        deviceId: d.deviceId.substring(0, 8) + "..." 
-      })));
-      
       debugInfo += `Video devices: ${videoDevices.length}\n`;
       if (videoDevices.length > 0) {
         debugInfo += `Primary camera: ${videoDevices[0].label || 'Unknown Camera'}\n`;
       }
     } catch (e) {
-      console.log("- Device enumeration failed:", e.message);
       debugInfo += `Device enum error: ${e.message}\n`;
     }
     
@@ -145,7 +134,7 @@ function MediaSetupStep({
     return debugInfo;
   };
 
-  // Get video device with robust error handling and debugging
+  // Get video device
   const getVideoDevice = async () => {
     try {
       await debugVideoSetup();
@@ -160,8 +149,6 @@ function MediaSetupStep({
       if (videoDevices.length === 0) {
         throw new Error('No camera devices found on this system');
       }
-
-      console.log(`🎥 Found ${videoDevices.length} video device(s)`);
 
       const constraintLevels = [         
         {            
@@ -205,7 +192,6 @@ function MediaSetupStep({
       
       for (let i = 0; i < constraintLevels.length; i++) {
         const level = constraintLevels[i];
-        console.log(`🔄 Trying ${level.name} constraints:`, level.constraints);
         
         try {
           const stream = await navigator.mediaDevices.getUserMedia(level.constraints);
@@ -217,24 +203,15 @@ function MediaSetupStep({
           }
           
           const track = videoTracks[0];
-          console.log('📹 Video track details:', {
-            label: track.label,
-            kind: track.kind,
-            readyState: track.readyState,
-            enabled: track.enabled,
-            settings: track.getSettings()
-          });
           
           if (track.readyState !== 'live') {
             stream.getTracks().forEach(track => track.stop());
             throw new Error(`Video track is not active (state: ${track.readyState})`);
           }
           
-          console.log(`✅ ${level.name} constraints successful`);
           return stream;
           
         } catch (constraintError) {
-          console.warn(`❌ ${level.name} constraints failed:`, constraintError);
           lastError = constraintError;
           
           if (constraintError.name === 'NotAllowedError' || 
@@ -256,13 +233,13 @@ function MediaSetupStep({
       } else if (error.name === 'NotReadableError') {
         throw new Error('Camera is in use by another application. Please close other applications using the camera.');
       } else if (error.name === 'OverconstrainedError') {
-        throw new Error('Camera does not meet the required specifications. Interview will continue in audio-only mode.');
+        throw new Error('Camera does not meet the required specifications.');
       } else if (error.name === 'AbortError') {
         throw new Error('Camera access was aborted. Please try again.');
       } else if (error.name === 'TypeError') {
         throw new Error('Camera access not supported in this browser or requires HTTPS.');
       } else {
-        throw new Error(`Camera error: ${error.message || 'Unknown camera error'}. Interview will continue in audio-only mode.`);
+        throw new Error(`Camera error: ${error.message || 'Unknown camera error'}.`);
       }
     }
   };
@@ -270,18 +247,12 @@ function MediaSetupStep({
   // Handle audio toggle
   const handleAudioToggle = async () => {
     if (mediaState.audioEnabled) {
-      // 🔧 关闭音频时清理所有资源
-      console.log('🔇 Disabling audio...');
-      
-      // 停止音频流
       if (mediaState.audioTestStream) {
         mediaState.audioTestStream.getTracks().forEach(track => track.stop());
       }
       
-      // 清理音频上下文和分析器
       cleanupAudioResources();
       
-      // 更新状态
       setMediaState(prev => ({
         ...prev,
         audioEnabled: false,
@@ -289,13 +260,10 @@ function MediaSetupStep({
         audioTestStream: null
       }));
       
-      console.log('✅ Audio disabled and resources cleaned');
+      setPermissionError(null);
       
     } else {
-      // Enable audio
       try {
-        console.log('🎤 Enabling audio...');
-        
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -306,16 +274,13 @@ function MediaSetupStep({
           }
         });
 
-        // 🔧 清理旧的 AudioContext（如果存在）
         cleanupAudioResources();
 
-        // 🔧 创建新的 AudioContext 并保存到 ref
         const context = new (window.AudioContext || window.webkitAudioContext)({
           sampleRate: 16000
         });
         audioContextRef.current = context;
 
-        // Set up audio level monitoring
         const source = context.createMediaStreamSource(stream);
         audioSourceRef.current = source;
         
@@ -324,9 +289,7 @@ function MediaSetupStep({
         source.connect(analyser);
         audioAnalyserRef.current = analyser;
 
-        // 🔧 修复：使用 ref 读取最新的 audioEnabled 状态
         const monitorLevels = () => {
-          // 使用 ref 而不是闭包中的 mediaState
           if (audioAnalyserRef.current && audioEnabledRef.current) {
             const dataArray = new Uint8Array(audioAnalyserRef.current.frequencyBinCount);
             audioAnalyserRef.current.getByteFrequencyData(dataArray);
@@ -335,20 +298,18 @@ function MediaSetupStep({
             for (let i = 0; i < dataArray.length; i++) {
               sum += dataArray[i];
             }
-            const average = (sum / dataArray.length) * 2; // Scale up for visibility
+            const average = (sum / dataArray.length) * 2;
 
             if (audioLevelIndicatorRef.current) {
               audioLevelIndicatorRef.current.style.width = `${Math.min(100, average)}%`;
             }
             
-            // 继续监控（使用 ref 检查状态）
             if (audioEnabledRef.current) {
               monitoringAnimationRef.current = requestAnimationFrame(monitorLevels);
             }
           }
         };
 
-        // 更新状态
         setMediaState(prev => ({
           ...prev,
           audioEnabled: true,
@@ -356,23 +317,23 @@ function MediaSetupStep({
           audioTestStream: stream
         }));
         
-        // 启动音量监控
         monitorLevels();
+        setPermissionError(null);
+        setShowPermissionHelp(false);
         
         setSuccess("Audio test successful! Microphone is working properly.");
         setOpenSnackbar(true);
         
-        console.log('✅ Audio enabled successfully');
-        
       } catch (error) {
         console.error("❌ Audio setup failed:", error);
         
-        // 清理任何部分创建的资源
         cleanupAudioResources();
         
         let errorMessage = "Audio setup failed";
         if (error.name === 'NotAllowedError') {
           errorMessage = "Microphone access denied. Please allow microphone access and try again.";
+          setPermissionError('audio');
+          setShowPermissionHelp(true);
         } else if (error.name === 'NotFoundError') {
           errorMessage = "No microphone found. Please connect a microphone.";
         } else if (error.name === 'NotReadableError') {
@@ -389,10 +350,9 @@ function MediaSetupStep({
     updateMediaReadyState();
   };
 
-  // Handle video toggle - SIMPLIFIED VERSION
+  // Handle video toggle
   const handleVideoToggle = async () => {
     if (mediaState.cameraEnabled) {
-      // Disable video
       if (mediaState.videoTestStream) {
         mediaState.videoTestStream.getTracks().forEach(track => track.stop());
       }
@@ -406,16 +366,12 @@ function MediaSetupStep({
         videoTestStream: null
       }));
       setVideoDebugInfo('');
+      setPermissionError(null);
     } else {
-      // Enable video
       setVideoLoading(true);
       try {
-        console.log("🎬 Starting video setup...");
         const stream = await getVideoDevice();
 
-        console.log("📹 Got video stream, setting up preview...");
-
-        // Set state - the useEffect will handle connecting the stream to the video element
         setMediaState(prev => ({
           ...prev,
           cameraEnabled: true,
@@ -423,6 +379,8 @@ function MediaSetupStep({
           videoTestStream: stream
         }));
 
+        setPermissionError(null);
+        setShowPermissionHelp(false);
         setSuccess("Camera test successful! Video is working properly.");
         setOpenSnackbar(true);
         setVideoLoading(false);
@@ -431,28 +389,19 @@ function MediaSetupStep({
         console.error("❌ Video setup failed:", error);
 
         let errorMessage = "Camera setup failed. Audio-only mode available.";
-        let showToUser = true;
 
         if (error.name === 'NotAllowedError' || error.message.includes('denied')) {
-          errorMessage = "Camera access denied. Please click 'Allow' when prompted or check your browser settings.";
+          errorMessage = "Camera access denied. Please allow camera access in your browser settings.";
+          setPermissionError('video');
+          setShowPermissionHelp(true);
         } else if (error.name === 'NotReadableError' || error.message.includes('in use')) {
-          errorMessage = "Camera is in use by another application. Please close other apps using the camera (like Zoom, Teams, etc.) and try again.";
+          errorMessage = "Camera is in use by another application.";
         } else if (error.name === 'NotFoundError' || error.message.includes('No camera')) {
-          errorMessage = "No camera found on this device. Interview will continue in audio-only mode.";
-        } else if (error.name === 'OverconstrainedError') {
-          errorMessage = "Camera does not meet requirements. Interview will continue in audio-only mode.";
-        } else if (error.message.includes('not supported') || error.name === 'TypeError') {
-          errorMessage = "Camera access requires HTTPS or is not supported in this browser. Audio-only mode available.";
-        } else if (error.message.includes('Audio-only mode')) {
-          showToUser = false;
-        } else {
-          errorMessage = `Camera error: ${error.message}. Interview will work perfectly with audio-only mode.`;
+          errorMessage = "No camera found. Interview will continue in audio-only mode.";
         }
 
-        if (showToUser) {
-          setError(errorMessage);
-          setOpenSnackbar(true);
-        }
+        setError(errorMessage);
+        setOpenSnackbar(true);
 
         setMediaState(prev => ({
           ...prev,
@@ -467,11 +416,229 @@ function MediaSetupStep({
     updateMediaReadyState();
   };
 
+  // Permission Help Component with Screenshots
+  const PermissionHelpGuide = () => (
+    <Card 
+      sx={{ 
+        mb: 4,
+        border: '2px solid #f59e0b',
+        borderRadius: 3,
+        overflow: 'hidden',
+        bgcolor: '#fffbeb'
+      }}
+    >
+      {/* Header */}
+      <Box 
+        sx={{ 
+          bgcolor: '#f59e0b', 
+          color: 'white', 
+          p: 2, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between'
+        }}
+      >
+        <Box display="flex" alignItems="center" gap={1}>
+          <Help />
+          <Typography variant="h6" fontWeight={600}>
+            How to Enable Camera & Microphone Permissions
+          </Typography>
+        </Box>
+        <IconButton 
+          size="small" 
+          onClick={() => setShowPermissionHelp(false)}
+          sx={{ color: 'white' }}
+        >
+          <Close />
+        </IconButton>
+      </Box>
+
+      <Box sx={{ p: 3 }}>
+        {/* Error Alert */}
+        {permissionError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              <strong>{permissionError === 'audio' ? 'Microphone' : 'Camera'} permission was denied.</strong> 
+              {' '}Follow the steps below to enable access.
+            </Typography>
+          </Alert>
+        )}
+
+        {/* Step 1 */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ 
+              width: 28, 
+              height: 28, 
+              borderRadius: '50%', 
+              bgcolor: '#f59e0b', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: 700
+            }}>
+              1
+            </Box>
+            Click the lock/info icon in the address bar
+          </Typography>
+          
+          <Box 
+            sx={{ 
+              border: '1px solid #e2e8f0',
+              borderRadius: 2,
+              overflow: 'hidden',
+              bgcolor: 'white',
+              // maxWidth: 550
+            }}
+          >
+            <img 
+              src={permissionStep2}
+              alt="Click the lock icon in address bar to open site settings"
+              style={{ 
+                width: '100%', 
+                height: 'auto',
+                display: 'block'
+              }}
+              onError={(e) => {
+                // Fallback if image not found
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+          </Box>
+          <Typography variant="body2" color="#64748b" sx={{ mt: 1 }}>
+            Look for the lock (🔒) or info (ⓘ) icon on the left side of your browser's address bar and click it.
+          </Typography>
+        </Box>
+
+        {/* Step 2 */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ 
+              width: 28, 
+              height: 28, 
+              borderRadius: '50%', 
+              bgcolor: '#f59e0b', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: 700
+            }}>
+              2
+            </Box>
+            Toggle Camera and Microphone to ON
+          </Typography>
+          
+          <Box 
+            sx={{ 
+              border: '1px solid #e2e8f0',
+              borderRadius: 2,
+              overflow: 'hidden',
+              bgcolor: '#1f2937',
+              // maxWidth: 350
+            }}
+          >
+            <img 
+              src={permissionStep3}
+              alt="Toggle camera and microphone permissions to ON"
+              style={{ 
+                width: '100%', 
+                height: 'auto',
+                display: 'block'
+              }}
+              onError={(e) => {
+                // Fallback if image not found
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+          </Box>
+          <Typography variant="body2" color="#64748b" sx={{ mt: 1 }}>
+            Make sure both Camera and Microphone toggles are switched ON (shown in purple/blue).
+          </Typography>
+        </Box>
+
+        {/* Step 3 */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ 
+              width: 28, 
+              height: 28, 
+              borderRadius: '50%', 
+              bgcolor: '#f59e0b', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: 700
+            }}>
+              3
+            </Box>
+            Refresh the page and try again
+          </Typography>
+          
+          <Button
+            variant="contained"
+            onClick={() => window.location.reload()}
+            sx={{
+              bgcolor: '#f59e0b',
+              color: 'white',
+              '&:hover': { bgcolor: '#d97706' }
+            }}
+          >
+            Refresh Page
+          </Button>
+        </Box>
+
+        {/* Alternative */}
+        <Alert severity="info" icon={false}>
+          <Typography variant="body2">
+            <strong>Still not working?</strong> Try opening your browser settings directly:
+            <br />
+            Chrome: Settings → Privacy and Security → Site Settings → Camera/Microphone
+          </Typography>
+        </Alert>
+      </Box>
+    </Card>
+  );
+
   return (
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, color: '#1e293b', mb: 4 }}>
         Step 1: Media Setup & Testing
       </Typography>
+
+      {/* Permission Help Guide - At the TOP */}
+      <Collapse in={showPermissionHelp}>
+        <PermissionHelpGuide />
+      </Collapse>
+
+      {/* Permission Help Toggle Button - Always visible at top when not expanded */}
+      {!showPermissionHelp && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mb: 3,
+            cursor: 'pointer',
+            '&:hover': { bgcolor: '#dbeafe' }
+          }}
+          onClick={() => setShowPermissionHelp(true)}
+          action={
+            <IconButton size="small" color="inherit">
+              <ExpandMore />
+            </IconButton>
+          }
+        >
+          <Typography variant="body2">
+            <strong>Having trouble with camera or microphone?</strong> Click here for help with browser permissions.
+          </Typography>
+        </Alert>
+      )}
       
       <Grid container spacing={4}>
         {/* Left Column - Controls */}
@@ -638,30 +805,15 @@ function MediaSetupStep({
                 <li>Click "Enable Audio" and grant microphone access</li>
                 <li>Speak to test your microphone level</li>
                 <li>Optionally enable your camera for video</li>
-                <li>Click "Continue to Interview" to connect to the AI system</li>
+                <li>Click "Continue to Interview" when ready</li>
               </Box>
             </Alert>
-
-            {/* Troubleshooting Tips */}
-            {(!mediaState.cameraEnabled && videoDebugInfo) && (
-              <Alert severity="info" sx={{ mt: 2, bgcolor: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                <Typography variant="subtitle2" mb={1} sx={{ fontWeight: 600 }}>
-                  Camera Troubleshooting:
-                </Typography>
-                <Typography variant="body2" component="div">
-                  • Make sure you click "Allow" when prompted for camera access<br/>
-                  • Close other apps that might be using your camera (Zoom, Teams, etc.)<br/>
-                  • Try refreshing the page if camera access was previously denied<br/>
-                  • The interview works perfectly with audio-only mode
-                </Typography>
-              </Alert>
-            )}
           </Box>
         </Grid>
 
         {/* Right Column - Video Preview */}
         <Grid item size={{ xs: 12, md: 6 }}>
-          <Card sx={{ p: 3, border: 'none',  boxShadow:'3px 1px 1px #f0f0f0', height: 'fit-content' }}>
+          <Card sx={{ p: 3, border: 'none', boxShadow:'3px 1px 1px #f0f0f0', height: 'fit-content' }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Typography variant="h6" sx={{ fontWeight: 600, color: '#1e293b' }}>
                 Candidate
@@ -692,7 +844,7 @@ function MediaSetupStep({
               Preview • Camera & Microphone
             </Typography>
 
-            {/* Video Preview Container - FIXED: Always render video element */}
+            {/* Video Preview Container */}
             <Box 
               sx={{
                 aspectRatio: '4/3',
@@ -708,7 +860,6 @@ function MediaSetupStep({
                 overflow: 'hidden'
               }}
             >
-              {/* Always render video element, but hide when not in use */}
               <video
                 ref={localVideoRef}
                 autoPlay

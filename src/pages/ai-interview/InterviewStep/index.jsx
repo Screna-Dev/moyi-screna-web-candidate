@@ -137,26 +137,27 @@ function InterviewStep({
   };
 
   // Connection monitoring functions
+  // Note: Per Pipecat design, any disconnect = session ends
+  // So we don't show "connection lost" errors - the session just ends gracefully
   const updateConnectionStatus = (component, status) => {
-    setConnectionStatus(prev => {
-      const newStatus = { ...prev, [component]: status };
-      
-      if (prev[component] !== status) {
-        console.log(`🔄 Connection Status Changed: ${component} -> ${status}`);
+    setTimeout(() => {
+      setConnectionStatus(prev => {
+        const newStatus = { ...prev, [component]: status };
+        
+        if (prev[component] !== status) {
+          console.log(`🔄 Connection Status Changed: ${component} -> ${status}`);
 
-        if (status === 'error' || status === 'disconnected') {
-          if (component === 'aiWebSocket') {
-            setError(`AI connection lost! Interview communication interrupted.`);
-            setOpenSnackbar(true);
-          } else if (component === 'mediaStream') {
+          // Only show error for media stream issues (user can fix these)
+          // Don't show error for AI WebSocket disconnect - session will end gracefully
+          if (component === 'mediaStream' && (status === 'error' || status === 'disconnected')) {
             setError(`Media stream lost! Please check your microphone/camera.`);
             setOpenSnackbar(true);
           }
         }
-      }
-      
-      return newStatus;
-    });
+        
+        return newStatus;
+      });
+    }, 0);
   };
 
   const startConnectionMonitoring = () => {
@@ -214,14 +215,18 @@ function InterviewStep({
   const startInterview = async () => {
     try {
       if (!mediaState.mediaReady) {
-        setError("Media not ready. Please go back and set up your audio.");
-        setOpenSnackbar(true);
+        setTimeout(() => {
+          setError("Media not ready. Please go back and set up your audio.");
+          setOpenSnackbar(true);
+        }, 0);
         return;
       }
 
       if (!mediaState.audioTestStream) {
-        setError("Audio stream not available");
-        setOpenSnackbar(true);
+        setTimeout(() => {
+          setError("Audio stream not available");
+          setOpenSnackbar(true);
+        }, 0);
         return;
       }
 
@@ -273,10 +278,13 @@ function InterviewStep({
           updateConnectionStatus('aiWebSocket', 'connected');
         } catch (connectError) {
           console.error("❌ AI connection failed:", connectError);
-          updateConnectionStatus('aiWebSocket', 'error');
-          setError("Failed to connect to AI interview system. Please try again.");
-          setOpenSnackbar(true);
-          setIsConnecting(false);
+          // Wrap in setTimeout to avoid setState during render cycle
+          setTimeout(() => {
+            updateConnectionStatus('aiWebSocket', 'error');
+            setError("Failed to connect to AI interview system. Please try again.");
+            setOpenSnackbar(true);
+            setIsConnecting(false);
+          }, 0);
           return;
         }
       } else {
@@ -308,12 +316,15 @@ function InterviewStep({
 
     } catch (error) {
       console.error('Interview startup error:', error);
-      setError('Cannot start interview: ' + error.message);
-      setOpenSnackbar(true);
-      setInterviewStarted(false);
-      setIsConnecting(false);
-      setIsCreatingSession(false);
-      updateConnectionStatus('aiWebSocket', 'error');
+      // Wrap in setTimeout to avoid setState during render cycle
+      setTimeout(() => {
+        setError('Cannot start interview: ' + error.message);
+        setOpenSnackbar(true);
+        setInterviewStarted(false);
+        setIsConnecting(false);
+        setIsCreatingSession(false);
+        updateConnectionStatus('aiWebSocket', 'error');
+      }, 0);
     }
   };
 
