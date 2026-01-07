@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { InterviewService, InterviewSessionService } from "@/services";
@@ -35,6 +36,11 @@ import {
   Trash2,
   RefreshCw,
   AlertCircle,
+  User,
+  ListChecks,
+  HelpCircle,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 interface TargetJob {
@@ -52,6 +58,21 @@ interface TargetJob {
   status: string;
 }
 
+interface SessionConfig {
+  persona?: string;
+  topic?: string;
+  objectives?: string[];
+  evaluation_dimensions?: string[];
+  question_type?: string[];
+  purposes?: string[];
+  questions?: {
+    question: string;
+    description?: string;
+    type?: string;
+    purpose?: string;
+  }[];
+}
+
 interface AISession {
   id: string;
   title: string;
@@ -59,10 +80,13 @@ interface AISession {
   difficulty: string;
   duration: number;
   completed: boolean;
+  status?: string;
   score?: number;
   persona?: string;
   topic?: string;
   reportId?: string;
+  session_outcome?: string;
+  session_config?: SessionConfig;
 }
 
 interface ReportQuestion {
@@ -122,6 +146,10 @@ const InterviewPrep = () => {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  
+  // Session Preview state
+  const [selectedSessionPreview, setSelectedSessionPreview] = useState<AISession | null>(null);
+  const [sessionPreviewSheetOpen, setSessionPreviewSheetOpen] = useState(false);
   
   // Form state for creating new job
   const [jobTitle, setJobTitle] = useState("");
@@ -255,6 +283,25 @@ const InterviewPrep = () => {
     setReportSheetOpen(false);
     setSelectedSessionReport(null);
     setReportData(null);
+  };
+
+  // Handle opening session preview sheet
+  const handleOpenSessionPreview = (session: AISession) => {
+    setSelectedSessionPreview(session);
+    setSessionPreviewSheetOpen(true);
+  };
+
+  // Handle closing session preview sheet
+  const handleCloseSessionPreview = () => {
+    setSessionPreviewSheetOpen(false);
+    setSelectedSessionPreview(null);
+  };
+
+  // Handle starting the interview from preview
+  const handleStartInterview = () => {
+    if (selectedSessionPreview) {
+      navigate(`/interview/${selectedSessionPreview.id}`);
+    }
   };
 
   // Load training plans on mount
@@ -424,6 +471,8 @@ const InterviewPrep = () => {
       persona: module.persona,
       topic: module.topic,
       reportId: module.report_id,
+      session_outcome: module.session_outcome,
+      session_config: module.session_config,
     }));
   };
 
@@ -471,6 +520,20 @@ const InterviewPrep = () => {
         return { label: "Error", variant: "destructive" as const, icon: AlertCircle };
       default:
         return { label: "Processing...", variant: "outline" as const, icon: Loader2 };
+    }
+  };
+
+  // Get difficulty color
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty?.toLowerCase()) {
+      case 'easy':
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'medium':
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+      case 'hard':
+        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -646,20 +709,6 @@ const InterviewPrep = () => {
                   </div>
                 )}
 
-                {/* Video Replay */}
-                {/* <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <Video className="h-5 w-5 text-primary" />
-                    Video Replay
-                  </h3>
-                  <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <Video className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">Video playback coming soon</p>
-                    </div>
-                  </div>
-                </div> */}
-
                 {/* Questions Breakdown */}
                 {reportData.questions && reportData.questions.length > 0 && (
                   <div>
@@ -768,6 +817,151 @@ const InterviewPrep = () => {
               </div>
             )}
           </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Session Preview Sheet */}
+      <Sheet open={sessionPreviewSheetOpen} onOpenChange={(open) => !open && handleCloseSessionPreview()}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5 text-primary" />
+              {selectedSessionPreview?.title}
+            </SheetTitle>
+            <SheetDescription>Review session details before starting your interview</SheetDescription>
+          </SheetHeader>
+          
+          {selectedSessionPreview && (
+            <ScrollArea className="h-[calc(100vh-200px)] mt-6">
+              <div className="space-y-6 pr-4">
+                {/* Session Overview Card */}
+                <div className="bg-gradient-to-br from-primary/10 to-secondary/10 rounded-lg p-5">
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <Badge variant="outline" className="gap-1">
+                      <Clock className="h-3 w-3" />
+                      {selectedSessionPreview.duration} min
+                    </Badge>
+                    <Badge className={getDifficultyColor(selectedSessionPreview.difficulty)}>
+                      {selectedSessionPreview.difficulty}
+                    </Badge>
+                    <Badge variant="secondary">
+                      {selectedSessionPreview.category}
+                    </Badge>
+                  </div>
+                  
+                  <div>
+                    {selectedSessionPreview.topic && (
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-background rounded-lg">
+                          <BookOpen className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">Topic</p>
+                          <p className="text-sm font-semibold">{selectedSessionPreview.topic}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Session Outcome */}
+                {selectedSessionPreview.session_outcome && (
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-semibold mb-2 flex items-center gap-2">
+                      <Target className="h-4 w-4 text-primary" />
+                      Expected Outcome
+                    </h4>
+                    <p className="text-sm text-muted-foreground">{selectedSessionPreview.session_outcome}</p>
+                  </div>
+                )}
+
+                {/* Session Config Details */}
+                {selectedSessionPreview.session_config && (
+                  <>
+                    {/* Objectives */}
+                    {selectedSessionPreview.session_config.objectives && selectedSessionPreview.session_config.objectives.length > 0 && (
+                      <div className="border rounded-lg p-4">
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <ListChecks className="h-4 w-4 text-primary" />
+                          Session Objectives
+                        </h4>
+                        <ul className="list-disc list-inside text-sm space-y-1">
+                          {selectedSessionPreview.session_config.objectives.map((obj, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm">
+                              <span>• {obj}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Evaluation Dimensions */}
+                    {selectedSessionPreview.session_config.evaluation_dimensions && selectedSessionPreview.session_config.evaluation_dimensions.length > 0 && (
+                      <div className="border rounded-lg p-4">
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4 text-primary" />
+                          Evaluation Criteria
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedSessionPreview.session_config.evaluation_dimensions.map((dim, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">
+                              {dim}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Question Types */}
+                    {selectedSessionPreview.session_config.question_type && selectedSessionPreview.session_config.question_type.length > 0 && (
+                      <div className="border rounded-lg p-4">
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <HelpCircle className="h-4 w-4 text-primary" />
+                          Question Types
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedSessionPreview.session_config.question_type.map((type, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {type}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Purposes */}
+                    {selectedSessionPreview.session_config.purposes && selectedSessionPreview.session_config.purposes.length > 0 && (
+                      <div className="border rounded-lg p-4">
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          Focus Areas
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedSessionPreview.session_config.purposes.map((purpose, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs bg-primary/10 text-primary">
+                              {purpose}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Start Interview Button - Fixed at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-background border-t">
+            <Button 
+              className="w-full gradient-primary text-lg py-6"
+              onClick={handleStartInterview}
+            >
+              <PlayCircle className="h-5 w-5 mr-2" />
+              Start Mock Interview
+              <ArrowRight className="h-5 w-5 ml-2" />
+            </Button>
+          </div>
         </SheetContent>
       </Sheet>
 
@@ -1086,12 +1280,6 @@ const InterviewPrep = () => {
                                 <CardTitle className="text-lg">{session.title}</CardTitle>
                                 <CardDescription className="mt-1">{session.category}</CardDescription>
                               </div>
-                              {/* {session.status === "completed" && (
-                                <Badge variant="secondary" className="bg-secondary/20">
-                                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                                  Completed
-                                </Badge>
-                              )} */}
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -1100,49 +1288,19 @@ const InterviewPrep = () => {
                                 <Clock className="h-4 w-4" />
                                 {session.duration} min
                               </span>
-                              <Badge variant="outline">{session.difficulty}</Badge>
+                              <Badge className={getDifficultyColor(session.difficulty)}>
+                                {session.difficulty}
+                              </Badge>
                             </div>
-                            {/* {session.status === "completed" && (
-                              <div className="space-y-3">
-                                {session.score !== undefined && (
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">Score</span>
-                                    <span className="text-2xl font-bold text-primary">{formatScore(session.score)}</span>
-                                  </div>
-                                )}
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1"
-                                    onClick={() => handleOpenReport(session)}
-                                  >
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    View Report
-                                  </Button>
-                                  <Button variant="outline" size="sm" className="flex-1">
-                                    <PlayCircle className="h-4 w-4 mr-2" />
-                                    Retake
-                                  </Button>
-                                </div>
-                              </div>
-                            )} */}
+                            
                             {session.status === "pending" && (
                               <Button 
                                 className="w-full gradient-primary"
-                                onClick={() => navigate(`/interview/${session.id}`)}
+                                onClick={() => handleOpenSessionPreview(session)}
                               >
-                                <PlayCircle className="h-4 w-4 mr-2" />
                                 Start Session
                               </Button>
                             )}
-                            {/* {
-                              session.status === "processing" && (
-                                <div>
-                                  <p className="text-muted-foreground">Your interview result is processing...</p>
-                                </div>
-                              )
-                            } */}
                           </CardContent>
                         </Card>
                       ))}
@@ -1198,7 +1356,11 @@ const InterviewPrep = () => {
                                   <Button variant="ghost" size="sm">
                                     <Video className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => handleOpenSessionPreview(session)}
+                                  >
                                     <PlayCircle className="h-4 w-4" />
                                   </Button>
                                 </div>

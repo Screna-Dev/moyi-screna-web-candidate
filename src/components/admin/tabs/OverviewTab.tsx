@@ -1,15 +1,46 @@
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AdminUser } from '@/data/adminMockData';
 import { User, Briefcase, Building2, MapPin, Clock, Mail, Calendar, Tag, FileText, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import adminService from '@/services/adminService';
+import { format } from 'date-fns';
 
 interface OverviewTabProps {
   user: AdminUser;
 }
 
 export function OverviewTab({ user }: OverviewTabProps) {
+  const [overviewData, setOverviewData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        const response = await adminService.getUserOverview(user.id);
+        if (response.data?.data) {
+          setOverviewData(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user overview:', err);
+      }
+    };
+
+    if (user?.id) {
+      fetchOverview();
+    }
+  }, [user?.id]);
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'MMM d, yyyy');
+    } catch {
+      return dateString;
+    }
+  };
+
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'Admin':
@@ -38,6 +69,16 @@ export function OverviewTab({ user }: OverviewTabProps) {
     }
   };
 
+  // Use API data if available, fallback to user prop
+  const profile = overviewData?.profileDto;
+  const displayName = profile?.name || user.name;
+  const displayEmail = profile?.email || user.email;
+  const displayLocation = profile?.country || user?.profile?.location || 'Not specified';
+  const displayTimezone = profile?.timezone || user?.profile?.timezone || 'Not specified';
+  const resumeUrl = overviewData?.resumePath || user?.profile?.resumeUrl;
+  const targetRole = overviewData?.trainingPlans?.[0]?.target_job_title || user?.profile?.targetRole || 'Not specified';
+  const targetCompanies = overviewData?.trainingPlans?.map((p: any) => p.target_company).filter(Boolean) || user?.profile?.targetCompanies || [];
+
   return (
     <div className="p-6 space-y-6">
       {/* User Profile Header */}
@@ -46,19 +87,19 @@ export function OverviewTab({ user }: OverviewTabProps) {
           <div className="flex items-start gap-6">
             <Avatar className="h-20 w-20">
               <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                {user.name.split(' ').map(n => n[0]).join('')}
+                {displayName.split(' ').map(n => n[0]).join('')}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h2 className="text-2xl font-bold">{user.name}</h2>
+                <h2 className="text-2xl font-bold">{displayName}</h2>
                 <Badge className={getStatusColor(user.status)} variant="secondary">
                   {user.status}
                 </Badge>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground mb-3">
                 <Mail className="w-4 h-4" />
-                <span>{user.email}</span>
+                <span>{displayEmail}</span>
               </div>
               <div className="flex items-center gap-2">
                 {user?.role?.map((role) => (
@@ -85,13 +126,13 @@ export function OverviewTab({ user }: OverviewTabProps) {
           <CardContent className="space-y-4">
             <div>
               <p className="text-sm text-muted-foreground mb-1">Target Role</p>
-              <p className="font-medium">{user?.profile?.targetRole || 'Not specified'}</p>
+              <p className="font-medium">{targetRole}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-2">Target Companies</p>
-              {user?.profile?.targetCompanies.length > 0 ? (
+              {targetCompanies.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {user?.profile?.targetCompanies?.map((company) => (
+                  {targetCompanies.map((company: string) => (
                     <Badge key={company} variant="outline" className="flex items-center gap-1">
                       <Building2 className="w-3 h-3" />
                       {company}
@@ -105,12 +146,12 @@ export function OverviewTab({ user }: OverviewTabProps) {
             {/* Resume Download */}
             <div>
               <p className="text-sm text-muted-foreground mb-2">Resume</p>
-              {user?.profile?.resumeUrl ? (
+              {resumeUrl ? (
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex items-center gap-2"
-                  onClick={() => window.open(user?.profile?.resumeUrl, '_blank')}
+                  onClick={() => window.open(resumeUrl, '_blank')}
                 >
                   <FileText className="w-4 h-4" />
                   Download Resume
@@ -136,14 +177,14 @@ export function OverviewTab({ user }: OverviewTabProps) {
               <MapPin className="w-4 h-4 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Location</p>
-                <p className="font-medium">{user?.profile?.location || 'Not specified'}</p>
+                <p className="font-medium">{displayLocation}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Clock className="w-4 h-4 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Timezone</p>
-                <p className="font-medium">{user?.profile?.timezone || 'Not specified'}</p>
+                <p className="font-medium">{displayTimezone}</p>
               </div>
             </div>
           </CardContent>
@@ -164,14 +205,14 @@ export function OverviewTab({ user }: OverviewTabProps) {
               <Calendar className="w-4 h-4 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Signup Date</p>
-                <p className="font-medium">{user?.signupDate}</p>
+                <p className="font-medium">{formatDate(user?.createdAt)}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Clock className="w-4 h-4 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Last Active</p>
-                <p className="font-medium">{user?.lastActive}</p>
+                <p className="font-medium">{formatDate(user?.lastActiveAt)}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
