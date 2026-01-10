@@ -133,12 +133,28 @@ const Profile = () => {
         // Check if visa status is missing and prompt user
         if (!structuredResume.profile.visa_status) {
           setShowVisaStatusDialog(true);
+          toast({
+            title: "Resume parsed successfully!",
+            description: "Please complete your work authorization status.",
+          });
+        } else {
+          // Visa status exists, save profile and navigate
+          try {
+            await ProfileService.updateProfile(structuredResume);
+            toast({
+              title: "Profile saved successfully!",
+              description: "Your profile has been created.",
+            });
+            navigate('/profile_completed');
+          } catch (saveError) {
+            console.error("Error saving profile:", saveError);
+            toast({
+              title: "Resume parsed but save failed",
+              description: "Please try saving again.",
+              variant: "destructive",
+            });
+          }
         }
-
-        toast({
-          title: "Resume parsed successfully!",
-          description: "Review the extracted information and make any necessary edits.",
-        });
       } else {
         toast({
           title: "Warning",
@@ -174,18 +190,34 @@ const Profile = () => {
       if (structuredResume) {
         setProfileData(structuredResume);
         setHasProfileData(true);
+        setShowPasteDialog(false);
+        setPastedText("");
 
         // Check if visa status is missing and prompt user
         if (!structuredResume.profile.visa_status) {
           setShowVisaStatusDialog(true);
+          toast({
+            title: "Resume parsed successfully!",
+            description: "Please complete your work authorization status.",
+          });
+        } else {
+          // Visa status exists, save profile and navigate
+          try {
+            await ProfileService.updateProfile(structuredResume);
+            toast({
+              title: "Profile saved successfully!",
+              description: "Your profile has been created.",
+            });
+            navigate('/profile_completed');
+          } catch (saveError) {
+            console.error("Error saving profile:", saveError);
+            toast({
+              title: "Resume parsed but save failed",
+              description: "Please try saving again.",
+              variant: "destructive",
+            });
+          }
         }
-
-        toast({
-          title: "Resume parsed successfully!",
-          description: "Review the extracted information and make any necessary edits.",
-        });
-        setShowPasteDialog(false);
-        setPastedText("");
       } else {
         toast({
           title: "Warning",

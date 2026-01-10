@@ -33,6 +33,9 @@ const MentorDashboard = lazy(()=> import("./pages/MentorDashboard"))
 const Settings = lazy(()=> import("./pages/Settings"))
 const Admin = lazy(()=> import("./pages/Admin"))
 
+const Career = lazy(()=> import("./pages/Career"))
+
+
 const queryClient = new QueryClient();
 
 // Loading component
@@ -53,6 +56,7 @@ const App = () => (
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Landing />} />
+              <Route path="/career" element={<Career/>} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/auth/google/callback" element={<GoogleCallback />} />

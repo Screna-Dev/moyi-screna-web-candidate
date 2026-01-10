@@ -30,7 +30,7 @@ export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('all');
+  const [timeFilter, setTimeFilter] = useState('DAYS_7');
   const [sortBy, setSortBy] = useState('RELEVANCE');
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,11 +130,11 @@ export default function Jobs() {
       const response = await JobService.searchJobs({
         query: debouncedSearchQuery ? debouncedSearchQuery : activeTitle.name || undefined,
         location: locationFilter !== 'all' ? locationFilter : undefined,
-        postedDate: timeFilter !== 'all' ? {
+        postedDate: {
           'today': 'TODAY',
-          'week': 'DAYS_7',
-          'month': 'DAYS_30'
-        }[timeFilter] : undefined,
+          'threeDays': 'DAYS_3',
+          'sevenDays': 'DAYS_7'
+        }[timeFilter],
         sortBy: sortBy,
         page: currentPage
       });
@@ -290,10 +290,9 @@ export default function Jobs() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Time</SelectItem>
                     <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">Within 7 Days</SelectItem>
-                    <SelectItem value="month">Within 30 Days</SelectItem>
+                    <SelectItem value="threeDays">Within 3 Days</SelectItem>
+                    <SelectItem value="sevenDays">Within 7 Days</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -357,18 +356,18 @@ export default function Jobs() {
                   <div>
                     <h3 className="text-xl font-semibold mb-2">No jobs found</h3>
                     <p className="text-muted-foreground mb-6">
-                      {searchQuery || locationFilter !== 'all' || timeFilter !== 'all' 
+                      {searchQuery || locationFilter !== 'all' || timeFilter !== 'DAYS_7' 
                         ? 'Try adjusting your filters to see more results'
                         : 'No jobs available at the moment. Check back later!'}
                     </p>
                   </div>
-                  {(searchQuery || locationFilter !== 'all' || timeFilter !== 'all') && (
+                  {(searchQuery || locationFilter !== 'all' || timeFilter !== 'DAYS_7') && (
                     <Button 
                       variant="outline" 
                       onClick={() => {
                         setSearchQuery('');
                         setLocationFilter('all');
-                        setTimeFilter('all');
+                        setTimeFilter('DAYS_7');
                       }}
                     >
                       Clear All Filters
@@ -391,7 +390,7 @@ export default function Jobs() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>
                     {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
-                    {!debouncedSearchQuery && locationFilter === 'all' && timeFilter === 'all' && (
+                    {!debouncedSearchQuery && locationFilter === 'all' && timeFilter === 'DAYS_7' && (
                       <span className="ml-1">(showing all available jobs)</span>
                     )}
                   </span>
