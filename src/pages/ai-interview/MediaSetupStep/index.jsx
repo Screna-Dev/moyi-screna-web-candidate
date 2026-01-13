@@ -109,6 +109,9 @@ function MediaSetupStep({
 
   useEffect(() => {
     return () => {
+      if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
       cleanupAudioResources();
     };
   }, []);

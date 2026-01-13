@@ -30,7 +30,7 @@ export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('DAYS_7');
+  const [timeFilter, setTimeFilter] = useState('sevenDays');
   const [sortBy, setSortBy] = useState('RELEVANCE');
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -356,12 +356,12 @@ export default function Jobs() {
                   <div>
                     <h3 className="text-xl font-semibold mb-2">No jobs found</h3>
                     <p className="text-muted-foreground mb-6">
-                      {searchQuery || locationFilter !== 'all' || timeFilter !== 'DAYS_7' 
+                      {searchQuery || locationFilter !== 'all' || timeFilter !== 'sevenDays' 
                         ? 'Try adjusting your filters to see more results'
                         : 'No jobs available at the moment. Check back later!'}
                     </p>
                   </div>
-                  {(searchQuery || locationFilter !== 'all' || timeFilter !== 'DAYS_7') && (
+                  {(searchQuery || locationFilter !== 'all' || timeFilter !== 'sevenDays') && (
                     <Button 
                       variant="outline" 
                       onClick={() => {
@@ -390,7 +390,7 @@ export default function Jobs() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>
                     {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
-                    {!debouncedSearchQuery && locationFilter === 'all' && timeFilter === 'DAYS_7' && (
+                    {!debouncedSearchQuery && locationFilter === 'all' && timeFilter === 'sevenDays' && (
                       <span className="ml-1">(showing all available jobs)</span>
                     )}
                   </span>

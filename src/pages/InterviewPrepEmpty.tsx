@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -18,21 +18,49 @@ import {
   Sparkles,
   BarChart3,
   MessageSquare,
+  Loader2,
 } from "lucide-react";
-import { InterviewService } from "../services";
+import { InterviewService, ProfileService } from "../services";
 import { useToast } from "@/components/ui/use-toast";
 
 const InterviewPrepEmpty = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [addJobModalOpen, setAddJobModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Profile state
+  const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   
   // Form state
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+
+  // Check if user has profile on mount
+  useEffect(() => {
+    checkProfile();
+  }, []);
+
+  const checkProfile = async () => {
+    setIsLoadingProfile(true);
+    try {
+      const response = await ProfileService.getProfile();
+      const profileDataResponse = response.data?.data || response.data;
+      
+      if (profileDataResponse && profileDataResponse.structured_resume) {
+        setHasProfile(true);
+      } else {
+        setHasProfile(false);
+      }
+    } catch (error) {
+      console.error("Error checking profile:", error);
+      setHasProfile(false);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
 
   const handleCreateTrainingPlan = async () => {
     if (!jobTitle || !jobDescription) {
@@ -72,10 +100,22 @@ const InterviewPrepEmpty = () => {
     }
   };
 
-  const handleGetStarted = () => {
-    // After completing setup, navigate to the main dashboard
-    navigate("/interview-prep");
+  const handleUploadResumeClick = () => {
+    // Navigate to profile page for resume upload
+    navigate("/profile");
   };
+
+  // Show loading state while checking profile
+  if (isLoadingProfile) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -94,81 +134,62 @@ const InterviewPrepEmpty = () => {
             Start Your Interview Preparation Journey
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Upload your profile and add your target job to receive a personalized interview plan, AI sessions, and
-            mentor recommendations.
+            {hasProfile 
+              ? "Add your target job to receive a personalized interview plan, AI sessions, and mentor recommendations."
+              : "Upload your profile and add your target job to receive a personalized interview plan, AI sessions, and mentor recommendations."
+            }
           </p>
         </div>
 
         {/* Setup Actions */}
         <div className="max-w-3xl mx-auto mb-16">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Upload Profile Card */}
-            <Dialog open={uploadModalOpen} onOpenChange={setUploadModalOpen}>
-              <DialogTrigger asChild>
-                <Card className="shadow-card hover:shadow-glow transition-smooth cursor-pointer group">
-                  <CardHeader className="text-center">
-                    <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-smooth">
-                      <Upload className="h-8 w-8 text-primary" />
-                    </div>
-                    <CardTitle>Upload Your Profile</CardTitle>
-                    <CardDescription>
-                      Share your resume or profile to get personalized recommendations
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-center">
-                    <Button variant="outline" className="w-full group-hover:border-primary transition-smooth">
-                      Upload Now
-                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Upload Your Profile</DialogTitle>
-                  <DialogDescription>
-                    Upload your resume or profile document to help us create a personalized preparation plan
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center hover:border-primary transition-smooth cursor-pointer">
-                    <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-sm font-medium mb-2">Click to upload or drag and drop</p>
-                    <p className="text-xs text-muted-foreground">PDF, DOCX (Max 10MB)</p>
+          <div className={`grid grid-cols-1 ${!hasProfile ? 'md:grid-cols-2' : ''} gap-6 ${hasProfile ? 'max-w-md mx-auto' : ''}`}>
+            {/* Upload Profile Card - Only show if user doesn't have profile */}
+            {!hasProfile && (
+              <Card 
+                className="shadow-card hover:shadow-glow transition-smooth cursor-pointer group"
+                onClick={handleUploadResumeClick}
+              >
+                <CardHeader className="text-center">
+                  <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-smooth">
+                    <Upload className="h-8 w-8 text-primary" />
                   </div>
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">or</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="profileUrl">Import from LinkedIn</Label>
-                    <Input id="profileUrl" placeholder="Paste your LinkedIn profile URL" />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => setUploadModalOpen(false)}>
-                    Cancel
+                  <CardTitle>Upload Your Resume</CardTitle>
+                  <CardDescription>
+                    Share your resume to get personalized recommendations
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <Button variant="outline" className="w-full group-hover:border-primary transition-smooth">
+                    Upload Now
+                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
                   </Button>
-                  <Button className="gradient-primary" onClick={handleGetStarted}>
-                    Continue
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Add Target Job Card */}
             <Dialog open={addJobModalOpen} onOpenChange={setAddJobModalOpen}>
               <DialogTrigger asChild>
-                <Card className="shadow-card hover:shadow-glow transition-smooth cursor-pointer group border-2 border-primary/50">
+                <Card className={`shadow-card hover:shadow-glow transition-smooth cursor-pointer group border-2 border-primary/50 ${!hasProfile ? 'opacity-60 pointer-events-none' : ''}`}>
                   <CardHeader className="text-center">
                     <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-primary flex items-center justify-center group-hover:scale-110 transition-smooth shadow-glow">
                       <Target className="h-8 w-8 text-primary-foreground" />
                     </div>
                     <CardTitle>Add Target Job</CardTitle>
-                    <CardDescription>Set your target position to generate a custom preparation plan</CardDescription>
+                    <CardDescription>
+                      {hasProfile 
+                        ? "Set your target position to generate a custom preparation plan"
+                        : "Upload your resume first to unlock this feature"
+                      }
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="text-center">
-                    <Button className="w-full gradient-primary shadow-glow">
-                      Get Started
+                    <Button 
+                      className="w-full gradient-primary shadow-glow"
+                      disabled={!hasProfile}
+                    >
+                      {hasProfile ? "Get Started" : "Resume Required"}
                       <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
                     </Button>
                   </CardContent>
@@ -237,6 +258,13 @@ const InterviewPrepEmpty = () => {
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Helper text when user doesn't have profile */}
+          {!hasProfile && (
+            <p className="text-center text-sm text-muted-foreground mt-4">
+              Please upload your resume first to create a personalized training plan
+            </p>
+          )}
         </div>
 
         {/* Feature Preview Section */}
@@ -304,18 +332,31 @@ const InterviewPrepEmpty = () => {
               <div className="space-y-6">
                 {/* Step 1 */}
                 <div className="flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-glow">
-                    1
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold ${hasProfile ? 'bg-green-500 text-white' : 'bg-primary text-primary-foreground shadow-glow'}`}>
+                    {hasProfile ? <CheckCircle2 className="h-5 w-5" /> : "1"}
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold mb-1 flex items-center gap-2">
-                      Upload Your Profile
-                      <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                      Upload Your Resume
+                      {hasProfile && <CheckCircle2 className="h-4 w-4 text-green-500" />}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Share your resume or LinkedIn profile so we can understand your background and tailor
-                      recommendations.
+                      {hasProfile 
+                        ? "Your resume has been uploaded and processed."
+                        : "Share your resume so we can understand your background and tailor recommendations."
+                      }
                     </p>
+                    {!hasProfile && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={handleUploadResumeClick}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Resume
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -323,18 +364,28 @@ const InterviewPrepEmpty = () => {
 
                 {/* Step 2 */}
                 <div className="flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-glow">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold ${hasProfile ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-muted text-muted-foreground'}`}>
                     2
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold mb-1 flex items-center gap-2">
+                    <h3 className={`font-semibold mb-1 flex items-center gap-2 ${!hasProfile ? 'text-muted-foreground' : ''}`}>
                       Add Your Target Job
-                      <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       Tell us about the role you're targeting. Include job description, interview date, and prep time
                       for a custom plan.
                     </p>
+                    {hasProfile && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={() => setAddJobModalOpen(true)}
+                      >
+                        <Target className="mr-2 h-4 w-4" />
+                        Add Target Job
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -342,11 +393,11 @@ const InterviewPrepEmpty = () => {
 
                 {/* Step 3 */}
                 <div className="flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center font-bold shadow-glow">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-bold">
                     3
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold mb-1 flex items-center gap-2">
+                    <h3 className="font-semibold mb-1 flex items-center gap-2 text-muted-foreground">
                       Start Your First AI Session
                       <Sparkles className="h-4 w-4 text-secondary" />
                     </h3>
@@ -359,15 +410,27 @@ const InterviewPrepEmpty = () => {
               </div>
 
               <div className="mt-8 text-center">
-                <Dialog open={addJobModalOpen} onOpenChange={setAddJobModalOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="lg" className="gradient-primary shadow-glow">
-                      <Target className="mr-2 h-5 w-5" />
-                      Begin Setup
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </Button>
-                  </DialogTrigger>
-                </Dialog>
+                {hasProfile ? (
+                  <Button 
+                    size="lg" 
+                    className="gradient-primary shadow-glow"
+                    onClick={() => setAddJobModalOpen(true)}
+                  >
+                    <Target className="mr-2 h-5 w-5" />
+                    Add Target Job
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                ) : (
+                  <Button 
+                    size="lg" 
+                    className="gradient-primary shadow-glow"
+                    onClick={handleUploadResumeClick}
+                  >
+                    <Upload className="mr-2 h-5 w-5" />
+                    Upload Resume to Begin
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

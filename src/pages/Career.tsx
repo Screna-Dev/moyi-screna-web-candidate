@@ -143,6 +143,7 @@ const Career = () => {
       </header>
 
       <main className="container mx-auto px-4 py-12">
+
         {/* Hero Section */}
         <section className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold mb-4">Join Our Team</h2>
