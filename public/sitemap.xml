@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://screna.ai/</loc>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+```
+
+### 4. 创建 OG 图片
+```
+public/logo.png (1200 x 630px)
