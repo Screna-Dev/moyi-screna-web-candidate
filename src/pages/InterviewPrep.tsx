@@ -682,7 +682,7 @@ const InterviewPrep = () => {
                     </div>
                   </div>
                   {reportData.summary && (
-                    <p className="text-sm text-muted-foreground">{reportData.summary}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">{reportData.summary}</p>
                   )}
                 </div>
 
@@ -700,7 +700,7 @@ const InterviewPrep = () => {
                             <span className="text-sm font-medium capitalize">
                               {key.replace(/_/g, ' ')}
                             </span>
-                            <span className="text-sm font-semibold">{formatScore(value)}</span>
+                            <span className="text-sm font-semibold">{(value === undefined || value === null)? 'N/A': value + "/10"}</span>
                           </div>
                           <Progress value={value <= 1 ? value * 100 : value} className="h-2" />
                         </div>
@@ -779,7 +779,7 @@ const InterviewPrep = () => {
                       <BookOpen className="h-5 w-5 text-primary" />
                       Improvement Advice
                     </h4>
-                    <p className="text-sm">{reportData.improvement_advice}</p>
+                    <p className="text-sm whitespace-pre-line">{reportData.improvement_advice}</p>
                   </div>
                 )}
 

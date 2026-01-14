@@ -6,28 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { X, Upload, Plus, Trash2, Loader2, ArrowLeft } from "lucide-react";
+import { X, Plus, Trash2, Loader2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileService } from "../services";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import type { 
   ProfileData, 
   SkillItem,
   Experience,
   Education,
-  Certification,
-  Project 
 } from "@/types/profile";
 import {
   VISA_STATUS_OPTIONS,
@@ -50,7 +39,6 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(!initialData);
   const [isSaving, setIsSaving] = useState(false);
-  const [showVisaStatusDialog, setShowVisaStatusDialog] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>(
     initialData || createEmptyProfileData()
   );
@@ -116,54 +104,6 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
       onCancel();
     } else {
       navigate('/profile');
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Please upload a file smaller than 5MB",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      toast({
-        title: "Processing resume...",
-        description: "AI is extracting information from your resume.",
-      });
-
-      const response = await ProfileService.uploadResume(file);
-      const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
-      
-      if (structuredResume) {
-        setProfileData(structuredResume);
-        
-        // Check if visa status is missing and prompt user
-        if (!structuredResume.profile.visa_status) {
-          setShowVisaStatusDialog(true);
-        }
-        
-        toast({
-          title: "Resume parsed successfully!",
-          description: "Review the extracted information below.",
-        });
-      }
-    } catch (error) {
-      console.error("Error uploading resume:", error);
-      toast({
-        title: "Error processing resume",
-        description: "Please try again later.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -461,24 +401,6 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
                     profile: { ...profileData.profile, summary: e.target.value }
                   })}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Resume Upload</Label>
-                <div className="border-2 border-dashed border-input rounded-lg p-6 text-center hover:border-primary transition-smooth cursor-pointer">
-                  <input
-                    type="file"
-                    id="resume-upload-edit"
-                    className="hidden"
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleFileUpload}
-                  />
-                  <label htmlFor="resume-upload-edit" className="cursor-pointer">
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm font-medium mb-1">Click to upload or drag and drop</p>
-                    <p className="text-xs text-muted-foreground">PDF, DOC (Max 5MB)</p>
-                  </label>
-                </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -903,60 +825,6 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
           </Button>
         </div>
       </div>
-
-      {/* Visa Status Dialog */}
-      <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Set Your Work Authorization</DialogTitle>
-            <DialogDescription>
-              Please select your current work authorization status
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Work Authorization Status</Label>
-              <Select
-                value={profileData.profile.visa_status}
-                onValueChange={(value) => {
-                  setProfileData({
-                    ...profileData,
-                    profile: { ...profileData.profile, visa_status: value },
-                  });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VISA_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={() => {
-                if (profileData.profile.visa_status) {
-                  setShowVisaStatusDialog(false);
-                  toast({ title: "Work authorization updated" });
-                } else {
-                  toast({
-                    title: "Please select a status",
-                    variant: "destructive",
-                  });
-                }
-              }}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

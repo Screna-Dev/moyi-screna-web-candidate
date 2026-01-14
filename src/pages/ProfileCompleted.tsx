@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Edit,
@@ -41,12 +42,16 @@ import {
   Calendar,
   ChevronDown,
   Loader2,
-  Download
+  Download,
+  Upload,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProfileService } from "../services";
 import type { ProfileData } from "@/types/profile";
-import { calculateProfileCompleteness } from "@/types/profile";
+import { calculateProfileCompleteness, VISA_STATUS_OPTIONS } from "@/types/profile";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const ProfileCompleted = () => {
   const { toast } = useToast();
@@ -55,7 +60,16 @@ const ProfileCompleted = () => {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [resumePath, setResumePath] = useState<string>('')
+  const [resumePath, setResumePath] = useState<string>('');
+  
+  // New states for resume upload
+  const [isUploading, setIsUploading] = useState(false);
+  const [showReplaceConfirmDialog, setShowReplaceConfirmDialog] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showVisaStatusDialog, setShowVisaStatusDialog] = useState(false);
+  const [tempVisaStatus, setTempVisaStatus] = useState<string>('');
+  const [isSavingVisa, setIsSavingVisa] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -95,6 +109,136 @@ const ProfileCompleted = () => {
     navigate('/profile/edit');
   };
 
+  // Handle upload button click
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Show confirmation dialog
+    setPendingFile(file);
+    setShowReplaceConfirmDialog(true);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Handle confirmed upload
+  const handleConfirmedUpload = async () => {
+    if (!pendingFile) return;
+
+    try {
+      setIsUploading(true);
+      setShowReplaceConfirmDialog(false);
+      
+      toast({
+        title: "Processing resume...",
+        description: "AI is extracting information from your resume.",
+      });
+
+      const response = await ProfileService.uploadResume(pendingFile);
+      const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
+      const newResumePath = response.data?.data?.resume_path || response.data?.resume_path;
+      
+      if (structuredResume) {
+        setProfileData(structuredResume);
+        if (newResumePath) {
+          setResumePath(newResumePath);
+        }
+        
+        // Check if visa status is missing and prompt user
+        if (!structuredResume.profile.visa_status) {
+          setTempVisaStatus('');
+          setShowVisaStatusDialog(true);
+          toast({
+            title: "Resume parsed successfully!",
+            description: "Please complete your work authorization status.",
+          });
+        } else {
+          // Visa status exists, save profile to backend
+          try {
+            await ProfileService.updateProfile(structuredResume);
+            toast({
+              title: "Profile replaced successfully!",
+              description: "Your new resume has been parsed and saved.",
+            });
+          } catch (saveError) {
+            console.error("Error saving profile:", saveError);
+            toast({
+              title: "Resume parsed but save failed",
+              description: "Please try again or edit your profile manually.",
+              variant: "destructive",
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error uploading resume:", error);
+      toast({
+        title: "Error processing resume",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      setPendingFile(null);
+    }
+  };
+
+  // Handle visa status save from dialog
+  const handleVisaStatusSave = async () => {
+    if (!tempVisaStatus) {
+      toast({
+        title: "Please select a status",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!profileData) return;
+
+    try {
+      setIsSavingVisa(true);
+      const updatedProfile = {
+        ...profileData,
+        profile: { ...profileData.profile, visa_status: tempVisaStatus }
+      };
+      
+      await ProfileService.updateProfile(updatedProfile);
+      setProfileData(updatedProfile);
+      setShowVisaStatusDialog(false);
+      
+      toast({
+        title: "Profile updated successfully!",
+        description: "Your work authorization has been saved.",
+      });
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast({
+        title: "Error saving profile",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingVisa(false);
+    }
+  };
+
   // Helper function to get initials from name
   const getInitials = (name: string) => {
     return name
@@ -132,6 +276,15 @@ const ProfileCompleted = () => {
 
   return (
     <div className="min-h-screen bg-background pb-20">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".pdf,.doc,.docx"
+        onChange={handleFileSelect}
+      />
+
       {/* Header */}
       <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         <div className="container mx-auto px-4 py-4">
@@ -147,6 +300,23 @@ const ProfileCompleted = () => {
               </div>
             </div>
             <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleUploadClick}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 w-4 h-4" />
+                    Upload New Resume
+                  </>
+                )}
+              </Button>
               <Button onClick={handleEdit}>
                 <Edit className="mr-2 w-4 h-4" />
                 Edit Profile
@@ -195,23 +365,23 @@ const ProfileCompleted = () => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                   <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                       {profileData.profile.email && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="w-4 h-4" />
-                          <span className="truncate">{profileData.profile.email}</span>
+                          <Mail className="w-4 h-4 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{profileData.profile.email}</span>
                         </div>
                       )}
                       {profileData.profile.phone && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Phone className="w-4 h-4" />
-                          <span>{profileData.profile.phone}</span>
+                          <Phone className="w-4 h-4 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{profileData.profile.phone}</span>
                         </div>
                       )}
                       {profileData.profile.website && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Globe className="w-4 h-4" />
-                          <span>{profileData.profile.website}</span>
+                          <Globe className="w-4 h-4 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{profileData.profile.website}</span>
                         </div>
                       )}
                     </div>
@@ -672,6 +842,100 @@ const ProfileCompleted = () => {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Replace Resume Confirmation Dialog */}
+      <Dialog open={showReplaceConfirmDialog} onOpenChange={setShowReplaceConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Replace Current Profile?
+            </DialogTitle>
+            <DialogDescription>
+              Uploading a new resume will completely replace your current profile data with information extracted from the new resume.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <p className="text-sm text-muted-foreground">
+              This action will overwrite:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+              <li>• Personal information</li>
+              <li>• Work experience</li>
+              <li>• Education history</li>
+              <li>• Skills and certifications</li>
+              <li>• All other profile data</li>
+            </ul>
+            <p className="text-sm font-medium text-amber-600">
+              This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowReplaceConfirmDialog(false);
+                setPendingFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleConfirmedUpload}
+            >
+              Replace Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visa Status Dialog */}
+      <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Your Work Authorization</DialogTitle>
+            <DialogDescription>
+              Please select your current work authorization status
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Work Authorization Status</Label>
+              <Select
+                value={tempVisaStatus}
+                onValueChange={setTempVisaStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISA_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleVisaStatusSave}
+              disabled={isSavingVisa}
+            >
+              {isSavingVisa ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

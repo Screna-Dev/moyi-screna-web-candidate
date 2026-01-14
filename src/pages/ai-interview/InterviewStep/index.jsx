@@ -80,6 +80,9 @@ function InterviewStep({
     return () => {
       stopAudioLevelDetection();
       stopConnectionMonitoring();
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
     };
   }, []);
 

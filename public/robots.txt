@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /auth
+Disallow: /profile
+Disallow: /interview
+Disallow: /interview-prep
+Disallow: /jobs
+Disallow: /mentors
+Disallow: /settings
+Disallow: /admin
+
+Sitemap: https://screna.ai/sitemap.xml
