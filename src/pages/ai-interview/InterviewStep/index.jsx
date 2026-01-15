@@ -85,7 +85,31 @@ function InterviewStep({
       }
     };
   }, []);
-
+  
+  useEffect(() => {
+    if (interviewEnded) {
+      console.log('🧹 InterviewStep: interviewEnded detected, cleaning up...');
+      
+      // Stop audio level detection
+      stopAudioLevelDetection();
+      
+      // Stop connection monitoring
+      stopConnectionMonitoring();
+      
+      // Clear video element
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+        console.log('✅ Video element cleared');
+      }
+      
+      // Update local state
+      setInterviewStarted(false);
+      setConnectionStatus({
+        aiWebSocket: 'disconnected',
+        mediaStream: 'disconnected'
+      });
+    }
+  }, [interviewEnded]);
   // Audio level detection functions
   const startAudioLevelDetection = (audioStream) => {
     if (!audioStream || audioLevelIntervalRef.current) return;

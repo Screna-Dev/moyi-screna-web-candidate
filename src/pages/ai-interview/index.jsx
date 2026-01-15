@@ -197,10 +197,6 @@ function AIInterview() {
             // No reconnection attempts - just end the meeting
             if (!interviewEndedRef.current) {
               console.log("🔴 WebSocket disconnected - ending session (Pipecat design: disconnect = session end)");
-              // 清理 video element
-              if (localVideoRef.current) {
-                localVideoRef.current.srcObject = null;
-              }
               endMeeting();
             }
           }, 0);
