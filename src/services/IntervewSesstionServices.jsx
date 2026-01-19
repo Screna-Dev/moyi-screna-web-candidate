@@ -13,7 +13,7 @@ export const getInterviewSession = (interviewId) => {
 }
 
 const InterviewSessionService = {
-  createInterviewSession,
+  createInterviewSession
 };
 
 export default InterviewSessionService;

@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import CircularProgress from '@mui/material/CircularProgress';
 import { generateRandomAI } from '../../../utils/randomAI';
-import PipecatService from '../../../services/PipecatService';
+import LiveKitService from '../../../services/LiveKitService';
 
 function InterviewStep({
   mediaState,
@@ -90,19 +90,13 @@ function InterviewStep({
     if (interviewEnded) {
       console.log('🧹 InterviewStep: interviewEnded detected, cleaning up...');
       
-      // Stop audio level detection
       stopAudioLevelDetection();
-      
-      // Stop connection monitoring
       stopConnectionMonitoring();
       
-      // Clear video element
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
-        console.log('✅ Video element cleared');
       }
       
-      // Update local state
       setInterviewStarted(false);
       setConnectionStatus({
         aiWebSocket: 'disconnected',
@@ -110,6 +104,7 @@ function InterviewStep({
       });
     }
   }, [interviewEnded]);
+
   // Audio level detection functions
   const startAudioLevelDetection = (audioStream) => {
     if (!audioStream || audioLevelIntervalRef.current) return;
@@ -195,8 +190,8 @@ function InterviewStep({
     connectionMonitorRef.current = setInterval(() => {
       if (!interviewStarted) return;
 
-      // Check Pipecat connection status
-      if (PipecatService.getIsConnected()) {
+      // Check LiveKit connection status
+      if (LiveKitService.getIsConnected()) {
         updateConnectionStatus('aiWebSocket', 'connected');
       } else {
         updateConnectionStatus('aiWebSocket', 'disconnected');
@@ -268,13 +263,9 @@ function InterviewStep({
         videoEl.play().catch(err => {
           console.warn("Video autoplay prevented:", err);
         });
-        console.log('✅ Local video preview set up in startInterview');
       }
 
-      // ============================================
-      // STEP 1: CREATE SESSION (This is the key change!)
-      // Session is created HERE, not on page load
-      // ============================================
+      // STEP 1: CREATE SESSION (gets LiveKit credentials)
       setIsCreatingSession(true);
       updateConnectionStatus('aiWebSocket', 'connecting');
       
@@ -282,30 +273,24 @@ function InterviewStep({
       try {
         console.log('📝 Creating interview session...');
         session = await createInterviewSession();
-        console.log('✅ Session created:', session?.sessionId);
+        console.log('✅ Session created with LiveKit credentials');
         setIsCreatingSession(false);
       } catch (sessionError) {
         console.error("❌ Session creation failed:", sessionError);
         setIsCreatingSession(false);
         updateConnectionStatus('aiWebSocket', 'error');
         setIsConnecting(false);
-        
-        // The error will be handled by createInterviewSession which updates
-        // interviewStatus and validationError, causing the parent to show error page
         return;
       }
 
-      // ============================================
-      // STEP 2: Connect to Pipecat
-      // ============================================
-      if (!PipecatService.getIsConnected()) {
+      // STEP 2: Connect to LiveKit
+      if (!LiveKitService.getIsConnected()) {
         try {
-          console.log('🔌 Connecting to Pipecat...');
+          console.log('🔌 Connecting to LiveKit...');
           await connectToInterview(session);
           updateConnectionStatus('aiWebSocket', 'connected');
         } catch (connectError) {
-          console.error("❌ AI connection failed:", connectError);
-          // Wrap in setTimeout to avoid setState during render cycle
+          console.error("❌ LiveKit connection failed:", connectError);
           setTimeout(() => {
             updateConnectionStatus('aiWebSocket', 'error');
             setError("Failed to connect to AI interview system. Please try again.");
@@ -318,9 +303,25 @@ function InterviewStep({
         updateConnectionStatus('aiWebSocket', 'connected');
       }
 
-      // ============================================
-      // STEP 3: Countdown
-      // ============================================
+      // STEP 3: Publish local media tracks to LiveKit
+      try {
+        console.log('📤 Publishing media tracks to LiveKit...');
+        
+        // Publish audio (required)
+        await LiveKitService.setMicrophoneEnabled(true);
+        
+        // Publish video (optional)
+        if (mediaState.cameraEnabled && mediaState.videoTestStream) {
+          await LiveKitService.setCameraEnabled(true);
+        }
+        
+        console.log('✅ Media tracks published');
+      } catch (mediaError) {
+        console.warn('⚠️ Failed to publish some media tracks:', mediaError);
+        // Continue anyway - audio might still work
+      }
+
+      // STEP 4: Countdown
       setShowCountdown(true);
       setCountdown(3);
       for (let i = 3; i > 0; i--) {
@@ -329,9 +330,7 @@ function InterviewStep({
       }
       setShowCountdown(false);
       
-      // ============================================
-      // STEP 4: Start the interview
-      // ============================================
+      // STEP 5: Start the interview
       setInterviewStarted(true);
       
       // Start audio level detection for UI feedback
@@ -343,7 +342,6 @@ function InterviewStep({
 
     } catch (error) {
       console.error('Interview startup error:', error);
-      // Wrap in setTimeout to avoid setState during render cycle
       setTimeout(() => {
         setError('Cannot start interview: ' + error.message);
         setOpenSnackbar(true);
@@ -358,24 +356,23 @@ function InterviewStep({
   const endInterview = async () => {
     console.log('🔴 Ending interview...');
     
-    // Stop connection monitoring
     stopConnectionMonitoring();
-    
-    // Stop audio level detection
     stopAudioLevelDetection();
     
-    // Update state
     setInterviewStarted(false);
     
-    // Update connection status
     setConnectionStatus({
       aiWebSocket: 'disconnected',
       mediaStream: 'disconnected'
     });
 
+    // Clear video element
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
     console.log('✅ Interview ended');
     
-    // Call parent's endMeeting (which will disconnect Pipecat)
     endMeeting();
   };
 

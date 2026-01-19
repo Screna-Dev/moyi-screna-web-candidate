@@ -7,10 +7,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { InterviewSessionService, InterviewService } from '../../services';
 import PipecatService from '../../services/PipecatService';
+import LiveKitService from '../../services/LiveKitService';
 
 // Import step components
 import MediaSetupStep from './MediaSetupStep';
 import InterviewStep from './InterviewStep';
+
+import axios from 'axios';
+
 
 function AIInterview() {
   const navigate = useNavigate();
@@ -109,26 +113,35 @@ function AIInterview() {
     console.log('🔄 Creating interview session...');
     
     try {
+      // Step 1: Create session (Mainframe API)
       const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
-      
-      console.log('Session response:', sessionResponse);
       
       if (!sessionResponse.data || !sessionResponse.data.data) {
         throw new Error('Failed to create interview session.');
       }
       
       const sessionData = sessionResponse.data.data;
+      console.log('✅ Session created:', interviewId);
+
+      // Step 2: Join session to get LiveKit credentials (Pipecat API)
+      console.log('🔄 Joining session to get LiveKit credentials...');
       
-      console.log('✅ Interview session created successfully:', sessionData.session_id);
-      
+      // const liveKitCredentials = joinResponse.data;
+      console.log('✅ LiveKit credentials received:', {
+        url: sessionData.url,
+        room_name: sessionData.room_name,
+        hasToken: !!sessionData.token
+      });
+
       const session = {
         sessionId: sessionData.session_id,
-        websocketUrl: sessionData.websocket_url,
+        liveKitUrl: sessionData.url,
+        liveKitToken: sessionData.token,
+        roomName: sessionData.room_name,
         status: sessionData.status,
         createdAt: sessionData.created_at
       };
       
-      // Set both state and ref (ref is needed for callbacks due to stale closure)
       setCurrentSession(session);
       currentSessionRef.current = session;
       return session;
@@ -139,8 +152,6 @@ function AIInterview() {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to create session';
       const errorCode = error.response?.data?.errorCode;
       
-      // Wrap in setTimeout to avoid setState during render cycle
-      // These state updates will cause the parent to show error page
       setTimeout(() => {
         if (errorMessage.toLowerCase().includes('used') || 
             errorMessage.toLowerCase().includes('already')) {
@@ -150,8 +161,8 @@ function AIInterview() {
           setInterviewStatus('expired');
           setValidationError('This interview session has expired.');
         } else if (errorMessage.toLowerCase().includes('not found') ||
-                   errorCode === 'NOT_FOUND' ||
-                   error.response?.status === 404) {
+                  errorCode === 'NOT_FOUND' ||
+                  error.response?.status === 404) {
           setInterviewStatus('invalid');
           setValidationError('Interview not found. Please check the URL.');
         }
@@ -169,51 +180,72 @@ function AIInterview() {
     interviewEndedRef.current = interviewEnded;
   }, [interviewEnded]);
 
-  // Connect to Pipecat using the SDK
-  // Per Pipecat design: any disconnect = session ends (no reconnection)
+  //Connect to livekit
   const connectToInterview = async (session = null) => {
     if (interviewEndedRef.current) return;
     
     const sessionToUse = session || currentSession;
     
-    if (PipecatService.getIsConnected() || !sessionToUse) {
+    if (LiveKitService.getIsConnected() || !sessionToUse) {
       console.log('Cannot connect: already connected or no session', {
-        isConnected: PipecatService.getIsConnected(),
+        isConnected: LiveKitService.getIsConnected(),
         hasSession: !!sessionToUse
       });
       return;
     }
 
     setIsConnecting(true);
+    
     try {
-      await PipecatService.connect(sessionToUse.websocketUrl, {
-        onDisconnected: (info) => {
-          // Wrap in setTimeout to avoid setState during render cycle
-          setTimeout(() => {
-            console.log("Disconnected info:", info);
-            setIsConnected(false);
-            
-            // Per Pipecat design: any disconnect = session ends
-            // No reconnection attempts - just end the meeting
-            if (!interviewEndedRef.current) {
-              console.log("🔴 WebSocket disconnected - ending session (Pipecat design: disconnect = session end)");
-              endMeeting();
-            }
-          }, 0);
+      await LiveKitService.connect(
+        {
+          url: sessionToUse.liveKitUrl,
+          token: sessionToUse.liveKitToken,
         },
-        onError: (err) => {
-          // Wrap in setTimeout to avoid setState during render cycle
-          setTimeout(() => {
-            // Ignore errors during intentional ending
-            if (interviewEndedRef.current) return;
-            console.error("WebSocket error:", err);
-            setError(`AI connection error: ${err.message || 'Unknown'}`);
-            setOpenSnackbar(true);
-          }, 0);
-        },
-      });
+        {
+          onConnected: () => {
+            console.log('✅ LiveKit connected callback');
+          },
+          onDisconnected: (info) => {
+            setTimeout(() => {
+              console.log("Disconnected info:", info);
+              setIsConnected(false);
+              
+              // Per design: any disconnect = session ends
+              if (!interviewEndedRef.current) {
+                console.log("🔴 LiveKit disconnected - ending session");
+                endMeeting();
+              }
+            }, 0);
+          },
+          onInterviewEnded: () => {
+            // AI interviewer left the room
+            setTimeout(() => {
+              if (!interviewEndedRef.current) {
+                console.log("🔴 AI Interviewer left - ending interview");
+                endMeeting();
+              }
+            }, 0);
+          },
+          onActiveSpeakersChanged: ({ isUserSpeaking, isAISpeaking }) => {
+            setAISpeaking(isAISpeaking);
+          },
+          onError: (err) => {
+            setTimeout(() => {
+              if (interviewEndedRef.current) return;
+              console.error("LiveKit error:", err);
+              setError(`AI connection error: ${err.message || 'Unknown'}`);
+              setOpenSnackbar(true);
+            }, 0);
+          },
+        }
+      );
+      
       setIsConnected(true);
       return true;
+    } catch (error) {
+      console.error('LiveKit connection failed:', error);
+      throw error;
     } finally {
       setIsConnecting(false);
     }
@@ -244,8 +276,8 @@ function AIInterview() {
   const cleanupConnectionResources = async () => {
     console.log('🧹 Cleaning up connection resources...');
     
-    // Disconnect Pipecat
-    await PipecatService.disconnect();
+    // Disconnect LiveKit
+    await LiveKitService.disconnect();
     
     setIsConnected(false);
   };
@@ -286,7 +318,6 @@ function AIInterview() {
   };
 
   const endMeeting = async () => {
-    // Prevent duplicate calls
     if (interviewEndedRef.current) {
       console.log('⚠️ endMeeting already called, skipping...');
       return;
@@ -294,14 +325,11 @@ function AIInterview() {
 
     console.log('🔴 Ending meeting...');
 
-    // Mark ended first to prevent any further actions
     setInterviewEnded(true);
     interviewEndedRef.current = true;
 
-    // Use ref to get current session (avoids stale closure issue)
     const session = currentSessionRef.current;
     
-    // If no session was ever created, just show completion
     if (!session?.sessionId) {
       console.log('No active session - showing completion');
       setSuccess("Interview session ended.");
@@ -314,10 +342,10 @@ function AIInterview() {
     setIsLoading(true);
 
     try {
-      // Disconnect Pipecat (intentional)
-      await PipecatService.disconnect({ intentional: true });
+      // Disconnect LiveKit
+      await LiveKitService.disconnect({ intentional: true });
 
-      // End module - let the backend change the module status
+      // End module
       await InterviewService.endTrainingModule(interviewId);
       
       // Stop media
@@ -327,7 +355,6 @@ function AIInterview() {
       setOpenSnackbar(true);
     } catch (e) {
       console.error("Error ending interview:", e);
-      // Still show completion even if there's an error
       setSuccess("Interview ended. Thank you for your participation!");
       setOpenSnackbar(true);
     } finally {
