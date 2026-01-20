@@ -302,7 +302,14 @@ function InterviewStep({
       } else {
         updateConnectionStatus('aiWebSocket', 'connected');
       }
-
+      // STEP 4: Countdown
+      setShowCountdown(true);
+      setCountdown(3);
+      for (let i = 3; i > 0; i--) {
+        setCountdown(i);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      setShowCountdown(false);
       // STEP 3: Publish local media tracks to LiveKit
       try {
         console.log('📤 Publishing media tracks to LiveKit...');
@@ -320,15 +327,6 @@ function InterviewStep({
         console.warn('⚠️ Failed to publish some media tracks:', mediaError);
         // Continue anyway - audio might still work
       }
-
-      // STEP 4: Countdown
-      setShowCountdown(true);
-      setCountdown(3);
-      for (let i = 3; i > 0; i--) {
-        setCountdown(i);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      setShowCountdown(false);
       
       // STEP 5: Start the interview
       setInterviewStarted(true);

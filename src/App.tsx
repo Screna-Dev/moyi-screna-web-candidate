@@ -34,6 +34,8 @@ const Settings = lazy(()=> import("./pages/Settings"))
 const Admin = lazy(()=> import("./pages/Admin"))
 
 const Career = lazy(()=> import("./pages/Career"))
+const PaymentSuccess = lazy(()=> import("./pages/PaymentSuccess"))
+
 
 
 const queryClient = new QueryClient();
@@ -84,6 +86,8 @@ const App = () => (
                 />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/admin" element={<Admin />} />
+
+                <Route path="/payment/success" element={<PaymentSuccess />} />
               </Route>
               
               {/* Catch-all routes */}

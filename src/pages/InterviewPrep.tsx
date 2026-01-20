@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { InterviewService, InterviewSessionService } from "@/services";
+import { PaymentService } from "@/services";
 
 import {
   Target,
@@ -41,6 +42,10 @@ import {
   HelpCircle,
   Sparkles,
   ArrowRight,
+  Lock,
+  Crown,
+  Play,
+  MessageSquare,
 } from "lucide-react";
 
 interface TargetJob {
@@ -114,11 +119,13 @@ interface ReportData {
     behavioral: number;
   };
   summary: string;
-  strengths: string[];
-  areas_for_improvement: string[];
-  improvement_advice: string;
-  generated_at: string;
-  questions: ReportQuestion[];
+  // Premium features (only available for Elite plan)
+  strengths?: string[];
+  areas_for_improvement?: string[];
+  improvement_advice?: string;
+  generated_at?: string;
+  questions?: ReportQuestion[];
+  video_url?: string;
 }
 
 // Refresh interval in milliseconds (5 seconds)
@@ -146,6 +153,11 @@ const InterviewPrep = () => {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  const [reportTab, setReportTab] = useState<"basic" | "premium">("basic");
+  
+  // User plan state
+  const [userPlan, setUserPlan] = useState<"Free" | "Pro" | "Elite">("Pro");
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
   
   // Session Preview state
   const [selectedSessionPreview, setSelectedSessionPreview] = useState<AISession | null>(null);
@@ -158,6 +170,44 @@ const InterviewPrep = () => {
 
   // Check if any plan is not ready
   const hasUnreadyPlans = trainingPlans.some(plan => plan.status !== "active");
+  
+  // Check if user has premium (Elite) plan
+  const isPremiumUser = userPlan === "Elite";
+
+  // Fetch user plan
+  const fetchUserPlan = async () => {
+    try {
+      const response = await PaymentService.getPlanUsage();
+      if (response.data?.data?.currentPlan) {
+        setUserPlan(response.data.data.currentPlan);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user plan:", error);
+    }
+  };
+
+  // Handle upgrade to Elite
+  const handleUpgradeToElite = async () => {
+    try {
+      setIsChangingPlan(true);
+      const response = await PaymentService.changePlan("Elite");
+      
+      if (response.data?.data?.url) {
+        window.location.href = response.data.data.url;
+      } else {
+        throw new Error(response.data?.message || 'Failed to create subscription session');
+      }
+    } catch (error) {
+      console.error('Failed to upgrade plan:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || error.message || "Failed to initiate plan upgrade",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingPlan(false);
+    }
+  };
 
   // Load training plans
   const loadTrainingPlans = useCallback(async (showLoading = true) => {
@@ -275,6 +325,7 @@ const InterviewPrep = () => {
   const handleOpenReport = (session: AISession) => {
     setSelectedSessionReport(session);
     setReportSheetOpen(true);
+    setReportTab("basic"); // Reset to basic tab when opening
     loadInterviewReport(session.id);
   };
 
@@ -283,6 +334,7 @@ const InterviewPrep = () => {
     setReportSheetOpen(false);
     setSelectedSessionReport(null);
     setReportData(null);
+    setReportTab("basic");
   };
 
   // Handle opening session preview sheet
@@ -304,9 +356,10 @@ const InterviewPrep = () => {
     }
   };
 
-  // Load training plans on mount
+  // Load training plans and user plan on mount
   useEffect(() => {
     loadTrainingPlans();
+    fetchUserPlan();
   }, []);
 
   // Auto-refresh when there are unready plans
@@ -651,157 +704,301 @@ const InterviewPrep = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Report Sheet - Controlled outside of session cards */}
+      {/* Report Sheet - With Basic/Premium Tabs */}
       <Sheet open={reportSheetOpen} onOpenChange={(open) => !open && handleCloseReport()}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{selectedSessionReport?.title} - Report</SheetTitle>
             <SheetDescription>Detailed breakdown of your session performance</SheetDescription>
           </SheetHeader>
-          <ScrollArea className="h-[calc(100vh-120px)] mt-6">
+          
+          <div className="mt-6">
             {isLoadingReport ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground">Loading report...</p>
               </div>
             ) : reportData ? (
-              <div className="space-y-6 pr-4">
-                {/* Summary */}
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <h3 className="font-semibold mb-3">Summary</h3>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Overall Score</p>
-                      <p className="text-2xl font-bold text-primary">{formatScore(reportData.overall_score)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Questions Answered</p>
-                      <p className="text-xl font-semibold">
-                        {reportData.questions?.filter(q => q.answered).length || 0} / {reportData.questions?.length || 0}
-                      </p>
-                    </div>
-                  </div>
-                  {reportData.summary && (
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">{reportData.summary}</p>
-                  )}
-                </div>
+              <Tabs value={reportTab} onValueChange={(v) => setReportTab(v as "basic" | "premium")} className="space-y-4">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="basic">Basic</TabsTrigger>
+                  <TabsTrigger value="premium" className="flex items-center gap-2">
+                    Premium
+                    {!isPremiumUser && <Lock className="w-3 h-3" />}
+                  </TabsTrigger>
+                </TabsList>
 
-                {/* Score Breakdown */}
-                {reportData.scores && (
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-primary" />
-                      Score Breakdown
-                    </h3>
-                    <div className="space-y-3">
-                      {Object.entries(reportData.scores).map(([key, value]) => (
-                        <div key={key} className="space-y-1">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </span>
-                            <span className="text-sm font-semibold">{(value === undefined || value === null)? 'N/A': value + "/10"}</span>
+                {/* Basic Tab Content */}
+                <TabsContent value="basic">
+                  <ScrollArea className="h-[calc(100vh-200px)]">
+                    <div className="space-y-6 pr-4">
+                      {/* Summary */}
+                      <div className="bg-muted/50 p-4 rounded-lg">
+                        <h3 className="font-semibold mb-3">Summary</h3>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Overall Score</p>
+                            <p className="text-2xl font-bold text-primary">{formatScore(reportData.overall_score)}</p>
                           </div>
-                          <Progress value={value <= 1 ? value * 100 : value} className="h-2" />
+                          <div>
+                            <p className="text-sm text-muted-foreground">Attempts</p>
+                            <p className="text-xl font-semibold">{reportData.attempts || 1}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                        {reportData.summary && (
+                          <p className="text-sm text-muted-foreground whitespace-pre-line">{reportData.summary}</p>
+                        )}
+                      </div>
 
-                {/* Questions Breakdown */}
-                {reportData.questions && reportData.questions.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold mb-3">Questions & Feedback</h3>
-                    <div className="space-y-4">
-                      {reportData.questions.map((q, index) => (
-                        <div key={q.question_id || index} className="border rounded-lg p-4 space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="font-medium flex-1">
-                              Q{q.question_id || index + 1}: {q.question_text}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              {q.duration_sec && (
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDuration(q.duration_sec)}
-                                </span>
-                              )}
-                              <Badge variant={q.answered ? "secondary" : "outline"}>
-                                {q.answered ? formatScore(q.score) : "Skipped"}
-                              </Badge>
+                      {/* Score Breakdown */}
+                      {reportData.scores && (
+                        <div>
+                          <h3 className="font-semibold mb-3 flex items-center gap-2">
+                            <BarChart3 className="h-5 w-5 text-primary" />
+                            Score Breakdown
+                          </h3>
+                          <div className="space-y-3">
+                            {Object.entries(reportData.scores).map(([key, value]) => (
+                              <div key={key} className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-medium capitalize">
+                                    {key.replace(/_/g, ' ')}
+                                  </span>
+                                  <span className="text-sm font-semibold">
+                                    {(value === undefined || value === null) ? 'N/A' : value + "/10"}
+                                  </span>
+                                </div>
+                                <Progress value={value ? (value <= 1 ? value * 100 : value * 10) : 0} className="h-2" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Status Info */}
+                      <div className="bg-muted/30 p-4 rounded-lg">
+                        <h4 className="font-semibold mb-2">Session Info</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Status</p>
+                            <p className="font-medium capitalize">{reportData.status}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Interview ID</p>
+                            <p className="font-medium font-mono text-xs">{reportData.interview_id}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 pt-4">
+                        <Button variant="outline" className="flex-1">
+                          <Download className="h-4 w-4 mr-2" />
+                          Download Report
+                        </Button>
+                        <Button variant="outline" className="flex-1">
+                          <Share2 className="h-4 w-4 mr-2" />
+                          Share
+                        </Button>
+                      </div>
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                {/* Premium Tab Content */}
+                <TabsContent value="premium">
+                  <ScrollArea className="h-[calc(100vh-200px)]">
+                    {!isPremiumUser ? (
+                      // Locked State - Show Upgrade Prompt
+                      <div className="p-8 text-center">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 mx-auto mb-6 flex items-center justify-center">
+                          <Crown className="w-8 h-8 text-white" />
+                        </div>
+                        <h2 className="text-xl font-bold mb-2">Unlock Premium Insights</h2>
+                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                          Elite members get access to video replay, timestamped improvement suggestions, 
+                          and detailed AI coaching feedback.
+                        </p>
+                        <div className="bg-muted/30 rounded-lg p-6 mb-6 text-left max-w-md mx-auto">
+                          <h3 className="font-semibold mb-3">Premium Report includes:</h3>
+                          <ul className="space-y-2 text-muted-foreground">
+                            <li className="flex items-center gap-2">
+                              <Play className="w-4 h-4 text-primary" />
+                              Full video replay of your interview
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <MessageSquare className="w-4 h-4 text-primary" />
+                              Detailed question-by-question feedback
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4 text-primary" />
+                              Strengths & areas for improvement analysis
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <BookOpen className="w-4 h-4 text-primary" />
+                              Personalized improvement advice
+                            </li>
+                          </ul>
+                        </div>
+                        <Button 
+                          size="lg" 
+                          className="gradient-primary"
+                          onClick={handleUpgradeToElite}
+                          disabled={isChangingPlan}
+                        >
+                          {isChangingPlan ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <Crown className="w-4 h-4 mr-2" />
+                              Upgrade to Elite
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      // Unlocked Premium Content
+                      <div className="space-y-6 pr-4">
+                        {/* Video Replay */}
+                        {reportData.video_url && (
+                          <div>
+                            <h3 className="font-semibold mb-3 flex items-center gap-2">
+                              <Video className="h-5 w-5 text-primary" />
+                              Video Replay
+                            </h3>
+                            <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                              <video 
+                                src={reportData.video_url} 
+                                controls 
+                                className="w-full h-full"
+                                poster=""
+                              >
+                                Your browser does not support the video tag.
+                              </video>
                             </div>
                           </div>
-                          {q.answer_text && (
-                            <div className="bg-muted/50 p-3 rounded text-sm">
-                              <p className="text-xs font-medium text-muted-foreground mb-1">Your Answer:</p>
-                              <p>{q.answer_text}</p>
+                        )}
+
+                        {!reportData.video_url && (
+                          <div>
+                            <h3 className="font-semibold mb-3 flex items-center gap-2">
+                              <Video className="h-5 w-5 text-primary" />
+                              Video Replay
+                            </h3>
+                            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+                              <div className="text-center">
+                                <div className="w-16 h-16 rounded-full bg-primary/20 mx-auto mb-4 flex items-center justify-center">
+                                  <Play className="w-8 h-8 text-primary" />
+                                </div>
+                                <p className="text-muted-foreground">Video not available for this session</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Questions Breakdown */}
+                        {reportData.questions && reportData.questions.length > 0 && (
+                          <div>
+                            <h3 className="font-semibold mb-3 flex items-center gap-2">
+                              <MessageSquare className="h-5 w-5 text-primary" />
+                              Questions & Feedback
+                            </h3>
+                            <div className="space-y-4">
+                              {reportData.questions.map((q, index) => (
+                                <div key={q.question_id || index} className="border rounded-lg p-4 space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="font-medium flex-1">
+                                      Q{q.question_id || index + 1}: {q.question_text}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      {q.duration_sec && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {formatDuration(q.duration_sec)}
+                                        </span>
+                                      )}
+                                      <Badge variant={q.answered ? "secondary" : "outline"}>
+                                        {q.answered ? formatScore(q.score) : "Skipped"}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                  {q.answer_text && (
+                                    <div className="bg-muted/50 p-3 rounded text-sm">
+                                      <p className="text-xs font-medium text-muted-foreground mb-1">Your Answer:</p>
+                                      <p>{q.answer_text}</p>
+                                    </div>
+                                  )}
+                                  {q.feedback && (
+                                    <p className="text-sm text-muted-foreground">
+                                      <span className="font-medium">Feedback:</span> {q.feedback}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Strengths & Areas for Improvement */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {reportData.strengths && reportData.strengths.length > 0 && (
+                            <div className="border border-secondary/50 bg-secondary/5 rounded-lg p-4">
+                              <h4 className="font-semibold text-secondary mb-2">Strengths</h4>
+                              <ul className="space-y-1 text-sm">
+                                {reportData.strengths.map((strength, idx) => (
+                                  <li key={idx}>• {strength}</li>
+                                ))}
+                              </ul>
                             </div>
                           )}
-                          {q.feedback && (
-                            <p className="text-sm text-muted-foreground">
-                              <span className="font-medium">Feedback:</span> {q.feedback}
-                            </p>
+                          {reportData.areas_for_improvement && reportData.areas_for_improvement.length > 0 && (
+                            <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
+                              <h4 className="font-semibold text-destructive mb-2">Areas to Improve</h4>
+                              <ul className="space-y-1 text-sm">
+                                {reportData.areas_for_improvement.map((area, idx) => (
+                                  <li key={idx}>• {area}</li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
-                {/* Strengths & Areas for Improvement */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {reportData.strengths && reportData.strengths.length > 0 && (
-                    <div className="border border-secondary/50 bg-secondary/5 rounded-lg p-4">
-                      <h4 className="font-semibold text-secondary mb-2">Strengths</h4>
-                      <ul className="space-y-1 text-sm">
-                        {reportData.strengths.map((strength, idx) => (
-                          <li key={idx}>• {strength}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {reportData.areas_for_improvement && reportData.areas_for_improvement.length > 0 && (
-                    <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
-                      <h4 className="font-semibold text-destructive mb-2">Areas to Improve</h4>
-                      <ul className="space-y-1 text-sm">
-                        {reportData.areas_for_improvement.map((area, idx) => (
-                          <li key={idx}>• {area}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                        {/* Improvement Advice */}
+                        {reportData.improvement_advice && (
+                          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2">
+                              <BookOpen className="h-5 w-5 text-primary" />
+                              Improvement Advice
+                            </h4>
+                            <p className="text-sm whitespace-pre-line">{reportData.improvement_advice}</p>
+                          </div>
+                        )}
 
-                {/* Improvement Advice */}
-                {reportData.improvement_advice && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-                    <h4 className="font-semibold mb-2 flex items-center gap-2">
-                      <BookOpen className="h-5 w-5 text-primary" />
-                      Improvement Advice
-                    </h4>
-                    <p className="text-sm whitespace-pre-line">{reportData.improvement_advice}</p>
-                  </div>
-                )}
+                        {/* Generated At */}
+                        {reportData.generated_at && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            Report generated on {new Date(reportData.generated_at).toLocaleString()}
+                          </p>
+                        )}
 
-                {/* Generated At */}
-                {reportData.generated_at && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Report generated on {new Date(reportData.generated_at).toLocaleString()}
-                  </p>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-4">
-                  <Button variant="outline" className="flex-1">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Report
-                  </Button>
-                  <Button variant="outline" className="flex-1">
-                    <Share2 className="h-4 w-4 mr-2" />
-                    Share
-                  </Button>
-                </div>
-              </div>
+                        {/* Actions */}
+                        <div className="flex gap-2 pt-4">
+                          <Button variant="outline" className="flex-1">
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Report
+                          </Button>
+                          <Button variant="outline" className="flex-1">
+                            <Share2 className="h-4 w-4 mr-2" />
+                            Share
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
             ) : (
               <div className="flex flex-col items-center justify-center py-12">
                 <AlertCircle className="h-8 w-8 text-muted-foreground mb-4" />
@@ -816,7 +1013,7 @@ const InterviewPrep = () => {
                 </Button>
               </div>
             )}
-          </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
 

@@ -16,20 +16,19 @@ import {
   Play, Users, TrendingUp, Zap, Lock, Globe, ChevronRight,
   Star, Clock, Award, Brain, Eye, Check, ArrowRight, XCircle,
   CheckCircle, Code, Database, Smartphone, Cloud, TestTube, Layout, Palette,
-  Briefcase, FileText, Video, X
+  Briefcase, FileText, Video
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import heroImage from "@/assets/hero-interview.jpg";
 import dashboardPreview from "@/assets/dashboard-preview.jpg";
 import aiBrain from "@/assets/ai-brain.png";
-import Logo from "@/assets/logo.png"
 
 const StickyNav = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-background/80 border-b border-border shadow-sm">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">         
-          <img src = {Logo} alt = "Logo" className="w-7 h-7 text-primary" />
+        <div className="flex items-center gap-2">
+          <Brain className="w-7 h-7 text-primary" />
           <span className="font-bold text-xl">Screna AI</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm">
@@ -60,33 +59,6 @@ export default function Landing() {
     <div className="min-h-screen bg-background">
       <StickyNav />
       
-      {/* Fullscreen Video Modal */}
-      <Dialog open={demoModalOpen} onOpenChange={setDemoModalOpen}>
-        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 border-none bg-black/95">
-          <div className="relative w-full h-full flex items-center justify-center">
-            {/* Close button */}
-            <button
-              onClick={() => setDemoModalOpen(false)}
-              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-            >
-              <X className="w-6 h-6 text-white" />
-            </button>
-            
-            {/* Video container */}
-            <div className="w-full h-full max-w-[90%] max-h-[85%] aspect-video">
-              <iframe
-                className="w-full h-full rounded-lg"
-                src="https://www.youtube.com/embed/FlXXDesIz0A?autoplay=1"
-                title="Screna AI Demo Video"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Hero Section - Cinematic */}
       <section className="relative pt-32 pb-20 overflow-hidden">
         <div className="absolute inset-0 gradient-hero opacity-40" />
@@ -97,7 +69,7 @@ export default function Landing() {
                 Ace Your Interview with Structured Preparation
               </h1>
               <p className="text-xl text-muted-foreground mb-8">
-                Comprehensive, multi-dimensional training with expert mentors, tailored practice paths, and daily job insights — your all-in-one interview preparation platform.
+                Comprehensive, multi-dimensional training with AI-powered practice, tailored preparation paths, and daily job insights — your all-in-one interview preparation platform.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <Button size="lg" className="gradient-primary shadow-glow hover:scale-105 transition-all" asChild>
@@ -141,6 +113,7 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
 
       {/* Value Proposition Grid */}
       <section id="features" className="py-20">
@@ -187,7 +160,7 @@ export default function Landing() {
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-primary font-bold">✓</span>
-                  <span className="font-medium">Real mentors + daily job matches</span>
+                  <span className="font-medium">Community experiences + daily job matches</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-primary font-bold">✓</span>
@@ -208,8 +181,8 @@ export default function Landing() {
             </Card>
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
               <Users className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">Mentorship Library</h3>
-              <p className="text-sm text-muted-foreground">Connect with experienced mentors for 1-on-1 coaching and personalized feedback</p>
+              <h3 className="font-bold mb-2">Community Experiences</h3>
+              <p className="text-sm text-muted-foreground">Learn from real interview experiences shared by candidates who've been there</p>
             </Card>
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
               <Briefcase className="w-10 h-10 text-primary mb-4" />
@@ -313,8 +286,8 @@ export default function Landing() {
               </Card>
               <Card className="p-6 bg-gradient-to-br from-secondary/10 to-primary/10 border-secondary/30">
                 <Users className="w-10 h-10 text-secondary mb-3" />
-                <h3 className="font-bold mb-2">Mentor Guidance</h3>
-                <p className="text-sm text-muted-foreground">Access experienced mentors from our library for personalized coaching</p>
+                <h3 className="font-bold mb-2">Community Insights</h3>
+                <p className="text-sm text-muted-foreground">Browse real interview questions and experiences shared by the community</p>
               </Card>
               <Card className="p-6 bg-gradient-to-br from-primary/10 to-accent/10 border-accent/30">
                 <Briefcase className="w-10 h-10 text-accent mb-3" />
@@ -326,42 +299,42 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Job Categories Carousel */}
+      {/* Job Categories Grid */}
       <section id="categories" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-center mb-4">Choose Your Career Field</h2>
           <p className="text-center text-muted-foreground mb-12">Tailored preparation sessions for professionals across all industries and roles</p>
-          <Carousel className="max-w-5xl mx-auto">
-            <CarouselContent>
-              {[
-                { role: "Software Engineer", icon: Code, rate: "$100-160/hr" },
-                { role: "Product Manager", icon: Target, rate: "$110-180/hr" },
-                { role: "Marketing Manager", icon: TrendingUp, rate: "$90-150/hr" },
-                { role: "Financial Analyst", icon: BarChart3, rate: "$85-140/hr" },
-                { role: "Sales Executive", icon: Users, rate: "$90-145/hr" },
-                { role: "Data Scientist", icon: Database, rate: "$110-170/hr" },
-                { role: "UX Designer", icon: Palette, rate: "$85-135/hr" },
-                { role: "Project Manager", icon: Briefcase, rate: "$95-150/hr" },
-                { role: "HR Manager", icon: Users, rate: "$80-130/hr" },
-                { role: "Consultant", icon: Award, rate: "$120-200/hr" },
-                { role: "Account Manager", icon: CheckCircle2, rate: "$75-125/hr" },
-                { role: "Operations Manager", icon: Layout, rate: "$85-140/hr" }
-              ].map((cat) => (
-                <CarouselItem key={cat.role} className="md:basis-1/3 lg:basis-1/4">
-                  <Card className="p-6 text-center hover:shadow-glow transition-all hover:-translate-y-1">
-                    <cat.icon className="w-12 h-12 mx-auto mb-4 text-primary" />
-                    <h3 className="font-bold mb-2">{cat.role}</h3>
-                    <p className="text-sm text-muted-foreground mb-4">{cat.rate}</p>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to="/auth">Start Prep</Link>
-                    </Button>
-                  </Card>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <CarouselPrevious />
-            <CarouselNext />
-          </Carousel>
+          <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-4 max-w-6xl mx-auto">
+            {[
+              { role: "Software Engineer", icon: Code },
+              { role: "Product Manager", icon: Target },
+              { role: "Marketing", icon: TrendingUp },
+              { role: "Finance", icon: BarChart3 },
+              { role: "Sales", icon: Users },
+              { role: "Data Science", icon: Database },
+              { role: "UX Design", icon: Palette },
+              { role: "Project Mgmt", icon: Briefcase },
+              { role: "HR", icon: Users },
+              { role: "Consulting", icon: Award },
+              { role: "Account Mgmt", icon: CheckCircle2 },
+              { role: "Operations", icon: Layout },
+              { role: "Engineering", icon: Zap },
+              { role: "Legal", icon: Shield },
+              { role: "Healthcare", icon: Eye },
+              { role: "Education", icon: Brain },
+              { role: "Real Estate", icon: Globe },
+              { role: "Media", icon: Video },
+              { role: "Research", icon: TestTube },
+              { role: "Customer Success", icon: Trophy }
+            ].map((cat) => (
+              <Link key={cat.role} to="/auth" className="flex flex-col items-center p-3 rounded-xl hover:bg-primary/5 transition-all cursor-pointer group">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2 group-hover:bg-primary/20 transition-colors">
+                  <cat.icon className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-center font-medium text-muted-foreground group-hover:text-foreground transition-colors">{cat.role}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -408,7 +381,6 @@ export default function Landing() {
                 {[
                   { feature: "Cost", vr: "Free/Low", job: "Free", human: "$150+/hr", recruiter: "N/A" },
                   { feature: "Personalized Sessions", vr: "AI-generated", job: "None", human: "Generic", recruiter: "N/A" },
-                  { feature: "Mentor Access", vr: "Large database", job: "None", human: "1-on-1 only", recruiter: "None" },
                   { feature: "Progress Tracking", vr: "Real-time scores", job: "None", human: "Manual notes", recruiter: "None" },
                   { feature: "Job Matching", vr: "Daily updates", job: "Search-based", human: "None", recruiter: "Limited" },
                   { feature: "Detailed Reports", vr: "✓ Per session", job: "✗", human: "Maybe", recruiter: "✗" }
@@ -467,7 +439,7 @@ export default function Landing() {
                 { name: "Sarah Chen", role: "Product Manager", company: "Tech Startup", quote: "I landed my dream PM role in 3 weeks after using the AI prep sessions. The structured approach made all the difference." },
                 { name: "Marcus Rodriguez", role: "Marketing Director", company: "Fortune 500", quote: "The personalized feedback gave me confidence. I improved my interview performance by 40% in two weeks." },
                 { name: "Emily Park", role: "Financial Analyst", company: "Investment Bank", quote: "Finally, a platform that understands what hiring managers look for. Connected me with my ideal role." },
-                { name: "David Kim", role: "Software Engineer", company: "FAANG", quote: "Screna AI helped me prepare for technical interviews. The mentor access was invaluable." },
+                { name: "David Kim", role: "Software Engineer", company: "FAANG", quote: "Screna AI helped me prepare for technical interviews. The AI feedback and practice sessions were invaluable." },
                 { name: "Lisa Johnson", role: "Sales Manager", company: "SaaS Company", quote: "The daily job matches feature showed me opportunities I never would have found. Game changer!" }
               ].map((t) => (
                 <CarouselItem key={t.name} className="md:basis-1/2 lg:basis-1/3">
@@ -555,7 +527,7 @@ export default function Landing() {
             {/* Free Plan */}
             <Card className="p-8 border-2 hover:shadow-glow transition-all">
               <div className="mb-6">
-                <h3 className="text-2xl font-bold mb-4">Free Plan</h3>
+                <h3 className="text-2xl font-bold mb-4">Free</h3>
                 <div className="mb-4">
                   <span className="text-4xl font-bold">$0</span>
                   <span className="text-muted-foreground">/month</span>
@@ -570,19 +542,23 @@ export default function Landing() {
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">30 Credits (≈30 mins) monthly</span>
+                  <span className="text-sm">60 Credits (≈60 mins) monthly</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+2 daily bonus credits</span>
+                  <span className="text-sm">+0 daily bonus credits</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">1 basic AI interview</span>
+                  <span className="text-sm">1 Interview Training Plan</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Basic job matching (3 jobs/day)</span>
+                  <span className="text-sm">$0.12 per extra credit</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Limit job matching</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -616,15 +592,15 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+5 daily bonus credits</span>
+                  <span className="text-sm">+2 daily bonus credits</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Unlimited AI interviews</span>
+                  <span className="text-sm">3 Interview Training Plans</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Auto-generated training plan</span>
+                  <span className="text-sm">$0.1 per extra credit</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -632,7 +608,7 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Smart matching (10 jobs/day)</span>
+                  <span className="text-sm">Smart job matching</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -663,15 +639,15 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+10 daily bonus credits</span>
+                  <span className="text-sm">+5 daily bonus credits</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Priority queue access</span>
+                  <span className="text-sm">Unlimited Interview Training Plans</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Advanced adaptive plan</span>
+                  <span className="text-sm">$0.07 per extra credit</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -679,7 +655,7 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Advanced matching (20 jobs/day)</span>
+                  <span className="text-sm">Smart job matching</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -711,9 +687,9 @@ export default function Landing() {
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-2">
-              <AccordionTrigger>How does the mentor library work?</AccordionTrigger>
+              <AccordionTrigger>How does the experience library work?</AccordionTrigger>
               <AccordionContent>
-                Our mentor database includes experienced professionals across STEM fields. You can browse mentors by specialty, schedule 1-on-1 sessions, and receive personalized coaching to complement your AI prep sessions.
+                Our experience library contains real interview questions and experiences shared by candidates across all industries. You can browse by company, role, or question type to learn from others and prepare more effectively.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-3">
@@ -780,6 +756,7 @@ export default function Landing() {
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
+                <li><Link to="/dashboard" className="hover:text-foreground transition-smooth">Dashboard</Link></li>
                 <li><Link to="/pricing" className="hover:text-foreground transition-smooth">Pricing</Link></li>
               </ul>
             </div>
@@ -788,7 +765,6 @@ export default function Landing() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#" className="hover:text-foreground transition-smooth">About</a></li>
                 <li><a href="#" className="hover:text-foreground transition-smooth">Contact</a></li>
-                <li><a href="/career" className="hover:text-foreground transition-smooth">Career</a></li>
               </ul>
             </div>
             <div>

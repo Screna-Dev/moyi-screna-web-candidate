@@ -48,20 +48,20 @@ const PlanUsageSettings = () => {
   };
   
   const totalCredits = getTotalCredits(currentPlan);
-
+  
   const plans = [
     {
       name: "Free",
       price: "$0",
       period: "/month",
-      credits: "30",
+      credits: "60",
       description: "Get started with basic features",
       features: [
-        "30 Credits (≈30 mins) monthly",
+        "60 Credits (≈60 mins) monthly",
         "+0 daily bonus credits",
-        "$0.15 per extra credit",
-        "1 Interview Preparation",
-        "30% Mentorship Service Charge",
+        "1 Interview Training Plan",
+        "$0.12 per extra credit",
+        "Limit job matching",
         "7 days data retention",
       ],
       current: currentPlan === "Free",
@@ -75,12 +75,11 @@ const PlanUsageSettings = () => {
       features: [
         "200 Credits (≈200 mins) monthly",
         "+2 daily bonus credits",
-        "$0.10 per extra credit",
-        "3 Interview Preparations",
-        "15% Mentorship Service Charge",
-        "90 days data retention",
+        "3 Interview Training Plans",
+        "$0.1 per extra credit",
         "Full report with feedback",
-        "Job Smart matching",
+        "Smart job matching",
+        "90 days data retention",
       ],
       current: currentPlan === "Pro",
       popular: true,
@@ -94,13 +93,11 @@ const PlanUsageSettings = () => {
       features: [
         "500 Credits (≈500 mins) monthly",
         "+5 daily bonus credits",
+        "Unlimited Interview Training Plans",
         "$0.07 per extra credit",
-        "5 Interview Preparations",
-        "5% Mentorship Service Charge",
-        "Unlimited data retention",
-        "Full report with feedback",
         "Video replay with timestamps",
-        "Job Smart matching",
+        "Smart job matching",
+        "Unlimited data retention",
       ],
       current: currentPlan === "Elite",
     },
