@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,33 +15,55 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus } from "lucide-react";
+import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { PaymentService } from "@/services";
 
 const PlanUsageSettings = () => {
   const [selectedCredits, setSelectedCredits] = useState(500);
   const [buyCreditsDialogOpen, setBuyCreditsDialogOpen] = useState(false);
   const [customCreditsInput, setCustomCreditsInput] = useState("100");
-  const currentPlan: string = "Pro";
-  const creditBalance = 142;
-  const totalCredits = 200;
-
+  const [isLoading, setIsLoading] = useState(true);
+  const [isBuyingCredits, setIsBuyingCredits] = useState(false);
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
+  
+  // API data state
+  const [planUsageData, setPlanUsageData] = useState(null);
+  
+  // Fallback/default values
+  const currentPlan = planUsageData?.currentPlan;
+  const creditBalance = planUsageData?.creditBalance;
+  const nextBillingDate = planUsageData?.nextBillingDate 
+    ? new Date(planUsageData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : "";
+  
+  // Total credits based on plan
+  const getTotalCredits = (plan) => {
+    switch (plan) {
+      case "Elite": return 500;
+      case "Pro": return 200;
+      case "Free": return 30;
+      default: return 200;
+    }
+  };
+  
+  const totalCredits = getTotalCredits(currentPlan);
+  
   const plans = [
     {
       name: "Free",
       price: "$0",
       period: "/month",
-      credits: "30",
+      credits: "60",
       description: "Get started with basic features",
       features: [
-        "30 Credits (≈30 mins) monthly",
+        "60 Credits (≈60 mins) monthly",
         "+0 daily bonus credits",
-        "$0.15 per extra credit",
-        "1 Interview Preparation",
-        "30% Mentorship Service Charge",
+        "1 Interview Training Plan",
+        "$0.12 per extra credit",
         "7 days data retention",
       ],
-      current: false,
+      current: currentPlan === "Free",
     },
     {
       name: "Pro",
@@ -52,14 +74,13 @@ const PlanUsageSettings = () => {
       features: [
         "200 Credits (≈200 mins) monthly",
         "+2 daily bonus credits",
-        "$0.10 per extra credit",
-        "3 Interview Preparations",
-        "15% Mentorship Service Charge",
-        "90 days data retention",
+        "3 Interview Training Plans",
+        "$0.1 per extra credit",
         "Full report with feedback",
-        "Job Smart matching",
+        "Smart job matching",
+        "90 days data retention",
       ],
-      current: true,
+      current: currentPlan === "Pro",
       popular: true,
     },
     {
@@ -71,15 +92,13 @@ const PlanUsageSettings = () => {
       features: [
         "500 Credits (≈500 mins) monthly",
         "+5 daily bonus credits",
+        "Unlimited Interview Training Plans",
         "$0.07 per extra credit",
-        "5 Interview Preparations",
-        "5% Mentorship Service Charge",
-        "Unlimited data retention",
-        "Full report with feedback",
         "Video replay with timestamps",
-        "Job Smart matching",
+        "Smart job matching",
+        "Unlimited data retention",
       ],
-      current: false,
+      current: currentPlan === "Elite",
     },
   ];
 
@@ -97,27 +116,88 @@ const PlanUsageSettings = () => {
     { id: 5, type: "debit", description: "AI Resume Review", amount: -15, date: "Jan 12, 2024" },
   ];
 
-  const calculatePrice = (credits: number) => {
+  // Fetch plan usage data
+  useEffect(() => {
+    const fetchPlanUsage = async () => {
+      try {
+        setIsLoading(true);
+        const response = await PaymentService.getPlanUsage();
+        
+        if (response.data?.data) {
+          setPlanUsageData(response.data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch plan usage:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load plan usage data",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPlanUsage();
+  }, []);
+
+  const calculatePrice = (credits) => {
     const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.1 : 0.15;
     return (credits * pricePerCredit).toFixed(2);
   };
 
-  const handleUpgrade = (planName: string) => {
-    toast({
-      title: "Redirecting to Checkout",
-      description: `Upgrading to ${planName} plan...`,
-    });
+  // API call to change plan
+  const handleChangePlan = async (planName) => {
+    try {
+      setIsChangingPlan(true);
+      
+      const response = await PaymentService.changePlan(planName);
+      
+      if (response.data?.data?.url) {
+        // Redirect to Stripe checkout URL
+        window.location.href = response.data.data.url;
+      } else {
+        throw new Error(response.data?.message || 'Failed to create subscription session');
+      }
+    } catch (error) {
+      console.error('Failed to change plan:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || error.message || "Failed to initiate plan change",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingPlan(false);
+    }
   };
 
-  const handleBuyCredits = (credits: number, price: number) => {
-    toast({
-      title: "Redirecting to Stripe",
-      description: `Purchasing ${credits} credits for $${price}...`,
-    });
-    setBuyCreditsDialogOpen(false);
+  // API call to create one-time session for buying credits
+  const handleBuyCredits = async (credits) => {
+    try {
+      setIsBuyingCredits(true);
+      
+      const response = await PaymentService.createOneTimeSession(credits);
+      
+      if (response.data?.data?.url) {
+        // Redirect to Stripe checkout URL
+        window.location.href = response.data.data.url;
+      } else {
+        throw new Error(response.data?.message || 'Failed to create checkout session');
+      }
+    } catch (error) {
+      console.error('Failed to create one-time session:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || error.message || "Failed to initiate purchase",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBuyingCredits(false);
+      setBuyCreditsDialogOpen(false);
+    }
   };
 
-  const handleCustomCreditsChange = (value: string) => {
+  const handleCustomCreditsChange = (value) => {
     const numValue = parseInt(value) || 0;
     if (numValue >= 0 && numValue <= 10000) {
       setCustomCreditsInput(value);
@@ -134,8 +214,7 @@ const PlanUsageSettings = () => {
       });
       return;
     }
-    const price = parseFloat(calculatePrice(credits));
-    handleBuyCredits(credits, price);
+    handleBuyCredits(credits);
   };
 
   return (
@@ -143,51 +222,73 @@ const PlanUsageSettings = () => {
       {/* Summary Card */}
       <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-primary/10">
         <CardContent className="p-6">
-          <div className="grid gap-6 md:grid-cols-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Current Plan</p>
-              <div className="flex items-center gap-2">
-                <h3 className="text-2xl font-bold">{currentPlan}</h3>
-                <Badge variant="default">Active</Badge>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-6 md:grid-cols-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Current Plan</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-2xl font-bold">{currentPlan}</h3>
+                    <Badge variant="default">Active</Badge>
+                    {planUsageData?.subscriptionCancelPending && (
+                      <Badge variant="destructive">Cancelling</Badge>
+                    )}
+                    {planUsageData?.planDowngradePending && (
+                      <Badge variant="secondary">Downgrading</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Next Billing</p>
+                  <h3 className="text-2xl font-bold flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-muted-foreground" />
+                    {nextBillingDate}
+                  </h3>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Credit Balance</p>
+                  <h3 className="text-2xl font-bold text-primary">{creditBalance} credits</h3>
+                  <Progress value={(creditBalance / totalCredits) * 100} className="h-2 mt-2" />
+                  <p className="text-xs text-muted-foreground">
+                    {creditBalance} of {totalCredits} remaining
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">This Month Usage</p>
+                  <div className="space-y-1">
+                    <p className="text-sm">
+                      <span className="font-semibold">8</span> AI Mocks completed
+                    </p>
+                    <p className="text-sm">
+                      <span className="font-semibold">{totalCredits - creditBalance}</span> credits used
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Next Billing</p>
-              <h3 className="text-2xl font-bold flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-muted-foreground" />
-                Feb 1, 2024
-              </h3>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Credit Balance</p>
-              <h3 className="text-2xl font-bold text-primary">{creditBalance} credits</h3>
-              <Progress value={(creditBalance / totalCredits) * 100} className="h-2 mt-2" />
-              <p className="text-xs text-muted-foreground">
-                {creditBalance} of {totalCredits} remaining
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">This Month Usage</p>
-              <div className="space-y-1">
-                <p className="text-sm">
-                  <span className="font-semibold">8</span> AI Mocks completed
-                </p>
-                <p className="text-sm">
-                  <span className="font-semibold">58</span> credits used
-                </p>
+              <div className="flex gap-3 mt-6">
+                <Button 
+                  className="gap-2" 
+                  onClick={() => handleChangePlan(currentPlan === "Free" ? "Pro" : "Elite")}
+                  disabled={isChangingPlan || currentPlan === "Elite"}
+                >
+                  {isChangingPlan ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <TrendingUp className="h-4 w-4" />
+                  )}
+                  Upgrade Plan
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setBuyCreditsDialogOpen(true)}>
+                  <Zap className="h-4 w-4" />
+                  Buy Extra Credits
+                </Button>
               </div>
-            </div>
-          </div>
-          <div className="flex gap-3 mt-6">
-            <Button className="gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Upgrade Plan
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => setBuyCreditsDialogOpen(true)}>
-              <Zap className="h-4 w-4" />
-              Buy Extra Credits
-            </Button>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -216,6 +317,7 @@ const PlanUsageSettings = () => {
                 onChange={(e) => handleCustomCreditsChange(e.target.value)}
                 placeholder="Enter credits amount"
                 className="text-lg"
+                disabled={isBuyingCredits}
               />
               <p className="text-xs text-muted-foreground">Minimum: 10 credits, Maximum: 10,000 credits</p>
             </div>
@@ -239,6 +341,7 @@ const PlanUsageSettings = () => {
                   size="sm"
                   onClick={() => setCustomCreditsInput(amount.toString())}
                   className={customCreditsInput === amount.toString() ? "border-primary" : ""}
+                  disabled={isBuyingCredits}
                 >
                   {amount}
                 </Button>
@@ -246,12 +349,21 @@ const PlanUsageSettings = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBuyCreditsDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setBuyCreditsDialogOpen(false)} disabled={isBuyingCredits}>
               Cancel
             </Button>
-            <Button onClick={handlePurchaseCustomCredits} className="gap-2">
-              <CreditCard className="h-4 w-4" />
-              Checkout with Stripe
+            <Button onClick={handlePurchaseCustomCredits} className="gap-2" disabled={isBuyingCredits}>
+              {isBuyingCredits ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-4 w-4" />
+                  Checkout with Stripe
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -300,10 +412,12 @@ const PlanUsageSettings = () => {
                   <Button
                     className="w-full gap-2"
                     variant={plan.current ? "outline" : "default"}
-                    disabled={plan.current}
-                    onClick={() => handleUpgrade(plan.name)}
+                    disabled={plan.current || isChangingPlan}
+                    onClick={() => handleChangePlan(plan.name)}
                   >
-                    {plan.current ? (
+                    {isChangingPlan ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : plan.current ? (
                       "Current Plan"
                     ) : (
                       <>
@@ -354,7 +468,7 @@ const PlanUsageSettings = () => {
                   <div
                     key={pkg.credits}
                     className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => handleBuyCredits(pkg.credits, pkg.price)}
+                    onClick={() => !isBuyingCredits && handleBuyCredits(pkg.credits)}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-2xl font-bold">{pkg.credits}</span>
@@ -366,8 +480,8 @@ const PlanUsageSettings = () => {
                     </div>
                     <p className="text-sm text-muted-foreground">credits</p>
                     <p className="text-xl font-semibold mt-2">${pkg.price}</p>
-                    <Button className="w-full mt-3" size="sm">
-                      Buy Now
+                    <Button className="w-full mt-3" size="sm" disabled={isBuyingCredits}>
+                      {isBuyingCredits ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buy Now"}
                     </Button>
                   </div>
                 ))}
@@ -415,8 +529,10 @@ const PlanUsageSettings = () => {
                     <p className="text-2xl font-bold">${calculatePrice(selectedCredits)}</p>
                   </div>
                   <Button
-                    onClick={() => handleBuyCredits(selectedCredits, parseFloat(calculatePrice(selectedCredits)))}
+                    onClick={() => handleBuyCredits(selectedCredits)}
+                    disabled={isBuyingCredits}
                   >
+                    {isBuyingCredits ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                     Buy with Stripe
                   </Button>
                 </div>
