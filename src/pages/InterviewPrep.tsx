@@ -1550,9 +1550,6 @@ const InterviewPrep = () => {
                                   >
                                     <FileText className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm">
-                                    <Video className="h-4 w-4" />
-                                  </Button>
                                   <Button 
                                     variant="ghost" 
                                     size="sm"

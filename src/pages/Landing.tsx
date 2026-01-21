@@ -558,10 +558,6 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">Limit job matching</span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                   <span className="text-sm">7 days data retention</span>
                 </div>
               </div>

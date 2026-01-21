@@ -35,7 +35,7 @@ export function BillingTab({ user }: BillingTabProps) {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const filteredPayments = user.payments.filter((payment) => {
+  const filteredPayments = user?.payments?.filter((payment) => {
     const matchesType = typeFilter === 'all' || payment.type === typeFilter;
     const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
     return matchesType && matchesStatus;
@@ -81,27 +81,27 @@ export function BillingTab({ user }: BillingTabProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-muted-foreground mb-1">Plan Name</p>
-              <p className="text-xl font-bold">{user.plan.name}</p>
+              <p className="text-xl font-bold">{user?.plan?.name}</p>
               <Badge variant="secondary" className="mt-1">
-                {user.plan.type}
+                {user?.plan?.type}
               </Badge>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Billing Status</p>
-              <Badge className={getPlanStatusColor(user.plan.status)}>{user.plan.status}</Badge>
-              {user.plan.renewalDate && (
+              <Badge className={getPlanStatusColor(user?.plan?.status)}>{user?.plan?.status}</Badge>
+              {user?.plan?.renewalDate && (
                 <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  Renews: {user.plan.renewalDate}
+                  Renews: {user?.plan?.renewalDate}
                 </p>
               )}
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Stripe IDs</p>
-              {user.plan.stripeCustomerId ? (
+              {user?.plan?.stripeCustomerId ? (
                 <div className="space-y-1 text-xs">
-                  <p className="font-mono">Customer: {user.plan.stripeCustomerId}</p>
-                  <p className="font-mono">Sub: {user.plan.stripeSubscriptionId}</p>
+                  <p className="font-mono">Customer: {user?.plan?.stripeCustomerId}</p>
+                  <p className="font-mono">Sub: {user?.plan?.stripeSubscriptionId}</p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No Stripe account</p>
@@ -109,11 +109,11 @@ export function BillingTab({ user }: BillingTabProps) {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <Button variant="outline" size="sm" disabled={!user.plan.stripeCustomerId}>
+            <Button variant="outline" size="sm" disabled={!user?.plan?.stripeCustomerId}>
               <ExternalLink className="w-4 h-4 mr-1" />
               Open in Stripe
             </Button>
-            <Button variant="outline" size="sm" disabled={!user.plan.stripeCustomerId}>
+            <Button variant="outline" size="sm" disabled={!user?.plan?.stripeCustomerId}>
               Open Customer Portal
             </Button>
           </div>
@@ -132,21 +132,21 @@ export function BillingTab({ user }: BillingTabProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="p-4 rounded-lg bg-muted">
               <p className="text-sm text-muted-foreground mb-1">Remaining</p>
-              <p className="text-3xl font-bold">{user.credits.remaining}</p>
+              <p className="text-3xl font-bold">{user?.credits?.remaining}</p>
             </div>
             <div className="p-4 rounded-lg bg-muted">
               <p className="text-sm text-muted-foreground mb-1">Used This Month</p>
-              <p className="text-3xl font-bold">{user.credits.usedThisMonth}</p>
+              <p className="text-3xl font-bold">{user?.credits?.usedThisMonth}</p>
             </div>
             <div className="p-4 rounded-lg bg-muted">
               <p className="text-sm text-muted-foreground mb-1">Total Added</p>
               <p className="text-3xl font-bold">
-                {user.credits.history.reduce((sum, h) => sum + h.creditsAdded, 0)}
+                {user?.credits?.history.reduce((sum, h) => sum + h.creditsAdded, 0)}
               </p>
             </div>
           </div>
 
-          {user.credits.history.length > 0 && (
+          {user?.credits?.history.length > 0 && (
             <div>
               <h4 className="font-medium mb-3">Credit History</h4>
               <Table>
@@ -160,7 +160,7 @@ export function BillingTab({ user }: BillingTabProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {user.credits.history.map((entry, index) => (
+                  {user?.credits?.history.map((entry, index) => (
                     <TableRow key={index}>
                       <TableCell>{entry.date}</TableCell>
                       <TableCell>{entry.package}</TableCell>
@@ -221,7 +221,7 @@ export function BillingTab({ user }: BillingTabProps) {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredPayments.length === 0 ? (
+          {filteredPayments?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-50" />
               <p>No payment history</p>
@@ -239,7 +239,7 @@ export function BillingTab({ user }: BillingTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPayments.map((payment) => (
+                {filteredPayments?.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell>{payment.date}</TableCell>
                     <TableCell>

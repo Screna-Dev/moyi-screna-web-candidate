@@ -61,7 +61,6 @@ const PlanUsageSettings = () => {
         "+0 daily bonus credits",
         "1 Interview Training Plan",
         "$0.12 per extra credit",
-        "Limit job matching",
         "7 days data retention",
       ],
       current: currentPlan === "Free",

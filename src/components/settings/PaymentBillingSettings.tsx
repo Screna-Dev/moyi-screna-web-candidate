@@ -214,7 +214,9 @@ const PaymentBillingSettings = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  No Invoice found
+                  <span className="text-sm text-muted-foreground">
+                      No Invoice found
+                  </span>
                 </TableBody>
               </Table>
             </div>
