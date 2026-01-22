@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { InterviewService, InterviewSessionService } from "@/services";
-import { PaymentService } from "@/services";
+import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 
 import {
   Target,
@@ -155,9 +155,13 @@ const InterviewPrep = () => {
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [reportTab, setReportTab] = useState<"basic" | "premium">("basic");
   
-  // User plan state
-  const [userPlan, setUserPlan] = useState<"Free" | "Pro" | "Elite">("Pro");
-  const [isChangingPlan, setIsChangingPlan] = useState(false);
+  // User plan from hook
+  const { 
+    planData, 
+    isLoading: isPlanLoading, 
+    canAccessPremiumReport: isPremiumUser 
+  } = useUserPlan();
+  const { upgradeToElite, isChangingPlan } = useUpgradePrompt();
   
   // Session Preview state
   const [selectedSessionPreview, setSelectedSessionPreview] = useState<AISession | null>(null);
@@ -170,43 +174,10 @@ const InterviewPrep = () => {
 
   // Check if any plan is not ready
   const hasUnreadyPlans = trainingPlans.some(plan => plan.status !== "active");
-  
-  // Check if user has premium (Elite) plan
-  const isPremiumUser = userPlan === "Elite";
-
-  // Fetch user plan
-  const fetchUserPlan = async () => {
-    try {
-      const response = await PaymentService.getPlanUsage();
-      if (response.data?.data?.currentPlan) {
-        setUserPlan(response.data.data.currentPlan);
-      }
-    } catch (error) {
-      console.error("Failed to fetch user plan:", error);
-    }
-  };
 
   // Handle upgrade to Elite
   const handleUpgradeToElite = async () => {
-    try {
-      setIsChangingPlan(true);
-      const response = await PaymentService.changePlan("Elite");
-      
-      if (response.data?.data?.url) {
-        window.location.href = response.data.data.url;
-      } else {
-        throw new Error(response.data?.message || 'Failed to create subscription session');
-      }
-    } catch (error) {
-      console.error('Failed to upgrade plan:', error);
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || error.message || "Failed to initiate plan upgrade",
-        variant: "destructive",
-      });
-    } finally {
-      setIsChangingPlan(false);
-    }
+    await upgradeToElite();
   };
 
   // Load training plans
@@ -356,10 +327,9 @@ const InterviewPrep = () => {
     }
   };
 
-  // Load training plans and user plan on mount
+  // Load training plans on mount
   useEffect(() => {
     loadTrainingPlans();
-    fetchUserPlan();
   }, []);
 
   // Auto-refresh when there are unready plans
