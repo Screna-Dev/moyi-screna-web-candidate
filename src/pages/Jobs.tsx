@@ -14,14 +14,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Search, MapPin, Briefcase, Lock, Send, FileText,
-  Plus, CheckCircle2, Clock, Tag, Sparkles, Target, Loader2
+  Plus, CheckCircle2, Clock, Tag, Sparkles, Target, Loader2, Crown
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { InterviewService, ProfileService, JobService } from "@/services";
+import { useUserPlan, useUpgradePrompt } from '@/hooks/useUserPlan';
 
 export default function Jobs() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  
+  // Use the user plan hook
+  const { 
+    planData, 
+    isLoading: isPlanLoading, 
+    isFree, 
+    canAccessJobs, 
+    canPushProfile 
+  } = useUserPlan();
+  const { upgradeToPro, isChangingPlan } = useUpgradePrompt();
+  
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [pushModalOpen, setPushModalOpen] = useState(false);
   const [bulkPushModalOpen, setBulkPushModalOpen] = useState(false);
@@ -39,9 +52,7 @@ export default function Jobs() {
 
   // Form state for creating new job
   const [isCreatingPlan, setIsCreatingPlan] = useState(false)
-  const navigate = useNavigate();
 
-  const userPlan = 'free';
   const overallScore = 83;
   const lastSessionId = 'ABC123';
   
@@ -85,11 +96,12 @@ export default function Jobs() {
     
     fetchActiveTitle();
   }, []);
+
   // Debounce search query - wait 800ms after user stops typing
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
-    }, 800); // 800ms pause time
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -100,21 +112,22 @@ export default function Jobs() {
     setHasMore(true);
   }, [debouncedSearchQuery, locationFilter, timeFilter, sortBy]);
   
-  // Fetch jobs from API
+  // Fetch jobs from API - only if user can access jobs
   useEffect(() => {
-    fetchJobs(page);
-  }, [page, debouncedSearchQuery, locationFilter, timeFilter, sortBy]);
+    if (canAccessJobs) {
+      fetchJobs(page);
+    }
+  }, [page, debouncedSearchQuery, locationFilter, timeFilter, sortBy, canAccessJobs]);
   
   // Infinite scroll handler
   useEffect(() => {
     const handleScroll = () => {
-      if (loading || !hasMore) return;
+      if (loading || !hasMore || !canAccessJobs) return;
 
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       const scrollHeight = document.documentElement.scrollHeight;
       const clientHeight = document.documentElement.clientHeight;
 
-      // Load more when user scrolls to bottom (with 200px threshold)
       if (scrollTop + clientHeight >= scrollHeight - 200) {
         setPage(prev => prev + 1);
       }
@@ -122,9 +135,11 @@ export default function Jobs() {
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [loading, hasMore]);
+  }, [loading, hasMore, canAccessJobs]);
 
   const fetchJobs = async (currentPage: number) => {
+    if (!canAccessJobs) return;
+    
     setLoading(true);
     try {
       const response = await JobService.searchJobs({
@@ -165,11 +180,11 @@ export default function Jobs() {
   };
 
   const handlePushProfile = (jobId: string) => {
-    if (userPlan === 'free') {
+    if (!canPushProfile) {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push your profile to recruiters.',
-        action: <Link to="/pricing"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -186,11 +201,11 @@ export default function Jobs() {
   };
 
   const handleBulkPush = () => {
-    if (userPlan === 'free') {
+    if (!canPushProfile) {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push profiles.',
-        action: <Link to="/pricing"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -239,6 +254,135 @@ export default function Jobs() {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
+  const handleUpgrade = async () => {
+    await upgradeToPro();
+  };
+
+  // Show loading while plan is being fetched
+  if (isPlanLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show upgrade prompt for Free users
+  if (isFree) {
+    return (
+      <TooltipProvider>
+        <div className="min-h-screen bg-background p-6">
+          <div className="container mx-auto max-w-4xl">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold mb-2">Job Match</h1>
+              <p className="text-muted-foreground">Find jobs that match your profile</p>
+            </div>
+
+            {/* Upgrade Card */}
+            <Card className="p-8 bg-gradient-to-br from-primary/5 to-secondary/5 border-primary/20">
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 mx-auto mb-6 flex items-center justify-center">
+                  <Crown className="w-10 h-10 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Upgrade to Access Job Matching</h2>
+                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                  Pro and Elite members get access to our AI-powered job matching feature, 
+                  helping you find the perfect opportunities based on your skills and experience.
+                </p>
+                
+                <div className="bg-background rounded-lg p-6 mb-6 text-left max-w-md mx-auto">
+                  <h3 className="font-semibold mb-4">Pro Plan includes:</h3>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <span>AI-powered job matching based on your profile</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <span>Push your profile to recruiters</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <span>200 credits monthly for AI interviews</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <span>Full report with feedback</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <span>3 Interview Preparations</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button 
+                    size="lg" 
+                    className="gradient-primary"
+                    onClick={handleUpgrade}
+                    disabled={isChangingPlan}
+                  >
+                    {isChangingPlan ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Crown className="w-4 h-4 mr-2" />
+                        Upgrade to Pro - $19.90/mo
+                      </>
+                    )}
+                  </Button>
+                  <Button variant="outline" size="lg" asChild>
+                    <Link to="/settings">View All Plans</Link>
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Feature Preview */}
+            <div className="mt-8 grid md:grid-cols-3 gap-4">
+              <Card className="p-4 opacity-60">
+                <div className="flex items-center gap-3 mb-2">
+                  <Search className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">Smart Search</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Search through thousands of jobs matched to your skills
+                </p>
+              </Card>
+              <Card className="p-4 opacity-60">
+                <div className="flex items-center gap-3 mb-2">
+                  <Target className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">Perfect Match</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  AI analyzes your profile to find the best opportunities
+                </p>
+              </Card>
+              <Card className="p-4 opacity-60">
+                <div className="flex items-center gap-3 mb-2">
+                  <Send className="w-5 h-5 text-primary" />
+                  <h3 className="font-semibold">One-Click Apply</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Push your profile directly to recruiters
+                </p>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  // Main content for Pro and Elite users
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-background p-6">
@@ -251,12 +395,17 @@ export default function Jobs() {
                 <h1 className="text-4xl font-bold">Job Match</h1>
                 <p className="text-muted-foreground">Matched to your Active Title</p>
               </div>
-              <Badge variant="secondary" className="px-4 py-2 text-sm">
-                Active: {activeTitle.name}
-                <Link to="/metrics" className="ml-2 text-xs underline hover:text-primary">
-                  Change
-                </Link>
-              </Badge>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="px-4 py-2 text-sm">
+                  {planData.currentPlan} Plan
+                </Badge>
+                <Badge variant="outline" className="px-4 py-2 text-sm">
+                  Active: {activeTitle.name}
+                  <Link to="/metrics" className="ml-2 text-xs underline hover:text-primary">
+                    Change
+                  </Link>
+                </Badge>
+              </div>
             </div>
 
             {/* Controls */}
@@ -313,43 +462,16 @@ export default function Jobs() {
               <Card className="p-4 bg-primary/5 border-primary/20 sticky top-0 z-10">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">Selected: {selectedJobs.length} jobs</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={handleBulkPush} disabled={userPlan === 'free'}>
-                        <Send className="w-4 h-4 mr-2" />
-                        Apply to Selected Positions
-                        {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
-                      </Button>
-                    </TooltipTrigger>
-                    {userPlan === 'free' && (
-                      <TooltipContent>
-                        <p>Upgrade to push profiles</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </div>
-              </Card>
-            )}
-
-            {/* Premium Gate for Free Users */}
-            {userPlan === 'free' && (
-              <Card className="p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Lock className="w-5 h-5 text-primary" />
-                    <p className="text-sm font-medium">
-                      Upgrade to apply to positions and push your profile to recruiters.
-                    </p>
-                  </div>
-                  <Button variant="cta" asChild>
-                    <Link to="/pricing">Upgrade Now</Link>
+                  <Button onClick={handleBulkPush}>
+                    <Send className="w-4 h-4 mr-2" />
+                    Apply to Selected Positions
                   </Button>
                 </div>
               </Card>
             )}
+
             {/* Job List */}
             {jobs.length === 0 && !loading ? (
-              // Empty state - no jobs and not loading
               <Card className="p-12 text-center">
                 <div className="flex flex-col items-center gap-4">
                   <Briefcase className="w-16 h-16 text-muted-foreground opacity-50" />
@@ -367,7 +489,7 @@ export default function Jobs() {
                       onClick={() => {
                         setSearchQuery('');
                         setLocationFilter('all');
-                        setTimeFilter('DAYS_7');
+                        setTimeFilter('sevenDays');
                       }}
                     >
                       Clear All Filters
@@ -376,7 +498,6 @@ export default function Jobs() {
                 </div>
               </Card>
             ) : jobs.length === 0 && loading ? (
-              // Initial loading (page 1, empty list) - show full page loading
               <Card className="p-12 text-center">
                 <div className="flex flex-col items-center gap-4">
                   <Loader2 className="w-16 h-16 text-primary animate-spin" />
@@ -384,9 +505,7 @@ export default function Jobs() {
                 </div>
               </Card>
             ) : (
-              // Has data - always show the list
               <div className="space-y-4">
-                {/* Results count */}
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>
                     {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
@@ -463,8 +582,6 @@ export default function Jobs() {
                                 try {
                                   const response = await InterviewService.createTrainingPlanFromJobId(job.id);
                                   
-                                  console.log("Create training plan from job ID response:", response);
-                                  
                                   const isSuccess = 
                                     response.data?.status === "success" || 
                                     response.data?.data || 
@@ -497,29 +614,16 @@ export default function Jobs() {
                               }}
                               disabled={isCreatingPlan}
                             >
-                                <>
-                                  <Plus className="mr-2 h-4 w-4" />
-                                  Add Target Job
-                                </>
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Target Job
                             </Button>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button 
-                                  size="sm" 
-                                  onClick={() => handlePushProfile(job.id)}
-                                  disabled={userPlan === 'free'}
-                                >
-                                  <Send className="w-4 h-4 mr-2" />
-                                  Apply Position
-                                  {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
-                                </Button>
-                              </TooltipTrigger>
-                              {userPlan === 'free' && (
-                                <TooltipContent>
-                                  <p>Upgrade to push profiles</p>
-                                </TooltipContent>
-                              )}
-                            </Tooltip>
+                            <Button 
+                              size="sm" 
+                              onClick={() => handlePushProfile(job.id)}
+                            >
+                              <Send className="w-4 h-4 mr-2" />
+                              Apply Position
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -527,7 +631,6 @@ export default function Jobs() {
                   </Card>
                 ))}
 
-                {/* Loading indicator for infinite scroll - only at bottom */}
                 {loading && (
                   <Card className="p-8 text-center">
                     <div className="flex flex-col items-center gap-3">
@@ -537,7 +640,6 @@ export default function Jobs() {
                   </Card>
                 )}
 
-                {/* End of results indicator */}
                 {!hasMore && !loading && (
                   <Card className="p-6 text-center">
                     <p className="text-sm text-muted-foreground">
@@ -589,35 +691,19 @@ export default function Jobs() {
               </Button>
             </Card>
 
-            {/* Premium Benefits (for free users) */}
-            {userPlan === 'free' && (
-              <Card className="p-4 bg-gradient-to-br from-primary/5 to-secondary/5 border-primary/20">
-                <h3 className="font-semibold mb-3">Premium Benefits</h3>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span>Push profiles to unlimited recruiters</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span>Auto-push to new job matches</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span>Advanced interview analytics</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span>Priority support</span>
-                  </li>
-                </ul>
-                <Button variant="cta" size="sm" className="w-full mt-4" asChild>
-                  <Link to="/pricing">
-                    Upgrade Now
-                  </Link>
-                </Button>
-              </Card>
-            )}
+            {/* Credit Balance */}
+            <Card className="p-4">
+              <h3 className="font-semibold mb-3">Credit Balance</h3>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Available</span>
+                <span className="text-lg font-bold text-primary">{planData.creditBalance}</span>
+              </div>
+              <Button variant="outline" size="sm" className="w-full mt-4" asChild>
+                <Link to="/settings">
+                  Buy More Credits
+                </Link>
+              </Button>
+            </Card>
           </div>
         </div>
       </div>
@@ -670,7 +756,6 @@ export default function Jobs() {
           
           <ScrollArea className="flex-1 pr-4">
             <div className="space-y-6 mt-6">
-              {/* Meta Information */}
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className="text-sm">
                   <MapPin className="w-3 h-3 mr-1" />
@@ -695,7 +780,6 @@ export default function Jobs() {
 
               <Separator />
 
-              {/* Full Description */}
               <div>
                 <h4 className="font-semibold mb-3">Job Description</h4>
                 <div className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
@@ -703,7 +787,6 @@ export default function Jobs() {
                 </div>
               </div>
 
-              {/* Links */}
               {(currentJob?.url || currentJob?.apply_link || currentJob?.company_url) && (
                 <>
                   <Separator />
@@ -747,33 +830,21 @@ export default function Jobs() {
             </div>
           </ScrollArea>
 
-          {/* Sticky Footer */}
           <SheetFooter className="mt-6 pt-4 border-t">
             <div className="flex gap-3 w-full">
               <Button variant="outline" onClick={() => setJobDetailOpen(false)} className="flex-1">
                 Close
               </Button>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    onClick={() => {
-                      setJobDetailOpen(false);
-                      handlePushProfile(currentJob?.id);
-                    }}
-                    disabled={userPlan === 'free'}
-                    className="flex-1"
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Apply Position
-                    {userPlan === 'free' && <Lock className="w-4 h-4 ml-2" />}
-                  </Button>
-                </TooltipTrigger>
-                {userPlan === 'free' && (
-                  <TooltipContent>
-                    <p>Upgrade to push profiles</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
+              <Button 
+                onClick={() => {
+                  setJobDetailOpen(false);
+                  handlePushProfile(currentJob?.id);
+                }}
+                className="flex-1"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Apply Position
+              </Button>
             </div>
           </SheetFooter>
         </SheetContent>

@@ -18,6 +18,7 @@ import {
   CheckCircle, Code, Database, Smartphone, Cloud, TestTube, Layout, Palette,
   Briefcase, FileText, Video
 } from 'lucide-react';
+import { X } from "lucide-react";
 import { Link } from 'react-router-dom';
 import heroImage from "@/assets/hero-interview.jpg";
 import dashboardPreview from "@/assets/dashboard-preview.jpg";
@@ -59,6 +60,33 @@ export default function Landing() {
     <div className="min-h-screen bg-background">
       <StickyNav />
       
+      {/* Fullscreen Video Modal */}
+      <Dialog open={demoModalOpen} onOpenChange={setDemoModalOpen}>
+        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 border-none bg-black/95">
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* Close button */}
+            <button
+              onClick={() => setDemoModalOpen(false)}
+              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+            
+            {/* Video container */}
+            <div className="w-full h-full max-w-[90%] max-h-[85%] aspect-video">
+              <iframe
+                className="w-full h-full rounded-lg"
+                src="https://www.youtube.com/embed/FlXXDesIz0A?autoplay=1"
+                title="Screna AI Demo Video"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Hero Section - Cinematic */}
       <section className="relative pt-32 pb-20 overflow-hidden">
         <div className="absolute inset-0 gradient-hero opacity-40" />
@@ -761,6 +789,7 @@ export default function Landing() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#" className="hover:text-foreground transition-smooth">About</a></li>
                 <li><a href="#" className="hover:text-foreground transition-smooth">Contact</a></li>
+                <li><a href="/career" className="hover:text-foreground transition-smooth">Career</a></li>
               </ul>
             </div>
             <div>
@@ -772,7 +801,7 @@ export default function Landing() {
             </div>
           </div>
           <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
-            <p>© 2025 Screna AI. All rights reserved.</p>
+            <p>© 2026 Screna AI. All rights reserved.</p>
           </div>
         </div>
       </footer>

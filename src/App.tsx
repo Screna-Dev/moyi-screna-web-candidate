@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { UserPlanProvider } from "./hooks/useUserPlan";
 import { AuthLayout } from "./components/AuthLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -51,50 +52,52 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/" element={<Landing />} />
-              <Route path="/career" element={<Career/>} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/auth/google/callback" element={<GoogleCallback />} />
-              
-              {/* Protected routes */}
-              <Route element={
-                <ProtectedRoute>
-                  <AuthLayout />
-                </ProtectedRoute>
-              }>
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/profile_completed" element={<ProfileCompleted />} />
-                <Route path="/profile/edit" element={<ProfileEdit />} />
-                <Route path="/interview" element={<Interview />} />
-                {/* <Route path="/pricing" element={<Pricing />} /> */}
-                <Route path="/jobs" element={<Jobs />} />
-                <Route path="/interview-prep" element={<InterviewPrep />} />
-                <Route path="/interview-prep/empty" element={<InterviewPrepEmpty />} />
-                <Route path="/mentors" element={<Mentors />} />
-                <Route path="/mentor/apply" element={<MentorApply />} />
-                <Route path="/mentor/dashboard" element={<MentorDashboard />} />
-                <Route 
-                  path="/interview/:interviewId" 
-                  element={<AIInterview isDirectAccess={true} />} 
-                />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/admin" element={<Admin />} />
+        <UserPlanProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<Landing />} />
+                <Route path="/career" element={<Career/>} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/auth/google/callback" element={<GoogleCallback />} />
+                
+                {/* Protected routes */}
+                <Route element={
+                  <ProtectedRoute>
+                    <AuthLayout />
+                  </ProtectedRoute>
+                }>
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile_completed" element={<ProfileCompleted />} />
+                  <Route path="/profile/edit" element={<ProfileEdit />} />
+                  <Route path="/interview" element={<Interview />} />
+                  {/* <Route path="/pricing" element={<Pricing />} /> */}
+                  <Route path="/jobs" element={<Jobs />} />
+                  <Route path="/interview-prep" element={<InterviewPrep />} />
+                  <Route path="/interview-prep/empty" element={<InterviewPrepEmpty />} />
+                  <Route path="/mentors" element={<Mentors />} />
+                  <Route path="/mentor/apply" element={<MentorApply />} />
+                  <Route path="/mentor/dashboard" element={<MentorDashboard />} />
+                  <Route 
+                    path="/interview/:interviewId" 
+                    element={<AIInterview isDirectAccess={true} />} 
+                  />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/admin" element={<Admin />} />
 
-                <Route path="/payment/success" element={<PaymentSuccess />} />
-              </Route>
-              
-              {/* Catch-all routes */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </TooltipProvider>
+                  <Route path="/payment/success" element={<PaymentSuccess />} />
+                </Route>
+                
+                {/* Catch-all routes */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </TooltipProvider>
+        </UserPlanProvider>
       </AuthProvider>
     </BrowserRouter>
   </QueryClientProvider>

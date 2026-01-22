@@ -17,25 +17,29 @@ import {
 } from "@/components/ui/dialog";
 import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { PaymentService } from "@/services";
+import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 
 const PlanUsageSettings = () => {
   const [selectedCredits, setSelectedCredits] = useState(500);
   const [buyCreditsDialogOpen, setBuyCreditsDialogOpen] = useState(false);
   const [customCreditsInput, setCustomCreditsInput] = useState("100");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isBuyingCredits, setIsBuyingCredits] = useState(false);
-  const [isChangingPlan, setIsChangingPlan] = useState(false);
   
-  // API data state
-  const [planUsageData, setPlanUsageData] = useState(null);
+  // Use the user plan context
+  const { 
+    planData, 
+    isLoading, 
+    buyCredits: buyCreditsAction,
+    isBuyingCredits,
+    refreshPlan
+  } = useUserPlan();
+  const { upgradeToElite, upgradeToPro, upgradeToNext, isChangingPlan } = useUpgradePrompt();
   
-  // Fallback/default values
-  const currentPlan = planUsageData?.currentPlan;
-  const creditBalance = planUsageData?.creditBalance;
-  const nextBillingDate = planUsageData?.nextBillingDate 
-    ? new Date(planUsageData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : "";
+  // Derived values from context
+  const currentPlan = planData.currentPlan;
+  const creditBalance = planData.creditBalance;
+  const nextBillingDate = planData.nextBillingDate 
+    ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : "Feb 1, 2024";
   
   // Total credits based on plan
   const getTotalCredits = (plan) => {
@@ -48,19 +52,20 @@ const PlanUsageSettings = () => {
   };
   
   const totalCredits = getTotalCredits(currentPlan);
-  
+
   const plans = [
     {
       name: "Free",
       price: "$0",
       period: "/month",
-      credits: "60",
+      credits: "30",
       description: "Get started with basic features",
       features: [
-        "60 Credits (≈60 mins) monthly",
+        "30 Credits (≈30 mins) monthly",
         "+0 daily bonus credits",
-        "1 Interview Training Plan",
-        "$0.12 per extra credit",
+        "$0.15 per extra credit",
+        "1 Interview Preparation",
+        "30% Mentorship Service Charge",
         "7 days data retention",
       ],
       current: currentPlan === "Free",
@@ -74,11 +79,12 @@ const PlanUsageSettings = () => {
       features: [
         "200 Credits (≈200 mins) monthly",
         "+2 daily bonus credits",
-        "3 Interview Training Plans",
-        "$0.1 per extra credit",
-        "Full report with feedback",
-        "Smart job matching",
+        "$0.10 per extra credit",
+        "3 Interview Preparations",
+        "15% Mentorship Service Charge",
         "90 days data retention",
+        "Full report with feedback",
+        "Job Smart matching",
       ],
       current: currentPlan === "Pro",
       popular: true,
@@ -92,11 +98,13 @@ const PlanUsageSettings = () => {
       features: [
         "500 Credits (≈500 mins) monthly",
         "+5 daily bonus credits",
-        "Unlimited Interview Training Plans",
         "$0.07 per extra credit",
-        "Video replay with timestamps",
-        "Smart job matching",
+        "5 Interview Preparations",
+        "5% Mentorship Service Charge",
         "Unlimited data retention",
+        "Full report with feedback",
+        "Video replay with timestamps",
+        "Job Smart matching",
       ],
       current: currentPlan === "Elite",
     },
@@ -116,85 +124,27 @@ const PlanUsageSettings = () => {
     { id: 5, type: "debit", description: "AI Resume Review", amount: -15, date: "Jan 12, 2024" },
   ];
 
-  // Fetch plan usage data
-  useEffect(() => {
-    const fetchPlanUsage = async () => {
-      try {
-        setIsLoading(true);
-        const response = await PaymentService.getPlanUsage();
-        
-        if (response.data?.data) {
-          setPlanUsageData(response.data.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch plan usage:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load plan usage data",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPlanUsage();
-  }, []);
-
   const calculatePrice = (credits) => {
     const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.1 : 0.15;
     return (credits * pricePerCredit).toFixed(2);
   };
 
-  // API call to change plan
+  // Handle plan change using context
   const handleChangePlan = async (planName) => {
-    try {
-      setIsChangingPlan(true);
-      
-      const response = await PaymentService.changePlan(planName);
-      
-      if (response.data?.data?.url) {
-        // Redirect to Stripe checkout URL
-        window.location.href = response.data.data.url;
-      } else {
-        throw new Error(response.data?.message || 'Failed to create subscription session');
-      }
-    } catch (error) {
-      console.error('Failed to change plan:', error);
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || error.message || "Failed to initiate plan change",
-        variant: "destructive",
-      });
-    } finally {
-      setIsChangingPlan(false);
+    if (planName === "Elite") {
+      await upgradeToElite();
+    } else if (planName === "Pro") {
+      await upgradeToPro();
     }
   };
 
-  // API call to create one-time session for buying credits
+  // Handle buy credits using context
   const handleBuyCredits = async (credits) => {
-    try {
-      setIsBuyingCredits(true);
-      
-      const response = await PaymentService.createOneTimeSession(credits);
-      
-      if (response.data?.data?.url) {
-        // Redirect to Stripe checkout URL
-        window.location.href = response.data.data.url;
-      } else {
-        throw new Error(response.data?.message || 'Failed to create checkout session');
-      }
-    } catch (error) {
-      console.error('Failed to create one-time session:', error);
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || error.message || "Failed to initiate purchase",
-        variant: "destructive",
-      });
-    } finally {
-      setIsBuyingCredits(false);
-      setBuyCreditsDialogOpen(false);
+    const url = await buyCreditsAction(credits);
+    if (url) {
+      window.location.href = url;
     }
+    setBuyCreditsDialogOpen(false);
   };
 
   const handleCustomCreditsChange = (value) => {
@@ -234,10 +184,10 @@ const PlanUsageSettings = () => {
                   <div className="flex items-center gap-2">
                     <h3 className="text-2xl font-bold">{currentPlan}</h3>
                     <Badge variant="default">Active</Badge>
-                    {planUsageData?.subscriptionCancelPending && (
+                    {planData.subscriptionCancelPending && (
                       <Badge variant="destructive">Cancelling</Badge>
                     )}
-                    {planUsageData?.planDowngradePending && (
+                    {planData.planDowngradePending && (
                       <Badge variant="secondary">Downgrading</Badge>
                     )}
                   </div>
