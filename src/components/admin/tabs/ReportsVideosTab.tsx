@@ -86,16 +86,16 @@ export function ReportsVideosTab({ user }) {
     if (!scores) return [];
     const result = [];
     if (scores.resume_background !== undefined) {
-      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background * 100) });
+      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background) });
     }
     if (scores.domain_knowledge !== undefined) {
-      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge * 100) });
+      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge) });
     }
     if (scores.technical_skills !== undefined) {
-      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills * 100) });
+      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills) });
     }
     if (scores.behavioral !== undefined) {
-      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral * 100) });
+      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral) });
     }
     return result;
   };
@@ -236,12 +236,12 @@ export function ReportsVideosTab({ user }) {
 
       {/* Report Detail Modal */}
       <Dialog open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedReport?.type}</DialogTitle>
           </DialogHeader>
           {selectedReport && (
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
@@ -276,7 +276,7 @@ export function ReportsVideosTab({ user }) {
                         className="flex items-center justify-between p-2 rounded bg-muted"
                       >
                         <span className="text-sm">{s.category}</span>
-                        <span className="font-semibold">{s.score}</span>
+                        <span className="font-semibold">{s.score} / 100</span>
                       </div>
                     ))}
                   </div>
@@ -322,12 +322,12 @@ export function ReportsVideosTab({ user }) {
 
       {/* Video Player Modal - kept for future use when video API is available */}
       <Dialog open={!!selectedVideo} onOpenChange={() => setSelectedVideo(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedVideo?.title}</DialogTitle>
           </DialogHeader>
           {selectedVideo && (
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
                 <div className="text-center">
                   <Play className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />

@@ -452,7 +452,7 @@ export default function Landing() {
             </Card>
           </div>
           <p className="text-center text-sm text-muted-foreground mt-8">
-            GDPR compliant • Delete your data anytime • <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
+            GDPR compliant • Delete your data anytime • <Link to="/#" className="text-primary hover:underline">Privacy Policy</Link>
           </p>
         </div>
       </section>
@@ -606,7 +606,7 @@ export default function Landing() {
               </div>
               
               <Button size="lg" className="w-full mb-6 gradient-primary" asChild>
-                <Link to="/pricing">Get Pro</Link>
+                <Link to="/auth">Get Pro</Link>
               </Button>
               
               <div className="space-y-3">
@@ -653,7 +653,7 @@ export default function Landing() {
               </div>
               
               <Button size="lg" variant="outline" className="w-full mb-6" asChild>
-                <Link to="/pricing">Get Elite</Link>
+                <Link to="/auth">Get Elite</Link>
               </Button>
               
               <div className="space-y-3">
@@ -691,7 +691,7 @@ export default function Landing() {
           
           <div className="text-center mt-12">
             <Button variant="link" asChild>
-              <Link to="/pricing" className="text-primary hover:underline">
+              <Link to="/#pricing" className="text-primary hover:underline">
                 View detailed comparison →
               </Link>
             </Button>
@@ -755,7 +755,7 @@ export default function Landing() {
               Start your personalized prep journey and ace your next interview
             </p>
             <Button size="xl" className="gradient-primary shadow-glow hover:shadow-glow hover:scale-105 transition-all duration-300 mb-4" asChild>
-              <Link to="/register">
+              <Link to="/auth">
                 Begin Your Preparation Journey
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
@@ -781,7 +781,7 @@ export default function Landing() {
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/dashboard" className="hover:text-foreground transition-smooth">Dashboard</Link></li>
-                <li><Link to="/pricing" className="hover:text-foreground transition-smooth">Pricing</Link></li>
+                <li><Link to="/#pricing" className="hover:text-foreground transition-smooth">Pricing</Link></li>
               </ul>
             </div>
             <div>
