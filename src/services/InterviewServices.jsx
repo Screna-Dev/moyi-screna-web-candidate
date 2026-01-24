@@ -39,13 +39,19 @@ export const endTrainingModule = (moduleId)=> {
   });
 }
 
+// POST /training-plans/modules/{moduleId}/retake - Retake a completed training module
+export const retakeTrainingModule = (moduleId) => {
+  return API.post(`${BASE_URL}/modules/${moduleId}/retake`);
+};
+
 const InterviewServices = {
   getTrainingPlans,
   createTrainingPlan,
   getTrainingPlanById,
   deleteTrainingPlan,
   createTrainingPlanFromJobId,
-  endTrainingModule
+  endTrainingModule,
+  retakeTrainingModule
 };
 
 export default InterviewServices;

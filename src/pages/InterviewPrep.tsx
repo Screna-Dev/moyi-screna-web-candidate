@@ -320,9 +320,60 @@ const InterviewPrep = () => {
     setSelectedSessionPreview(null);
   };
 
+  // State for retake loading
+  const [isRetaking, setIsRetaking] = useState(false);
+
   // Handle starting the interview from preview
-  const handleStartInterview = () => {
-    if (selectedSessionPreview) {
+  const handleStartInterview = async () => {
+    if (!selectedSessionPreview) return;
+
+    // Check if this is a retake scenario (completed session)
+    const isRetake = selectedSessionPreview.status === "completed";
+
+    if (isRetake) {
+      // Call retake API first
+      setIsRetaking(true);
+      try {
+        const response = await InterviewService.retakeTrainingModule(selectedSessionPreview.id);
+
+        console.log("Retake module response:", response);
+
+        // Check for success
+        const isSuccess =
+          response.status === 200 ||
+          response.data?.status === "success" ||
+          response.data?.data;
+
+        if (isSuccess) {
+          // Get the new module_id from response if available
+          const newModuleId = response.data?.data?.module_id || selectedSessionPreview.id;
+
+          toast({
+            title: "Session Retake Started",
+            description: "Good luck with your interview!",
+          });
+
+          // Navigate to the interview with the new or existing module ID
+          navigate(`/interview/${newModuleId}`);
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to start retake. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Error retaking module:", error);
+        toast({
+          title: "Error",
+          description: error.response?.data?.message || "Failed to start retake. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsRetaking(false);
+      }
+    } else {
+      // Normal start for pending sessions
       navigate(`/interview/${selectedSessionPreview.id}`);
     }
   };
@@ -1118,15 +1169,25 @@ const InterviewPrep = () => {
             </ScrollArea>
           )}
 
-          {/* Start Interview Button - Fixed at bottom */}
+          {/* Start/Retake Interview Button - Fixed at bottom */}
           <div className="absolute bottom-0 left-0 right-0 p-6 bg-background border-t">
-            <Button 
+            <Button
               className="w-full gradient-primary text-lg py-6"
               onClick={handleStartInterview}
+              disabled={isRetaking}
             >
-              <PlayCircle className="h-5 w-5 mr-2" />
-              Start Mock Interview
-              <ArrowRight className="h-5 w-5 ml-2" />
+              {isRetaking ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Starting Retake...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="h-5 w-5 mr-2" />
+                  {selectedSessionPreview?.status === "completed" ? "Retake Mock Interview" : "Start Mock Interview"}
+                  <ArrowRight className="h-5 w-5 ml-2" />
+                </>
+              )}
             </Button>
           </div>
         </SheetContent>
