@@ -689,13 +689,13 @@ export default function Landing() {
             </Card>
           </div>
           
-          <div className="text-center mt-12">
+          {/* <div className="text-center mt-12">
             <Button variant="link" asChild>
               <Link to="/#pricing" className="text-primary hover:underline">
                 View detailed comparison →
               </Link>
             </Button>
-          </div>
+          </div> */}
         </div>
       </section>
 
@@ -781,7 +781,7 @@ export default function Landing() {
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link to="/dashboard" className="hover:text-foreground transition-smooth">Dashboard</Link></li>
-                <li><Link to="/#pricing" className="hover:text-foreground transition-smooth">Pricing</Link></li>
+                <li><a href="/#pricing" className="hover:text-foreground transition-smooth">Pricing</a></li>
               </ul>
             </div>
             <div>

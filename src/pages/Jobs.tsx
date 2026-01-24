@@ -671,7 +671,7 @@ export default function Jobs() {
             </Card>
 
             {/* Latest Suggestions */}
-            <Card className="p-4">
+            {/* <Card className="p-4">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
                 Latest Suggestions
@@ -689,7 +689,7 @@ export default function Jobs() {
                   View All Metrics
                 </Link>
               </Button>
-            </Card>
+            </Card> */}
 
             {/* Credit Balance */}
             <Card className="p-4">

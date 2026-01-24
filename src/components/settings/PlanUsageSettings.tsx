@@ -491,7 +491,7 @@ const PlanUsageSettings = () => {
           </Card>
 
           {/* Transaction History */}
-          <Card className="border-0 shadow-sm">
+          {/* <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Transaction History</CardTitle>
               <CardDescription>Recent credit transactions</CardDescription>
@@ -521,7 +521,7 @@ const PlanUsageSettings = () => {
                 ))}
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
         </TabsContent>
       </Tabs>
     </div>

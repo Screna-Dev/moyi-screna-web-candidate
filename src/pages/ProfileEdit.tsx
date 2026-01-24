@@ -761,7 +761,7 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
           </Card>
 
           {/* Privacy Settings */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Privacy & Preferences</CardTitle>
             </CardHeader>
@@ -800,7 +800,7 @@ const ProfileEdit: React.FC<ProfileEditProps> = ({
                 <Switch id="notifications" defaultChecked />
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
 

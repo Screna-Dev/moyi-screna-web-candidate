@@ -166,7 +166,7 @@ const Career = () => {
                       </div>
                       <CardTitle className="text-xl">{job.title}</CardTitle>
                     </div>
-                    <Button
+                    {/* <Button
                       variant="outline"
                       size="sm"
                       className="flex items-center gap-2"
@@ -174,7 +174,7 @@ const Career = () => {
                     >
                       Apply
                       <ExternalLink className="w-4 h-4" />
-                    </Button>
+                    </Button> */}
                   </div>
                 </CardHeader>
                 <CardContent>

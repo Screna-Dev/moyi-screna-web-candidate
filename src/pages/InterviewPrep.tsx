@@ -786,7 +786,7 @@ const InterviewPrep = () => {
                                     {key.replace(/_/g, ' ')}
                                   </span>
                                   <span className="text-sm font-semibold">
-                                    {(value === undefined || value === null) ? 'N/A' : value + "/10"}
+                                    {(value === undefined || value === null) ? 'N/A' : value + "/100"}
                                   </span>
                                 </div>
                                 <Progress value={value ? (value <= 1 ? value * 100 : value * 10) : 0} className="h-2" />

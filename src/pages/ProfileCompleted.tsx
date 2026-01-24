@@ -745,7 +745,7 @@ const ProfileCompleted = () => {
             </Card>
 
             {/* Privacy Settings */}
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Shield className="w-5 h-5 text-primary" />
@@ -777,7 +777,7 @@ const ProfileCompleted = () => {
                   Learn about data privacy
                 </Button>
               </CardContent>
-            </Card>
+            </Card> */}
 
             {/* Resume File */}
             <Card>
