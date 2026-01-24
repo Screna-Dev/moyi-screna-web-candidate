@@ -3,19 +3,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'child_process'
 
-// Get git commit hash
-// In Vercel, use VERCEL_GIT_COMMIT_SHA if available, otherwise try git command
-const getGitHash = () => {
+// Get commit SHA - prefer VERCEL_GIT_COMMIT_SHA, fallback to git command
+const getCommitSha = () => {
   // Vercel provides VERCEL_GIT_COMMIT_SHA environment variable
   if (process.env.VERCEL_GIT_COMMIT_SHA) {
-    return process.env.VERCEL_GIT_COMMIT_SHA.substring(0, 7);
+    console.log('[build-info] Using VERCEL_GIT_COMMIT_SHA:', process.env.VERCEL_GIT_COMMIT_SHA.substring(0, 7));
+    return process.env.VERCEL_GIT_COMMIT_SHA;
   }
   
-  // Fallback to git command for local development
+  // Fallback to git command for local development or when Vercel env var is not available
   try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
+    const gitSha = execSync('git rev-parse HEAD').toString().trim();
+    console.log('[build-info] Using git command, SHA:', gitSha.substring(0, 7));
+    return gitSha;
   } catch (e) {
-    return 'unknown'
+    console.warn('[build-info] Failed to get commit SHA from VERCEL_GIT_COMMIT_SHA or git command');
+    return null;
   }
 }
 
@@ -26,10 +29,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Inject git hash and build info as constants at build time
+  // Inject commit SHA as constant at build time
   define: {
-    __GIT_HASH__: JSON.stringify(getGitHash()),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
-    __VERCEL_COMMIT_SHA__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA || null),
+    __VERCEL_COMMIT_SHA__: JSON.stringify(getCommitSha()),
   },
 })
