@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 // Create axios instance with base configuration
+// Use relative path '/api/v1' to leverage proxy (Vite dev server or Vercel rewrites)
+// This avoids CORS issues by routing requests through the same origin
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api',
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

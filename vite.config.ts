@@ -33,4 +33,14 @@ export default defineConfig({
   define: {
     __VERCEL_COMMIT_SHA__: JSON.stringify(getCommitSha()),
   },
+  // Proxy API requests in development to avoid CORS issues
+  server: {
+    proxy: {
+      '/api/v1': {
+        target: 'https://api-staging.screna.ai',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 })
