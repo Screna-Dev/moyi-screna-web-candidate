@@ -139,7 +139,8 @@ function AIInterview() {
         liveKitToken: sessionData.token,
         roomName: sessionData.room_name,
         status: sessionData.status,
-        createdAt: sessionData.created_at
+        createdAt: sessionData.created_at,
+        maxInterviewDuration: sessionData.max_interview_duration
       };
       
       setCurrentSession(session);
