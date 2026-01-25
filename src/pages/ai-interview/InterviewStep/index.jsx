@@ -49,6 +49,10 @@ function InterviewStep({
   const [showCountdown, setShowCountdown] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
+  // Interview timer state
+  const [remainingTime, setRemainingTime] = useState(null);
+  const timerIntervalRef = useRef(null);
+
   // Connection monitoring state
   const [connectionStatus, setConnectionStatus] = useState({
     aiWebSocket: 'disconnected',
@@ -80,6 +84,7 @@ function InterviewStep({
     return () => {
       stopAudioLevelDetection();
       stopConnectionMonitoring();
+      stopInterviewTimer();
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
       }
@@ -89,14 +94,15 @@ function InterviewStep({
   useEffect(() => {
     if (interviewEnded) {
       console.log('🧹 InterviewStep: interviewEnded detected, cleaning up...');
-      
+
       stopAudioLevelDetection();
       stopConnectionMonitoring();
-      
+      stopInterviewTimer();
+
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
       }
-      
+
       setInterviewStarted(false);
       setConnectionStatus({
         aiWebSocket: 'disconnected',
@@ -221,6 +227,49 @@ function InterviewStep({
     }
   };
 
+  // Interview timer functions
+  const startInterviewTimer = (durationInSeconds) => {
+    if (!durationInSeconds || timerIntervalRef.current) return;
+
+    console.log(`⏱️ Starting interview timer: ${durationInSeconds} seconds`);
+    setRemainingTime(durationInSeconds);
+
+    timerIntervalRef.current = setInterval(() => {
+      setRemainingTime(prev => {
+        if (prev === null || prev <= 0) {
+          stopInterviewTimer();
+          // Auto-end interview when time runs out
+          if (prev === 0) {
+            console.log('⏱️ Interview time expired, auto-ending...');
+            setTimeout(() => {
+              setError('Interview time has expired');
+              setOpenSnackbar(true);
+              endInterview();
+            }, 0);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const stopInterviewTimer = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    setRemainingTime(null);
+  };
+
+  // Format time as MM:SS
+  const formatTime = (seconds) => {
+    if (seconds === null) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     if (interviewStarted) {
       startConnectionMonitoring();
@@ -330,9 +379,14 @@ function InterviewStep({
       
       // STEP 5: Start the interview
       setInterviewStarted(true);
-      
+
       // Start audio level detection for UI feedback
       startAudioLevelDetection(mediaState.audioTestStream);
+
+      // Start interview timer if duration is available
+      if (session?.maxInterviewDuration) {
+        startInterviewTimer(session.maxInterviewDuration * 60);
+      }
 
       setSuccess('Interview started!');
       setOpenSnackbar(true);
@@ -353,12 +407,13 @@ function InterviewStep({
 
   const endInterview = async () => {
     console.log('🔴 Ending interview...');
-    
+
     stopConnectionMonitoring();
     stopAudioLevelDetection();
-    
+    stopInterviewTimer();
+
     setInterviewStarted(false);
-    
+
     setConnectionStatus({
       aiWebSocket: 'disconnected',
       mediaStream: 'disconnected'
@@ -370,7 +425,7 @@ function InterviewStep({
     }
 
     console.log('✅ Interview ended');
-    
+
     endMeeting();
   };
 
@@ -765,17 +820,54 @@ function InterviewStep({
             
             <Grid item xs={12} md={4}>
               <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
+                {/* Interview Timer */}
+                {remainingTime !== null && interviewStarted && (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      bgcolor: remainingTime < 60 ? '#fee2e2' : '#eff6ff',
+                      border: `2px solid ${remainingTime < 60 ? '#fca5a5' : '#bfdbfe'}`,
+                      borderRadius: 2,
+                      px: 3,
+                      py: 2,
+                      minWidth: '140px'
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'uppercase', mb: 0.5 }}>
+                      Time Remaining
+                    </Typography>
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        fontWeight: 700,
+                        color: remainingTime < 60 ? '#dc2626' : '#3b82f6',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em'
+                      }}
+                    >
+                      {formatTime(remainingTime)}
+                    </Typography>
+                    {remainingTime < 60 && remainingTime > 0 && (
+                      <Typography variant="caption" sx={{ color: '#dc2626', mt: 0.5 }}>
+                        Ending soon
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
                 {interviewStarted && (
-                  <Chip 
+                  <Chip
                     label="Interview In Progress"
-                    sx={{ 
+                    sx={{
                       bgcolor: '#1f2937',
                       color: 'white',
                       fontWeight: 600
                     }}
                   />
                 )}
-                
+
                 {/* Session info - only show when session exists */}
                 {currentSession && (
                   <Typography variant="caption" color="#64748b">

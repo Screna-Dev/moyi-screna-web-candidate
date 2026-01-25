@@ -119,10 +119,10 @@ const ProfileCompleted = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 300 * 1024) {
       toast({
         title: "File too large",
-        description: "Please upload a file smaller than 5MB",
+        description: "Please upload a file smaller than 300KB",
         variant: "destructive",
       });
       return;
@@ -745,7 +745,7 @@ const ProfileCompleted = () => {
             </Card>
 
             {/* Privacy Settings */}
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Shield className="w-5 h-5 text-primary" />
@@ -777,7 +777,7 @@ const ProfileCompleted = () => {
                   Learn about data privacy
                 </Button>
               </CardContent>
-            </Card>
+            </Card> */}
 
             {/* Resume File */}
             <Card>

@@ -103,18 +103,18 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
                 <CreditCard className="w-4 h-4" />
                 <span className="text-xs">Plan</span>
               </div>
-              <p className="font-semibold">{user?.plan?.name}</p>
+              <p className="font-semibold">{user?.planName}</p>
             </CardContent>
           </Card>
-          {/* <Card>
+          <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <TrendingUp className="w-4 h-4" />
                 <span className="text-xs">Credits</span>
               </div>
-              <p className="font-semibold">{user.credits.remaining}</p>
+              <p className="font-semibold">{user?.creditBalance}</p>
             </CardContent>
-          </Card> */}
+          </Card>
           {/* <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -152,7 +152,7 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="training">Training</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="mentors">Mentors</TabsTrigger>
+            {/* <TabsTrigger value="mentors">Mentors</TabsTrigger> */}
             <TabsTrigger value="billing">Billing</TabsTrigger>
             <TabsTrigger value="admin">Admin</TabsTrigger>
           </TabsList>
@@ -167,9 +167,9 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
           <TabsContent value="reports" className="m-0 h-full">
             <ReportsVideosTab user={user} />
           </TabsContent>
-          <TabsContent value="mentors" className="m-0 h-full">
+          {/* <TabsContent value="mentors" className="m-0 h-full">
             <MentorSessionsTab user={user} />
-          </TabsContent>
+          </TabsContent> */}
           <TabsContent value="billing" className="m-0 h-full">
             <BillingTab user={user} />
           </TabsContent>

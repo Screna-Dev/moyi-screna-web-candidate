@@ -122,7 +122,7 @@ export function AdminActionsTab({ user }: AdminActionsTabProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Ban Account</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Are you sure you want to ban {user.name}'s account? This action will
+                        Are you sure you want to ban {user?.name}'s account? This action will
                         immediately revoke access and can be reversed later.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -194,7 +194,7 @@ export function AdminActionsTab({ user }: AdminActionsTabProps) {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2 mb-4">
-            {tags.map((tag) => (
+            {tags?.map((tag) => (
               <Badge
                 key={tag}
                 variant="secondary"
@@ -209,7 +209,7 @@ export function AdminActionsTab({ user }: AdminActionsTabProps) {
                 </button>
               </Badge>
             ))}
-            {tags.length === 0 && (
+            {tags?.length === 0 && (
               <span className="text-sm text-muted-foreground">No tags assigned</span>
             )}
           </div>
@@ -245,18 +245,18 @@ export function AdminActionsTab({ user }: AdminActionsTabProps) {
             Save Note
           </Button>
 
-          {user.internalNotes.length > 0 && (
+          {user?.internalNotes?.length > 0 && (
             <div className="mt-6 space-y-3">
               <h4 className="font-medium text-sm text-muted-foreground">Previous Notes</h4>
-              {user.internalNotes.map((note, index) => (
+              {user?.internalNotes?.map((note, index) => (
                 <div key={index} className="p-3 rounded-lg bg-muted">
                   <div className="flex items-center gap-2 mb-1 text-sm text-muted-foreground">
                     <User className="w-3 h-3" />
-                    <span>{note.author}</span>
+                    <span>{note?.author}</span>
                     <span>•</span>
                     <span>{note.date}</span>
                   </div>
-                  <p className="text-sm">{note.note}</p>
+                  <p className="text-sm">{note?.note}</p>
                 </div>
               ))}
             </div>
@@ -273,41 +273,41 @@ export function AdminActionsTab({ user }: AdminActionsTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {user.auditLog.length === 0 ? (
+          {user?.auditLog?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Clock className="w-10 h-10 mx-auto mb-3 opacity-50" />
               <p>No audit history</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {user.auditLog.map((entry, index) => (
+              {user?.auditLog?.map((entry, index) => (
                 <div key={index} className="flex gap-4">
                   <div className="flex flex-col items-center">
                     <div className="w-2 h-2 rounded-full bg-primary" />
-                    {index < user.auditLog.length - 1 && (
+                    {index < user?.auditLog?.length - 1 && (
                       <div className="w-0.5 h-full bg-border mt-2" />
                     )}
                   </div>
                   <div className="flex-1 pb-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{entry.action}</span>
+                      <span className="font-medium">{entry?.action}</span>
                       <Badge variant="outline" className="text-xs">
-                        {entry.actor}
+                        {entry?.actor}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">{entry.description}</p>
-                    {entry.previousValue && entry.newValue && (
+                    <p className="text-sm text-muted-foreground">{entry?.description}</p>
+                    {entry?.previousValue && entry?.newValue && (
                       <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                         <span className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 px-2 py-0.5 rounded">
-                          {entry.previousValue}
+                          {entry?.previousValue}
                         </span>
                         <ArrowRight className="w-3 h-3" />
                         <span className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded">
-                          {entry.newValue}
+                          {entry?.newValue}
                         </span>
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">{entry.date}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{entry?.date}</p>
                   </div>
                 </div>
               ))}

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Plan types
 export type PlanType = 'Free' | 'Pro' | 'Elite';
@@ -65,14 +66,24 @@ interface UserPlanProviderProps {
 // Provider component
 export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const { toast } = useToast();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  
   const [planData, setPlanData] = useState<PlanUsageData>(defaultPlanData);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
   const [isBuyingCredits, setIsBuyingCredits] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
 
   // Fetch plan data
   const refreshPlan = useCallback(async () => {
+    // Don't fetch if not authenticated
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      setPlanData(defaultPlanData);
+      return;
+    }
+    
     try {
       setIsLoading(true);
       setError(null);
@@ -88,15 +99,35 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
           nextBillingDate: response.data.data.nextBillingDate || null,
           updatedAt: response.data.data.updatedAt || null,
         });
+        setHasFetched(true);
       }
     } catch (err) {
       console.error('Failed to fetch plan data:', err);
       setError('Failed to load plan information');
-      // Don't show toast on initial load failure - just silently use defaults
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
+
+  // Fetch plan when auth state changes (user logs in)
+  useEffect(() => {
+    // Wait for auth to finish loading
+    if (isAuthLoading) {
+      return;
+    }
+    
+    // If authenticated and haven't fetched yet, fetch plan
+    if (isAuthenticated && !hasFetched) {
+      refreshPlan();
+    }
+    
+    // If not authenticated, reset to defaults
+    if (!isAuthenticated) {
+      setPlanData(defaultPlanData);
+      setHasFetched(false);
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, isAuthLoading, hasFetched, refreshPlan]);
 
   // Change plan - returns Stripe URL
   const changePlan = useCallback(async (planType: PlanType): Promise<string | null> => {
@@ -148,12 +179,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     }
   }, [toast]);
 
-  // Fetch plan data on mount
-  useEffect(() => {
-    refreshPlan();
-  }, [refreshPlan]);
-
-  // Computed values
+  // Computed values - use loading state to show proper defaults
+  const effectiveIsLoading = isAuthLoading || isLoading;
   const currentPlan = planData.currentPlan;
   
   const isPremium = currentPlan === 'Pro' || currentPlan === 'Elite';
@@ -161,16 +188,16 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const isFree = currentPlan === 'Free';
   const isPro = currentPlan === 'Pro';
   
-  // Feature access
-  const canAccessJobs = isPremium;              // Pro and Elite can access jobs
-  const canAccessPremiumReport = isElite;       // Elite only - video replay, detailed feedback
-  const canPushProfile = isPremium;             // Pro and Elite can push profile to recruiters
-  const canAccessMentorship = isPremium;        // Pro and Elite can access mentorship
+  // Feature access - return false while loading to prevent flash of wrong content
+  const canAccessJobs = !effectiveIsLoading && isPremium;
+  const canAccessPremiumReport = !effectiveIsLoading && isElite;
+  const canPushProfile = !effectiveIsLoading && isPremium;
+  const canAccessMentorship = !effectiveIsLoading && isPremium;
 
   const value: UserPlanContextValue = {
     // Plan data
     planData,
-    isLoading,
+    isLoading: effectiveIsLoading,
     error,
     
     // Plan check helpers
