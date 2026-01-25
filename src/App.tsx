@@ -8,6 +8,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { UserPlanProvider } from "./hooks/useUserPlan";
 import { AuthLayout } from "./components/AuthLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import BuildInfo from "./components/BuildInfo";
 
 // Lazy load all pages
 const Landing = lazy(() => import("./pages/Landing"));
@@ -56,6 +57,7 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
+            <BuildInfo />
             <Suspense fallback={<LoadingFallback />}>
               <Routes>
                 {/* Public routes */}
