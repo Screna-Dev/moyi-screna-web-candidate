@@ -759,7 +759,7 @@ const InterviewPrep = () => {
                         <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">Overall Score</p>
-                            <p className="text-2xl font-bold text-primary">{formatScore(reportData.overall_score)}</p>
+                            <p className="text-2xl font-bold text-primary">{reportData.overall_score}/100</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">Attempts</p>
@@ -795,6 +795,82 @@ const InterviewPrep = () => {
                           </div>
                         </div>
                       )}
+                                              {/* Questions Breakdown */}
+                        {reportData.questions && reportData.questions.length > 0 && (
+                          <div>
+                            <h3 className="font-semibold mb-3 flex items-center gap-2">
+                              <MessageSquare className="h-5 w-5 text-primary" />
+                              Questions & Feedback
+                            </h3>
+                            <div className="space-y-4">
+                              {reportData.questions.map((q, index) => (
+                                <div key={q.question_id || index} className="border rounded-lg p-4 space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="font-medium flex-1">
+                                      Q{q.question_id || index + 1}: {q.question_text}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      {q.duration_sec && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {formatDuration(q.duration_sec)}
+                                        </span>
+                                      )}
+                                      <Badge variant={q.answered ? "secondary" : "outline"}>
+                                        {q.answered ? q.score + "/10" : "Skipped"}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                  {q.answer_text && (
+                                    <div className="bg-muted/50 p-3 rounded text-sm">
+                                      <p className="text-xs font-medium text-muted-foreground mb-1">Your Answer:</p>
+                                      <p>{q.answer_text}</p>
+                                    </div>
+                                  )}
+                                  {q.feedback && (
+                                    <p className="text-sm text-muted-foreground">
+                                      <span className="font-medium">Feedback:</span> {q.feedback}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Strengths & Areas for Improvement */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {reportData.strengths && reportData.strengths.length > 0 && (
+                            <div className="border border-secondary/50 bg-secondary/5 rounded-lg p-4">
+                              <h4 className="font-semibold text-secondary mb-2">Strengths</h4>
+                              <ul className="space-y-1 text-sm">
+                                {reportData.strengths.map((strength, idx) => (
+                                  <li key={idx}>• {strength}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {reportData.areas_for_improvement && reportData.areas_for_improvement.length > 0 && (
+                            <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
+                              <h4 className="font-semibold text-destructive mb-2">Areas to Improve</h4>
+                              <ul className="space-y-1 text-sm">
+                                {reportData.areas_for_improvement.map((area, idx) => (
+                                  <li key={idx}>• {area}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Improvement Advice */}
+                        {reportData.improvement_advice && (
+                          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2">
+                              <BookOpen className="h-5 w-5 text-primary" />
+                              Improvement Advice
+                            </h4>
+                            <p className="text-sm whitespace-pre-line">{reportData.improvement_advice}</p>
+                          </div>
+                        )}
 
                       {/* Status Info */}
                       <div className="bg-muted/30 p-4 rounded-lg">
@@ -812,7 +888,7 @@ const InterviewPrep = () => {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2 pt-4">
+                      {/* <div className="flex gap-2 pt-4">
                         <Button variant="outline" className="flex-1">
                           <Download className="h-4 w-4 mr-2" />
                           Download Report
@@ -821,7 +897,7 @@ const InterviewPrep = () => {
                           <Share2 className="h-4 w-4 mr-2" />
                           Share
                         </Button>
-                      </div>
+                      </div> */}
                     </div>
                   </ScrollArea>
                 </TabsContent>
@@ -920,83 +996,6 @@ const InterviewPrep = () => {
                           </div>
                         )}
 
-                        {/* Questions Breakdown */}
-                        {reportData.questions && reportData.questions.length > 0 && (
-                          <div>
-                            <h3 className="font-semibold mb-3 flex items-center gap-2">
-                              <MessageSquare className="h-5 w-5 text-primary" />
-                              Questions & Feedback
-                            </h3>
-                            <div className="space-y-4">
-                              {reportData.questions.map((q, index) => (
-                                <div key={q.question_id || index} className="border rounded-lg p-4 space-y-2">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className="font-medium flex-1">
-                                      Q{q.question_id || index + 1}: {q.question_text}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                      {q.duration_sec && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {formatDuration(q.duration_sec)}
-                                        </span>
-                                      )}
-                                      <Badge variant={q.answered ? "secondary" : "outline"}>
-                                        {q.answered ? formatScore(q.score) : "Skipped"}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                  {q.answer_text && (
-                                    <div className="bg-muted/50 p-3 rounded text-sm">
-                                      <p className="text-xs font-medium text-muted-foreground mb-1">Your Answer:</p>
-                                      <p>{q.answer_text}</p>
-                                    </div>
-                                  )}
-                                  {q.feedback && (
-                                    <p className="text-sm text-muted-foreground">
-                                      <span className="font-medium">Feedback:</span> {q.feedback}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Strengths & Areas for Improvement */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {reportData.strengths && reportData.strengths.length > 0 && (
-                            <div className="border border-secondary/50 bg-secondary/5 rounded-lg p-4">
-                              <h4 className="font-semibold text-secondary mb-2">Strengths</h4>
-                              <ul className="space-y-1 text-sm">
-                                {reportData.strengths.map((strength, idx) => (
-                                  <li key={idx}>• {strength}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {reportData.areas_for_improvement && reportData.areas_for_improvement.length > 0 && (
-                            <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
-                              <h4 className="font-semibold text-destructive mb-2">Areas to Improve</h4>
-                              <ul className="space-y-1 text-sm">
-                                {reportData.areas_for_improvement.map((area, idx) => (
-                                  <li key={idx}>• {area}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Improvement Advice */}
-                        {reportData.improvement_advice && (
-                          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-                            <h4 className="font-semibold mb-2 flex items-center gap-2">
-                              <BookOpen className="h-5 w-5 text-primary" />
-                              Improvement Advice
-                            </h4>
-                            <p className="text-sm whitespace-pre-line">{reportData.improvement_advice}</p>
-                          </div>
-                        )}
-
                         {/* Generated At */}
                         {reportData.generated_at && (
                           <p className="text-xs text-muted-foreground text-center">
@@ -1005,7 +1004,7 @@ const InterviewPrep = () => {
                         )}
 
                         {/* Actions */}
-                        <div className="flex gap-2 pt-4">
+                        {/* <div className="flex gap-2 pt-4">
                           <Button variant="outline" className="flex-1">
                             <Download className="h-4 w-4 mr-2" />
                             Download Report
@@ -1014,7 +1013,7 @@ const InterviewPrep = () => {
                             <Share2 className="h-4 w-4 mr-2" />
                             Share
                           </Button>
-                        </div>
+                        </div> */}
                       </div>
                     )}
                   </ScrollArea>

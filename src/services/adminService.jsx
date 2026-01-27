@@ -7,6 +7,7 @@ const BASE_URL = '/admin';
 export const getUserOverview = (userId) => {
   return API.get(`${BASE_URL}/users/${userId}/overview`);
 };
+
 // GET /admin/users/{userId}/training-plans - Get user training plans
 export const getUserTrainingPlans = (userId) => {
   return API.get(`${BASE_URL}/users/${userId}/training-plans`);
@@ -15,6 +16,11 @@ export const getUserTrainingPlans = (userId) => {
 // GET /admin/users/{userId}/reports - Get user reports
 export const getUserReports = (userId) => {
   return API.get(`${BASE_URL}/users/${userId}/reports`);
+};
+
+// GET /admin/users/{userId}/report/{interviewId} - Get specific interview report details
+export const getReportDetails = (userId, interviewId) => {
+  return API.get(`${BASE_URL}/users/${userId}/report/${interviewId}`);
 };
 
 // GET /admin/users/search - Search users with pagination and filters
@@ -26,6 +32,7 @@ const adminService = {
   getUserOverview,
   getUserTrainingPlans,
   getUserReports,
+  getReportDetails,
   searchUsers
 };
 
