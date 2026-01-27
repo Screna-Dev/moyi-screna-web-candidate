@@ -13,6 +13,9 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  CheckCircle,
+  XCircle,
+  MessageSquare,
 } from 'lucide-react';
 import {
   Dialog,
@@ -20,13 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getUserReports } from '@/services/adminService';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { getUserReports, getReportDetails } from '@/services/adminService';
 
 export function ReportsVideosTab({ user }) {
   const [reports, setReports] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedReportId, setSelectedReportId] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
 
   // Fetch reports when user changes
@@ -40,18 +46,14 @@ export function ReportsVideosTab({ user }) {
       try {
         const response = await getUserReports(user.id);
         const apiReports = response.data.data?.reports || [];
-        
-        // Transform API reports to match UI structure
+
+        // Transform API reports to match UI structure (list view)
         const transformedReports = apiReports.map((report) => ({
           id: report.interview_id,
           date: formatDate(report.generated_at),
           type: 'AI Mock Interview Report',
-          summary: report.feedback_summary || '',
-          readinessImpact: Math.round((report.score_overall || 0) * 100),
-          scores: transformScores(report.scores),
-          strengths: report.strengths || [],
-          weaknesses: report.areas_for_improvement || [],
-          recommendations: report.recommendations ? [report.recommendations] : [],
+          summary: report.feedback_summary || report.summary || '',
+          readinessImpact: Math.round((report.score_overall || report.overall_score || 0) * 100),
         }));
 
         setReports(transformedReports);
@@ -67,6 +69,48 @@ export function ReportsVideosTab({ user }) {
     fetchReports();
   }, [user?.id]);
 
+  // Fetch detailed report when selected
+  useEffect(() => {
+    const fetchReportDetails = async () => {
+      if (!selectedReportId || !user?.id) return;
+
+      setIsLoadingReport(true);
+      setSelectedReport(null);
+
+      try {
+        const response = await getReportDetails(user.id, selectedReportId);
+        const reportData = response.data.data;
+
+        // Transform detailed report data
+        const detailedReport = {
+          id: reportData.interview_id,
+          status: reportData.status,
+          date: formatDate(reportData.generated_at),
+          type: 'AI Mock Interview Report',
+          summary: reportData.summary || '',
+          readinessImpact: Math.round((reportData.overall_score || 0) * 100),
+          scores: transformScores(reportData.scores),
+          strengths: reportData.strengths || [],
+          weaknesses: reportData.areas_for_improvement || [],
+          recommendations: reportData.improvement_advice ? [reportData.improvement_advice] : [],
+          questions: reportData.questions || [],
+          videoUrl: reportData.video_url || null,
+        };
+
+        setSelectedReport(detailedReport);
+      } catch (err) {
+        console.error('Failed to fetch report details:', err);
+        setSelectedReport({
+          error: 'Failed to load report details',
+        });
+      } finally {
+        setIsLoadingReport(false);
+      }
+    };
+
+    fetchReportDetails();
+  }, [selectedReportId, user?.id]);
+
   // Helper: Format date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -81,23 +125,49 @@ export function ReportsVideosTab({ user }) {
     }
   };
 
+  // Helper: Format duration
+  const formatDuration = (seconds) => {
+    if (!seconds) return 'N/A';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
+
   // Helper: Transform scores object to array
   const transformScores = (scores) => {
     if (!scores) return [];
     const result = [];
     if (scores.resume_background !== undefined) {
-      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background) });
+      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background * 100) });
     }
     if (scores.domain_knowledge !== undefined) {
-      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge) });
+      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge * 100) });
     }
     if (scores.technical_skills !== undefined) {
-      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills) });
+      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills * 100) });
     }
     if (scores.behavioral !== undefined) {
-      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral) });
+      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral * 100) });
     }
     return result;
+  };
+
+  // Helper: Get score color
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  // Handle report click
+  const handleReportClick = (reportId) => {
+    setSelectedReportId(reportId);
+  };
+
+  // Handle modal close
+  const handleCloseModal = () => {
+    setSelectedReportId(null);
+    setSelectedReport(null);
   };
 
   // Loading state
@@ -145,15 +215,15 @@ export function ReportsVideosTab({ user }) {
               {reports.map((report) => (
                 <div
                   key={report.id}
-                  className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedReport(report)}
+                  className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer "
+                  onClick={() => handleReportClick(report.id)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">{report.type}</span>
                       <span className="text-sm text-muted-foreground">{report.date}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground truncate">{report.summary}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{report.summary}</p>
                   </div>
                   <div className="flex items-center gap-3 ml-4">
                     <div
@@ -235,147 +305,279 @@ export function ReportsVideosTab({ user }) {
       </Card>
 
       {/* Report Detail Modal */}
-      <Dialog open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{selectedReport?.type}</DialogTitle>
+      <Dialog open={!!selectedReportId} onOpenChange={handleCloseModal}>
+        <DialogContent className="max-w-2xl h-[85vh] p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
+            <DialogTitle>AI Mock Interview Report</DialogTitle>
           </DialogHeader>
-          {selectedReport && (
-            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  {selectedReport.date}
-                </span>
-                <div
-                  className={`flex items-center gap-1 ${
-                    selectedReport.readinessImpact >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}
-                >
-                  {selectedReport.readinessImpact >= 0 ? (
-                    <TrendingUp className="w-4 h-4" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4" />
-                  )}
-                  <span>
-                    {selectedReport.readinessImpact >= 0 ? '+' : ''}
-                    {selectedReport.readinessImpact} points
-                  </span>
-                </div>
-              </div>
 
-              <p className="text-muted-foreground">{selectedReport.summary}</p>
-
-              {selectedReport.scores && selectedReport.scores.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Scores</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {selectedReport.scores.map((s) => (
-                      <div
-                        key={s.category}
-                        className="flex items-center justify-between p-2 rounded bg-muted"
-                      >
-                        <span className="text-sm">{s.category}</span>
-                        <span className="font-semibold">{s.score} / 100</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedReport.strengths && selectedReport.strengths.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2 text-green-600">Strengths</h4>
-                  <ul className="list-disc list-inside text-sm space-y-1">
-                    {selectedReport.strengths.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {selectedReport.weaknesses && selectedReport.weaknesses.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2 text-red-600">Areas for Improvement</h4>
-                  <ul className="list-disc list-inside text-sm space-y-1">
-                    {selectedReport.weaknesses.map((w, i) => (
-                      <li key={i}>{w}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Recommendations</h4>
-                  <ul className="list-disc list-inside text-sm space-y-1">
-                    {selectedReport.recommendations.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+          {isLoadingReport ? (
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
-          )}
+          ) : selectedReport?.error ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500 opacity-50" />
+                <p className="text-muted-foreground">{selectedReport.error}</p>
+              </div>
+            </div>
+          ) : selectedReport ? (
+            <ScrollArea className="flex-1">
+              <div className="p-6 space-y-6">
+                {/* Header Info */}
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-4 h-4" />
+                    {selectedReport.date}
+                  </span>
+                  <div
+                    className={`flex items-center gap-1 ${
+                      selectedReport.readinessImpact >= 60 ? 'text-green-600' : 'text-red-600'
+                    }`}
+                  >
+                    {selectedReport.readinessImpact >= 60 ? (
+                      <TrendingUp className="w-4 h-4" />
+                    ) : (
+                      <TrendingDown className="w-4 h-4" />
+                    )}
+                    <span className="font-medium">{selectedReport.readinessImpact} / 100</span>
+                  </div>
+                  {selectedReport.status && (
+                    <Badge variant="outline">{selectedReport.status}</Badge>
+                  )}
+                </div>
+
+                {/* Video Section */}
+                {selectedReport.videoUrl && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Video className="w-4 h-4" />
+                      Interview Recording
+                    </h4>
+                    <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                      <video
+                        src={selectedReport.videoUrl}
+                        controls
+                        className="w-full h-full"
+                        poster=""
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary */}
+                {selectedReport.summary && (
+                  <p className="text-muted-foreground">{selectedReport.summary}</p>
+                )}
+
+                {/* Scores */}
+                {selectedReport.scores && selectedReport.scores.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-3">Category Scores</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedReport.scores.map((s) => (
+                        <div
+                          key={s.category}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted"
+                        >
+                          <span className="text-sm">{s.category}</span>
+                          <span className={`font-semibold ${getScoreColor(s.score)}`}>
+                            {s.score}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Strengths */}
+                {selectedReport.strengths && selectedReport.strengths.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 text-green-600 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Strengths
+                    </h4>
+                    <ul className="space-y-1">
+                      {selectedReport.strengths.map((s, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-green-600 mt-1">•</span>
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Areas for Improvement */}
+                {selectedReport.weaknesses && selectedReport.weaknesses.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 text-red-600 flex items-center gap-2">
+                      <XCircle className="w-4 h-4" />
+                      Areas for Improvement
+                    </h4>
+                    <ul className="space-y-1">
+                      {selectedReport.weaknesses.map((w, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-red-600 mt-1">•</span>
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Improvement Advice</h4>
+                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
+                      {selectedReport.recommendations.map((r, i) => (
+                        <p key={i}>{r}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Questions Section */}
+                {selectedReport.questions && selectedReport.questions.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4" />
+                      Interview Questions ({selectedReport.questions.length})
+                    </h4>
+                    <div className="space-y-4">
+                      {selectedReport.questions.map((q, index) => (
+                        <div
+                          key={q.question_id || index}
+                          className="border border-border rounded-lg p-4"
+                        >
+                          <div className="flex items-start justify-between gap-4 mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="shrink-0">
+                                Q{q.seq || index + 1}
+                              </Badge>
+                              <span className="font-medium text-sm">{q.question_text}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {q.answered ? (
+                                <Badge variant="secondary" className="text-green-600">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Answered
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-red-600">
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Skipped
+                                </Badge>
+                              )}
+                              {q.score !== undefined && (
+                                <span className={`text-sm font-semibold ${getScoreColor(Math.round(q.score * 100))}`}>
+                                  {Math.round(q.score) +"/10"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {q.answer_text && (
+                            <div className="mb-2">
+                              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                                Answer:
+                              </span>
+                              <p className="text-sm text-muted-foreground mt-1 bg-muted p-2 rounded">
+                                {q.answer_text}
+                              </p>
+                            </div>
+                          )}
+
+                          {q.feedback && (
+                            <div className="mb-2">
+                              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                                Feedback:
+                              </span>
+                              <p className="text-sm text-muted-foreground mt-1 italic">
+                                {q.feedback}
+                              </p>
+                            </div>
+                          )}
+
+                          {q.duration_sec !== undefined && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="w-3 h-3" />
+                              {formatDuration(q.duration_sec)}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          ) : null}
         </DialogContent>
       </Dialog>
 
       {/* Video Player Modal - kept for future use when video API is available */}
       <Dialog open={!!selectedVideo} onOpenChange={() => setSelectedVideo(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl h-[85vh] p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
             <DialogTitle>{selectedVideo?.title}</DialogTitle>
           </DialogHeader>
           {selectedVideo && (
-            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <Play className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-muted-foreground">Video player placeholder</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <Badge variant="secondary">{selectedVideo.type}</Badge>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
-                  {selectedVideo.duration}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  {selectedVideo.date}
-                </span>
-              </div>
-
-              {selectedVideo.markers && selectedVideo.markers.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Key Moments</h4>
-                  <div className="space-y-2">
-                    {selectedVideo.markers.map((marker, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 p-2 rounded bg-muted text-sm cursor-pointer hover:bg-muted/80"
-                      >
-                        <span className="font-mono text-primary">{marker.time}</span>
-                        <span>{marker.label}</span>
-                      </div>
-                    ))}
+            <ScrollArea className="flex-1">
+              <div className="p-6 space-y-4">
+                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
+                  <div className="text-center">
+                    <Play className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-muted-foreground">Video player placeholder</p>
                   </div>
                 </div>
-              )}
 
-              <div>
-                <h4 className="font-medium mb-2">Admin Notes</h4>
-                <textarea
-                  className="w-full p-3 rounded-lg border border-border bg-background resize-none"
-                  rows={3}
-                  placeholder="Add internal notes about this session..."
-                />
-                <Button size="sm" className="mt-2">
-                  Save Note
-                </Button>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <Badge variant="secondary">{selectedVideo.type}</Badge>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    {selectedVideo.duration}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-4 h-4" />
+                    {selectedVideo.date}
+                  </span>
+                </div>
+
+                {selectedVideo.markers && selectedVideo.markers.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Key Moments</h4>
+                    <div className="space-y-2">
+                      {selectedVideo.markers.map((marker, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-3 p-2 rounded bg-muted text-sm cursor-pointer hover:bg-muted/80"
+                        >
+                          <span className="font-mono text-primary">{marker.time}</span>
+                          <span>{marker.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h4 className="font-medium mb-2">Admin Notes</h4>
+                  <textarea
+                    className="w-full p-3 rounded-lg border border-border bg-background resize-none"
+                    rows={3}
+                    placeholder="Add internal notes about this session..."
+                  />
+                  <Button size="sm" className="mt-2">
+                    Save Note
+                  </Button>
+                </div>
               </div>
-            </div>
+            </ScrollArea>
           )}
         </DialogContent>
       </Dialog>

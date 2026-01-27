@@ -53,6 +53,12 @@ export default function Jobs() {
   // Form state for creating new job
   const [isCreatingPlan, setIsCreatingPlan] = useState(false)
 
+  // Active Title Modal State
+  const [activeTitleModalOpen, setActiveTitleModalOpen] = useState(false);
+  const [availableTitles, setAvailableTitles] = useState<string[]>([]);
+  const [customTitle, setCustomTitle] = useState('');
+  const [selectedTitleOption, setSelectedTitleOption] = useState<string>('');
+
   const overallScore = 83;
   const lastSessionId = 'ABC123';
   
@@ -84,10 +90,13 @@ export default function Jobs() {
         const profileData = response.data?.data || response.data;
         
         if (profileData?.structured_resume?.job_titles?.length > 0) {
+          const titles = profileData.structured_resume.job_titles;
+          setAvailableTitles(titles);
           setActiveTitle({
             id: 1,
-            name: profileData.structured_resume.job_titles[0]
+            name: titles[0]
           });
+          setSelectedTitleOption(titles[0]);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -110,14 +119,14 @@ export default function Jobs() {
     setPage(1);
     setJobs([]);
     setHasMore(true);
-  }, [debouncedSearchQuery, locationFilter, timeFilter, sortBy]);
+  }, [debouncedSearchQuery, locationFilter, timeFilter, sortBy, activeTitle.name]);
   
   // Fetch jobs from API - only if user can access jobs
   useEffect(() => {
     if (canAccessJobs) {
       fetchJobs(page);
     }
-  }, [page, debouncedSearchQuery, locationFilter, timeFilter, sortBy, canAccessJobs]);
+  }, [page, debouncedSearchQuery, locationFilter, timeFilter, sortBy, canAccessJobs, activeTitle.name]);
   
   // Infinite scroll handler
   useEffect(() => {
@@ -256,6 +265,41 @@ export default function Jobs() {
 
   const handleUpgrade = async () => {
     await upgradeToPro();
+  };
+
+  // Handle active title change
+  const handleActiveTitleChange = () => {
+    const newTitle = selectedTitleOption === 'custom' ? customTitle.trim() : selectedTitleOption;
+    
+    if (!newTitle) {
+      toast({
+        title: 'Error',
+        description: 'Please select or enter a job title.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Clear current jobs first for visual feedback
+    setJobs([]);
+    
+    setActiveTitle({
+      id: activeTitle.id,
+      name: newTitle
+    });
+
+    setActiveTitleModalOpen(false);
+    toast({
+      title: 'Active Title Updated',
+      description: `Job search will now match "${newTitle}".`
+    });
+  };
+
+  // Open modal handler
+  const openActiveTitleModal = () => {
+    setSelectedTitleOption(activeTitle.name || (availableTitles.length > 0 ? availableTitles[0] : 'custom'));
+    setCustomTitle('');
+    setActiveTitleModalOpen(true);
   };
 
   // Show loading while plan is being fetched
@@ -400,10 +444,15 @@ export default function Jobs() {
                   {planData.currentPlan} Plan
                 </Badge>
                 <Badge variant="outline" className="px-4 py-2 text-sm">
-                  Active: {activeTitle.name}
-                  <Link to="/metrics" className="ml-2 text-xs underline hover:text-primary">
+                  Active: {activeTitle.name || 'Not set'}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 px-2 underline hover:text-primary"
+                    onClick={openActiveTitleModal}
+                  >
                     Change
-                  </Link>
+                  </Button>
                 </Badge>
               </div>
             </div>
@@ -653,44 +702,6 @@ export default function Jobs() {
 
           {/* Sidebar */}
           <div className="w-80 space-y-6 hidden xl:block">
-            {/* Active Title Overview */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <Target className="w-4 h-4 text-primary" />
-                Active Title Overview
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Overall Score</span>
-                  <span className="text-lg font-bold text-primary">{overallScore}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Last session: {lastSessionId}
-                </p>
-              </div>
-            </Card>
-
-            {/* Latest Suggestions */}
-            {/* <Card className="p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                Latest Suggestions
-              </h3>
-              <ul className="space-y-2">
-                {suggestions.map((suggestion, idx) => (
-                  <li key={idx} className="text-sm flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                    <span>{suggestion}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button variant="outline" size="sm" className="w-full mt-4" asChild>
-                <Link to="/metrics">
-                  View All Metrics
-                </Link>
-              </Button>
-            </Card> */}
-
             {/* Credit Balance */}
             <Card className="p-4">
               <h3 className="font-semibold mb-3">Credit Balance</h3>
@@ -707,6 +718,100 @@ export default function Jobs() {
           </div>
         </div>
       </div>
+
+      {/* Active Title Change Modal */}
+      <Dialog open={activeTitleModalOpen} onOpenChange={setActiveTitleModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Change Active Title
+            </DialogTitle>
+            <DialogDescription>
+              Select a job title from your profile or enter a custom one. Jobs will be matched based on this title.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Available titles from profile */}
+            {availableTitles.length > 0 && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Your Job Titles</Label>
+                <div className="space-y-2">
+                  {availableTitles.map((title, index) => (
+                    <div
+                      key={index}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedTitleOption === title 
+                          ? 'border-primary bg-primary/5' 
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                      onClick={() => {
+                        setSelectedTitleOption(title);
+                        setCustomTitle('');
+                      }}
+                    >
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedTitleOption === title ? 'border-primary' : 'border-muted-foreground'
+                      }`}>
+                        {selectedTitleOption === title && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      <span className="text-sm">{title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Custom title option */}
+            <div className="space-y-3">
+              <div
+                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  selectedTitleOption === 'custom' 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:border-primary/50'
+                }`}
+                onClick={() => setSelectedTitleOption('custom')}
+              >
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  selectedTitleOption === 'custom' ? 'border-primary' : 'border-muted-foreground'
+                }`}>
+                  {selectedTitleOption === 'custom' && (
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                  )}
+                </div>
+                <span className="text-sm">Enter custom title</span>
+              </div>
+              
+              {selectedTitleOption === 'custom' && (
+                <div className="pl-7">
+                  <Input
+                    placeholder="e.g., Senior Software Engineer"
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value)}
+                    className="mt-2"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setActiveTitleModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleActiveTitleChange}>
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Apply Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Manual Push Confirm Modal */}
       <Dialog open={pushModalOpen} onOpenChange={setPushModalOpen}>
