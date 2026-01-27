@@ -888,7 +888,7 @@ const InterviewPrep = () => {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2 pt-4">
+                      {/* <div className="flex gap-2 pt-4">
                         <Button variant="outline" className="flex-1">
                           <Download className="h-4 w-4 mr-2" />
                           Download Report
@@ -897,7 +897,7 @@ const InterviewPrep = () => {
                           <Share2 className="h-4 w-4 mr-2" />
                           Share
                         </Button>
-                      </div>
+                      </div> */}
                     </div>
                   </ScrollArea>
                 </TabsContent>
@@ -1004,7 +1004,7 @@ const InterviewPrep = () => {
                         )}
 
                         {/* Actions */}
-                        <div className="flex gap-2 pt-4">
+                        {/* <div className="flex gap-2 pt-4">
                           <Button variant="outline" className="flex-1">
                             <Download className="h-4 w-4 mr-2" />
                             Download Report
@@ -1013,7 +1013,7 @@ const InterviewPrep = () => {
                             <Share2 className="h-4 w-4 mr-2" />
                             Share
                           </Button>
-                        </div>
+                        </div> */}
                       </div>
                     )}
                   </ScrollArea>
