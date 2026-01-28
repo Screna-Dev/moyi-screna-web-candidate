@@ -11,6 +11,7 @@ import {
   Person,
   SmartToy,
   Circle,
+  AccessTime,
 } from '@mui/icons-material';
 import CircularProgress from '@mui/material/CircularProgress';
 import { generateRandomAI } from '../../../utils/randomAI';
@@ -51,6 +52,7 @@ function InterviewStep({
 
   // Interview timer state
   const [remainingTime, setRemainingTime] = useState(null);
+  const [totalDuration, setTotalDuration] = useState(null);
   const timerIntervalRef = useRef(null);
 
   // Connection monitoring state
@@ -233,6 +235,7 @@ function InterviewStep({
 
     console.log(`⏱️ Starting interview timer: ${durationInSeconds} seconds`);
     setRemainingTime(durationInSeconds);
+    setTotalDuration(durationInSeconds);
 
     timerIntervalRef.current = setInterval(() => {
       setRemainingTime(prev => {
@@ -260,6 +263,7 @@ function InterviewStep({
       timerIntervalRef.current = null;
     }
     setRemainingTime(null);
+    setTotalDuration(null);
   };
 
   // Format time as MM:SS
@@ -268,6 +272,12 @@ function InterviewStep({
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate progress percentage for circular timer
+  const getProgressPercentage = () => {
+    if (!totalDuration || remainingTime === null) return 100;
+    return (remainingTime / totalDuration) * 100;
   };
 
   useEffect(() => {
@@ -444,6 +454,14 @@ function InterviewStep({
     if (isConnecting) return 'Connecting...';
     if (interviewStarted) return 'Interview Active';
     return 'Start Interview';
+  };
+
+  // Timer color based on remaining time
+  const getTimerColor = () => {
+    if (remainingTime === null) return '#5341f4';
+    if (remainingTime < 60) return '#ef4444';
+    if (remainingTime < 300) return '#f59e0b';
+    return '#5341f4';
   };
 
   return (
@@ -749,7 +767,7 @@ function InterviewStep({
           <Grid container spacing={3} alignItems="center">
             <Grid item xs={12} md={8}>
               <Box>
-                <Box display="flex" gap={2}>
+                <Box display="flex" gap={2} alignItems="center">
                   <Button
                     variant="contained"
                     size="large"
@@ -798,6 +816,116 @@ function InterviewStep({
                   >
                     End Interview
                   </Button>
+
+                  {/* Compact Circular Timer - Inline with buttons */}
+                  {remainingTime !== null && interviewStarted && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        ml: 2,
+                        pl: 2,
+                        borderLeft: '1px solid #e2e8f0'
+                      }}
+                    >
+                      {/* Circular Progress Ring */}
+                      <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                        {/* Background circle */}
+                        <CircularProgress
+                          variant="determinate"
+                          value={100}
+                          size={44}
+                          thickness={3}
+                          sx={{
+                            color: '#f1f5f9',
+                            position: 'absolute'
+                          }}
+                        />
+                        {/* Progress circle */}
+                        <CircularProgress
+                          variant="determinate"
+                          value={getProgressPercentage()}
+                          size={44}
+                          thickness={3}
+                          sx={{
+                            color: getTimerColor(),
+                            transition: 'all 0.3s ease',
+                            transform: 'rotate(-90deg) !important',
+                            '& .MuiCircularProgress-circle': {
+                              strokeLinecap: 'round',
+                              transition: 'stroke-dashoffset 1s linear'
+                            }
+                          }}
+                        />
+                        {/* Center icon */}
+                        <Box
+                          sx={{
+                            top: 0,
+                            left: 0,
+                            bottom: 0,
+                            right: 0,
+                            position: 'absolute',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <AccessTime 
+                            sx={{ 
+                              fontSize: 18, 
+                              color: getTimerColor(),
+                              transition: 'color 0.3s ease'
+                            }} 
+                          />
+                        </Box>
+                      </Box>
+
+                      {/* Time Display */}
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            fontWeight: 600,
+                            color: getTimerColor(),
+                            fontFamily: 'monospace',
+                            fontSize: '1.1rem',
+                            lineHeight: 1.2,
+                            transition: 'color 0.3s ease'
+                          }}
+                        >
+                          {formatTime(remainingTime)}
+                        </Typography>
+                        {remainingTime < 60 && remainingTime > 0 ? (
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: '#ef4444', 
+                              fontSize: '0.65rem',
+                              fontWeight: 500,
+                              animation: 'blink 1s infinite',
+                              '@keyframes blink': {
+                                '0%, 100%': { opacity: 1 },
+                                '50%': { opacity: 0.5 }
+                              }
+                            }}
+                          >
+                            Ending soon
+                          </Typography>
+                        ) : (
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: '#94a3b8', 
+                              fontSize: '0.65rem' 
+                            }}
+                          >
+                            remaining
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
                 
                 <Button
@@ -820,43 +948,6 @@ function InterviewStep({
             
             <Grid item xs={12} md={4}>
               <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
-                {/* Interview Timer */}
-                {remainingTime !== null && interviewStarted && (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      bgcolor: remainingTime < 60 ? '#fee2e2' : '#eff6ff',
-                      border: `2px solid ${remainingTime < 60 ? '#fca5a5' : '#bfdbfe'}`,
-                      borderRadius: 2,
-                      px: 3,
-                      py: 2,
-                      minWidth: '140px'
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'uppercase', mb: 0.5 }}>
-                      Time Remaining
-                    </Typography>
-                    <Typography
-                      variant="h4"
-                      sx={{
-                        fontWeight: 700,
-                        color: remainingTime < 60 ? '#dc2626' : '#3b82f6',
-                        fontFamily: 'monospace',
-                        letterSpacing: '0.05em'
-                      }}
-                    >
-                      {formatTime(remainingTime)}
-                    </Typography>
-                    {remainingTime < 60 && remainingTime > 0 && (
-                      <Typography variant="caption" sx={{ color: '#dc2626', mt: 0.5 }}>
-                        Ending soon
-                      </Typography>
-                    )}
-                  </Box>
-                )}
-
                 {interviewStarted && (
                   <Chip
                     label="Interview In Progress"

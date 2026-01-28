@@ -327,6 +327,23 @@ const InterviewPrep = () => {
   const handleStartInterview = async () => {
     if (!selectedSessionPreview) return;
 
+    // Check if user has enough credits for the session duration
+    const requiredCredits = selectedSessionPreview.duration || 30; // Default 30 mins if not specified
+    const availableCredits = planData?.creditBalance ?? 0;
+
+    if (availableCredits < requiredCredits) {
+      toast({
+        title: "Insufficient Credits",
+        description: `This session requires ${requiredCredits} credits, but you only have ${availableCredits}. Please upgrade your plan or purchase more credits.`,
+        variant: "destructive",
+      });
+      
+      // Close the preview sheet and navigate to settings
+      handleCloseSessionPreview();
+      navigate("/settings?tab=plan-usage");
+      return;
+    }
+
     // Check if this is a retake scenario (completed session)
     const isRetake = selectedSessionPreview.status === "completed";
 
@@ -1066,6 +1083,30 @@ const InterviewPrep = () => {
                     </Badge>
                   </div>
                   
+                  {/* Credit requirement notice */}
+                  <div className="flex items-center gap-2 p-3 bg-background/50 rounded-lg mb-4">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Credits Required</p>
+                      <p className="text-xs text-muted-foreground">
+                        This session will use {selectedSessionPreview.duration} credits
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-primary">{planData?.creditBalance ?? 0}</p>
+                      <p className="text-xs text-muted-foreground">available</p>
+                    </div>
+                  </div>
+                  
+                  {/* Warning if insufficient credits */}
+                  {(planData?.creditBalance ?? 0) < (selectedSessionPreview.duration || 30) && (
+                    <div className="flex items-center gap-2 p-3 my-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      <p className="text-sm">
+                        Insufficient credits. You need {selectedSessionPreview.duration} credits but only have {planData?.creditBalance ?? 0}.
+                      </p>
+                    </div>
+                  )}
+                  
                   <div>
                     {selectedSessionPreview.topic && (
                       <div className="flex items-start gap-3">
@@ -1173,12 +1214,17 @@ const InterviewPrep = () => {
             <Button
               className="w-full gradient-primary text-lg py-6"
               onClick={handleStartInterview}
-              disabled={isRetaking}
+              disabled={isRetaking || isPlanLoading}
             >
               {isRetaking ? (
                 <>
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                   Starting Retake...
+                </>
+              ) : (planData?.creditBalance ?? 0) < (selectedSessionPreview?.duration || 30) ? (
+                <>
+                  <Crown className="h-5 w-5 mr-2" />
+                  Upgrade Plan to Continue
                 </>
               ) : (
                 <>
