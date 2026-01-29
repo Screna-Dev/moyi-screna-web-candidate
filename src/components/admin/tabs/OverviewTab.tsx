@@ -5,7 +5,7 @@ import { User, Briefcase, Building2, MapPin, Clock, Mail, Calendar, Tag, FileTex
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import adminService from '@/services/adminService';
+import { adminService } from '@/services';
 import { format } from 'date-fns';
 
 interface OverviewTabProps {

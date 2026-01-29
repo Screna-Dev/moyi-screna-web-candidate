@@ -41,7 +41,7 @@ import { useNavigate, NavLink } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import adminService from '@/services/AdminService';
+import { adminService } from '@/services';
 
 interface RedeemCode {
   id: string;
@@ -295,9 +295,6 @@ export default function AdminRedeemCodes() {
                       <SelectContent>
                         <SelectItem value="signup">Signup</SelectItem>
                         <SelectItem value="promotion">Promotion</SelectItem>
-                        <SelectItem value="beta">Beta</SelectItem>
-                        <SelectItem value="vip">VIP</SelectItem>
-                        <SelectItem value="referral">Referral</SelectItem>
                         <SelectItem value="custom">Custom...</SelectItem>
                       </SelectContent>
                     </Select>
@@ -475,7 +472,7 @@ export default function AdminRedeemCodes() {
                       <TableHead>Status</TableHead>
                       <TableHead>Expires At</TableHead>
                       <TableHead>Created At</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      {/* <TableHead className="text-right">Actions</TableHead> */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -505,7 +502,7 @@ export default function AdminRedeemCodes() {
                         <TableCell className="text-muted-foreground">
                           {formatDate(code.createdAt)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        {/* <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -520,7 +517,7 @@ export default function AdminRedeemCodes() {
                               'Activate'
                             )}
                           </Button>
-                        </TableCell>
+                        </TableCell> */}
                       </TableRow>
                     ))}
                   </TableBody>

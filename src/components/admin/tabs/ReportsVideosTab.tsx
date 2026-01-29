@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { getUserReports, getReportDetails } from '@/services/adminService';
+import { adminService } from '@/services';
 
 export function ReportsVideosTab({ user }) {
   const [reports, setReports] = useState([]);
@@ -44,7 +44,7 @@ export function ReportsVideosTab({ user }) {
       setError(null);
 
       try {
-        const response = await getUserReports(user.id);
+        const response = await adminService.getUserReports(user.id);
         const apiReports = response.data.data?.reports || [];
 
         // Transform API reports to match UI structure (list view)
@@ -78,7 +78,7 @@ export function ReportsVideosTab({ user }) {
       setSelectedReport(null);
 
       try {
-        const response = await getReportDetails(user.id, selectedReportId);
+        const response = await adminService.getReportDetails(user.id, selectedReportId);
         const reportData = response.data.data;
 
         // Transform detailed report data
