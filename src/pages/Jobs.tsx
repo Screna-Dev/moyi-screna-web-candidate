@@ -193,7 +193,7 @@ export default function Jobs() {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push your profile to recruiters.',
-        action: <Link to="/settings"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings?tab=plan-usage"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -214,7 +214,7 @@ export default function Jobs() {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push profiles.',
-        action: <Link to="/settings"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings?tab=plan-usage"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -384,7 +384,7 @@ export default function Jobs() {
                     )}
                   </Button>
                   <Button variant="outline" size="lg" asChild>
-                    <Link to="/settings">View All Plans</Link>
+                    <Link to="/settings?tab=plan-usage">View All Plans</Link>
                   </Button>
                 </div>
               </div>
@@ -710,7 +710,7 @@ export default function Jobs() {
                 <span className="text-lg font-bold text-primary">{planData.creditBalance}</span>
               </div>
               <Button variant="outline" size="sm" className="w-full mt-4" asChild>
-                <Link to="/settings">
+                <Link to="/settings?tab=plan-usage">
                   Buy More Credits
                 </Link>
               </Button>
