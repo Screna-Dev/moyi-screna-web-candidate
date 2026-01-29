@@ -37,7 +37,7 @@ import {
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { searchUsers } from '@/services/adminService';
+import { adminService } from '@/services';
 import { toast } from 'sonner';
 
 export default function Admin() {
@@ -92,7 +92,7 @@ export default function Admin() {
       if (filters.status) params.status = filters.status;
       if (filters.roleType) params.roleType = filters.roleType;
 
-      const response = await searchUsers(params);
+      const response = await adminService.searchUsers(params);
       const data = response.data.data;
 
       const mappedUsers = data.content.map((user) => ({

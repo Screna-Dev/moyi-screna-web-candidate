@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { getUserReports, getReportDetails } from '@/services/adminService';
+import { adminService } from '@/services';
 
 export function ReportsVideosTab({ user }) {
   const [reports, setReports] = useState([]);
@@ -44,7 +44,7 @@ export function ReportsVideosTab({ user }) {
       setError(null);
 
       try {
-        const response = await getUserReports(user.id);
+        const response = await adminService.getUserReports(user.id);
         const apiReports = response.data.data?.reports || [];
 
         // Transform API reports to match UI structure (list view)
@@ -53,7 +53,7 @@ export function ReportsVideosTab({ user }) {
           date: formatDate(report.generated_at),
           type: 'AI Mock Interview Report',
           summary: report.feedback_summary || report.summary || '',
-          readinessImpact: Math.round((report.score_overall || report.overall_score || 0) * 100),
+          readinessImpact: Math.round((report.score_overall || report.overall_score || 0)),
         }));
 
         setReports(transformedReports);
@@ -78,7 +78,7 @@ export function ReportsVideosTab({ user }) {
       setSelectedReport(null);
 
       try {
-        const response = await getReportDetails(user.id, selectedReportId);
+        const response = await adminService.getReportDetails(user.id, selectedReportId);
         const reportData = response.data.data;
 
         // Transform detailed report data
@@ -88,7 +88,7 @@ export function ReportsVideosTab({ user }) {
           date: formatDate(reportData.generated_at),
           type: 'AI Mock Interview Report',
           summary: reportData.summary || '',
-          readinessImpact: Math.round((reportData.overall_score || 0) * 100),
+          readinessImpact: Math.round(reportData.overall_score || 0),
           scores: transformScores(reportData.scores),
           strengths: reportData.strengths || [],
           weaknesses: reportData.areas_for_improvement || [],
@@ -138,16 +138,16 @@ export function ReportsVideosTab({ user }) {
     if (!scores) return [];
     const result = [];
     if (scores.resume_background !== undefined) {
-      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background * 100) });
+      result.push({ category: 'Resume Background', score: Math.round(scores.resume_background ) });
     }
     if (scores.domain_knowledge !== undefined) {
-      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge * 100) });
+      result.push({ category: 'Domain Knowledge', score: Math.round(scores.domain_knowledge ) });
     }
     if (scores.technical_skills !== undefined) {
-      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills * 100) });
+      result.push({ category: 'Technical Skills', score: Math.round(scores.technical_skills ) });
     }
     if (scores.behavioral !== undefined) {
-      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral * 100) });
+      result.push({ category: 'Behavioral', score: Math.round(scores.behavioral ) });
     }
     return result;
   };
@@ -474,7 +474,7 @@ export function ReportsVideosTab({ user }) {
                                 </Badge>
                               )}
                               {q.score !== undefined && (
-                                <span className={`text-sm font-semibold ${getScoreColor(Math.round(q.score * 100))}`}>
+                                <span className={`text-sm font-semibold ${getScoreColor(Math.round(q.score ))}`}>
                                   {Math.round(q.score) +"/10"}
                                 </span>
                               )}

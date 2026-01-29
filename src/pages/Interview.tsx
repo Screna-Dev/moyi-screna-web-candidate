@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,6 +14,7 @@ const Interview = () => {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isStarted, setIsStarted] = useState(false);
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   const totalQuestions = 5;
   const questions = [
@@ -23,6 +26,10 @@ const Interview = () => {
   ];
 
   const handleStart = () => {
+    // Track training started event
+    safeCapture(posthog, 'training_started', {
+      total_questions: totalQuestions,
+    });
     setIsStarted(true);
   };
 

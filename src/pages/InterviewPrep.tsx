@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { InterviewService, InterviewSessionService } from "@/services";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 
@@ -134,6 +136,7 @@ const REFRESH_INTERVAL = 5000;
 const InterviewPrep = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [selectedJob, setSelectedJob] = useState<string>("");
   const [addJobModalOpen, setAddJobModalOpen] = useState(false);
   const [selectedSessionReport, setSelectedSessionReport] = useState<AISession | null>(null);
@@ -294,6 +297,13 @@ const InterviewPrep = () => {
 
   // Handle opening report sheet
   const handleOpenReport = (session: AISession) => {
+    // Track report view event
+    safeCapture(posthog, 'report_viewed', {
+      session_id: session.id,
+      session_status: session.status,
+      module_id: session.moduleId,
+    });
+    
     setSelectedSessionReport(session);
     setReportSheetOpen(true);
     setReportTab("basic"); // Reset to basic tab when opening
@@ -365,6 +375,14 @@ const InterviewPrep = () => {
           // Get the new module_id from response if available
           const newModuleId = response.data?.data?.module_id || selectedSessionPreview.id;
 
+          // Track training started event (retake)
+          safeCapture(posthog, 'training_started', {
+            session_id: selectedSessionPreview.id,
+            module_id: newModuleId,
+            is_retake: true,
+            session_status: selectedSessionPreview.status,
+          });
+
           toast({
             title: "Session Retake Started",
             description: "Good luck with your interview!",
@@ -390,6 +408,14 @@ const InterviewPrep = () => {
         setIsRetaking(false);
       }
     } else {
+      // Track training started event (new session)
+      safeCapture(posthog, 'training_started', {
+        session_id: selectedSessionPreview.id,
+        module_id: selectedSessionPreview.moduleId,
+        is_retake: false,
+        session_status: selectedSessionPreview.status,
+      });
+      
       // Normal start for pending sessions
       navigate(`/interview/${selectedSessionPreview.id}`);
     }
@@ -632,7 +658,7 @@ const InterviewPrep = () => {
   const formatScore = (score: number | undefined): string => {
     if (score === undefined || score === null) return "N/A";
     // If score is already 0-100, use it directly; if 0-1, multiply by 100
-    const percentage = score <= 1 ? Math.round(score * 100) : Math.round(score);
+    const percentage = score <= 1 ? Math.round(score ) : Math.round(score);
     return `${percentage}%`;
   };
 
@@ -776,7 +802,7 @@ const InterviewPrep = () => {
                         <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
                             <p className="text-sm text-muted-foreground">Overall Score</p>
-                            <p className="text-2xl font-bold text-primary">{reportData.overall_score}/100</p>
+                            <p className="text-2xl font-bold text-primary">{reportData.overall_score} / 100</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">Attempts</p>
@@ -803,7 +829,7 @@ const InterviewPrep = () => {
                                     {key.replace(/_/g, ' ')}
                                   </span>
                                   <span className="text-sm font-semibold">
-                                    {(value === undefined || value === null) ? 'N/A' : value + "/100"}
+                                    {(value === undefined || value === null) ? 'N/A' : value + " / 100"}
                                   </span>
                                 </div>
                                 <Progress value={value ? (value <= 1 ? value * 100 : value * 10) : 0} className="h-2" />
@@ -812,7 +838,7 @@ const InterviewPrep = () => {
                           </div>
                         </div>
                       )}
-                                              {/* Questions Breakdown */}
+                        {/* Questions Breakdown */}
                         {reportData.questions && reportData.questions.length > 0 && (
                           <div>
                             <h3 className="font-semibold mb-3 flex items-center gap-2">
@@ -833,7 +859,7 @@ const InterviewPrep = () => {
                                         </span>
                                       )}
                                       <Badge variant={q.answered ? "secondary" : "outline"}>
-                                        {q.answered ? q.score + "/10" : "Skipped"}
+                                        {q.answered ? q.score*10 + "/100" : "Skipped"}
                                       </Badge>
                                     </div>
                                   </div>
@@ -1459,13 +1485,13 @@ const InterviewPrep = () => {
                           </svg>
                           <div className="absolute inset-0 flex items-center justify-center">
                             {isPlanReady ? (
-                              <span className="text-3xl font-bold">{job.successRate}%</span>
+                              <span className="text-xl font-bold">{job.successRate} / 100</span>
                             ) : (
                               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                             )}
                           </div>
                         </div>
-                        <p className="text-sm font-semibold text-center">Overall Success Rate</p>
+                        <p className="text-sm font-semibold text-center">Overall Success Score</p>
                       </div>
 
                       {/* Category Scores */}
@@ -1484,7 +1510,7 @@ const InterviewPrep = () => {
                             <div key={category.category} className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <span className="text-sm font-medium">{category.category}</span>
-                                <span className="text-sm font-semibold">{category.score}%</span>
+                                <span className="text-sm font-semibold">{category.score} / 100</span>
                               </div>
                               <Progress value={category.score} className="h-2" />
                             </div>
@@ -1616,22 +1642,22 @@ const InterviewPrep = () => {
                               </div>
                               <div className="flex items-center gap-3">
                                 <Badge variant="secondary" className="bg-primary/10">
-                                  {formatScore(session.score)}
+                                  score: {session.score} / 100
                                 </Badge>
                                 <div className="flex gap-2">
                                   <Button 
-                                    variant="ghost" 
+                                    variant="outline" 
                                     size="sm"
                                     onClick={() => handleOpenReport(session)}
                                   >
-                                    <FileText className="h-4 w-4" />
+                                    Report & Video
                                   </Button>
                                   <Button 
-                                    variant="ghost" 
+                                    variant="outline" 
                                     size="sm"
                                     onClick={() => handleOpenSessionPreview(session)}
                                   >
-                                    <PlayCircle className="h-4 w-4" />
+                                    Retake
                                   </Button>
                                 </div>
                               </div>
@@ -1651,7 +1677,7 @@ const InterviewPrep = () => {
                 </Card>
 
                 {/* Focus Areas from API */}
-                {isPlanReady && plan?.focus_areas && plan.focus_areas.length > 0 && (
+                {/* {isPlanReady && plan?.focus_areas && plan.focus_areas.length > 0 && (
                   <Card className="shadow-card">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
@@ -1691,7 +1717,7 @@ const InterviewPrep = () => {
                       </div>
                     </CardContent>
                   </Card>
-                )}
+                )} */}
               </TabsContent>
             );
           })}

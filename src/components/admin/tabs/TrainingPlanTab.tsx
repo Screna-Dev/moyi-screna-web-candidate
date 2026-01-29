@@ -16,7 +16,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { getUserTrainingPlans } from '@/services/adminService';
+import { adminService } from '@/services';
 
 export function TrainingPlanTab({ user }) {
   const [trainingPlans, setTrainingPlans] = useState([]);
@@ -32,7 +32,7 @@ export function TrainingPlanTab({ user }) {
       setError(null);
       
       try {
-        const response = await getUserTrainingPlans(user.id);
+        const response = await adminService.getUserTrainingPlans(user.id);
         setTrainingPlans(response.data.data || []);
       } catch (err) {
         console.error('Failed to fetch training plans:', err);
@@ -77,7 +77,7 @@ export function TrainingPlanTab({ user }) {
         const key = dimensionMap[area.dimension?.toLowerCase()] ||
           dimensionMap[area.name?.toLowerCase()];
         if (key) {
-          defaultScores[key] = Math.round(area.score * 100);
+          defaultScores[key] = Math.round(area.score );
         }
       });
     }

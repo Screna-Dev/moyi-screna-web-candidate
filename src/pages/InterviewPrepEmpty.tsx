@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Navbar } from "@/components/Navbar";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import {
   Upload,
   Target,
@@ -26,6 +28,7 @@ import { useToast } from "@/components/ui/use-toast";
 const InterviewPrepEmpty = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const posthog = usePostHog();
   const [addJobModalOpen, setAddJobModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -81,6 +84,13 @@ const InterviewPrepEmpty = () => {
       });
 
       if (response.data.status === "success" || response.data.data) {
+        // Track training plan creation event
+        safeCapture(posthog, 'training_plan_created', {
+          job_title: jobTitle,
+          company: company || null,
+          has_job_description: !!jobDescription,
+        });
+        
         toast({
           title: "Success!",
           description: "Your training plan has been created successfully.",
