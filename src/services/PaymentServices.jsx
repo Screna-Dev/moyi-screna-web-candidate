@@ -58,6 +58,26 @@ export const createOneTimeSession = (numberOfCredits) => {
 };
 
 // ============================================
+// Redeem Code APIs
+// ============================================
+
+/**
+ * Redeem a promotion code to receive credits
+ * @param {string} code - The promotion code to redeem
+ * @returns {Promise} API response with redemption result
+ * @example Response data:
+ * {
+ *   status: "string",
+ *   message: "string",
+ *   errorCode: "string",
+ *   data: "string"
+ * }
+ */
+export const redeemCode = (code) => {
+  return API.post(`${BASE_URL}/redeem`, { code });
+};
+
+// ============================================
 // Invoice APIs
 // ============================================
 
@@ -100,6 +120,8 @@ const PaymentService = {
   changePlan,
   // Credit Purchase
   createOneTimeSession,
+  // Redeem Code
+  redeemCode,
   // Invoices
   getInvoices,
 };

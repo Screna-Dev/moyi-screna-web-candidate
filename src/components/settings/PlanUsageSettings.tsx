@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,14 +17,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus, Loader2 } from "lucide-react";
+import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus, Loader2, Gift } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
+import { PaymentService } from "@/services";
 
 const PlanUsageSettings = () => {
   const [selectedCredits, setSelectedCredits] = useState(500);
   const [buyCreditsDialogOpen, setBuyCreditsDialogOpen] = useState(false);
+  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
   const [customCreditsInput, setCustomCreditsInput] = useState("100");
+  const [isRedeeming, setIsRedeeming] = useState(false);
   const posthog = usePostHog();
   
   // Use the user plan context
@@ -119,14 +123,6 @@ const PlanUsageSettings = () => {
     { credits: 800, price: 60, savings: "Save 25%" },
   ];
 
-  const transactions = [
-    { id: 1, type: "credit", description: "Monthly Refill", amount: 200, date: "Jan 1, 2024" },
-    { id: 2, type: "debit", description: "AI Mock Interview", amount: -30, date: "Jan 5, 2024" },
-    { id: 3, type: "credit", description: "Extra Purchase", amount: 100, date: "Jan 8, 2024" },
-    { id: 4, type: "debit", description: "AI Mock Interview", amount: -25, date: "Jan 10, 2024" },
-    { id: 5, type: "debit", description: "AI Resume Review", amount: -15, date: "Jan 12, 2024" },
-  ];
-
   const calculatePrice = (credits) => {
     const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.1 : 0.15;
     return (credits * pricePerCredit).toFixed(2);
@@ -183,6 +179,65 @@ const PlanUsageSettings = () => {
       return;
     }
     handleBuyCredits(credits);
+  };
+
+  // Handle redeem code submission
+  const handleRedeemCode = async () => {
+    if (!promoCode.trim()) {
+      toast({
+        title: "Invalid Code",
+        description: "Please enter a promotion code.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRedeeming(true);
+    
+    // Track redeem attempt
+    safeCapture(posthog, 'redeem_code_attempted', {
+      current_plan: currentPlan,
+    });
+
+    try {
+      const response = await PaymentService.redeemCode(promoCode.trim());
+      
+      if (response.data?.status === 'success' || response.status === 200) {
+        toast({
+          title: "Code Redeemed!",
+          description: response.data?.message || `You've successfully redeemed ${promoCode}. Credits have been added to your account.`,
+        });
+        
+        // Track successful redemption
+        safeCapture(posthog, 'redeem_code_success', {
+          current_plan: currentPlan,
+        });
+        
+        // Refresh plan data to show updated credit balance
+        await refreshPlan();
+        
+        setRedeemDialogOpen(false);
+        setPromoCode("");
+      } else {
+        throw new Error(response.data?.message || 'Failed to redeem code');
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || "Failed to redeem code. Please try again.";
+      
+      toast({
+        title: "Redemption Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      
+      // Track failed redemption
+      safeCapture(posthog, 'redeem_code_failed', {
+        current_plan: currentPlan,
+        error: errorMessage,
+      });
+    } finally {
+      setIsRedeeming(false);
+    }
   };
 
   return (
@@ -254,11 +309,73 @@ const PlanUsageSettings = () => {
                   <Zap className="h-4 w-4" />
                   Buy Extra Credits
                 </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setRedeemDialogOpen(true)}>
+                  <Gift className="h-4 w-4" />
+                  Redeem Credit
+                </Button>
               </div>
             </>
           )}
         </CardContent>
       </Card>
+
+      {/* Redeem Credit Dialog */}
+      <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-primary" />
+              Redeem Credit
+            </DialogTitle>
+            <DialogDescription>
+              Enter your promotion code to receive extra credits.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="promoCode">Promotion Code</Label>
+              <Input
+                id="promoCode"
+                type="text"
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                placeholder="Enter your code"
+                className="text-lg uppercase"
+                disabled={isRedeeming}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setRedeemDialogOpen(false);
+                setPromoCode("");
+              }}
+              disabled={isRedeeming}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleRedeemCode} 
+              className="gap-2"
+              disabled={!promoCode.trim() || isRedeeming}
+            >
+              {isRedeeming ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Redeeming...
+                </>
+              ) : (
+                <>
+                  <Gift className="h-4 w-4" />
+                  Redeem
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Buy Credits Dialog */}
       <Dialog open={buyCreditsDialogOpen} onOpenChange={setBuyCreditsDialogOpen}>
@@ -507,39 +624,6 @@ const PlanUsageSettings = () => {
               </div>
             </CardContent>
           </Card>
-
-          {/* Transaction History */}
-          {/* <Card className="border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle>Transaction History</CardTitle>
-              <CardDescription>Recent credit transactions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {transactions.map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                          tx.type === "credit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                        }`}
-                      >
-                        {tx.type === "credit" ? <Plus className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
-                      </div>
-                      <div>
-                        <p className="font-medium">{tx.description}</p>
-                        <p className="text-sm text-muted-foreground">{tx.date}</p>
-                      </div>
-                    </div>
-                    <span className={`font-semibold ${tx.amount > 0 ? "text-green-600" : "text-red-600"}`}>
-                      {tx.amount > 0 ? "+" : ""}
-                      {tx.amount} credits
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card> */}
         </TabsContent>
       </Tabs>
     </div>

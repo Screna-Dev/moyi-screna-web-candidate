@@ -77,7 +77,7 @@ export function TrainingPlanTab({ user }) {
         const key = dimensionMap[area.dimension?.toLowerCase()] ||
           dimensionMap[area.name?.toLowerCase()];
         if (key) {
-          defaultScores[key] = Math.round(area.score * 100);
+          defaultScores[key] = Math.round(area.score );
         }
       });
     }
