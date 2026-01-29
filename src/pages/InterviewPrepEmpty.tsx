@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Navbar } from "@/components/Navbar";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import {
   Upload,
   Target,
@@ -84,13 +85,11 @@ const InterviewPrepEmpty = () => {
 
       if (response.data.status === "success" || response.data.data) {
         // Track training plan creation event
-        if (posthog) {
-          posthog.capture('training_plan_created', {
-            job_title: jobTitle,
-            company: company || null,
-            has_job_description: !!jobDescription,
-          });
-        }
+        safeCapture(posthog, 'training_plan_created', {
+          job_title: jobTitle,
+          company: company || null,
+          has_job_description: !!jobDescription,
+        });
         
         toast({
           title: "Success!",

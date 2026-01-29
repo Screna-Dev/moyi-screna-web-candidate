@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
+import { safeCapture, safeIdentify } from '@/utils/posthog';
 import API from '@/services/api';
 
 interface User {
@@ -89,13 +90,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         if (userData) {
           setUser(userData);
           // Identify user in PostHog if already logged in
-          if (posthog && userData.id) {
-            posthog.identify(userData.id, {
-              email: userData.email,
-              name: userData.name,
-              role: userData.role,
-            });
-          }
+          safeIdentify(posthog, userData.id, {
+            email: userData.email,
+            name: userData.name,
+            role: userData.role,
+          });
         } else {
           // If token is invalid, clear it
           localStorage.removeItem('authToken');
@@ -118,13 +117,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     if (userData) {
       setUser(userData);
       // Identify user in PostHog
-      if (posthog && userData.id) {
-        posthog.identify(userData.id, {
-          email: userData.email,
-          name: userData.name,
-          role: userData.role,
-        });
-      }
+      safeIdentify(posthog, userData.id, {
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+      });
     }
   };
 
@@ -151,13 +148,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     if (userData) {
       setUser(userData);
       // Identify user in PostHog after successful login
-      if (posthog && userData.id) {
-        posthog.identify(userData.id, {
-          email: userData.email,
-          name: userData.name,
-          role: userData.role,
-        });
-      }
+      safeIdentify(posthog, userData.id, {
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+      });
     } else {
       // Fallback if token decode fails
       setUser({ id: '', email, name: '', avatar: '' });

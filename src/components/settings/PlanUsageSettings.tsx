@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -134,13 +135,11 @@ const PlanUsageSettings = () => {
   // Handle plan change using context
   const handleChangePlan = async (planName) => {
     // Track payment started event
-    if (posthog) {
-      posthog.capture('payment_started', {
-        plan_name: planName,
-        current_plan: currentPlan,
-        action: 'upgrade',
-      });
-    }
+    safeCapture(posthog, 'payment_started', {
+      plan_name: planName,
+      current_plan: currentPlan,
+      action: 'upgrade',
+    });
     
     if (planName === "Elite") {
       await upgradeToElite();
@@ -152,14 +151,12 @@ const PlanUsageSettings = () => {
   // Handle buy credits using context
   const handleBuyCredits = async (credits) => {
     // Track payment started event for credit purchase
-    if (posthog) {
-      posthog.capture('payment_started', {
-        action: 'buy_credits',
-        credits: credits,
-        current_plan: currentPlan,
-        price: calculatePrice(credits),
-      });
-    }
+    safeCapture(posthog, 'payment_started', {
+      action: 'buy_credits',
+      credits: credits,
+      current_plan: currentPlan,
+      price: calculatePrice(credits),
+    });
     
     const url = await buyCreditsAction(credits);
     if (url) {

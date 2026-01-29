@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { User, CreditCard, Receipt } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -11,9 +12,13 @@ const Settings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get("tab") || "profile";
   const posthog = usePostHog();
-  if (currentTab === "plan-usage" && posthog) {
-    posthog.capture('plan_viewed');
-  }
+  
+  // Track plan view event when switching to plan-usage tab
+  useEffect(() => {
+    if (currentTab === "plan-usage") {
+      safeCapture(posthog, 'plan_viewed');
+    }
+  }, [currentTab, posthog]);
 
   return (
     <div className="min-h-screen bg-muted/30">
