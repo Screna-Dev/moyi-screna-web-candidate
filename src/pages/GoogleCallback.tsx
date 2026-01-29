@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -10,6 +11,7 @@ export default function GoogleCallback() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { setUserFromToken } = useAuth();
+  const posthog = usePostHog();
   const [error, setError] = useState<string | null>(null);
   const hasProcessedRef = useRef(false); // Add ref to prevent double processing
 

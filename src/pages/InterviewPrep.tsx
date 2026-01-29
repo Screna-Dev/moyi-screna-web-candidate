@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
 import { InterviewService, InterviewSessionService } from "@/services";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 
@@ -134,6 +135,7 @@ const REFRESH_INTERVAL = 5000;
 const InterviewPrep = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [selectedJob, setSelectedJob] = useState<string>("");
   const [addJobModalOpen, setAddJobModalOpen] = useState(false);
   const [selectedSessionReport, setSelectedSessionReport] = useState<AISession | null>(null);
@@ -294,6 +296,15 @@ const InterviewPrep = () => {
 
   // Handle opening report sheet
   const handleOpenReport = (session: AISession) => {
+    // Track report view event
+    if (posthog) {
+      posthog.capture('report_viewed', {
+        session_id: session.id,
+        session_status: session.status,
+        module_id: session.moduleId,
+      });
+    }
+    
     setSelectedSessionReport(session);
     setReportSheetOpen(true);
     setReportTab("basic"); // Reset to basic tab when opening
@@ -365,6 +376,16 @@ const InterviewPrep = () => {
           // Get the new module_id from response if available
           const newModuleId = response.data?.data?.module_id || selectedSessionPreview.id;
 
+          // Track training started event (retake)
+          if (posthog) {
+            posthog.capture('training_started', {
+              session_id: selectedSessionPreview.id,
+              module_id: newModuleId,
+              is_retake: true,
+              session_status: selectedSessionPreview.status,
+            });
+          }
+
           toast({
             title: "Session Retake Started",
             description: "Good luck with your interview!",
@@ -390,6 +411,16 @@ const InterviewPrep = () => {
         setIsRetaking(false);
       }
     } else {
+      // Track training started event (new session)
+      if (posthog) {
+        posthog.capture('training_started', {
+          session_id: selectedSessionPreview.id,
+          module_id: selectedSessionPreview.moduleId,
+          is_retake: false,
+          session_status: selectedSessionPreview.status,
+        });
+      }
+      
       // Normal start for pending sessions
       navigate(`/interview/${selectedSessionPreview.id}`);
     }

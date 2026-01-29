@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { usePostHog } from "posthog-js/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { User, CreditCard, Receipt } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -8,6 +10,10 @@ import PaymentBillingSettings from "@/components/settings/PaymentBillingSettings
 const Settings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTab = searchParams.get("tab") || "profile";
+  const posthog = usePostHog();
+  if (currentTab === "plan-usage" && posthog) {
+    posthog.capture('plan_viewed');
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -17,7 +23,7 @@ const Settings = () => {
           <p className="text-muted-foreground mt-2">Manage your account settings and billing preferences</p>
         </div>
 
-        <Tabs value={currentTab} onValueChange={(value) => setSearchParams({ tab: value })} className="space-y-6">
+        <Tabs value={currentTab} onValueChange={(value: string) => setSearchParams({ tab: value })} className="space-y-6">
           <TabsList className="bg-background border shadow-sm p-1 h-auto flex-wrap">
             <TabsTrigger value="profile" className="gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <User className="h-4 w-4" />

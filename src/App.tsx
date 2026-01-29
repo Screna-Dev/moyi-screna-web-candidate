@@ -38,7 +38,6 @@ const Career = lazy(()=> import("./pages/Career"))
 const PaymentSuccess = lazy(()=> import("./pages/PaymentSuccess"))
 
 
-
 const queryClient = new QueryClient();
 
 // Loading component
