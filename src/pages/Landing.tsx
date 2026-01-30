@@ -571,11 +571,7 @@ export default function Landing() {
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">60 Credits (≈60 mins) monthly</span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+0 daily bonus credits</span>
+                  <span className="text-sm">30 initial Credits</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -583,7 +579,7 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">$0.12 per extra credit</span>
+                  <span className="text-sm">$0.15 per extra credit</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -617,15 +613,11 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+2 daily bonus credits</span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                   <span className="text-sm">3 Interview Training Plans</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">$0.1 per extra credit</span>
+                  <span className="text-sm">$0.12 per extra credit</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -664,15 +656,11 @@ export default function Landing() {
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">+5 daily bonus credits</span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                   <span className="text-sm">Unlimited Interview Training Plans</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                  <span className="text-sm">$0.07 per extra credit</span>
+                  <span className="text-sm">$0.10 per extra credit</span>
                 </div>
                 <div className="flex items-start gap-3">
                   <Check className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />

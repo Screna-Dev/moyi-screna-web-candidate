@@ -29,9 +29,9 @@ const PaymentSuccess = () => {
           </Button>
           
           <Button asChild variant="outline" className="w-full" size="lg">
-            <Link to="/">
+            <Link to="/settings?tab=plan-usage">
               <Home className="w-4 h-4 mr-2" />
-              Back to Home
+              Back to Plan Setting
             </Link>
           </Button>
         </div>

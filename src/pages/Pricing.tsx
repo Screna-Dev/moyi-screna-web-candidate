@@ -9,7 +9,6 @@ const Pricing = () => {
   const features = {
     free: [
       "30 Credits (≈30 mins) monthly included",
-      "+2 daily bonus credits (≈60/month)",
       "1 basic AI interview (lite report)",
       "Basic metrics (strengths/weaknesses)",
       "Basic job matching (3 jobs/day)",
@@ -19,7 +18,6 @@ const Pricing = () => {
     ],
     pro: [
       "200 Credits (≈200 mins) monthly included",
-      "+5 daily bonus credits (≈150/month)",
       "Unlimited AI interviews (credit-based)",
       "Auto-generated AI training plan",
       "Full report with per-question feedback",
@@ -31,7 +29,6 @@ const Pricing = () => {
     ],
     elite: [
       "500 Credits (≈500 mins) monthly included",
-      "+10 daily bonus credits (≈300/month)",
       "Unlimited interviews + priority queue",
       "Advanced adaptive plan (multi-position)",
       "Advanced report (tone, emotion, behavior)",
@@ -193,8 +190,7 @@ const Pricing = () => {
                 <tbody className="divide-y divide-border">
                   {[
                     { name: "Monthly Included Credits", free: "30 (≈30 mins)", pro: "200 (≈200 mins)", elite: "500 (≈500 mins)" },
-                    { name: "Daily Bonus Credits", free: "+2/day (≈60/mo)", pro: "+5/day (≈150/mo)", elite: "+10/day (≈300/mo)" },
-                    { name: "Extra Credit Price", free: "$0.12/min", pro: "$0.09/min", elite: "$0.07/min" },
+                    { name: "Extra Credit Price", free: "$0.15/min", pro: "$0.12/min", elite: "$0.10/min" },
                     { name: "AI Interview Sessions", free: "1 basic (lite)", pro: "Unlimited", elite: "Unlimited + priority" },
                     { name: "AI Training Plan", free: "—", pro: "Auto-generated", elite: "Advanced adaptive" },
                     { name: "Metrics Report", free: "Basic", pro: "Full detailed", elite: "Advanced + emotion" },

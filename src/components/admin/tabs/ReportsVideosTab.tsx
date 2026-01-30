@@ -119,6 +119,8 @@ export function ReportsVideosTab({ user }) {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
     } catch {
       return dateString;
@@ -370,7 +372,7 @@ export function ReportsVideosTab({ user }) {
 
                 {/* Summary */}
                 {selectedReport.summary && (
-                  <p className="text-muted-foreground">{selectedReport.summary}</p>
+                  <p className="text-muted-foreground whitespace-pre-line">{selectedReport.summary}</p>
                 )}
 
                 {/* Scores */}
@@ -385,7 +387,7 @@ export function ReportsVideosTab({ user }) {
                         >
                           <span className="text-sm">{s.category}</span>
                           <span className={`font-semibold ${getScoreColor(s.score)}`}>
-                            {s.score}%
+                            {s.score} / 100
                           </span>
                         </div>
                       ))}
@@ -433,10 +435,8 @@ export function ReportsVideosTab({ user }) {
                 {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
                   <div>
                     <h4 className="font-medium mb-2">Improvement Advice</h4>
-                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-                      {selectedReport.recommendations.map((r, i) => (
-                        <p key={i}>{r}</p>
-                      ))}
+                    <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg whitespace-pre-line">
+                      {selectedReport.recommendations}
                     </div>
                   </div>
                 )}
@@ -475,7 +475,7 @@ export function ReportsVideosTab({ user }) {
                               )}
                               {q.score !== undefined && (
                                 <span className={`text-sm font-semibold ${getScoreColor(Math.round(q.score ))}`}>
-                                  {Math.round(q.score) +"/10"}
+                                  {Math.round(q.score)*10 +" / 100"}
                                 </span>
                               )}
                             </div>

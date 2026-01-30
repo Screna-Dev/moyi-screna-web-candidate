@@ -352,7 +352,7 @@ export function TrainingPlanTab({ user }) {
                       </div>
                       {module.score > 0 && (
                         <Badge variant="outline" className="mr-2">
-                          Score: {Math.round(module.score)}%
+                          Score: {Math.round(module.score)} / 100
                         </Badge>
                       )}
                     </div>
@@ -446,7 +446,7 @@ export function TrainingPlanTab({ user }) {
                       variant="secondary"
                       className={area.score >= 0.7 ? 'bg-green-100 text-green-800' : area.score >= 0.4 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}
                     >
-                      {Math.round(area.score)}%
+                      {Math.round(area.score)} / 100
                     </Badge>
                   </div>
                   
