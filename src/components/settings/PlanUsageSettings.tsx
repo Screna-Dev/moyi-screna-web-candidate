@@ -69,7 +69,6 @@ const PlanUsageSettings = () => {
       description: "Get started with basic features",
       features: [
         "30 Credits (≈30 mins) monthly",
-        "+0 daily bonus credits",
         "$0.15 per extra credit",
         "1 Interview Preparation",
         "30% Mentorship Service Charge",
@@ -85,7 +84,6 @@ const PlanUsageSettings = () => {
       description: "Perfect for active job seekers",
       features: [
         "200 Credits (≈200 mins) monthly",
-        "+2 daily bonus credits",
         "$0.10 per extra credit",
         "3 Interview Preparations",
         "15% Mentorship Service Charge",
@@ -104,7 +102,6 @@ const PlanUsageSettings = () => {
       description: "Maximum power for professionals",
       features: [
         "500 Credits (≈500 mins) monthly",
-        "+5 daily bonus credits",
         "$0.07 per extra credit",
         "5 Interview Preparations",
         "5% Mentorship Service Charge",
