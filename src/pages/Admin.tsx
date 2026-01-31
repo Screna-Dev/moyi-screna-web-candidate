@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
+import { usePostHog } from 'posthog-js/react';
 import {
   Search,
   ChevronDown,
@@ -57,6 +58,27 @@ export default function Admin() {
   const debounceRef = useRef(null);
   const navigate = useNavigate();
   const { logout, user: currentUser } = useAuth();
+  const posthog = usePostHog();
+
+  // 在 Admin 页面禁用 PostHog 追踪
+  useEffect(() => {
+    if (posthog) {
+      // 禁用 PostHog 的自动追踪
+      posthog.opt_out_capturing();
+      
+      if (import.meta.env.MODE === 'development') {
+        console.log('[PostHog] Tracking disabled in Admin page');
+      }
+    }
+
+    // 组件卸载时重新启用（可选，如果用户离开 admin 页面）
+    return () => {
+      if (posthog) {
+        // 注意：这里不自动重新启用，因为用户可能还在 admin 页面
+        // 如果需要，可以在路由变化时处理
+      }
+    };
+  }, [posthog]);
 
   // Fetch users on mount and when filters/page change
   useEffect(() => {
