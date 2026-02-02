@@ -129,15 +129,30 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     }
   }, [isAuthenticated, isAuthLoading, hasFetched, refreshPlan]);
 
-  // Change plan - returns Stripe URL
+  // Change plan - returns Stripe URL or handles auto-upgrade
   const changePlan = useCallback(async (planType: PlanType): Promise<string | null> => {
     try {
       setIsChangingPlan(true);
       
       const response = await PaymentService.changePlan(planType);
       
+      // Check if there's a Stripe URL to redirect to
       if (response.data?.data?.url) {
         return response.data.data.url;
+      }
+      
+      // If no URL but request was successful (auto-upgrade with existing payment method)
+      if (response.data?.status === 'success' || response.status === 200) {
+        toast({
+          title: "Plan Updated!",
+          description: response.data?.message || `Successfully upgraded to ${planType} plan.`,
+          // Note: Don't use variant: "destructive" for success messages!
+        });
+        
+        // Refresh plan data to reflect the change
+        await refreshPlan();
+        
+        return null; // No redirect needed
       }
       
       throw new Error(response.data?.message || 'Failed to create subscription session');
@@ -152,7 +167,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     } finally {
       setIsChangingPlan(false);
     }
-  }, [toast]);
+  }, [toast, refreshPlan]);
 
   // Buy credits - returns Stripe URL
   const buyCredits = useCallback(async (numberOfCredits: number): Promise<string | null> => {
@@ -249,6 +264,7 @@ export const useUpgradePrompt = () => {
     if (url) {
       window.location.href = url;
     }
+    // If no URL, the plan was changed automatically (success toast already shown)
   };
   
   const upgradeToPro = async (): Promise<void> => {
@@ -256,6 +272,7 @@ export const useUpgradePrompt = () => {
     if (url) {
       window.location.href = url;
     }
+    // If no URL, the plan was changed automatically (success toast already shown)
   };
   
   const upgradeToNext = async (): Promise<void> => {

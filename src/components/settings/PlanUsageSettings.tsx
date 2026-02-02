@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Zap, TrendingUp, Calendar, CreditCard, Check, Sparkles, ArrowRight, Plus, Minus, Loader2, Gift } from "lucide-react";
+import { 
+  Zap, 
+  TrendingUp, 
+  Calendar, 
+  CreditCard, 
+  Check, 
+  Sparkles, 
+  ArrowRight, 
+  Plus, 
+  Minus, 
+  Loader2, 
+  Gift,
+  Clock,
+  AlertCircle
+} from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 import { PaymentService } from "@/services";
@@ -29,6 +44,11 @@ const PlanUsageSettings = () => {
   const [promoCode, setPromoCode] = useState("");
   const [customCreditsInput, setCustomCreditsInput] = useState("100");
   const [isRedeeming, setIsRedeeming] = useState(false);
+  
+  // Plan change confirmation state
+  const [planChangeDialogOpen, setPlanChangeDialogOpen] = useState(false);
+  const [selectedPlanToChange, setSelectedPlanToChange] = useState(null);
+  
   const posthog = usePostHog();
   
   // Use the user plan context
@@ -47,6 +67,9 @@ const PlanUsageSettings = () => {
   const nextBillingDate = planData.nextBillingDate 
     ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : "Feb 1, 2024";
+  
+  // Check if there are pending changes
+  const hasPendingChanges = planData.planDowngradePending || planData.subscriptionCancelPending;
   
   // Total credits based on plan
   const getTotalCredits = (plan) => {
@@ -125,20 +148,32 @@ const PlanUsageSettings = () => {
     return (credits * pricePerCredit).toFixed(2);
   };
 
-  // Handle plan change using context
-  const handleChangePlan = async (planName) => {
+  // Handle plan change - shows confirmation dialog first
+  const handleChangePlan = (planName) => {
+    setSelectedPlanToChange(planName);
+    setPlanChangeDialogOpen(true);
+  };
+
+  // Confirm and execute plan change
+  const confirmPlanChange = async () => {
+    if (!selectedPlanToChange) return;
+    
     // Track payment started event
     safeCapture(posthog, 'payment_started', {
-      plan_name: planName,
+      plan_name: selectedPlanToChange,
       current_plan: currentPlan,
       action: 'upgrade',
     });
     
-    if (planName === "Elite") {
+    setPlanChangeDialogOpen(false);
+    
+    if (selectedPlanToChange === "Elite") {
       await upgradeToElite();
-    } else if (planName === "Pro") {
+    } else if (selectedPlanToChange === "Pro") {
       await upgradeToPro();
     }
+    
+    setSelectedPlanToChange(null);
   };
 
   // Handle buy credits using context
@@ -251,14 +286,20 @@ const PlanUsageSettings = () => {
               <div className="grid gap-6 md:grid-cols-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Current Plan</p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-2xl font-bold">{currentPlan}</h3>
                     <Badge variant="default">Active</Badge>
                     {planData.subscriptionCancelPending && (
-                      <Badge variant="destructive">Cancelling</Badge>
+                      <Badge variant="destructive" className="gap-1">
+                        <Clock className="h-3 w-3" />
+                        Cancelling {nextBillingDate}
+                      </Badge>
                     )}
                     {planData.planDowngradePending && (
-                      <Badge variant="secondary">Downgrading</Badge>
+                      <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
+                        <Clock className="h-3 w-3" />
+                        Downgrading {nextBillingDate}
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -293,7 +334,7 @@ const PlanUsageSettings = () => {
                 <Button 
                   className="gap-2" 
                   onClick={() => handleChangePlan(currentPlan === "Free" ? "Pro" : "Elite")}
-                  disabled={isChangingPlan || currentPlan === "Elite"}
+                  disabled={isChangingPlan || currentPlan === "Elite" || hasPendingChanges}
                 >
                   {isChangingPlan ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -315,6 +356,98 @@ const PlanUsageSettings = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Pending Changes Alert */}
+      {hasPendingChanges && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <Clock className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-800 font-semibold">
+            {planData.subscriptionCancelPending 
+              ? "Subscription Cancellation Pending" 
+              : "Plan Downgrade Pending"}
+          </AlertTitle>
+          <AlertDescription className="text-amber-700">
+            {planData.subscriptionCancelPending ? (
+              <>
+                Your subscription will be cancelled on <strong>{nextBillingDate}</strong>. 
+                You will continue to have access to your current <strong>{currentPlan}</strong> plan benefits until then. 
+                After this date, your account will be downgraded to the Free plan.
+              </>
+            ) : (
+              <>
+                Your plan downgrade will take effect on <strong>{nextBillingDate}</strong>. 
+                You will continue to have access to your current <strong>{currentPlan}</strong> plan 
+                benefits until then. No action is needed from your side.
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Plan Change Confirmation Dialog */}
+      <Dialog open={planChangeDialogOpen} onOpenChange={setPlanChangeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Confirm Plan Change
+            </DialogTitle>
+            <DialogDescription>
+              You are about to change your plan from <strong>{currentPlan}</strong> to <strong>{selectedPlanToChange}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Current Plan:</span>
+                <span className="font-semibold">{currentPlan}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">New Plan:</span>
+                <span className="font-semibold text-primary">{selectedPlanToChange}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">New Price:</span>
+                <span className="font-semibold">
+                  {selectedPlanToChange === "Elite" ? "$39.9" : selectedPlanToChange === "Pro" ? "$19.9" : "$0"}/month
+                </span>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              You will be redirected to Stripe to complete the payment. Your new plan benefits will be available immediately after successful payment.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setPlanChangeDialogOpen(false);
+                setSelectedPlanToChange(null);
+              }}
+              disabled={isChangingPlan}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={confirmPlanChange} 
+              className="gap-2"
+              disabled={isChangingPlan}
+            >
+              {isChangingPlan ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-4 w-4" />
+                  Confirm & Pay
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Redeem Credit Dialog */}
       <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
@@ -459,11 +592,25 @@ const PlanUsageSettings = () => {
         </TabsList>
 
         <TabsContent value="plans">
+          {/* Pending Changes Notice in Plans Tab */}
+          {hasPendingChanges && (
+            <Alert className="mb-6 border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 font-semibold">
+                Plan changes are currently locked
+              </AlertTitle>
+              <AlertDescription className="text-amber-700">
+                You have a pending {planData.subscriptionCancelPending ? "cancellation" : "downgrade"} scheduled for {nextBillingDate}. 
+                Plan changes will be available after this date or if you cancel the pending change.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid gap-6 md:grid-cols-3">
             {plans.map((plan) => (
               <Card
                 key={plan.name}
-                className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""}`}
+                className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""} ${hasPendingChanges && !plan.current ? "opacity-60" : ""}`}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -494,13 +641,25 @@ const PlanUsageSettings = () => {
                   <Button
                     className="w-full gap-2"
                     variant={plan.current ? "outline" : "default"}
-                    disabled={plan.current || isChangingPlan}
+                    disabled={plan.current || isChangingPlan || hasPendingChanges}
                     onClick={() => handleChangePlan(plan.name)}
                   >
                     {isChangingPlan ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : plan.current ? (
-                      "Current Plan"
+                      <>
+                        Current Plan
+                        {hasPendingChanges && (
+                          <Badge variant="secondary" className="ml-2 text-xs">
+                            {planData.subscriptionCancelPending ? "Cancelling" : "Downgrading"}
+                          </Badge>
+                        )}
+                      </>
+                    ) : hasPendingChanges ? (
+                      <>
+                        <Clock className="h-4 w-4" />
+                        Locked
+                      </>
                     ) : (
                       <>
                         Select Plan
@@ -535,6 +694,19 @@ const PlanUsageSettings = () => {
                 </div>
               </div>
               <Progress value={(creditBalance / totalCredits) * 100} className="h-3" />
+              
+              {/* Show notice if plan is changing */}
+              {hasPendingChanges && (
+                <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <p className="text-sm text-amber-800">
+                    <Clock className="h-4 w-4 inline mr-1" />
+                    {planData.subscriptionCancelPending 
+                      ? `Your monthly allocation will change to 30 credits after ${nextBillingDate}`
+                      : `Your monthly allocation may change after ${nextBillingDate}`
+                    }
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
