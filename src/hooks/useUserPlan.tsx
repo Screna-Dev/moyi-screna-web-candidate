@@ -37,7 +37,7 @@ interface UserPlanContextValue {
   
   // Actions
   refreshPlan: () => Promise<void>;
-  changePlan: (planType: PlanType) => Promise<string | null>; // Returns Stripe URL or null on error
+  changePlan: (planType: PlanType) => Promise<{ success: boolean; url?: string | null; message?: string }>; 
   buyCredits: (numberOfCredits: number) => Promise<string | null>; // Returns Stripe URL or null on error
   
   // Loading states for actions
@@ -129,45 +129,56 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     }
   }, [isAuthenticated, isAuthLoading, hasFetched, refreshPlan]);
 
-  // Change plan - returns Stripe URL or handles auto-upgrade
-  const changePlan = useCallback(async (planType: PlanType): Promise<string | null> => {
+  // Change plan - handles upgrade, downgrade, and cancellation (Free)
+  const changePlan = useCallback(async (planType: PlanType): Promise<{ success: boolean; url?: string | null; message?: string }> => {
     try {
       setIsChangingPlan(true);
       
       const response = await PaymentService.changePlan(planType);
       
-      // Check if there's a Stripe URL to redirect to
+      // Check if there's a Stripe URL to redirect to (for upgrades)
       if (response.data?.data?.url) {
-        return response.data.data.url;
+        return { success: true, url: response.data.data.url };
       }
       
-      // If no URL but request was successful (auto-upgrade with existing payment method)
+      // If no URL but request was successful (downgrade or auto-upgrade with existing payment method)
       if (response.data?.status === 'success' || response.status === 200) {
+        const isDowngrade = planType === 'Free' || 
+          (planType === 'Pro' && planData.currentPlan === 'Elite');
+        
+        const message = response.data?.message || (
+          isDowngrade 
+            ? `Your plan will be changed to ${planType} at the end of your billing period.`
+            : `Successfully upgraded to ${planType} plan.`
+        );
+        
         toast({
-          title: "Plan Updated!",
-          description: response.data?.message || `Successfully upgraded to ${planType} plan.`,
-          // Note: Don't use variant: "destructive" for success messages!
+          title: isDowngrade ? "Downgrade Scheduled" : "Plan Updated!",
+          description: message,
         });
         
         // Refresh plan data to reflect the change
         await refreshPlan();
         
-        return null; // No redirect needed
+        return { success: true, url: null, message };
       }
       
-      throw new Error(response.data?.message || 'Failed to create subscription session');
+      throw new Error(response.data?.message || 'Failed to change plan');
     } catch (err: any) {
       console.error('Failed to change plan:', err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to initiate plan change";
+      
       toast({
         title: "Error",
-        description: err.response?.data?.message || err.message || "Failed to initiate plan change",
+        description: errorMessage,
         variant: "destructive",
       });
-      return null;
+      
+      return { success: false, message: errorMessage };
     } finally {
       setIsChangingPlan(false);
     }
-  }, [toast, refreshPlan]);
+  }, [toast, refreshPlan, planData.currentPlan]);
 
   // Buy credits - returns Stripe URL
   const buyCredits = useCallback(async (numberOfCredits: number): Promise<string | null> => {
@@ -255,39 +266,68 @@ export const useUserPlan = (): UserPlanContextValue => {
   return context;
 };
 
-// Helper hook for upgrade prompts
+// Helper hook for upgrade/downgrade prompts
 export const useUpgradePrompt = () => {
   const { changePlan, isChangingPlan, planData } = useUserPlan();
   
-  const upgradeToElite = async (): Promise<void> => {
-    const url = await changePlan('Elite');
-    if (url) {
-      window.location.href = url;
+  const upgradeToElite = async (): Promise<boolean> => {
+    const result = await changePlan('Elite');
+    if (result.success && result.url) {
+      window.location.href = result.url;
     }
-    // If no URL, the plan was changed automatically (success toast already shown)
+    return result.success;
   };
   
-  const upgradeToPro = async (): Promise<void> => {
-    const url = await changePlan('Pro');
-    if (url) {
-      window.location.href = url;
+  const upgradeToPro = async (): Promise<boolean> => {
+    const result = await changePlan('Pro');
+    if (result.success && result.url) {
+      window.location.href = result.url;
     }
-    // If no URL, the plan was changed automatically (success toast already shown)
+    return result.success;
   };
   
-  const upgradeToNext = async (): Promise<void> => {
+  const downgradeToFree = async (): Promise<boolean> => {
+    const result = await changePlan('Free');
+    // No redirect needed for downgrades, just return success
+    return result.success;
+  };
+  
+  const downgradeToPro = async (): Promise<boolean> => {
+    const result = await changePlan('Pro');
+    // For Elite -> Pro downgrade, no redirect needed
+    return result.success;
+  };
+  
+  const upgradeToNext = async (): Promise<boolean> => {
     if (planData.currentPlan === 'Free') {
-      await upgradeToPro();
+      return await upgradeToPro();
     } else if (planData.currentPlan === 'Pro') {
-      await upgradeToElite();
+      return await upgradeToElite();
     }
+    return false;
+  };
+  
+  // Determine if selecting a plan is an upgrade or downgrade
+  const isUpgrade = (targetPlan: PlanType): boolean => {
+    const planOrder = { 'Free': 0, 'Pro': 1, 'Elite': 2 };
+    return planOrder[targetPlan] > planOrder[planData.currentPlan];
+  };
+  
+  const isDowngrade = (targetPlan: PlanType): boolean => {
+    const planOrder = { 'Free': 0, 'Pro': 1, 'Elite': 2 };
+    return planOrder[targetPlan] < planOrder[planData.currentPlan];
   };
   
   return {
     upgradeToElite,
     upgradeToPro,
+    downgradeToFree,
+    downgradeToPro,
     upgradeToNext,
+    isUpgrade,
+    isDowngrade,
     isChangingPlan,
+    currentPlan: planData.currentPlan,
   };
 };
 

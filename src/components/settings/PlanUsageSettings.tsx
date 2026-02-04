@@ -21,6 +21,7 @@ import {
 import { 
   Zap, 
   TrendingUp, 
+  TrendingDown,
   Calendar, 
   CreditCard, 
   Check, 
@@ -57,12 +58,18 @@ const PlanUsageSettings = () => {
     isLoading, 
     buyCredits: buyCreditsAction,
     isBuyingCredits,
-    refreshPlan
+    refreshPlan,
+    changePlan
   } = useUserPlan();
-  const { upgradeToElite, upgradeToPro, upgradeToNext, isChangingPlan } = useUpgradePrompt();
+  
+  const { 
+    isUpgrade, 
+    isDowngrade, 
+    isChangingPlan,
+    currentPlan 
+  } = useUpgradePrompt();
   
   // Derived values from context
-  const currentPlan = planData.currentPlan;
   const creditBalance = planData.creditBalance;
   const nextBillingDate = planData.nextBillingDate 
     ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -70,6 +77,79 @@ const PlanUsageSettings = () => {
   
   // Check if there are pending changes
   const hasPendingChanges = planData.planDowngradePending || planData.subscriptionCancelPending;
+  
+  // Helper function to check if a specific plan button should be disabled
+  const isPlanButtonDisabled = (planName) => {
+    // If it's the current plan, always disabled
+    if (planName === currentPlan) {
+      return true;
+    }
+    
+    // If subscription is being cancelled (going to Free), all buttons locked
+    if (planData.subscriptionCancelPending) {
+      return true;
+    }
+    
+    // If downgrading from Elite to Pro (planDowngradePending)
+    if (planData.planDowngradePending) {
+      // Pro and Elite buttons should be locked
+      if (planName === "Pro" || planName === "Elite") {
+        return true;
+      }
+      // Free button is still available for further downgrade
+      return false;
+    }
+    
+    return false;
+  };
+
+  // Helper to get button text for plan cards
+  const getPlanButtonContent = (plan) => {
+    if (isChangingPlan) {
+      return <Loader2 className="h-4 w-4 animate-spin" />;
+    }
+    
+    if (plan.current) {
+      return (
+        <>
+          Current Plan
+          {planData.subscriptionCancelPending && (
+            <Badge variant="secondary" className="ml-2 text-xs">Cancelling</Badge>
+          )}
+          {planData.planDowngradePending && currentPlan === "Elite" && (
+            <Badge variant="secondary" className="ml-2 text-xs">→ Pro</Badge>
+          )}
+        </>
+      );
+    }
+    
+    // Check if this specific button is locked
+    if (isPlanButtonDisabled(plan.name)) {
+      return (
+        <>
+          <Clock className="h-4 w-4" />
+          Locked
+        </>
+      );
+    }
+    
+    // Check if it's an upgrade or downgrade
+    if (isDowngrade(plan.name)) {
+      return (
+        <>
+          Downgrade
+          <TrendingDown className="h-4 w-4" />
+        </>
+      );
+    }
+    
+    return (
+      <>
+        Select Plan
+        <ArrowRight className="h-4 w-4" />
+      </>
+    );
+  };
   
   // Total credits based on plan
   const getTotalCredits = (plan) => {
@@ -158,22 +238,57 @@ const PlanUsageSettings = () => {
   const confirmPlanChange = async () => {
     if (!selectedPlanToChange) return;
     
+    const isDowngradeAction = isDowngrade(selectedPlanToChange);
+    
     // Track payment started event
     safeCapture(posthog, 'payment_started', {
       plan_name: selectedPlanToChange,
       current_plan: currentPlan,
-      action: 'upgrade',
+      action: isDowngradeAction ? 'downgrade' : 'upgrade',
     });
     
     setPlanChangeDialogOpen(false);
     
-    if (selectedPlanToChange === "Elite") {
-      await upgradeToElite();
-    } else if (selectedPlanToChange === "Pro") {
-      await upgradeToPro();
+    // Use the changePlan function from the hook
+    const result = await changePlan(selectedPlanToChange);
+    
+    if (result.success && result.url) {
+      // Redirect to Stripe for upgrades
+      window.location.href = result.url;
     }
+    // For downgrades or auto-upgrades, the hook handles the toast
     
     setSelectedPlanToChange(null);
+  };
+
+  // Get dialog content based on selected plan
+  const getDialogContent = () => {
+    if (!selectedPlanToChange) return {};
+    
+    const isDowngradeAction = isDowngrade(selectedPlanToChange);
+    
+    return {
+      isDowngrade: isDowngradeAction,
+      title: isDowngradeAction ? "Confirm Plan Downgrade" : "Confirm Plan Upgrade",
+      description: isDowngradeAction 
+        ? `You are about to downgrade from ${currentPlan} to ${selectedPlanToChange}.`
+        : `You are about to upgrade from ${currentPlan} to ${selectedPlanToChange}.`,
+      warning: isDowngradeAction 
+        ? `Your downgrade will take effect on ${nextBillingDate}. You'll continue to have access to ${currentPlan} features until then.`
+        : "You will be redirected to Stripe to complete the payment. Your new plan benefits will be available immediately after successful payment.",
+      buttonText: isDowngradeAction ? "Confirm Downgrade" : "Confirm & Pay",
+      featureLoss: isDowngradeAction ? getFeatureLossWarning(selectedPlanToChange) : null,
+    };
+  };
+  
+  // Get warning about features that will be lost
+  const getFeatureLossWarning = (targetPlan) => {
+    if (targetPlan === "Free") {
+      return "You will lose access to premium features including extended data retention, full reports, job matching, and reduced mentorship charges.";
+    } else if (targetPlan === "Pro" && currentPlan === "Elite") {
+      return "You will lose access to Elite features including video replay, unlimited data retention, and the lowest mentorship service charge.";
+    }
+    return null;
   };
 
   // Handle buy credits using context
@@ -272,6 +387,8 @@ const PlanUsageSettings = () => {
     }
   };
 
+  const dialogContent = getDialogContent();
+
   return (
     <div className="space-y-6">
       {/* Summary Card */}
@@ -292,13 +409,13 @@ const PlanUsageSettings = () => {
                     {planData.subscriptionCancelPending && (
                       <Badge variant="destructive" className="gap-1">
                         <Clock className="h-3 w-3" />
-                        Cancelling {nextBillingDate}
+                        → Free on {nextBillingDate}
                       </Badge>
                     )}
                     {planData.planDowngradePending && (
                       <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 hover:bg-amber-100">
                         <Clock className="h-3 w-3" />
-                        Downgrading {nextBillingDate}
+                        → Pro on {nextBillingDate}
                       </Badge>
                     )}
                   </div>
@@ -334,7 +451,7 @@ const PlanUsageSettings = () => {
                 <Button 
                   className="gap-2" 
                   onClick={() => handleChangePlan(currentPlan === "Free" ? "Pro" : "Elite")}
-                  disabled={isChangingPlan || currentPlan === "Elite" || hasPendingChanges}
+                  disabled={isChangingPlan || currentPlan === "Elite" || planData.subscriptionCancelPending}
                 >
                   {isChangingPlan ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -364,7 +481,7 @@ const PlanUsageSettings = () => {
           <AlertTitle className="text-amber-800 font-semibold">
             {planData.subscriptionCancelPending 
               ? "Subscription Cancellation Pending" 
-              : "Plan Downgrade Pending"}
+              : "Plan Downgrade Pending (Elite → Pro)"}
           </AlertTitle>
           <AlertDescription className="text-amber-700">
             {planData.subscriptionCancelPending ? (
@@ -375,9 +492,11 @@ const PlanUsageSettings = () => {
               </>
             ) : (
               <>
-                Your plan downgrade will take effect on <strong>{nextBillingDate}</strong>. 
-                You will continue to have access to your current <strong>{currentPlan}</strong> plan 
-                benefits until then. No action is needed from your side.
+                Your plan will downgrade from <strong>Elite</strong> to <strong>Pro</strong> on <strong>{nextBillingDate}</strong>. 
+                You will continue to have access to Elite features until then.
+                {currentPlan === "Elite" && (
+                  <> You can still choose to downgrade to the Free plan if needed.</>
+                )}
               </>
             )}
           </AlertDescription>
@@ -389,22 +508,28 @@ const PlanUsageSettings = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Confirm Plan Change
+              {dialogContent.isDowngrade ? (
+                <TrendingDown className="h-5 w-5 text-amber-500" />
+              ) : (
+                <TrendingUp className="h-5 w-5 text-primary" />
+              )}
+              {dialogContent.title}
             </DialogTitle>
             <DialogDescription>
-              You are about to change your plan from <strong>{currentPlan}</strong> to <strong>{selectedPlanToChange}</strong>.
+              {dialogContent.description}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+            <div className={`p-4 rounded-lg space-y-2 ${dialogContent.isDowngrade ? 'bg-amber-50' : 'bg-muted/50'}`}>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current Plan:</span>
                 <span className="font-semibold">{currentPlan}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">New Plan:</span>
-                <span className="font-semibold text-primary">{selectedPlanToChange}</span>
+                <span className={`font-semibold ${dialogContent.isDowngrade ? 'text-amber-600' : 'text-primary'}`}>
+                  {selectedPlanToChange}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">New Price:</span>
@@ -412,10 +537,24 @@ const PlanUsageSettings = () => {
                   {selectedPlanToChange === "Elite" ? "$39.9" : selectedPlanToChange === "Pro" ? "$19.9" : "$0"}/month
                 </span>
               </div>
+              {dialogContent.isDowngrade && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Effective Date:</span>
+                  <span className="font-semibold">{nextBillingDate}</span>
+                </div>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              You will be redirected to Stripe to complete the payment. Your new plan benefits will be available immediately after successful payment.
+            <p className={`text-sm mt-4 ${dialogContent.isDowngrade ? 'text-amber-700' : 'text-muted-foreground'}`}>
+              {dialogContent.warning}
             </p>
+            {dialogContent.isDowngrade && dialogContent.featureLoss && (
+              <Alert className="mt-4 border-amber-200 bg-amber-50">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 text-sm">
+                  {dialogContent.featureLoss}
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
           <DialogFooter>
             <Button 
@@ -431,6 +570,7 @@ const PlanUsageSettings = () => {
             <Button 
               onClick={confirmPlanChange} 
               className="gap-2"
+              variant={dialogContent.isDowngrade ? "destructive" : "default"}
               disabled={isChangingPlan}
             >
               {isChangingPlan ? (
@@ -440,8 +580,12 @@ const PlanUsageSettings = () => {
                 </>
               ) : (
                 <>
-                  <CreditCard className="h-4 w-4" />
-                  Confirm & Pay
+                  {dialogContent.isDowngrade ? (
+                    <TrendingDown className="h-4 w-4" />
+                  ) : (
+                    <CreditCard className="h-4 w-4" />
+                  )}
+                  {dialogContent.buttonText}
                 </>
               )}
             </Button>
@@ -597,79 +741,88 @@ const PlanUsageSettings = () => {
             <Alert className="mb-6 border-amber-200 bg-amber-50">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-800 font-semibold">
-                Plan changes are currently locked
+                {planData.subscriptionCancelPending 
+                  ? "Plan changes are currently locked"
+                  : "Some plan changes are restricted"
+                }
               </AlertTitle>
               <AlertDescription className="text-amber-700">
-                You have a pending {planData.subscriptionCancelPending ? "cancellation" : "downgrade"} scheduled for {nextBillingDate}. 
-                Plan changes will be available after this date or if you cancel the pending change.
+                {planData.subscriptionCancelPending ? (
+                  <>
+                    You have a pending cancellation scheduled for {nextBillingDate}. 
+                    All plan changes are locked until this date.
+                  </>
+                ) : (
+                  <>
+                    You have a pending downgrade to Pro scheduled for {nextBillingDate}. 
+                    Pro and Elite selections are locked, but you can still choose to downgrade to Free.
+                  </>
+                )}
               </AlertDescription>
             </Alert>
           )}
 
           <div className="grid gap-6 md:grid-cols-3">
-            {plans.map((plan) => (
-              <Card
-                key={plan.name}
-                className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""} ${hasPendingChanges && !plan.current ? "opacity-60" : ""}`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      Most Popular
-                    </Badge>
-                  </div>
-                )}
-                <CardHeader className="pb-4">
-                  <CardTitle>{plan.name}</CardTitle>
-                  <CardDescription>{plan.description}</CardDescription>
-                  <div className="pt-2">
-                    <span className="text-3xl font-bold">{plan.price}</span>
-                    <span className="text-muted-foreground">{plan.period}</span>
-                  </div>
-                  <p className="text-sm text-primary font-medium">{plan.credits} credits/month</p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ul className="space-y-2">
-                    {plan.features.map((feature, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <Check className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className="w-full gap-2"
-                    variant={plan.current ? "outline" : "default"}
-                    disabled={plan.current || isChangingPlan || hasPendingChanges}
-                    onClick={() => handleChangePlan(plan.name)}
-                  >
-                    {isChangingPlan ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : plan.current ? (
-                      <>
-                        Current Plan
-                        {hasPendingChanges && (
-                          <Badge variant="secondary" className="ml-2 text-xs">
-                            {planData.subscriptionCancelPending ? "Cancelling" : "Downgrading"}
-                          </Badge>
-                        )}
-                      </>
-                    ) : hasPendingChanges ? (
-                      <>
-                        <Clock className="h-4 w-4" />
-                        Locked
-                      </>
-                    ) : (
-                      <>
-                        Select Plan
-                        <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+            {plans.map((plan) => {
+              const isDisabled = isPlanButtonDisabled(plan.name);
+              const showLockedState = isDisabled && !plan.current;
+              const isPlanDowngrade = isDowngrade(plan.name);
+              
+              return (
+                <Card
+                  key={plan.name}
+                  className={`border-0 shadow-sm relative ${plan.popular ? "ring-2 ring-primary" : ""} ${showLockedState ? "opacity-60" : ""}`}
+                >
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                      <Badge className="gap-1">
+                        <Sparkles className="h-3 w-3" />
+                        Most Popular
+                      </Badge>
+                    </div>
+                  )}
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-2">
+                      {plan.name}
+                      {planData.planDowngradePending && plan.name === "Pro" && (
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800">
+                          Pending
+                        </Badge>
+                      )}
+                      {planData.subscriptionCancelPending && plan.name === "Free" && (
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800">
+                          Pending
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>{plan.description}</CardDescription>
+                    <div className="pt-2">
+                      <span className="text-3xl font-bold">{plan.price}</span>
+                      <span className="text-muted-foreground">{plan.period}</span>
+                    </div>
+                    <p className="text-sm text-primary font-medium">{plan.credits} credits/month</p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <ul className="space-y-2">
+                      {plan.features.map((feature, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <Check className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className="w-full gap-2"
+                      variant={plan.current ? "outline" : isPlanDowngrade ? "secondary" : "default"}
+                      disabled={isDisabled || isChangingPlan}
+                      onClick={() => handleChangePlan(plan.name)}
+                    >
+                      {getPlanButtonContent(plan)}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </TabsContent>
 
@@ -701,8 +854,8 @@ const PlanUsageSettings = () => {
                   <p className="text-sm text-amber-800">
                     <Clock className="h-4 w-4 inline mr-1" />
                     {planData.subscriptionCancelPending 
-                      ? `Your monthly allocation will change to 30 credits after ${nextBillingDate}`
-                      : `Your monthly allocation may change after ${nextBillingDate}`
+                      ? `Your monthly allocation will change to 30 credits (Free plan) after ${nextBillingDate}`
+                      : `Your monthly allocation will change to 200 credits (Pro plan) after ${nextBillingDate}`
                     }
                   </p>
                 </div>

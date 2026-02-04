@@ -107,10 +107,10 @@ const Profile = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 300 * 1024) {
+    if (file.size > 1 * 1024 * 1024) {
       toast({
         title: "File too large",
-        description: "Please upload a file smaller than 300KB",
+        description: "Please upload a file smaller than 1MB",
         variant: "destructive",
       });
       return;

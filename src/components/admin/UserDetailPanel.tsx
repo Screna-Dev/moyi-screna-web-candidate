@@ -13,9 +13,10 @@ import { AdminActionsTab } from './tabs/AdminActionsTab';
 
 interface UserDetailPanelProps {
   user: AdminUser | null;
+  onUserUpdated?: () => void;
 }
 
-export function UserDetailPanel({ user }: UserDetailPanelProps) {
+export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
 
   if (!user) {
     return (
@@ -174,7 +175,7 @@ export function UserDetailPanel({ user }: UserDetailPanelProps) {
             <BillingTab user={user} />
           </TabsContent>
           <TabsContent value="admin" className="m-0 h-full">
-            <AdminActionsTab user={user} />
+            <AdminActionsTab user={user} onUserUpdated={onUserUpdated} />
           </TabsContent>
         </div>
       </Tabs>

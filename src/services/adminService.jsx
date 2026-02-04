@@ -140,6 +140,99 @@ export const deleteRedeemCode = (codeId) => {
   return API.delete(`${BASE_URL}/redeem-codes/${codeId}`);
 };
 
+// ============================================
+// User Ban/Unban APIs
+// ============================================
+
+/**
+ * Ban or unban a user
+ * @param {string} userId - User ID
+ * @param {boolean} banned - true to ban, false to unban (default: true)
+ * @returns {Promise} API response
+ */
+export const banUser = (userId, banned = true) => {
+  return API.post(`${BASE_URL}/users/${userId}/ban`, null, {
+    params: { banned }
+  });
+};
+
+/**
+ * Reset a user's password
+ * @param {string} userId - User ID
+ * @param {string} password - Optional new password. If omitted, a temporary password is generated.
+ * @returns {Promise} API response with tempPassword if no password provided
+ */
+export const resetUserPassword = (userId, password = null) => {
+  const body = password ? { password } : {};
+  return API.post(`${BASE_URL}/users/${userId}/reset-password`, body);
+};
+
+/**
+ * Deactivate a user so the email can be re-registered
+ * This removes login/profile/subscription data while keeping financial records
+ * @param {string} userId - User ID
+ * @returns {Promise} API response
+ */
+export const deactivateUser = (userId) => {
+  return API.post(`${BASE_URL}/users/${userId}/deactivate`);
+};
+
+// ============================================
+// User Plan Management APIs
+// ============================================
+
+/**
+ * Change user's billing plan
+ * @param {string} userId - User ID
+ * @param {string} planType - Plan type (Free, Pro, Elite)
+ * @returns {Promise} API response
+ */
+export const changeUserPlan = (userId, planType) => {
+  return API.post(`${BASE_URL}/users/${userId}/billing/plan`, { planType });
+};
+
+// ============================================
+// Audit Log APIs
+// ============================================
+
+/**
+ * Get admin audit logs
+ * @param {Object} params - Query parameters
+ * @param {number} params.page - Page number (0-indexed)
+ * @param {number} params.size - Page size
+ * @returns {Promise} API response with audit logs
+ * @example Response data:
+ * {
+ *   status: "string",
+ *   message: "string",
+ *   errorCode: "string",
+ *   data: {
+ *     content: [{
+ *       id: "string",
+ *       adminId: "string",
+ *       action: "string",
+ *       targetUserId: "string",
+ *       requestPath: "string",
+ *       httpMethod: "string",
+ *       statusCode: number,
+ *       payload: "string",
+ *       createdAt: "string" (ISO date)
+ *     }],
+ *     pageMeta: {
+ *       pageNumber: number,
+ *       pageSize: number,
+ *       totalElements: number,
+ *       totalPages: number,
+ *       first: boolean,
+ *       last: boolean
+ *     }
+ *   }
+ * }
+ */
+export const getAuditLogs = (params = {}) => {
+  return API.get(`${BASE_URL}/audit-logs`, { params });
+};
+
 const adminService = {
   // User Management
   getUserOverview,
@@ -147,11 +240,21 @@ const adminService = {
   getUserReports,
   getReportDetails,
   searchUsers,
+  // User Ban/Unban
+  banUser,
+  // User Password Reset
+  resetUserPassword,
+  // User Deactivation
+  deactivateUser,
+  // User Plan Management
+  changeUserPlan,
   // Redeem Code Management
   getRedeemCodes,
   createRedeemCode,
   updateRedeemCodeStatus,
   deleteRedeemCode,
+  // Audit Logs
+  getAuditLogs,
 };
 
 export default adminService;

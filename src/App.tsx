@@ -38,6 +38,7 @@ const Admin = lazy(()=> import("./pages/Admin"))
 const Career = lazy(()=> import("./pages/Career"))
 const PaymentSuccess = lazy(()=> import("./pages/PaymentSuccess"))
 const AdminRedeemCodes = lazy(()=> import ("./pages/AdminRedeemCodes"))
+const AdminAuditLogs = lazy(()=> import ("./pages/AdminAuditLogs"))
 
 const queryClient = new QueryClient();
 
@@ -90,6 +91,7 @@ const App = () => (
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/admin" element={<Admin />} />
                   <Route path="/redeem-code" element={<AdminRedeemCodes />} />
+                  <Route path="/audit-logs" element={<AdminAuditLogs />} />
                   <Route path="/payment/success" element={<PaymentSuccess />} />
                 </Route>
                 
