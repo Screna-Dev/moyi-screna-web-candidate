@@ -1,11 +1,79 @@
-# React + TypeScript + Vite
+# Screna AI - Interview Preparation Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React + TypeScript + Vite application for AI-powered interview preparation.
 
-Currently, two official plugins are available:
+## 🚀 Quick Start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+
+### Local Development
+
+1. Clone the repository
+```bash
+git clone <repository-url>
+cd moyi-screna-web-candidate
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Set up environment variables
+```bash
+cp env.example .env
+```
+
+Edit `.env` and set your API URL:
+```
+VITE_API_URL=http://localhost:3000/api
+```
+
+4. Start development server
+```bash
+npm run dev
+```
+
+## 📦 Deployment
+
+This project is configured for dual Vercel deployments:
+- **Staging**: Deploys from `staging` branch
+- **Production**: Deploys from `master` branch
+
+For detailed deployment instructions, see [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md)
+
+### Build Information Display
+
+In the staging environment, a build version indicator appears in the bottom-right corner of all pages:
+- Format: `build-{git-hash}`
+- Example: `build-a1b2c3d`
+- Only visible in staging (determined by `VITE_API_URL`)
+- Helps identify deployed version for debugging
+
+For more details, see [BUILD_INFO.md](./BUILD_INFO.md)
+
+### Quick Deployment Guide
+
+#### Staging Environment
+- Branch: `staging`
+- Set in Vercel: `VITE_API_URL=http://api-staging/api/v1`
+
+#### Production Environment
+- Branch: `master`
+- Set in Vercel: `VITE_API_URL=<your-production-api-url>`
+
+## 🛠️ Tech Stack
+
+- React 19
+- TypeScript
+- Vite
+- TailwindCSS
+- Radix UI Components
+- React Router
+- Axios
+- LiveKit (for video interviews)
 
 ## React Compiler
 

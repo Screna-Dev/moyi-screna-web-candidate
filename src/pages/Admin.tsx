@@ -102,6 +102,14 @@ export default function Admin() {
 
       setUsers(mappedUsers);
       setPageMeta(data.pageMeta);
+
+      // Update selectedUser if it exists in the new list
+      if (selectedUser) {
+        const updatedSelectedUser = mappedUsers.find((u) => u.id === selectedUser.id);
+        if (updatedSelectedUser) {
+          setSelectedUser(updatedSelectedUser);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch users:', error);
       toast.error('Failed to fetch users');
@@ -263,7 +271,7 @@ export default function Admin() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col lg:flex-row">
         {/* Left: Users List */}
-        <div className="w-full lg:w-[40%] border-r border-border bg-card">
+        <div className={`w-full ${selectedUser ? 'lg:w-[40%] border-r border-border' : 'lg:w-full'} bg-card transition-all duration-300`}>
           <Card className="h-full rounded-none border-0">
             <div className="flex flex-col h-full">
               {/* Filters */}
@@ -418,10 +426,12 @@ export default function Admin() {
           </Card>
         </div>
 
-        {/* Right: User Detail Panel */}
-        <div className="flex-1 bg-background">
-          <UserDetailPanel user={selectedUser} />
-        </div>
+        {/* Right: User Detail Panel - only show when user is selected */}
+        {selectedUser && (
+          <div className="flex-1 bg-background">
+            <UserDetailPanel user={selectedUser} onUserUpdated={fetchUsers} />
+          </div>
+        )}
       </div>
     </div>
   );

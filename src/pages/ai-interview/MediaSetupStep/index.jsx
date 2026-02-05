@@ -14,11 +14,35 @@ import {
   Person,
   Help,
   Close,
-  ExpandMore
+  ExpandMore,
+  FiberManualRecord,
+  Stop,
+  PlayArrow,
+  Replay
 } from '@mui/icons-material';
 
 import permissionStep2 from '@/assets/images/aiInterviewSetup/permission-step2.png';
 import permissionStep3 from '@/assets/images/aiInterviewSetup/permission-step3.png';
+
+// Add pulse animation keyframes
+const pulseKeyframes = `
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+`;
+
+// Inject the keyframes into the document
+if (typeof document !== 'undefined') {
+  const styleId = 'media-setup-pulse-animation';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = pulseKeyframes;
+    document.head.appendChild(style);
+  }
+}
 
 
 function MediaSetupStep({ 
@@ -45,10 +69,28 @@ function MediaSetupStep({
   // Local state
   const [videoDebugInfo, setVideoDebugInfo] = useState('');
   const [videoLoading, setVideoLoading] = useState(false);
-  
+
   // Permission help state
   const [showPermissionHelp, setShowPermissionHelp] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
+
+  // Voice test recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState(null);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [voiceTestComplete, setVoiceTestComplete] = useState(false);
+
+  // Audio level for dynamic mic indicator
+  const [audioLevel, setAudioLevel] = useState(0);
+
+  // Voice test refs
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const playbackAudioRef = useRef(null);
+  const recordingTimerRef = useRef(null);
+  const MAX_RECORDING_DURATION = 10; // Maximum recording duration in seconds
 
   // Sync audioEnabled to ref
   useEffect(() => {
@@ -67,6 +109,9 @@ function MediaSetupStep({
       });
     }
   }, [mediaState.videoTestStream]);
+
+  // Compute if all tests are complete (voice test required, video optional)
+  const isSetupComplete = mediaState.audioEnabled && voiceTestComplete;
 
   const updateMediaReadyState = () => {
     setMediaState(prev => ({
@@ -271,47 +316,60 @@ function MediaSetupStep({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 16000,
-            channelCount: 1
+            autoGainControl: true
           }
         });
 
         cleanupAudioResources();
 
-        const context = new (window.AudioContext || window.webkitAudioContext)({
-          sampleRate: 16000
-        });
+        // Use default sample rate (browser's native rate) for better compatibility
+        const context = new (window.AudioContext || window.webkitAudioContext)();
         audioContextRef.current = context;
+
+        // Resume AudioContext if it's in suspended state (required for some browsers)
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
 
         const source = context.createMediaStreamSource(stream);
         audioSourceRef.current = source;
-        
+
         const analyser = context.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 256; // Smaller FFT for faster response
+        analyser.smoothingTimeConstant = 0.5;
         source.connect(analyser);
         audioAnalyserRef.current = analyser;
 
         const monitorLevels = () => {
           if (audioAnalyserRef.current && audioEnabledRef.current) {
-            const dataArray = new Uint8Array(audioAnalyserRef.current.frequencyBinCount);
+            // Use byte frequency data for more visible response
+            const bufferLength = audioAnalyserRef.current.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
             audioAnalyserRef.current.getByteFrequencyData(dataArray);
-            
+
+            // Calculate average of frequency data
             let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
+            for (let i = 0; i < bufferLength; i++) {
               sum += dataArray[i];
             }
-            const average = (sum / dataArray.length) * 2;
+            const average = sum / bufferLength;
+
+            // Scale to 0-100 range with amplification
+            const level = Math.min(100, (average / 255) * 400);
 
             if (audioLevelIndicatorRef.current) {
-              audioLevelIndicatorRef.current.style.width = `${Math.min(100, average)}%`;
+              audioLevelIndicatorRef.current.style.width = `${level}%`;
             }
-            
+            // Update audio level state for the mic bars indicator
+            setAudioLevel(level);
+
             if (audioEnabledRef.current) {
               monitoringAnimationRef.current = requestAnimationFrame(monitorLevels);
             }
           }
         };
+
+        audioEnabledRef.current = true;
 
         setMediaState(prev => ({
           ...prev,
@@ -418,6 +476,173 @@ function MediaSetupStep({
 
     updateMediaReadyState();
   };
+
+  // Voice Test Recording Functions
+  const startRecording = () => {
+    if (!mediaState.audioTestStream) {
+      setError("Please enable audio first before recording a voice test.");
+      setOpenSnackbar(true);
+      return;
+    }
+
+    // Clear previous recording
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+      setRecordedAudioUrl(null);
+      setRecordedAudioBlob(null);
+    }
+
+    recordedChunksRef.current = [];
+    setRecordingDuration(0);
+    setVoiceTestComplete(false);
+
+    // Get supported MIME type
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+      'audio/wav'
+    ];
+
+    let selectedMimeType = '';
+    for (const mimeType of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        selectedMimeType = mimeType;
+        break;
+      }
+    }
+
+    try {
+      const mediaRecorder = new MediaRecorder(mediaState.audioTestStream, {
+        mimeType: selectedMimeType || undefined
+      });
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, {
+          type: selectedMimeType || 'audio/webm'
+        });
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioBlob(blob);
+        setRecordedAudioUrl(url);
+        setIsRecording(false);
+
+        // Clear the timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        setSuccess("Recording complete! Click play to listen to your voice.");
+        setOpenSnackbar(true);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(100); // Collect data every 100ms
+      setIsRecording(true);
+
+      // Start recording duration timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => {
+          if (prev >= MAX_RECORDING_DURATION - 1) {
+            stopRecording();
+            return MAX_RECORDING_DURATION;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      setError("Failed to start recording. Please try again.");
+      setOpenSnackbar(true);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const playRecording = () => {
+    if (!recordedAudioUrl) return;
+
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current = null;
+    }
+
+    const audio = new Audio(recordedAudioUrl);
+    playbackAudioRef.current = audio;
+
+    audio.onplay = () => setIsPlaying(true);
+    audio.onended = () => {
+      setIsPlaying(false);
+      setVoiceTestComplete(true);
+    };
+    audio.onpause = () => setIsPlaying(false);
+    audio.onerror = (e) => {
+      console.error("Playback error:", e);
+      setIsPlaying(false);
+      setError("Failed to play recording. Please try recording again.");
+      setOpenSnackbar(true);
+    };
+
+    audio.play().catch(err => {
+      console.error("Failed to play audio:", err);
+      setError("Failed to play recording. Please try again.");
+      setOpenSnackbar(true);
+    });
+  };
+
+  const stopPlayback = () => {
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current.currentTime = 0;
+      setIsPlaying(false);
+    }
+  };
+
+  const resetVoiceTest = () => {
+    stopPlayback();
+    stopRecording();
+
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+    }
+
+    setRecordedAudioUrl(null);
+    setRecordedAudioBlob(null);
+    setRecordingDuration(0);
+    setVoiceTestComplete(false);
+  };
+
+  // Cleanup voice test resources on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      if (playbackAudioRef.current) {
+        playbackAudioRef.current.pause();
+      }
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
+    };
+  }, [recordedAudioUrl]);
 
   // Permission Help Component with Screenshots
   const PermissionHelpGuide = () => (
@@ -688,23 +913,185 @@ function MediaSetupStep({
                   <Typography variant="caption" sx={{ color: '#64748b', mb: 0.5, display: 'block' }}>
                     Microphone Level
                   </Typography>
-                  <Box sx={{ 
-                    width: '100%', 
-                    height: 8, 
-                    bgcolor: '#e2e8f0', 
+                  <Box sx={{
+                    width: '100%',
+                    height: 8,
+                    bgcolor: '#e2e8f0',
                     borderRadius: 1,
                     overflow: 'hidden'
                   }}>
-                    <Box 
+                    <Box
                       ref={audioLevelIndicatorRef}
-                      sx={{ 
-                        height: '100%', 
-                        width: '0%', 
+                      sx={{
+                        height: '100%',
+                        width: '0%',
                         bgcolor: '#1de9b6',
                         transition: 'width 0.1s ease'
-                      }} 
+                      }}
                     />
                   </Box>
+                </Box>
+              )}
+
+              {/* Voice Test Section */}
+              {mediaState.audioEnabled && (
+                <Box
+                  sx={{
+                    mt: 3,
+                    p: 2,
+                    bgcolor: '#f8fafc',
+                    borderRadius: 2,
+                    border: '1px dashed #e2e8f0'
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={1} mb={1}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Speaker Test
+                    </Typography>
+                    {voiceTestComplete && (
+                      <CheckCircle sx={{ color: '#1de9b6', fontSize: 16, ml: 'auto' }} />
+                    )}
+                  </Box>
+
+                  <Typography variant="body2" sx={{ color: '#94a3b8', mb: 2, fontSize: '0.8rem' }}>
+                    Record a short message, then play it back to check your speakers.
+                  </Typography>
+
+                  {/* Recording Controls - Compact style */}
+                  <Box display="flex" alignItems="center" gap={1.5}>
+                    {!isRecording && !recordedAudioUrl && (
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={startRecording}
+                        startIcon={<FiberManualRecord sx={{ fontSize: 14, color: '#ef4444' }} />}
+                        sx={{
+                          py: 0.75,
+                          px: 1.5,
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          color: '#64748b',
+                          bgcolor: 'white',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 1.5,
+                          '&:hover': {
+                            bgcolor: '#fef2f2',
+                            borderColor: '#fecaca'
+                          }
+                        }}
+                      >
+                        Record
+                      </Button>
+                    )}
+
+                    {isRecording && (
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={stopRecording}
+                        startIcon={<Stop sx={{ fontSize: 14 }} />}
+                        sx={{
+                          py: 0.75,
+                          px: 1.5,
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          color: 'white',
+                          bgcolor: '#ef4444',
+                          borderRadius: 1.5,
+                          '&:hover': { bgcolor: '#dc2626' }
+                        }}
+                      >
+                        Stop ({recordingDuration}s)
+                      </Button>
+                    )}
+
+                    {recordedAudioUrl && !isRecording && (
+                      <>
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={isPlaying ? stopPlayback : playRecording}
+                          startIcon={isPlaying ? <Stop sx={{ fontSize: 14 }} /> : <PlayArrow sx={{ fontSize: 14 }} />}
+                          sx={{
+                            py: 0.75,
+                            px: 1.5,
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            color: isPlaying ? 'white' : '#64748b',
+                            bgcolor: isPlaying ? '#64748b' : 'white',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 1.5,
+                            '&:hover': {
+                              bgcolor: isPlaying ? '#475569' : '#f1f5f9',
+                              borderColor: '#cbd5e1'
+                            }
+                          }}
+                        >
+                          {isPlaying ? 'Stop' : 'Play'}
+                        </Button>
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={resetVoiceTest}
+                          sx={{
+                            py: 0.75,
+                            px: 1.5,
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            color: '#94a3b8',
+                            minWidth: 'auto',
+                            '&:hover': {
+                              bgcolor: '#f1f5f9',
+                              color: '#64748b'
+                            }
+                          }}
+                        >
+                          Redo
+                        </Button>
+                      </>
+                    )}
+                  </Box>
+
+                  {/* Recording Progress Bar */}
+                  {isRecording && (
+                    <Box sx={{ mt: 1.5 }}>
+                      <Box sx={{
+                        width: '100%',
+                        height: 3,
+                        bgcolor: '#fee2e2',
+                        borderRadius: 1,
+                        overflow: 'hidden'
+                      }}>
+                        <Box
+                          sx={{
+                            height: '100%',
+                            width: `${(recordingDuration / MAX_RECORDING_DURATION) * 100}%`,
+                            bgcolor: '#ef4444',
+                            transition: 'width 1s linear'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Status Messages */}
+                  {recordedAudioUrl && !isRecording && (
+                    <Box display="flex" alignItems="center" gap={1} mt={1.5}>
+                      {voiceTestComplete ? (
+                        <Typography variant="caption" sx={{ color: '#1de9b6', fontWeight: 500 }}>
+                          Speaker test passed
+                        </Typography>
+                      ) : isPlaying ? (
+                        <Typography variant="caption" sx={{ color: '#64748b' }}>
+                          Playing...
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                          Click Play to test speakers
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Box>
               )}
             </Box>
@@ -762,55 +1149,101 @@ function MediaSetupStep({
               </Card>
             )}
 
-            {/* Media Ready Status */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1e293b', mb: 1 }}>
-                Setup Status
+            {/* Setup Checklist */}
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1e293b', mb: 2 }}>
+                Setup Checklist
               </Typography>
-              <Box display="flex" alignItems="center" gap={1}>
-                <Box 
-                  sx={{ 
-                    width: 8, 
-                    height: 8, 
-                    bgcolor: mediaState.mediaReady ? '#1de9b6' : '#f59e0b', 
-                    borderRadius: '50%' 
-                  }} 
-                />
-                <Typography 
-                  variant="body2" 
-                  sx={{
-                    color: mediaState.mediaReady ? '#1de9b6' : '#f59e0b',
-                    fontWeight: 600
-                  }}
-                >
-                  {mediaState.mediaReady ? 
-                    "Media setup complete - ready to continue!" : 
-                    "Please enable audio to continue"
-                  }
-                </Typography>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {/* Audio Status */}
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: mediaState.audioEnabled ? '#ecfdf5' : '#f1f5f9',
+                      border: `2px solid ${mediaState.audioEnabled ? '#1de9b6' : '#e2e8f0'}`
+                    }}
+                  >
+                    {mediaState.audioEnabled && <CheckCircle sx={{ color: '#1de9b6', fontSize: 16 }} />}
+                  </Box>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: mediaState.audioEnabled ? '#1e293b' : '#64748b',
+                      fontWeight: mediaState.audioEnabled ? 600 : 400
+                    }}
+                  >
+                    Microphone enabled
+                  </Typography>
+                </Box>
+
+                {/* Voice Test Status */}
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: voiceTestComplete ? '#ecfdf5' : '#f1f5f9',
+                      border: `2px solid ${voiceTestComplete ? '#1de9b6' : '#e2e8f0'}`
+                    }}
+                  >
+                    {voiceTestComplete && <CheckCircle sx={{ color: '#1de9b6', fontSize: 16 }} />}
+                  </Box>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: voiceTestComplete ? '#1e293b' : '#64748b',
+                      fontWeight: voiceTestComplete ? 600 : 400
+                    }}
+                  >
+                    Voice test completed
+                  </Typography>
+                </Box>
+
+                {/* Video Status (Optional) */}
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: mediaState.cameraEnabled ? '#ecfdf5' : '#f1f5f9',
+                      border: `2px solid ${mediaState.cameraEnabled ? '#1de9b6' : '#e2e8f0'}`
+                    }}
+                  >
+                    {mediaState.cameraEnabled && <CheckCircle sx={{ color: '#1de9b6', fontSize: 16 }} />}
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: mediaState.cameraEnabled ? '#1e293b' : '#64748b',
+                        fontWeight: mediaState.cameraEnabled ? 600 : 400
+                      }}
+                    >
+                      Camera enabled
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                      (optional)
+                    </Typography>
+                  </Box>
+                </Box>
               </Box>
             </Box>
 
-            {/* Instructions */}
-            <Alert 
-              severity="info" 
-              sx={{ 
-                mt: 3,
-                bgcolor: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                '& .MuiAlert-message': { width: '100%' }
-              }}
-            >
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Setup Instructions:
-              </Typography>
-              <Box component="ol" sx={{ m: 0, pl: 2 }}>
-                <li>Click "Enable Audio" and grant microphone access</li>
-                <li>Speak to test your microphone level</li>
-                <li>Optionally enable your camera for video</li>
-                <li>Click "Continue to Interview" when ready</li>
-              </Box>
-            </Alert>
           </Box>
         </Grid>
 
@@ -823,21 +1256,25 @@ function MediaSetupStep({
               </Typography>
               {mediaState.audioEnabled && (
                 <Box display="flex" alignItems="center" gap={1}>
-                  <Typography variant="body2" color="#64748b">
-                    Mic:
-                  </Typography>
-                  <Box display="flex" gap={0.5}>
-                    {[...Array(4)].map((_, i) => (
-                      <Box 
-                        key={i}
-                        sx={{ 
-                          width: 4, 
-                          height: 16,
-                          bgcolor: i < 3 ? '#1de9b6' : '#e2e8f0',
-                          borderRadius: 1
-                        }} 
-                      />
-                    ))}
+                  <Mic sx={{ fontSize: 18, color: '#64748b' }} />
+                  <Box display="flex" gap={0.5} alignItems="flex-end" sx={{ height: 20 }}>
+                    {[...Array(5)].map((_, i) => {
+                      // Each bar represents a threshold: 5%, 20%, 40%, 60%, 80%
+                      const thresholds = [5, 20, 40, 60, 80];
+                      const isActive = audioLevel >= thresholds[i];
+                      return (
+                        <Box
+                          key={i}
+                          sx={{
+                            width: 4,
+                            height: 6 + i * 3, // Progressive heights: 6, 9, 12, 15, 18
+                            bgcolor: isActive ? '#1de9b6' : '#e2e8f0',
+                            borderRadius: 0.5,
+                            transition: 'background-color 0.1s ease'
+                          }}
+                        />
+                      );
+                    })}
                   </Box>
                 </Box>
               )}
@@ -959,7 +1396,7 @@ function MediaSetupStep({
           variant="contained"
           size="large"
           onClick={onNextStep}
-          disabled={!mediaState.mediaReady || isLoading || isConnecting || videoLoading}
+          disabled={!isSetupComplete || isLoading || isConnecting || videoLoading}
           endIcon={isConnecting ? <CircularProgress size={20} /> : <ArrowForward />}
           sx={{
             py: 1.5,
@@ -983,10 +1420,14 @@ function MediaSetupStep({
           {isConnecting ? "Connecting..." : "Continue to Interview"}
         </Button>
       </Box>
-        
-      {!mediaState.mediaReady && !isConnecting && !videoLoading && (
+
+      {!isSetupComplete && !isConnecting && !videoLoading && (
         <Typography variant="body2" color="#64748b" textAlign="center" mt={2}>
-          Please enable audio to continue
+          {!mediaState.audioEnabled
+            ? "Please enable audio to continue"
+            : !voiceTestComplete
+            ? "Please complete the voice test (record and playback) to continue"
+            : ""}
         </Typography>
       )}
       

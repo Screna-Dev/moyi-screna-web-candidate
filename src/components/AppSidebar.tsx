@@ -13,7 +13,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { User, Briefcase, Target, DollarSign, LogOut, GraduationCap, Users, Settings, ShieldCheck, Gift } from 'lucide-react';
+import { User, Briefcase, Target, DollarSign, LogOut, Settings, Users, ShieldCheck, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Logo from "@/assets/logo.png"
 
@@ -32,8 +32,9 @@ const mentorNavItems = [
 ];
 
 const adminNavItems = [
-  { title: 'Admin Dashboard', url: '/admin', icon: ShieldCheck },
-  { title: 'Admin Redeem Codes', url: '/redeem-code', icon: Gift}
+  { title: 'Dashboard', url: '/admin', icon: ShieldCheck },
+  { title: 'Redeem Codes', url: '/redeem-code', icon: Gift},
+  { title: 'Audit Log', url:'/audit-logs', icon: Settings}
 ];
 
 export function AppSidebar() {

@@ -8,6 +8,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { UserPlanProvider } from "./hooks/useUserPlan";
 import { AuthLayout } from "./components/AuthLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import BuildInfo from "./components/BuildInfo";
 
 // Lazy load all pages
 const Landing = lazy(() => import("./pages/Landing"));
@@ -37,6 +38,7 @@ const Admin = lazy(()=> import("./pages/Admin"))
 const Career = lazy(()=> import("./pages/Career"))
 const PaymentSuccess = lazy(()=> import("./pages/PaymentSuccess"))
 const AdminRedeemCodes = lazy(()=> import ("./pages/AdminRedeemCodes"))
+const AdminAuditLogs = lazy(()=> import ("./pages/AdminAuditLogs"))
 
 const queryClient = new QueryClient();
 
@@ -55,6 +57,7 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
+            <BuildInfo />
             <Suspense fallback={<LoadingFallback />}>
               <Routes>
                 {/* Public routes */}
@@ -88,6 +91,7 @@ const App = () => (
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/admin" element={<Admin />} />
                   <Route path="/redeem-code" element={<AdminRedeemCodes />} />
+                  <Route path="/audit-logs" element={<AdminAuditLogs />} />
                   <Route path="/payment/success" element={<PaymentSuccess />} />
                 </Route>
                 
