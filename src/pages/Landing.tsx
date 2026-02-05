@@ -95,10 +95,10 @@ export default function Landing() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="animate-fade-in">
               <h1 className="text-5xl lg:text-6xl font-bold mb-6 leading-tight">
-                Ace Your Interview with Structured Preparation
+                Accelerate Your Tech Career with AI Readiness Metrics
               </h1>
               <p className="text-xl text-muted-foreground mb-8">
-                Comprehensive, multi-dimensional training with AI-powered practice, tailored preparation paths, and daily job insights — your all-in-one interview preparation platform.
+                Get AI-powered Readiness Metrics for technical interviews — personalized Training Plans with skill gap analysis, progress tracking, and smart job matching for your target role.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <Button size="lg" className="gradient-primary shadow-glow hover:scale-105 transition-all" asChild>
@@ -205,8 +205,8 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
               <Brain className="w-10 h-10 text-primary mb-4" />
-              <h3 className="font-bold mb-2">AI-Assisted Preparation</h3>
-              <p className="text-sm text-muted-foreground">Auto-generated session lists tailored to your target role and interview date</p>
+              <h3 className="font-bold mb-2">AI Training Plans</h3>
+              <p className="text-sm text-muted-foreground">Auto-generated training sessions with readiness metrics tailored to your target role</p>
             </Card>
             <Card className="p-6 bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all border-primary/20">
               <Users className="w-10 h-10 text-primary mb-4" />
@@ -230,13 +230,13 @@ export default function Landing() {
               <img src={aiBrain} alt="AI Interview Demo" className="rounded-2xl shadow-card w-full" />
             </div>
             <div>
-              <h2 className="text-3xl font-bold mb-4">See Your Progress Dashboard</h2>
+              <h2 className="text-3xl font-bold mb-4">Track Your Readiness Metrics</h2>
               <p className="text-muted-foreground mb-6">
-                Track your profile score, session completion, and performance improvements in real-time as you prepare for your target interview.
+                Monitor your skill scores, training completion, and performance improvements in real-time as you progress through your Training Plan.
               </p>
               <img src={dashboardPreview} alt="Progress Dashboard" className="rounded-xl shadow-card mb-6" />
               <Button className="gradient-primary" asChild>
-                <Link to="/auth">Start Your Prep Journey</Link>
+                <Link to="/auth">Start Your Training Plan</Link>
               </Button>
             </div>
           </div>
@@ -247,9 +247,9 @@ export default function Landing() {
       <section id="how-it-works" className="py-20 relative overflow-hidden">
         <div className="absolute inset-0 gradient-subtle opacity-50" />
         <div className="container mx-auto px-4 relative z-10">
-          <h2 className="text-4xl font-bold text-center mb-4">Your Preparation Journey</h2>
+          <h2 className="text-4xl font-bold text-center mb-4">How Your Plan Gets Built</h2>
           <p className="text-center text-muted-foreground mb-16 max-w-2xl mx-auto">
-            From registration to interview day — a complete preparation roadmap
+            AI analyzes your profile and generates a personalized learning roadmap in minutes
           </p>
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-4 gap-6">
@@ -257,29 +257,29 @@ export default function Landing() {
                 { 
                   step: "1", 
                   icon: FileText,
-                  title: "Upload & Profile", 
-                  desc: "Register, upload resume, set target job & interview date",
+                  title: "Set Your Goals", 
+                  desc: "Upload resume, select target role, company type & interview date",
                   color: "from-blue-500 to-cyan-500"
                 },
                 { 
                   step: "2", 
-                  icon: Target,
-                  title: "AI Scoring", 
-                  desc: "Get initial profile score based on your background",
+                  icon: Brain,
+                  title: "AI Generates Plan", 
+                  desc: "AI analyzes your skills gap and creates a tailored learning path",
                   color: "from-purple-500 to-pink-500"
                 },
                 { 
                   step: "3", 
-                  icon: Brain,
-                  title: "AI Sessions", 
-                  desc: "Auto-generated prep sessions matched to your role",
+                  icon: Target,
+                  title: "Follow Your Roadmap", 
+                  desc: "Daily tasks, coding challenges, and mock interviews scheduled for you",
                   color: "from-orange-500 to-red-500"
                 },
                 { 
                   step: "4", 
                   icon: TrendingUp,
-                  title: "Track Progress", 
-                  desc: "Complete sessions, get reports, improve your score",
+                  title: "Track & Adapt", 
+                  desc: "AI adjusts your plan based on progress and performance feedback",
                   color: "from-green-500 to-emerald-500"
                 }
               ].map((item, i) => (
@@ -310,51 +310,51 @@ export default function Landing() {
             <div className="mt-16 grid md:grid-cols-3 gap-6">
               <Card className="p-6 bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30">
                 <Video className="w-10 h-10 text-primary mb-3" />
-                <h3 className="font-bold mb-2">Post-Session Reports</h3>
-                <p className="text-sm text-muted-foreground">Question-by-question analysis with strengths, weaknesses, and improvement tips</p>
+                <h3 className="font-bold mb-2">Smart Progress Reports</h3>
+                <p className="text-sm text-muted-foreground">Detailed analysis after each session with actionable improvement suggestions</p>
               </Card>
               <Card className="p-6 bg-gradient-to-br from-secondary/10 to-primary/10 border-secondary/30">
                 <Users className="w-10 h-10 text-secondary mb-3" />
-                <h3 className="font-bold mb-2">Community Insights</h3>
-                <p className="text-sm text-muted-foreground">Browse real interview questions and experiences shared by the community</p>
+                <h3 className="font-bold mb-2">Community Interview Library</h3>
+                <p className="text-sm text-muted-foreground">Learn from real tech interview experiences shared by developers worldwide</p>
               </Card>
               <Card className="p-6 bg-gradient-to-br from-primary/10 to-accent/10 border-accent/30">
                 <Briefcase className="w-10 h-10 text-accent mb-3" />
-                <h3 className="font-bold mb-2">Job Recommendations</h3>
-                <p className="text-sm text-muted-foreground">Receive daily job matches tailored to your profile and target role</p>
+                <h3 className="font-bold mb-2">Daily Tech Job Matches</h3>
+                <p className="text-sm text-muted-foreground">Curated tech job opportunities matched to your skills and career goals</p>
               </Card>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Job Categories Grid */}
+      {/* Tech Career Tracks Grid */}
       <section id="categories" className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
-          <h2 className="text-4xl font-bold text-center mb-4">Choose Your Career Field</h2>
-          <p className="text-center text-muted-foreground mb-12">Tailored preparation sessions for professionals across all industries and roles</p>
+          <h2 className="text-4xl font-bold text-center mb-4">Choose Your Tech Career Track</h2>
+          <p className="text-center text-muted-foreground mb-12">Specialized Training Plans with role-specific readiness metrics</p>
           <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-10 gap-4 max-w-6xl mx-auto">
             {[
-              { role: "Software Engineer", icon: Code },
-              { role: "Product Manager", icon: Target },
-              { role: "Marketing", icon: TrendingUp },
-              { role: "Finance", icon: BarChart3 },
-              { role: "Sales", icon: Users },
-              { role: "Data Science", icon: Database },
-              { role: "UX Design", icon: Palette },
-              { role: "Project Mgmt", icon: Briefcase },
-              { role: "HR", icon: Users },
-              { role: "Consulting", icon: Award },
-              { role: "Account Mgmt", icon: CheckCircle2 },
-              { role: "Operations", icon: Layout },
-              { role: "Engineering", icon: Zap },
-              { role: "Legal", icon: Shield },
-              { role: "Healthcare", icon: Eye },
-              { role: "Education", icon: Brain },
-              { role: "Real Estate", icon: Globe },
-              { role: "Media", icon: Video },
-              { role: "Research", icon: TestTube },
-              { role: "Customer Success", icon: Trophy }
+              { role: "Frontend Dev", icon: Layout },
+              { role: "Backend Dev", icon: Database },
+              { role: "Full Stack", icon: Code },
+              { role: "DevOps", icon: Cloud },
+              { role: "Data Engineer", icon: Database },
+              { role: "Data Scientist", icon: BarChart3 },
+              { role: "ML Engineer", icon: Brain },
+              { role: "Cloud Architect", icon: Cloud },
+              { role: "Mobile Dev", icon: Smartphone },
+              { role: "QA Engineer", icon: TestTube },
+              { role: "Security Engineer", icon: Shield },
+              { role: "Site Reliability", icon: Zap },
+              { role: "Tech Lead", icon: Target },
+              { role: "Engineering Mgr", icon: Users },
+              { role: "Product Manager", icon: Briefcase },
+              { role: "UX/UI Designer", icon: Palette },
+              { role: "Solutions Architect", icon: Globe },
+              { role: "Database Admin", icon: Database },
+              { role: "Network Engineer", icon: Globe },
+              { role: "IT Consultant", icon: Award }
             ].map((cat) => (
               <Link key={cat.role} to="/auth" className="flex flex-col items-center p-3 rounded-xl hover:bg-primary/5 transition-all cursor-pointer group">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2 group-hover:bg-primary/20 transition-colors">
@@ -372,14 +372,14 @@ export default function Landing() {
         <div className="container mx-auto px-4">
           <h2 className="text-4xl font-bold text-center mb-4">Built for Every Experience Level</h2>
           <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-            Personalized prep sessions that adapt to your experience — from entry-level to executive roles
+            Personalized Training Plans that adapt to your experience — from entry-level to executive roles
           </p>
           <div className="grid md:grid-cols-4 gap-6 max-w-6xl mx-auto">
             {[
-              { title: "Entry-Level", outcome: "Build confidence with foundational interview prep and Q&A practice", icon: Rocket },
-              { title: "Mid-Level Professional", outcome: "Sharpen expertise and structured communication skills", icon: Trophy },
-              { title: "Senior Leadership", outcome: "Prepare for leadership scenarios and strategic problem-solving", icon: Award },
-              { title: "Specialized Roles", outcome: "Domain-specific prep sessions for any industry or function", icon: Target }
+              { title: "Entry-Level", outcome: "Build confidence with foundational training and skill assessments", icon: Rocket },
+              { title: "Mid-Level Professional", outcome: "Sharpen expertise with advanced readiness metrics and targeted sessions", icon: Trophy },
+              { title: "Senior Leadership", outcome: "Master leadership scenarios with strategic training modules", icon: Award },
+              { title: "Specialized Roles", outcome: "Domain-specific Training Plans for any tech function", icon: Target }
             ].map((persona) => (
               <Card key={persona.title} className="p-6 text-center bg-card/50 backdrop-blur-sm hover:shadow-glow transition-all hover:-translate-y-1 border-primary/20">
                 <persona.icon className="w-10 h-10 mx-auto mb-4 text-primary" />
@@ -453,7 +453,7 @@ export default function Landing() {
             </Card>
           </div>
           <p className="text-center text-sm text-muted-foreground mt-8">
-            GDPR compliant • Delete your data anytime • <Link to="/#" className="text-primary hover:underline">Privacy Policy</Link>
+            GDPR compliant • Delete your data anytime • <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
           </p>
         </div>
       </section>
@@ -465,11 +465,11 @@ export default function Landing() {
           <Carousel className="max-w-5xl mx-auto">
             <CarouselContent>
               {[
-                { name: "Sarah Chen", role: "Product Manager", company: "Tech Startup", quote: "I landed my dream PM role in 3 weeks after using the AI prep sessions. The structured approach made all the difference." },
-                { name: "Marcus Rodriguez", role: "Marketing Director", company: "Fortune 500", quote: "The personalized feedback gave me confidence. I improved my interview performance by 40% in two weeks." },
-                { name: "Emily Park", role: "Financial Analyst", company: "Investment Bank", quote: "Finally, a platform that understands what hiring managers look for. Connected me with my ideal role." },
-                { name: "David Kim", role: "Software Engineer", company: "FAANG", quote: "Screna AI helped me prepare for technical interviews. The AI feedback and practice sessions were invaluable." },
-                { name: "Lisa Johnson", role: "Sales Manager", company: "SaaS Company", quote: "The daily job matches feature showed me opportunities I never would have found. Game changer!" }
+                { name: "Kevin Zhang", role: "Senior Frontend Developer", company: "Meta", quote: "The system design practice sessions were exactly what I needed. Landed my dream role at a FAANG company after 4 weeks of prep." },
+                { name: "Priya Sharma", role: "DevOps Engineer", company: "AWS", quote: "The AI feedback on my technical explanations helped me articulate complex concepts clearly. Got promoted to Senior DevOps within months." },
+                { name: "Alex Chen", role: "Full Stack Developer", company: "Stripe", quote: "From coding challenges to behavioral questions, Screna AI covered everything. The personalized learning path was a game-changer." },
+                { name: "Maria Rodriguez", role: "Data Scientist", company: "Netflix", quote: "The ML-focused prep sessions helped me nail the technical rounds. The daily job matching found me opportunities I never knew existed." },
+                { name: "James Park", role: "Backend Engineer", company: "Google", quote: "Screna's system design modules and mock interviews gave me the confidence I needed. Received 3 offers from top tech companies!" }
               ].map((t) => (
                 <CarouselItem key={t.name} className="md:basis-1/2 lg:basis-1/3">
                   <Card className="p-6 h-full">
@@ -503,7 +503,7 @@ export default function Landing() {
             <div className="grid md:grid-cols-2 gap-8 items-center">
               <div>
                 <h2 className="text-3xl font-bold mb-4">Real Progress in 14 Days</h2>
-                <p className="mb-6 opacity-90">See how candidates improve their profile scores with structured AI preparation</p>
+                <p className="mb-6 opacity-90">See how candidates improve their readiness scores with structured AI Training Plans</p>
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between mb-2">
@@ -694,21 +694,21 @@ export default function Landing() {
           <h2 className="text-4xl font-bold text-center mb-12">Frequently Asked Questions</h2>
           <Accordion type="single" collapsible className="max-w-3xl mx-auto">
             <AccordionItem value="item-1">
-              <AccordionTrigger>How does the AI create my prep sessions?</AccordionTrigger>
+              <AccordionTrigger>How does the AI create my Training Plan?</AccordionTrigger>
               <AccordionContent>
-                After you upload your resume and set your target job, our AI analyzes your profile and generates a customized session list. Each session includes targeted questions aligned with your role, experience level, and interview timeline.
+                After you upload your resume and set your target job, our AI analyzes your profile and generates a customized Training Plan. Each session includes targeted questions aligned with your role, experience level, and readiness metrics.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-2">
               <AccordionTrigger>How does the experience library work?</AccordionTrigger>
               <AccordionContent>
-                Our experience library contains real interview questions and experiences shared by candidates across all industries. You can browse by company, role, or question type to learn from others and prepare more effectively.
+                Our experience library contains real interview questions and experiences shared by candidates across all industries. You can browse by company, role, or question type to learn from others and boost your readiness.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-3">
               <AccordionTrigger>What roles are supported?</AccordionTrigger>
               <AccordionContent>
-                We support all career fields including Technology, Business, Finance, Marketing, Sales, Operations, HR, and more. Each role has customized prep sessions with industry-specific questions and scenarios.
+                We support all tech career fields including Frontend, Backend, Full Stack, DevOps, Data Science, ML Engineering, and more. Each role has customized Training Plans with industry-specific readiness metrics.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-4">
@@ -720,13 +720,13 @@ export default function Landing() {
             <AccordionItem value="item-5">
               <AccordionTrigger>What's included in Premium?</AccordionTrigger>
               <AccordionContent>
-                Premium includes unlimited prep sessions, full access to the mentor database, daily job recommendations across all platforms, detailed post-session reports, and advanced progress analytics to track your improvement.
+                Premium includes unlimited Training Plans, full access to the community experience library, daily job recommendations across all platforms, detailed post-session reports, and advanced readiness metrics to track your improvement.
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="item-6">
-              <AccordionTrigger>How is my profile score calculated?</AccordionTrigger>
+              <AccordionTrigger>How are Readiness Metrics calculated?</AccordionTrigger>
               <AccordionContent>
-                Your profile score is initially calculated based on your resume, experience, and target role. As you complete prep sessions, the score is dynamically updated based on your performance, improvement trends, and session completion rate.
+                Your Readiness Score is initially calculated based on your resume, experience, and target role. As you complete Training Plan sessions, the score is dynamically updated based on your performance, improvement trends, and completion rate.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -738,14 +738,14 @@ export default function Landing() {
         <div className="container mx-auto px-4 text-center">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-4xl lg:text-5xl font-bold mb-6">
-              Join 10,000+ Professionals Preparing Smarter
+              Join 10,000+ Professionals Training Smarter
             </h2>
             <p className="text-xl text-muted-foreground mb-8">
-              Start your personalized prep journey and ace your next interview
+              Start your personalized Training Plan and ace your next interview
             </p>
             <Button size="xl" className="gradient-primary shadow-glow hover:shadow-glow hover:scale-105 transition-all duration-300 mb-4" asChild>
               <Link to="/auth">
-                Begin Your Preparation Journey
+                Get Your Training Plan
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
             </Button>
