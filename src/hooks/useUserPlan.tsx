@@ -14,6 +14,12 @@ export interface PlanUsageData {
   creditBalance: number;
   nextBillingDate: string | null;
   updatedAt: string | null;
+  trialExpiresAt: string | null;
+  isTrialActive: boolean;
+  effectivePlan: string | null;
+  trialDaysRemaining: number;
+  recurringCreditBalance: number;
+  permanentCreditBalance: number;
 }
 
 // Context value interface
@@ -53,6 +59,12 @@ const defaultPlanData: PlanUsageData = {
   creditBalance: 0,
   nextBillingDate: null,
   updatedAt: null,
+  trialExpiresAt: null,
+  isTrialActive: false,
+  effectivePlan: 'Free',
+  trialDaysRemaining: 0,
+  recurringCreditBalance: 0,
+  permanentCreditBalance: 0,
 };
 
 // Create context
@@ -98,6 +110,12 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
           creditBalance: response.data.data.creditBalance || 0,
           nextBillingDate: response.data.data.nextBillingDate || null,
           updatedAt: response.data.data.updatedAt || null,
+          trialExpiresAt: response.data.data.trialExpiresAt || null,
+          isTrialActive: response.data.data.isTrialActive || false,
+          effectivePlan: response.data.data.effectivePlan || 'Free',
+          trialDaysRemaining: response.data.data.trialDaysRemaining || 0,
+          recurringCreditBalance: response.data.data.recurringCreditBalance || 0,
+          permanentCreditBalance: response.data.data.permanentCreditBalance || 0,
         });
         setHasFetched(true);
       }
