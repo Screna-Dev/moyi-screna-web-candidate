@@ -70,7 +70,7 @@ const PlanUsageSettings = () => {
   } = useUpgradePrompt();
   
   // Derived values from context
-  const creditBalance = planData.creditBalance;
+  const creditBalance = planData.recurringCreditBalance + planData.permanentCreditBalance;
   const nextBillingDate = planData.nextBillingDate 
     ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : "Feb 1, 2024";
