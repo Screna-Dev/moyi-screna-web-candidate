@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -388,7 +388,34 @@ const PlanUsageSettings = () => {
   };
 
   const dialogContent = getDialogContent();
+  
+  const [transactions, setTransactions] = useState([]);
+  const [transactionPage, setTransactionPage] = useState(0);
+  const [transactionPageMeta, setTransactionPageMeta] = useState(null);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
+  const fetchTransactions = async () => {
+    setIsLoadingTransactions(true);
+    try {
+      const response = await PaymentService.getCreditUsage(transactionPage);
+      const result = response.data?.data || response.data;
+      setTransactions(result.content || []);
+      setTransactionPageMeta(result.pageMeta || null);
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load transaction history.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [transactionPage]);
   return (
     <div className="space-y-6">
       {/* Summary Card */}
@@ -961,6 +988,88 @@ const PlanUsageSettings = () => {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          {/* Transaction History */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>Transaction History</CardTitle>
+              <CardDescription>Recent credit transactions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingTransactions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : transactions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No transactions yet.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {transactions.map((tx, index) => {
+                      const isCredit = tx.transactionType === "CREDIT";
+                      return (
+                        <div key={tx.sourceId || index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                                isCredit ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                              }`}
+                            >
+                              {isCredit ? <Plus className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
+                            </div>
+                            <div>
+                              <p className="font-medium">{tx.description}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(tx.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className={`font-semibold ${isCredit ? "text-green-600" : "text-red-600"}`}>
+                              {isCredit ? "+" : ""}{tx.amount} credits
+                            </span>
+                            {(tx.recurringAmount > 0 || tx.permanentAmount > 0) && (
+                              <p className="text-xs text-muted-foreground">
+                                {tx.recurringAmount > 0 && `Recurring: ${tx.recurringAmount}`}
+                                {tx.recurringAmount > 0 && tx.permanentAmount > 0 && " · "}
+                                {tx.permanentAmount > 0 && `Permanent: ${tx.permanentAmount}`}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {transactionPageMeta && (
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        Page {transactionPageMeta.pageNumber + 1} of {transactionPageMeta.totalPages}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={transactionPageMeta.first}
+                          onClick={() => setTransactionPage((prev) => prev - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={transactionPageMeta.last}
+                          onClick={() => setTransactionPage((prev) => prev + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
