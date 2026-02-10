@@ -326,7 +326,6 @@ export default function Admin() {
                         <TableHead>User</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead>Last Active</TableHead>
-                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -377,11 +376,6 @@ export default function Admin() {
                               <span className="text-sm text-muted-foreground">
                                 {formatDate(user.lastActiveAt)}
                               </span>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className={getStatusColor(user.status)}>
-                                {user.status}
-                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))
