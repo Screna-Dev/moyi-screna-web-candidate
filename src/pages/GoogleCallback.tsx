@@ -48,7 +48,8 @@ export default function GoogleCallback() {
         console.log('Sending to backend:', { code, redirectUri });
         
         // Send code to backend
-        const response = await fetch(`/api/v1/auth/google/oauth2`, {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api/v1';
+        const response = await fetch(`${apiUrl}/auth/google/oauth2`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

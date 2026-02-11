@@ -13,8 +13,10 @@ export const createMeeting = (screeningId) => {
 
 export const getAudioWebSocketUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const baseUrl = process.env.REACT_APP_API_URL || 'localhost:8080';
-  return `${protocol}//${baseUrl}/api/v1/audio`;
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+  // Extract host from VITE_API_URL (e.g., "https://api-staging.screna.ai/api/v1" -> "api-staging.screna.ai")
+  const url = new URL(apiUrl);
+  return `${protocol}//${url.host}/api/v1/audio`;
 };
 
 export const submitBrowserEvents = (screeningId, meetingId, eventData) => {

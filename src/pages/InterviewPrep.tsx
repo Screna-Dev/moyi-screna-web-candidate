@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -132,6 +132,8 @@ interface ReportData {
 
 // Refresh interval in milliseconds (5 seconds)
 const REFRESH_INTERVAL = 5000;
+// Maximum number of auto-refresh attempts before stopping
+const MAX_REFRESH_ATTEMPTS = 60; // 5 minutes max (60 * 5s)
 
 const InterviewPrep = () => {
   const { toast } = useToast();
@@ -151,6 +153,7 @@ const InterviewPrep = () => {
   
   // Auto-refresh state
   const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
+  const refreshAttemptsRef = useRef(0);
   
   // Report state
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -422,22 +425,40 @@ const InterviewPrep = () => {
     loadTrainingPlans();
   }, []);
 
-  // Auto-refresh when there are unready plans
+  // Reset refresh attempts when plans change to all ready
   useEffect(() => {
-    if (hasUnreadyPlans && !isLoadingPlans) {
-      console.log("Starting auto-refresh for unready plans...");
-      
-      const interval = setInterval(() => {
-        console.log("Auto-refreshing training plans...");
-        loadTrainingPlans(false); // Don't show full loading state
-      }, REFRESH_INTERVAL);
-      
-      return () => {
-        console.log("Stopping auto-refresh");
-        clearInterval(interval);
-      };
+    if (!hasUnreadyPlans) {
+      refreshAttemptsRef.current = 0;
     }
-  }, [hasUnreadyPlans, isLoadingPlans, loadTrainingPlans]);
+  }, [hasUnreadyPlans]);
+
+  // Auto-refresh when there are unready plans (with max attempts)
+  useEffect(() => {
+    if (!hasUnreadyPlans || isLoadingPlans) return;
+    if (refreshAttemptsRef.current >= MAX_REFRESH_ATTEMPTS) {
+      console.log("Max auto-refresh attempts reached, stopping polling.");
+      return;
+    }
+
+    console.log(`Starting auto-refresh for unready plans (attempt ${refreshAttemptsRef.current + 1}/${MAX_REFRESH_ATTEMPTS})...`);
+
+    const interval = setInterval(() => {
+      refreshAttemptsRef.current += 1;
+      if (refreshAttemptsRef.current >= MAX_REFRESH_ATTEMPTS) {
+        console.log("Max auto-refresh attempts reached, stopping.");
+        clearInterval(interval);
+        return;
+      }
+      console.log(`Auto-refreshing training plans (attempt ${refreshAttemptsRef.current}/${MAX_REFRESH_ATTEMPTS})...`);
+      loadTrainingPlans(false);
+    }, REFRESH_INTERVAL);
+
+    return () => {
+      console.log("Stopping auto-refresh");
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnreadyPlans, isLoadingPlans]);
 
   // Set first job as selected when plans load
   useEffect(() => {
