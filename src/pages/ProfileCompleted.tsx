@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +58,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const ProfileCompleted = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [isEditing, setIsEditing] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -154,7 +157,15 @@ const ProfileCompleted = () => {
       const response = await ProfileService.uploadResume(pendingFile);
       const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
       const newResumePath = response.data?.data?.resume_path || response.data?.resume_path;
-      
+
+      // Track resume upload event
+      safeCapture(posthog, 'resume_uploaded', {
+        file_type: pendingFile.type,
+        file_size: pendingFile.size,
+        upload_source: 'profile_completed_page',
+        is_replacement: true,
+      });
+
       if (structuredResume) {
         setProfileData(structuredResume);
         if (newResumePath) {
