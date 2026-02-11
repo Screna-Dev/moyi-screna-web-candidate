@@ -948,42 +948,6 @@ function InterviewStep({
             
             <Grid item xs={12} md={4}>
               <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
-                {/* Interview Timer */}
-                {remainingTime !== null && interviewStarted && (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      bgcolor: remainingTime < 60 ? '#fee2e2' : '#eff6ff',
-                      border: `2px solid ${remainingTime < 60 ? '#fca5a5' : '#bfdbfe'}`,
-                      borderRadius: 2,
-                      px: 3,
-                      py: 2,
-                      minWidth: '140px'
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'uppercase', mb: 0.5 }}>
-                      Time Remaining
-                    </Typography>
-                    <Typography
-                      variant="h4"
-                      sx={{
-                        fontWeight: 700,
-                        color: remainingTime < 60 ? '#dc2626' : '#3b82f6',
-                        fontFamily: 'monospace',
-                        letterSpacing: '0.05em'
-                      }}
-                    >
-                      {formatTime(remainingTime)}
-                    </Typography>
-                    {remainingTime < 60 && remainingTime > 0 && (
-                      <Typography variant="caption" sx={{ color: '#dc2626', mt: 0.5 }}>
-                        Ending soon
-                      </Typography>
-                    )}
-                  </Box>
-                )}
 
                 {interviewStarted && (
                   <Chip
