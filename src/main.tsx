@@ -12,4 +12,34 @@ import "./index.css";
   VITE_API_PATH: import.meta.env.VITE_API_PATH,
 };
 
-createRoot(document.getElementById("root")!).render(<App />);
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("Root element not found");
+
+// PostHog initialization
+const posthogApiKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+
+createRoot(rootElement).render(
+  <React.StrictMode>
+    {posthogApiKey && posthogHost ? (
+      <PostHogProvider
+        apiKey={posthogApiKey}
+        options={{
+          api_host: posthogHost,
+          capture_exceptions: true,
+          debug: import.meta.env.MODE === "development",
+          loaded: (posthog) => {
+            if (import.meta.env.MODE === "development") {
+              console.log('[PostHog] Initialized successfully');
+            }
+          },
+          _capture_metrics: false,
+        }}
+      >
+        <App />
+      </PostHogProvider>
+    ) : (
+      <App />
+    )}
+  </React.StrictMode>
+);
