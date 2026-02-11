@@ -335,7 +335,7 @@ const InterviewPrep = () => {
 
     // Check if user has enough credits for the session duration
     const requiredCredits = selectedSessionPreview.duration || 30; // Default 30 mins if not specified
-    const availableCredits = planData?.creditBalance ?? 0;
+    const availableCredits = totalCredits ?? 0;
 
     if (availableCredits < requiredCredits) {
       toast({
@@ -700,7 +700,7 @@ const InterviewPrep = () => {
 
   // Check if current plan is ready
   const isCurrentPlanReady = currentPlan?.status === "active";
-
+  const totalCredits = planData?.recurringCreditBalance + planData?.permanentCreditBalance
   // Show loading state
   if (isLoadingPlans) {
     return (
@@ -1117,17 +1117,17 @@ const InterviewPrep = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-primary">{planData?.creditBalance ?? 0}</p>
+                      <p className="text-lg font-bold text-primary">{totalCredits ?? 0}</p>
                       <p className="text-xs text-muted-foreground">available</p>
                     </div>
                   </div>
                   
                   {/* Warning if insufficient credits */}
-                  {(planData?.creditBalance ?? 0) < (selectedSessionPreview.duration || 30) && (
+                  {(totalCredits ?? 0) < (selectedSessionPreview.duration || 30) && (
                     <div className="flex items-center gap-2 p-3 my-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
                       <AlertCircle className="h-4 w-4 flex-shrink-0" />
                       <p className="text-sm">
-                        Insufficient credits. You need {selectedSessionPreview.duration} credits but only have {planData?.creditBalance ?? 0}.
+                        Insufficient credits. You need {selectedSessionPreview.duration} credits but only have {totalCredits ?? 0}.
                       </p>
                     </div>
                   )}
@@ -1246,7 +1246,7 @@ const InterviewPrep = () => {
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                   Starting Retake...
                 </>
-              ) : (planData?.creditBalance ?? 0) < (selectedSessionPreview?.duration || 30) ? (
+              ) : (totalCredits ?? 0) < (selectedSessionPreview?.duration || 30) ? (
                 <>
                   <Crown className="h-5 w-5 mr-2" />
                   Upgrade Plan to Continue
@@ -1589,7 +1589,7 @@ const InterviewPrep = () => {
                             </div>
 
                             {categories.map((cat) => {
-                              const categorySessions = sessions.filter(
+                              const categorySessions = pendingSessions.filter(
                                 (s) => s.category?.toLowerCase() === cat.toLowerCase() ||
                                        s.topic?.toLowerCase() === cat.toLowerCase()
                               );
