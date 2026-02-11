@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,36 @@ import { toast } from "@/hooks/use-toast";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 import { PaymentService } from "@/services";
 
+type PlanName = "Free" | "Pro" | "Elite";
+
+interface Plan {
+  name: PlanName;
+  price: string;
+  period: string;
+  credits: string;
+  description: string;
+  features: string[];
+  current: boolean;
+  popular?: boolean;
+}
+
+interface Transaction {
+  sourceId?: string;
+  transactionType: "CREDIT" | "DEBIT";
+  description: string;
+  amount: number;
+  recurringAmount?: number;
+  permanentAmount?: number;
+  createdAt: string;
+}
+
+interface TransactionPageMeta {
+  pageNumber: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+}
+
 const PlanUsageSettings = () => {
   const [selectedCredits, setSelectedCredits] = useState(500);
   const [buyCreditsDialogOpen, setBuyCreditsDialogOpen] = useState(false);
@@ -48,7 +78,7 @@ const PlanUsageSettings = () => {
   
   // Plan change confirmation state
   const [planChangeDialogOpen, setPlanChangeDialogOpen] = useState(false);
-  const [selectedPlanToChange, setSelectedPlanToChange] = useState(null);
+  const [selectedPlanToChange, setSelectedPlanToChange] = useState<PlanName | null>(null);
   
   const posthog = usePostHog();
   
@@ -62,13 +92,25 @@ const PlanUsageSettings = () => {
     changePlan
   } = useUserPlan();
   
-  const { 
-    isUpgrade, 
-    isDowngrade, 
+  const {
+    // isUpgrade is available but not currently used
+    isDowngrade,
     isChangingPlan,
-    currentPlan 
+    currentPlan
   } = useUpgradePrompt();
-  
+
+  // Track plan viewed event when component mounts (only once)
+  const hasTrackedPlanView = useRef(false);
+  useEffect(() => {
+    if (!isLoading && currentPlan && !hasTrackedPlanView.current) {
+      hasTrackedPlanView.current = true;
+      safeCapture(posthog, 'plan_viewed', {
+        current_plan: currentPlan,
+        credit_balance: planData.recurringCreditBalance + planData.permanentCreditBalance,
+      });
+    }
+  }, [isLoading, currentPlan, posthog, planData.recurringCreditBalance, planData.permanentCreditBalance]);
+
   // Derived values from context
   const creditBalance = planData.recurringCreditBalance + planData.permanentCreditBalance;
   const nextBillingDate = planData.nextBillingDate 
@@ -79,7 +121,7 @@ const PlanUsageSettings = () => {
   const hasPendingChanges = planData.planDowngradePending || planData.subscriptionCancelPending;
   
   // Helper function to check if a specific plan button should be disabled
-  const isPlanButtonDisabled = (planName) => {
+  const isPlanButtonDisabled = (planName: PlanName): boolean => {
     // If it's the current plan, always disabled
     if (planName === currentPlan) {
       return true;
@@ -104,7 +146,7 @@ const PlanUsageSettings = () => {
   };
 
   // Helper to get button text for plan cards
-  const getPlanButtonContent = (plan) => {
+  const getPlanButtonContent = (plan: Plan) => {
     if (isChangingPlan) {
       return <Loader2 className="h-4 w-4 animate-spin" />;
     }
@@ -152,7 +194,7 @@ const PlanUsageSettings = () => {
   };
   
   // Total credits based on plan
-  const getTotalCredits = (plan) => {
+  const getTotalCredits = (plan: PlanName | undefined): number => {
     switch (plan) {
       case "Elite": return 500;
       case "Pro": return 200;
@@ -163,9 +205,9 @@ const PlanUsageSettings = () => {
   
   const totalCredits = getTotalCredits(currentPlan);
 
-  const plans = [
+  const plans: Plan[] = [
     {
-      name: "Free",
+      name: "Free" as PlanName,
       price: "$0",
       period: "/month",
       credits: "30",
@@ -180,7 +222,7 @@ const PlanUsageSettings = () => {
       current: currentPlan === "Free",
     },
     {
-      name: "Pro",
+      name: "Pro" as PlanName,
       price: "$19.9",
       period: "/month",
       credits: "200",
@@ -198,7 +240,7 @@ const PlanUsageSettings = () => {
       popular: true,
     },
     {
-      name: "Elite",
+      name: "Elite" as PlanName,
       price: "$39.9",
       period: "/month",
       credits: "500",
@@ -223,13 +265,13 @@ const PlanUsageSettings = () => {
     { credits: 800, price: 60, savings: "Save 25%" },
   ];
 
-  const calculatePrice = (credits) => {
+  const calculatePrice = (credits: number): string => {
     const pricePerCredit = currentPlan === "Elite" ? 0.07 : currentPlan === "Pro" ? 0.1 : 0.15;
     return (credits * pricePerCredit).toFixed(2);
   };
 
   // Handle plan change - shows confirmation dialog first
-  const handleChangePlan = (planName) => {
+  const handleChangePlan = (planName: PlanName): void => {
     setSelectedPlanToChange(planName);
     setPlanChangeDialogOpen(true);
   };
@@ -282,7 +324,7 @@ const PlanUsageSettings = () => {
   };
   
   // Get warning about features that will be lost
-  const getFeatureLossWarning = (targetPlan) => {
+  const getFeatureLossWarning = (targetPlan: PlanName): string | null => {
     if (targetPlan === "Free") {
       return "You will lose access to premium features including extended data retention, full reports, job matching, and reduced mentorship charges.";
     } else if (targetPlan === "Pro" && currentPlan === "Elite") {
@@ -292,7 +334,7 @@ const PlanUsageSettings = () => {
   };
 
   // Handle buy credits using context
-  const handleBuyCredits = async (credits) => {
+  const handleBuyCredits = async (credits: number): Promise<void> => {
     // Track payment started event for credit purchase
     safeCapture(posthog, 'payment_started', {
       action: 'buy_credits',
@@ -308,7 +350,7 @@ const PlanUsageSettings = () => {
     setBuyCreditsDialogOpen(false);
   };
 
-  const handleCustomCreditsChange = (value) => {
+  const handleCustomCreditsChange = (value: string): void => {
     const numValue = parseInt(value) || 0;
     if (numValue >= 0 && numValue <= 10000) {
       setCustomCreditsInput(value);
@@ -368,8 +410,9 @@ const PlanUsageSettings = () => {
       } else {
         throw new Error(response.data?.message || 'Failed to redeem code');
       }
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || "Failed to redeem code. Please try again.";
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || "Failed to redeem code. Please try again.";
       
       toast({
         title: "Redemption Failed",
@@ -388,10 +431,10 @@ const PlanUsageSettings = () => {
   };
 
   const dialogContent = getDialogContent();
-  
-  const [transactions, setTransactions] = useState([]);
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionPage, setTransactionPage] = useState(0);
-  const [transactionPageMeta, setTransactionPageMeta] = useState(null);
+  const [transactionPageMeta, setTransactionPageMeta] = useState<TransactionPageMeta | null>(null);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
   const fetchTransactions = async () => {
@@ -640,7 +683,7 @@ const PlanUsageSettings = () => {
                 id="promoCode"
                 type="text"
                 value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPromoCode(e.target.value.toUpperCase())}
                 placeholder="Enter your code"
                 className="text-lg uppercase"
                 disabled={isRedeeming}
@@ -701,7 +744,7 @@ const PlanUsageSettings = () => {
                 min="10"
                 max="10000"
                 value={customCreditsInput}
-                onChange={(e) => handleCustomCreditsChange(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCustomCreditsChange(e.target.value)}
                 placeholder="Enter credits amount"
                 className="text-lg"
                 disabled={isBuyingCredits}
@@ -964,7 +1007,7 @@ const PlanUsageSettings = () => {
                 </div>
                 <Slider
                   value={[selectedCredits]}
-                  onValueChange={(value) => setSelectedCredits(value[0])}
+                  onValueChange={(value: number[]) => setSelectedCredits(value[0])}
                   min={100}
                   max={2000}
                   step={100}
@@ -1031,11 +1074,11 @@ const PlanUsageSettings = () => {
                             <span className={`font-semibold ${isCredit ? "text-green-600" : "text-red-600"}`}>
                               {isCredit ? "+" : ""}{tx.amount} credits
                             </span>
-                            {(tx.recurringAmount > 0 || tx.permanentAmount > 0) && (
+                            {((tx.recurringAmount ?? 0) > 0 || (tx.permanentAmount ?? 0) > 0) && (
                               <p className="text-xs text-muted-foreground">
-                                {tx.recurringAmount > 0 && `Recurring: ${tx.recurringAmount}`}
-                                {tx.recurringAmount > 0 && tx.permanentAmount > 0 && " · "}
-                                {tx.permanentAmount > 0 && `Permanent: ${tx.permanentAmount}`}
+                                {(tx.recurringAmount ?? 0) > 0 && `Recurring: ${tx.recurringAmount}`}
+                                {(tx.recurringAmount ?? 0) > 0 && (tx.permanentAmount ?? 0) > 0 && " · "}
+                                {(tx.permanentAmount ?? 0) > 0 && `Permanent: ${tx.permanentAmount}`}
                               </p>
                             )}
                           </div>
