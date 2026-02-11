@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import { useState } from "react";
-=======
 import { useState, useEffect, useRef } from "react";
->>>>>>> 9da187e (feat: add posthog event to trace resume upload)
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -435,14 +431,11 @@ const PlanUsageSettings = () => {
   };
 
   const dialogContent = getDialogContent();
-<<<<<<< HEAD
-=======
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionPage, setTransactionPage] = useState(0);
   const [transactionPageMeta, setTransactionPageMeta] = useState<TransactionPageMeta | null>(null);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
->>>>>>> 9da187e (feat: add posthog event to trace resume upload)
 
   return (
     <div className="space-y-6">
@@ -1001,8 +994,6 @@ const PlanUsageSettings = () => {
               </div>
             </CardContent>
           </Card>
-<<<<<<< HEAD
-=======
           {/* Transaction History */}
           <Card className="border-0 shadow-sm">
             <CardHeader>
@@ -1085,7 +1076,6 @@ const PlanUsageSettings = () => {
               )}
             </CardContent>
           </Card>
->>>>>>> 9da187e (feat: add posthog event to trace resume upload)
         </TabsContent>
       </Tabs>
     </div>
