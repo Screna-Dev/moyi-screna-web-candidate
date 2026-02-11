@@ -33,6 +33,23 @@ jobs:
             echo "API_REWRITE_DEST=https://api-staging.screna.ai/api/v1/:path*" >> $GITHUB_ENV
           fi
 
+      - name: Update vercel.json with correct API rewrite
+        run: |
+          cat > vercel.json << EOF
+          {
+            "rewrites": [
+              {
+                "source": "/api/v1/:path*",
+                "destination": "${{ env.API_REWRITE_DEST }}"
+              },
+              {
+                "source": "/(.*)",
+                "destination": "/index.html"
+              }
+            ]
+          }
+          EOF
+
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
