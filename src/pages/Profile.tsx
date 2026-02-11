@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,6 +64,7 @@ interface ProfileData {
 const Profile = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,7 +128,14 @@ const Profile = () => {
 
       const response = await ProfileService.uploadResume(file);
       const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
-      
+
+      // Track resume upload event
+      safeCapture(posthog, 'resume_uploaded', {
+        file_type: file.type,
+        file_size: file.size,
+        upload_source: 'profile_page',
+      });
+
       if (structuredResume) {
         setProfileData(structuredResume);
         setHasProfileData(true);

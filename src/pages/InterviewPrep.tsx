@@ -210,8 +210,6 @@ const InterviewPrep = () => {
         plansData = response;
       }
       
-      console.log("Processed plans data:", plansData);
-      
       if (plansData && Array.isArray(plansData)) {
         setTrainingPlans(plansData);
         
@@ -220,8 +218,6 @@ const InterviewPrep = () => {
           console.log("No training plans found, navigating to empty state");
           navigate("/interview-prep/empty");
         } else {
-          console.log(`Loaded ${plansData.length} training plans`);
-          
           // Check if all plans are now ready
           const allReady = plansData.every((plan: any) => plan.status === "active");
           if (allReady && !showLoading) {
@@ -605,7 +601,6 @@ const InterviewPrep = () => {
 
   // Calculate overall success rate from focus areas
   const calculateSuccessRate = (plan: any): number => {
-    console.log("plan", plan)
     if (!plan?.focus_areas || plan.focus_areas.length === 0) return "N/A";
     
     const avgScore = plan.focus_areas.reduce((sum: number, area: any) => sum + (area.score || 0), 0) / plan.focus_areas.length;
@@ -618,8 +613,6 @@ const InterviewPrep = () => {
     if (!plan?.modules || plan.modules.length === 0) return 0;
     
     const completedModules = plan.modules.filter((m: any) => m.status === "completed").length;
-    console.log("plan:", completedModules)
-    console.log("modules length", plan.modules.length)
     return Math.round((completedModules / plan.modules.length) * 100);
   };
 
