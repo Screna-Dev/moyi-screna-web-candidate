@@ -32,4 +32,3 @@ dist-ssr
 .src/.claude
 .claude 
 .cursor 
-vercel.json
