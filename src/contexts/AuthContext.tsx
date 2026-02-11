@@ -53,7 +53,6 @@ const decodeToken = (token: string): User | null => {
     );
     
     const payload = JSON.parse(jsonPayload);
-    console.log(payload)
     // Extract role - check common JWT field names for admin status
     const role = payload.roles[0];
 
