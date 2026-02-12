@@ -31,7 +31,7 @@ const StickyNav = () => {
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Brain className="w-7 h-7 text-primary" />
-          <span className="font-bold text-xl">Screna AI staging</span>
+          <span className="font-bold text-xl">Screna AI</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm">
           <a href="#features" className="hover:text-primary transition-smooth">Features</a>
@@ -101,7 +101,7 @@ export default function Landing() {
                 Get AI-powered Readiness Metrics for technical interviews — personalized Training Plans with skill gap analysis, progress tracking, and smart job matching for your target role.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <Button size="lg" className="gradient-primary shadow-glow hover:scale-105 transition-all" asChild>
+                <Button size="lg" className="gradient-primbutterary shadow-glow hover:scale-105 transition-all" asChild>
                   <Link to="/auth">
                     Start Your Preparation Journey
                     <ArrowRight className="ml-2 w-5 h-5" />
