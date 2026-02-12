@@ -951,7 +951,7 @@ const PlanUsageSettings = () => {
           </Card>
 
           {/* Credit Packages */}
-          <Card className="border-0 shadow-sm">
+          {/* <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Buy Credit Packages</CardTitle>
               <CardDescription>Choose a pre-set package or customize your purchase</CardDescription>
@@ -1032,7 +1032,7 @@ const PlanUsageSettings = () => {
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
           {/* Transaction History */}
           <Card className="border-0 shadow-sm">
             <CardHeader>
