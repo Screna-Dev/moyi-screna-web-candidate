@@ -1,6 +1,4 @@
-import { rewrite } from '@vercel/edge';
-
-export default function middleware(request: Request) {
+export default async function middleware(request: Request) {
   const url = new URL(request.url);
 
   // Determine the backend origin from VITE_API_URL
@@ -9,8 +7,17 @@ export default function middleware(request: Request) {
     process.env.VITE_API_URL || 'https://api-staging.screna.ai/api/v1';
   const backendOrigin = new URL(apiUrl).origin;
 
-  // Rewrite to the backend, preserving path and query string
-  return rewrite(`${backendOrigin}${url.pathname}${url.search}`);
+  // Proxy the request to the backend, preserving path and query string
+  const targetUrl = `${backendOrigin}${url.pathname}${url.search}`;
+
+  const headers = new Headers(request.headers);
+  headers.set('host', new URL(apiUrl).host);
+
+  return fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: request.body,
+  });
 }
 
 export const config = {

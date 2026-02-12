@@ -29,6 +29,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Strip console.log from production builds (keeps console.error/warn)
+  esbuild: {
+    pure: ['console.log'],
+  },
   // Inject commit SHA as constant at build time
   define: {
     __VERCEL_COMMIT_SHA__: JSON.stringify(getCommitSha()),
