@@ -112,7 +112,7 @@ const PlanUsageSettings = () => {
   }, [isLoading, currentPlan, posthog, planData.recurringCreditBalance, planData.permanentCreditBalance]);
 
   // Derived values from context
-  const creditBalance = planData.recurringCreditBalance + planData.permanentCreditBalance;
+  const creditBalance = planData.creditBalance;
   const nextBillingDate = planData.nextBillingDate 
     ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : "Feb 1, 2024";
@@ -437,28 +437,6 @@ const PlanUsageSettings = () => {
   const [transactionPageMeta, setTransactionPageMeta] = useState<TransactionPageMeta | null>(null);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
-  const fetchTransactions = async () => {
-    setIsLoadingTransactions(true);
-    try {
-      const response = await PaymentService.getCreditUsage(transactionPage);
-      const result = response.data?.data || response.data;
-      setTransactions(result.content || []);
-      setTransactionPageMeta(result.pageMeta || null);
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load transaction history.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingTransactions(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTransactions();
-  }, [transactionPage]);
   return (
     <div className="space-y-6">
       {/* Summary Card */}
@@ -501,10 +479,9 @@ const PlanUsageSettings = () => {
                   <p className="text-sm text-muted-foreground">Credit Balance</p>
                   <h3 className="text-2xl font-bold text-primary">{creditBalance} credits</h3>
                   <Progress value={(creditBalance / totalCredits) * 100} className="h-2 mt-2" />
-                  <div className="flex gap-3 text-xs text-muted-foreground mt-1">
-                    <span>Recurring: {planData.recurringCreditBalance}</span>
-                    <span>Permanent: {planData.permanentCreditBalance}</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {creditBalance} of {totalCredits} remaining
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">This Month Usage</p>
@@ -918,22 +895,6 @@ const PlanUsageSettings = () => {
                 </div>
               </div>
               <Progress value={(creditBalance / totalCredits) * 100} className="h-3" />
-              <div className="flex gap-6 mt-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-primary/60" />
-                  <div>
-                    <p className="text-sm font-medium">{planData.recurringCreditBalance} credits</p>
-                    <p className="text-xs text-muted-foreground">Recurring (resets monthly)</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-                  <div>
-                    <p className="text-sm font-medium">{planData.permanentCreditBalance} credits</p>
-                    <p className="text-xs text-muted-foreground">Permanent (never expires)</p>
-                  </div>
-                </div>
-              </div>
               
               {/* Show notice if plan is changing */}
               {hasPendingChanges && (
@@ -950,89 +911,6 @@ const PlanUsageSettings = () => {
             </CardContent>
           </Card>
 
-          {/* Credit Packages */}
-          {/* <Card className="border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle>Buy Credit Packages</CardTitle>
-              <CardDescription>Choose a pre-set package or customize your purchase</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                {creditPackages.map((pkg) => (
-                  <div
-                    key={pkg.credits}
-                    className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => !isBuyingCredits && handleBuyCredits(pkg.credits)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl font-bold">{pkg.credits}</span>
-                      {pkg.savings && (
-                        <Badge variant="secondary" className="text-green-600">
-                          {pkg.savings}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">credits</p>
-                    <p className="text-xl font-semibold mt-2">${pkg.price}</p>
-                    <Button className="w-full mt-3" size="sm" disabled={isBuyingCredits}>
-                      {isBuyingCredits ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buy Now"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Custom Slider */}
-              <div className="p-4 rounded-lg border bg-muted/30">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-medium">Custom Amount</p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setSelectedCredits(Math.max(100, selectedCredits - 100))}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="text-2xl font-bold w-20 text-center">{selectedCredits}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setSelectedCredits(Math.min(2000, selectedCredits + 100))}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <Slider
-                  value={[selectedCredits]}
-                  onValueChange={(value: number[]) => setSelectedCredits(value[0])}
-                  min={100}
-                  max={2000}
-                  step={100}
-                  className="mb-4"
-                />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">100 credits</span>
-                  <span className="text-sm text-muted-foreground">2000 credits</span>
-                </div>
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Price</p>
-                    <p className="text-2xl font-bold">${calculatePrice(selectedCredits)}</p>
-                  </div>
-                  <Button
-                    onClick={() => handleBuyCredits(selectedCredits)}
-                    disabled={isBuyingCredits}
-                  >
-                    {isBuyingCredits ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Buy with Stripe
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card> */}
           {/* Transaction History */}
           <Card className="border-0 shadow-sm">
             <CardHeader>
