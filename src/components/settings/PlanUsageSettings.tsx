@@ -112,7 +112,7 @@ const PlanUsageSettings = () => {
   }, [isLoading, currentPlan, posthog, planData.recurringCreditBalance, planData.permanentCreditBalance]);
 
   // Derived values from context
-  const creditBalance = planData.creditBalance;
+  const creditBalance = planData.recurringCreditBalance + planData.permanentCreditBalance;
   const nextBillingDate = planData.nextBillingDate 
     ? new Date(planData.nextBillingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : "Feb 1, 2024";
@@ -437,6 +437,28 @@ const PlanUsageSettings = () => {
   const [transactionPageMeta, setTransactionPageMeta] = useState<TransactionPageMeta | null>(null);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
+  const fetchTransactions = async () => {
+    setIsLoadingTransactions(true);
+    try {
+      const response = await PaymentService.getCreditUsage(transactionPage);
+      const result = response.data?.data || response.data;
+      setTransactions(result.content || []);
+      setTransactionPageMeta(result.pageMeta || null);
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load transaction history.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [transactionPage]);
   return (
     <div className="space-y-6">
       {/* Summary Card */}
@@ -479,9 +501,10 @@ const PlanUsageSettings = () => {
                   <p className="text-sm text-muted-foreground">Credit Balance</p>
                   <h3 className="text-2xl font-bold text-primary">{creditBalance} credits</h3>
                   <Progress value={(creditBalance / totalCredits) * 100} className="h-2 mt-2" />
-                  <p className="text-xs text-muted-foreground">
-                    {creditBalance} of {totalCredits} remaining
-                  </p>
+                  <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                    <span>Recurring: {planData.recurringCreditBalance}</span>
+                    <span>Permanent: {planData.permanentCreditBalance}</span>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">This Month Usage</p>
@@ -895,6 +918,22 @@ const PlanUsageSettings = () => {
                 </div>
               </div>
               <Progress value={(creditBalance / totalCredits) * 100} className="h-3" />
+              <div className="flex gap-6 mt-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-primary/60" />
+                  <div>
+                    <p className="text-sm font-medium">{planData.recurringCreditBalance} credits</p>
+                    <p className="text-xs text-muted-foreground">Recurring (resets monthly)</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                  <div>
+                    <p className="text-sm font-medium">{planData.permanentCreditBalance} credits</p>
+                    <p className="text-xs text-muted-foreground">Permanent (never expires)</p>
+                  </div>
+                </div>
+              </div>
               
               {/* Show notice if plan is changing */}
               {hasPendingChanges && (
