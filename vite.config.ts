@@ -37,7 +37,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api/v1': {
-        target: 'https://api.screna.ai',
+        target: 'https://api-staging.screna.ai',
         changeOrigin: true,
         secure: true,
       },

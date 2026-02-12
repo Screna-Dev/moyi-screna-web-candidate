@@ -13,7 +13,7 @@ export const createMeeting = (screeningId) => {
 
 export const getAudioWebSocketUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const baseUrl = process.env.REACT_APP_API_URL || 'localhost:8080';
+  const baseUrl = window.location.host;
   return `${protocol}//${baseUrl}/api/v1/audio`;
 };
 

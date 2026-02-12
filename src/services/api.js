@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Create axios instance with base configuration
-// Use relative path '/api/v1' to leverage proxy (Vite dev server or Vercel rewrites)
+// Uses relative path '/api/v1' to leverage proxy (Vite dev server or Vercel rewrites)
 // This avoids CORS issues by routing requests through the same origin
 const API = axios.create({
   baseURL: '/api/v1',

@@ -96,6 +96,7 @@ export interface ApiTrainingPlan {
   progress: number;
   error: string;
   summary: string;
+  topics: string[];
   focus_areas: ApiFocusArea[];
   pending_modules: number;
   modules: ApiTrainingModule[];

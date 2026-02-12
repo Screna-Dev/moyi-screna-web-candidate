@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -132,6 +132,8 @@ interface ReportData {
 
 // Refresh interval in milliseconds (5 seconds)
 const REFRESH_INTERVAL = 5000;
+// Maximum number of auto-refresh attempts before stopping
+const MAX_REFRESH_ATTEMPTS = 60; // 5 minutes max (60 * 5s)
 
 const InterviewPrep = () => {
   const { toast } = useToast();
@@ -151,6 +153,7 @@ const InterviewPrep = () => {
   
   // Auto-refresh state
   const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
+  const refreshAttemptsRef = useRef(0);
   
   // Report state
   const [reportData, setReportData] = useState<ReportData | null>(null);
@@ -335,7 +338,7 @@ const InterviewPrep = () => {
 
     // Check if user has enough credits for the session duration
     const requiredCredits = selectedSessionPreview.duration || 30; // Default 30 mins if not specified
-    const availableCredits = planData?.creditBalance ?? 0;
+    const availableCredits = totalCredits ?? 0;
 
     if (availableCredits < requiredCredits) {
       toast({
@@ -422,22 +425,40 @@ const InterviewPrep = () => {
     loadTrainingPlans();
   }, []);
 
-  // Auto-refresh when there are unready plans
+  // Reset refresh attempts when plans change to all ready
   useEffect(() => {
-    if (hasUnreadyPlans && !isLoadingPlans) {
-      console.log("Starting auto-refresh for unready plans...");
-      
-      const interval = setInterval(() => {
-        console.log("Auto-refreshing training plans...");
-        loadTrainingPlans(false); // Don't show full loading state
-      }, REFRESH_INTERVAL);
-      
-      return () => {
-        console.log("Stopping auto-refresh");
-        clearInterval(interval);
-      };
+    if (!hasUnreadyPlans) {
+      refreshAttemptsRef.current = 0;
     }
-  }, [hasUnreadyPlans, isLoadingPlans, loadTrainingPlans]);
+  }, [hasUnreadyPlans]);
+
+  // Auto-refresh when there are unready plans (with max attempts)
+  useEffect(() => {
+    if (!hasUnreadyPlans || isLoadingPlans) return;
+    if (refreshAttemptsRef.current >= MAX_REFRESH_ATTEMPTS) {
+      console.log("Max auto-refresh attempts reached, stopping polling.");
+      return;
+    }
+
+    console.log(`Starting auto-refresh for unready plans (attempt ${refreshAttemptsRef.current + 1}/${MAX_REFRESH_ATTEMPTS})...`);
+
+    const interval = setInterval(() => {
+      refreshAttemptsRef.current += 1;
+      if (refreshAttemptsRef.current >= MAX_REFRESH_ATTEMPTS) {
+        console.log("Max auto-refresh attempts reached, stopping.");
+        clearInterval(interval);
+        return;
+      }
+      console.log(`Auto-refreshing training plans (attempt ${refreshAttemptsRef.current}/${MAX_REFRESH_ATTEMPTS})...`);
+      loadTrainingPlans(false);
+    }, REFRESH_INTERVAL);
+
+    return () => {
+      console.log("Stopping auto-refresh");
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnreadyPlans, isLoadingPlans]);
 
   // Set first job as selected when plans load
   useEffect(() => {
@@ -572,7 +593,7 @@ const InterviewPrep = () => {
   // Transform API modules to AI sessions format
   const getAISessions = (plan: any): AISession[] => {
     if (!plan?.modules) return [];
-    
+
     return plan.modules.map((module: any) => ({
       id: module.module_id || module.id,
       title: module.title,
@@ -587,6 +608,12 @@ const InterviewPrep = () => {
       session_outcome: module.session_outcome,
       session_config: module.session_config,
     }));
+  };
+
+  // Get session categories (topics) from the training plan
+  const getSessionCategories = (plan: any): string[] => {
+    if (!plan?.topics || !Array.isArray(plan.topics)) return [];
+    return plan.topics;
   };
 
   // Calculate category scores from focus areas
@@ -694,7 +721,7 @@ const InterviewPrep = () => {
 
   // Check if current plan is ready
   const isCurrentPlanReady = currentPlan?.status === "active";
-
+  const totalCredits = planData?.recurringCreditBalance + planData?.permanentCreditBalance
   // Show loading state
   if (isLoadingPlans) {
     return (
@@ -1111,17 +1138,17 @@ const InterviewPrep = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-primary">{planData?.creditBalance ?? 0}</p>
+                      <p className="text-lg font-bold text-primary">{totalCredits ?? 0}</p>
                       <p className="text-xs text-muted-foreground">available</p>
                     </div>
                   </div>
                   
                   {/* Warning if insufficient credits */}
-                  {(planData?.creditBalance ?? 0) < (selectedSessionPreview.duration || 30) && (
+                  {(totalCredits ?? 0) < (selectedSessionPreview.duration || 30) && (
                     <div className="flex items-center gap-2 p-3 my-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
                       <AlertCircle className="h-4 w-4 flex-shrink-0" />
                       <p className="text-sm">
-                        Insufficient credits. You need {selectedSessionPreview.duration} credits but only have {planData?.creditBalance ?? 0}.
+                        Insufficient credits. You need {selectedSessionPreview.duration} credits but only have {totalCredits ?? 0}.
                       </p>
                     </div>
                   )}
@@ -1240,7 +1267,7 @@ const InterviewPrep = () => {
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                   Starting Retake...
                 </>
-              ) : (planData?.creditBalance ?? 0) < (selectedSessionPreview?.duration || 30) ? (
+              ) : (totalCredits ?? 0) < (selectedSessionPreview?.duration || 30) ? (
                 <>
                   <Crown className="h-5 w-5 mr-2" />
                   Upgrade Plan to Continue
@@ -1538,77 +1565,223 @@ const InterviewPrep = () => {
                   </CardContent>
                 </Card>
 
-                {/* AI Sessions Grid */}
-                <div>
-                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <Brain className="h-6 w-6 text-primary" />
-                    AI Mock Interview Sessions
-                    {!isPlanReady && (
-                      <Badge variant="outline" className="ml-2 gap-1">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Generating
-                      </Badge>
-                    )}
-                  </h2>
-                  {!isPlanReady ? (
-                    <Card className="shadow-card">
-                      <CardContent className="text-center py-12">
+                {/* AI Sessions Grid with Category Tabs */}
+                <Card className="shadow-card">
+                  <CardHeader>
+                    <CardTitle className="text-2xl flex items-center gap-2">
+                      <Brain className="h-6 w-6 text-primary" />
+                      Training Plan Sessions
+                      {!isPlanReady && (
+                        <Badge variant="outline" className="ml-2 gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Generating
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>Practice with AI-powered sessions tailored to your target role</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {!isPlanReady ? (
+                      <div className="text-center py-12">
                         <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary animate-spin" />
                         <p className="text-muted-foreground font-medium">Generating your personalized interview sessions...</p>
                         <p className="text-sm text-muted-foreground mt-2">
                           Our AI is analyzing the job requirements and creating targeted practice sessions for you.
                         </p>
-                      </CardContent>
-                    </Card>
-                  ) : sessions.filter((s) => s.status === "pending" ).length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {sessions
-                          .filter((s) => s.status === "pending")
-                          .map((session) => (
-                        <Card key={session.id} className="shadow-card hover:shadow-glow transition-smooth">
-                          <CardHeader>
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <CardTitle className="text-lg">{session.title}</CardTitle>
-                                <CardDescription className="mt-1">{session.category}</CardDescription>
-                              </div>
+                      </div>
+                    ) : (() => {
+                      const categories = getSessionCategories(plan);
+                      const pendingSessions = sessions.filter((s) => s.status === "pending");
+
+                      if (categories.length > 0) {
+                        return (
+                          <Tabs defaultValue={categories[0]} className="w-full">
+                            <div className="flex flex-wrap gap-2 mb-6">
+                              {categories.map((cat) => (
+                                <TabsList key={cat} className="h-auto p-0 bg-transparent">
+                                  <TabsTrigger
+                                    value={cat}
+                                    className="px-4 py-2 rounded-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                                  >
+                                    {cat}
+                                  </TabsTrigger>
+                                </TabsList>
+                              ))}
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="flex gap-4 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-4 w-4" />
-                                {session.duration} min
-                              </span>
-                              <Badge className={getDifficultyColor(session.difficulty)}>
-                                {session.difficulty}
-                              </Badge>
-                            </div>
-                            
-                            {session.status === "pending" && (
-                              <Button 
-                                className="w-full gradient-primary"
-                                onClick={() => handleOpenSessionPreview(session)}
-                              >
-                                Start Session
-                              </Button>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <Card className="shadow-card">
-                      <CardContent className="text-center py-12">
-                        <Brain className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-muted-foreground">No AI sessions available yet</p>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          Your personalized training plan is being generated
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
+
+                            {categories.map((cat) => {
+                              const categorySessions = pendingSessions.filter(
+                                (s) => s.category?.toLowerCase() === cat.toLowerCase() ||
+                                       s.topic?.toLowerCase() === cat.toLowerCase()
+                              );
+                              return (
+                                <TabsContent key={cat} value={cat} className="space-y-4">
+                                  {categorySessions.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {categorySessions.map((session) => (
+                                        <Card key={session.id} className="shadow-card hover:shadow-glow transition-smooth">
+                                          <CardHeader>
+                                            <div className="flex justify-between items-start">
+                                              <div>
+                                                <CardTitle className="text-lg">{session.title}</CardTitle>
+                                                <CardDescription className="mt-1">{session.category}</CardDescription>
+                                              </div>
+                                              {session.status === "completed" && (
+                                                <Badge variant="secondary" className="bg-secondary/20">
+                                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                  Completed
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          </CardHeader>
+                                          <CardContent className="space-y-4">
+                                            <div className="flex gap-4 text-sm text-muted-foreground">
+                                              <span className="flex items-center gap-1">
+                                                <Clock className="h-4 w-4" />
+                                                {session.duration} min
+                                              </span>
+                                              <Badge className={getDifficultyColor(session.difficulty)}>
+                                                {session.difficulty}
+                                              </Badge>
+                                            </div>
+                                            {session.status === "completed" ? (
+                                              <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-sm font-medium">Score</span>
+                                                  <span className="text-2xl font-bold text-primary">{session.score} / 100</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex-1"
+                                                    onClick={() => handleOpenReport(session)}
+                                                  >
+                                                    <FileText className="h-4 w-4 mr-2" />
+                                                    View Report
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex-1"
+                                                    onClick={() => handleOpenSessionPreview(session)}
+                                                  >
+                                                    <PlayCircle className="h-4 w-4 mr-2" />
+                                                    Retake
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <Button
+                                                className="w-full gradient-primary"
+                                                onClick={() => handleOpenSessionPreview(session)}
+                                              >
+                                                <PlayCircle className="h-4 w-4 mr-2" />
+                                                Start Session
+                                              </Button>
+                                            )}
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-8 text-muted-foreground">
+                                      <Brain className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                      <p>No sessions for this category yet</p>
+                                    </div>
+                                  )}
+                                </TabsContent>
+                              );
+                            })}
+                          </Tabs>
+                        );
+                      }
+
+                      // Fallback: no topics defined, show flat grid
+                      if (pendingSessions.length > 0 || sessions.filter(s => s.status === "completed").length > 0) {
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {sessions.map((session) => (
+                              <Card key={session.id} className="shadow-card hover:shadow-glow transition-smooth">
+                                <CardHeader>
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <CardTitle className="text-lg">{session.title}</CardTitle>
+                                      <CardDescription className="mt-1">{session.category}</CardDescription>
+                                    </div>
+                                    {session.status === "completed" && (
+                                      <Badge variant="secondary" className="bg-secondary/20">
+                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        Completed
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  <div className="flex gap-4 text-sm text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-4 w-4" />
+                                      {session.duration} min
+                                    </span>
+                                    <Badge className={getDifficultyColor(session.difficulty)}>
+                                      {session.difficulty}
+                                    </Badge>
+                                  </div>
+                                  {session.status === "completed" ? (
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium">Score</span>
+                                        <span className="text-2xl font-bold text-primary">{session.score} / 100</span>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="flex-1"
+                                          onClick={() => handleOpenReport(session)}
+                                        >
+                                          <FileText className="h-4 w-4 mr-2" />
+                                          View Report
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="flex-1"
+                                          onClick={() => handleOpenSessionPreview(session)}
+                                        >
+                                          <PlayCircle className="h-4 w-4 mr-2" />
+                                          Retake
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      className="w-full gradient-primary"
+                                      onClick={() => handleOpenSessionPreview(session)}
+                                    >
+                                      <PlayCircle className="h-4 w-4 mr-2" />
+                                      Start Session
+                                    </Button>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="text-center py-12">
+                          <Brain className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                          <p className="text-muted-foreground">No AI sessions available yet</p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Your personalized training plan is being generated
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
 
                 {/* Past Sessions History */}
                 <Card className={`shadow-card ${!isPlanReady ? 'opacity-75' : ''}`}>
