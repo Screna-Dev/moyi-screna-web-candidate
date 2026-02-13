@@ -182,6 +182,29 @@ export const deactivateUser = (userId) => {
 // ============================================
 
 /**
+ * Get user billing info
+ * @param {string} userId - User ID
+ * @returns {Promise} API response with creditBalance (permanent) and recurringCreditBalance
+ */
+export const getUserBilling = (userId) => {
+  return API.get(`${BASE_URL}/users/${userId}/billing`);
+};
+
+/**
+ * Adjust user credits by delta
+ * Positive delta adds credits, negative delta deducts credits.
+ * @param {string} userId - User ID
+ * @param {Object} data - Billing update data
+ * @param {number} data.delta - Credit adjustment amount (required). Positive adds, negative deducts.
+ * @param {boolean} [data.recurring=false] - If true, adjusts recurring credits; otherwise adjusts permanent credits.
+ * @param {string} [data.reason] - Optional reason for the adjustment (e.g. "Manual adjustment")
+ * @returns {Promise} API response with { data: { creditBalance: number } }
+ */
+export const updateUserBilling = (userId, data) => {
+  return API.post(`${BASE_URL}/users/${userId}/billing`, data);
+};
+
+/**
  * Change user's billing plan
  * @param {string} userId - User ID
  * @param {string} planType - Plan type (Free, Pro, Elite)
@@ -246,6 +269,9 @@ const adminService = {
   resetUserPassword,
   // User Deactivation
   deactivateUser,
+  // User Billing
+  getUserBilling,
+  updateUserBilling,
   // User Plan Management
   changeUserPlan,
   // Redeem Code Management

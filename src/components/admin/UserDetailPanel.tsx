@@ -111,9 +111,18 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
                 <TrendingUp className="w-4 h-4" />
-                <span className="text-xs">Credits</span>
+                <span className="text-xs">Permanent Credits</span>
               </div>
-              <p className="font-semibold">{user?.creditBalance}</p>
+              <p className="font-semibold">{user?.creditBalance ?? 0}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                <TrendingUp className="w-4 h-4" />
+                <span className="text-xs">Recurring Credits</span>
+              </div>
+              <p className="font-semibold">{user?.recurringCreditBalance ?? 0}</p>
             </CardContent>
           </Card>
           {/* <Card>
