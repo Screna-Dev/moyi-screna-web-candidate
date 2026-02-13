@@ -54,6 +54,7 @@ import type { ProfileData } from "@/types/profile";
 import { calculateProfileCompleteness, VISA_STATUS_OPTIONS } from "@/types/profile";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 const ProfileCompleted = () => {
   const { toast } = useToast();
@@ -72,6 +73,8 @@ const ProfileCompleted = () => {
   const [showVisaStatusDialog, setShowVisaStatusDialog] = useState(false);
   const [tempVisaStatus, setTempVisaStatus] = useState<string>('');
   const [isSavingVisa, setIsSavingVisa] = useState(false);
+  const [showResumeAnalysis, setShowResumeAnalysis] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,7 +174,7 @@ const ProfileCompleted = () => {
         if (newResumePath) {
           setResumePath(newResumePath);
         }
-        
+
         // Check if visa status is missing and prompt user
         if (!structuredResume.profile.visa_status) {
           setTempVisaStatus('');
@@ -197,6 +200,10 @@ const ProfileCompleted = () => {
             });
           }
         }
+
+        // Show resume analysis dialog for job recommendations
+        setUploadedFileName(pendingFile.name);
+        setShowResumeAnalysis(true);
       }
     } catch (error) {
       console.error("Error uploading resume:", error);
@@ -902,6 +909,13 @@ const ProfileCompleted = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Resume Analysis Dialog */}
+      <ResumeAnalysisDialog
+        open={showResumeAnalysis}
+        onOpenChange={setShowResumeAnalysis}
+        fileName={uploadedFileName}
+      />
 
       {/* Visa Status Dialog */}
       <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>

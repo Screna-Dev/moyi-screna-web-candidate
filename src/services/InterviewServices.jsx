@@ -33,6 +33,12 @@ export const createTrainingPlanFromJobId = (jobId) => {
   });
 };
 
+export const createTrainingPlanFromJobTitle = (jobTitle) => {
+  return API.post(`${BASE_URL}`, {
+    jobTitle: jobTitle,
+  });
+};
+
 export const endTrainingModule = (moduleId)=> {
     return API.post(`${BASE_URL}/modules/${moduleId}`, {
     moduleId: moduleId,
@@ -50,6 +56,7 @@ const InterviewServices = {
   getTrainingPlanById,
   deleteTrainingPlan,
   createTrainingPlanFromJobId,
+  createTrainingPlanFromJobTitle,
   endTrainingModule,
   retakeTrainingModule
 };

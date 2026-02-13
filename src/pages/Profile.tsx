@@ -34,6 +34,7 @@ import {
 } from "@/types/profile";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 interface ProfileData {
   profile: {
@@ -76,6 +77,8 @@ const Profile = () => {
   const [showPasteDialog, setShowPasteDialog] = useState(false);
   const [showVisaStatusDialog, setShowVisaStatusDialog] = useState(false);
   const [pastedText, setPastedText] = useState("");
+  const [showResumeAnalysis, setShowResumeAnalysis] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
 
   useEffect(() => {
     fetchProfile();
@@ -165,6 +168,10 @@ const Profile = () => {
             });
           }
         }
+
+        // Show resume analysis dialog for job recommendations
+        setUploadedFileName(file.name);
+        setShowResumeAnalysis(true);
       } else {
         toast({
           title: "Warning",
@@ -607,6 +614,13 @@ const Profile = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Resume Analysis Dialog */}
+      <ResumeAnalysisDialog
+        open={showResumeAnalysis}
+        onOpenChange={setShowResumeAnalysis}
+        fileName={uploadedFileName}
+      />
 
       {/* Visa Status Dialog */}
       <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
