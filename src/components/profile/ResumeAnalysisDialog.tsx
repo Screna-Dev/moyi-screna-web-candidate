@@ -18,7 +18,6 @@ import {
   Sparkles,
   Briefcase,
   Plus,
-  X,
   Check,
   Target,
   ArrowRight,
@@ -41,18 +40,20 @@ interface ResumeAnalysisDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fileName?: string;
+  /** Skip the "analyzing" step and go straight to fetching recommendations */
+  skipAnalyzing?: boolean;
+  /** Callback when a training plan is successfully created (instead of navigating) */
+  onPlanCreated?: () => void;
 }
 
-const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDialogProps) => {
+const ResumeAnalysisDialog = ({ open, onOpenChange, fileName, skipAnalyzing, onPlanCreated }: ResumeAnalysisDialogProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<"analyzing" | "select" | "customize">("analyzing");
+  const [step, setStep] = useState<"analyzing" | "select" | "customize">(skipAnalyzing ? "select" : "analyzing");
   const [selectedJob, setSelectedJob] = useState<RecommendedJob | null>(null);
   const [customJobTitle, setCustomJobTitle] = useState("");
   const [customJobDescription, setCustomJobDescription] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [newTag, setNewTag] = useState("");
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [recommendedJobs, setRecommendedJobs] = useState<RecommendedJob[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,8 +62,12 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
 
   // Fetch job recommendations when dialog opens
   useEffect(() => {
-    if (open && step === "analyzing") {
-      fetchRecommendations();
+    if (open) {
+      const initialStep = skipAnalyzing ? "select" : "analyzing";
+      setStep(initialStep);
+      if (initialStep === "analyzing" || skipAnalyzing) {
+        fetchRecommendations();
+      }
     }
   }, [open]);
 
@@ -91,7 +96,6 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
     setSelectedJob(job);
     setCustomJobTitle(job.job_title);
     setCustomJobDescription(job.key_requirements.join(", "));
-    setTags(job.key_requirements.slice(0, 5));
     setStep("customize");
   };
 
@@ -100,26 +104,7 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
     setSelectedJob(null);
     setCustomJobTitle("");
     setCustomJobDescription("");
-    setTags([]);
     setStep("customize");
-  };
-
-  const handleAddTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()]);
-      setNewTag("");
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddTag();
-    }
   };
 
   const handleConfirm = async () => {
@@ -147,9 +132,13 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
 
       onOpenChange(false);
 
-      setTimeout(() => {
-        navigate("/interview-prep");
-      }, 500);
+      if (onPlanCreated) {
+        onPlanCreated();
+      } else {
+        setTimeout(() => {
+          navigate("/interview-prep");
+        }, 500);
+      }
     } catch (err: any) {
       toast({
         title: "Failed to create training plan",
@@ -169,12 +158,10 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
   };
 
   const resetDialog = () => {
-    setStep("analyzing");
+    setStep(skipAnalyzing ? "select" : "analyzing");
     setSelectedJob(null);
     setCustomJobTitle("");
     setCustomJobDescription("");
-    setTags([]);
-    setNewTag("");
     setIsAddingCustom(false);
     setRecommendedJobs([]);
     setError(null);
@@ -203,7 +190,7 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
           <DialogDescription>
             {step === "analyzing" && `Processing ${fileName || "your resume"} to find the best job matches`}
             {step === "select" && "Based on your experience, we recommend these positions for your interview prep"}
-            {step === "customize" && "Add tags and customize your target job details"}
+            {step === "customize" && "Customize your target job details"}
           </DialogDescription>
         </DialogHeader>
 
@@ -225,6 +212,23 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
         {step === "select" && (
           <ScrollArea className="max-h-[400px] pr-4">
             <div className="space-y-3">
+              {/* Custom Job Button - at the top */}
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleAddCustomJob}
+              >
+                <Plus className="w-4 h-4" />
+                Add Custom Job Title
+              </Button>
+
+              {isLoading && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-3">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading recommendations...</p>
+                </div>
+              )}
+
               {error && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -232,11 +236,15 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
                 </div>
               )}
 
-              {!error && recommendedJobs.length === 0 && !isLoading && (
+              {!error && !isLoading && recommendedJobs.length === 0 && (
                 <div className="text-center py-8 space-y-2">
                   <p className="text-muted-foreground">No recommendations found.</p>
-                  <p className="text-sm text-muted-foreground">You can add a custom job title below.</p>
+                  <p className="text-sm text-muted-foreground">You can add a custom job title above.</p>
                 </div>
+              )}
+
+              {!isLoading && recommendedJobs.length > 0 && (
+                <Separator className="my-2" />
               )}
 
               {recommendedJobs.map((job, index) => (
@@ -274,17 +282,6 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
                   </CardContent>
                 </Card>
               ))}
-
-              <Separator className="my-4" />
-
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={handleAddCustomJob}
-              >
-                <Plus className="w-4 h-4" />
-                Add Custom Job Title
-              </Button>
             </div>
           </ScrollArea>
         )}
@@ -311,41 +308,6 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName }: ResumeAnalysisDi
                 onChange={(e) => setCustomJobDescription(e.target.value)}
                 rows={4}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Add a tag and press Enter"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="flex-1"
-                />
-                <Button type="button" variant="outline" onClick={handleAddTag}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {tags.map((tag, idx) => (
-                    <Badge
-                      key={idx}
-                      variant="secondary"
-                      className="gap-1 pr-1"
-                    >
-                      {tag}
-                      <button
-                        onClick={() => handleRemoveTag(tag)}
-                        className="ml-1 hover:bg-muted rounded-full p-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
 
             <Separator />
