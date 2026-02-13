@@ -9,13 +9,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import type { AdminUser } from '@/data/adminMockData';
 import {
   CreditCard,
@@ -23,48 +16,95 @@ import {
   ExternalLink,
   TrendingUp,
   DollarSign,
-  Plus,
+  Loader2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { adminService } from '@/services';
+import { format } from 'date-fns';
 
 interface BillingTabProps {
   user: AdminUser;
 }
 
 export function BillingTab({ user }: BillingTabProps) {
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [billingData, setBillingData] = useState<any>(null);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
 
-  const filteredPayments = user?.payments?.filter((payment) => {
-    const matchesType = typeFilter === 'all' || payment.type === typeFilter;
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-    return matchesType && matchesStatus;
-  });
+  useEffect(() => {
+    const fetchBilling = async () => {
+      try {
+        setIsLoadingBilling(true);
+        const response = await adminService.getUserBilling(user.id);
+        if (response.data?.data) {
+          setBillingData(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch billing data:', err);
+      } finally {
+        setIsLoadingBilling(false);
+      }
+    };
+
+    if (user?.id) {
+      fetchBilling();
+    }
+  }, [user?.id]);
+
+  const permanentCredits = billingData?.creditBalance ?? user?.creditBalance ?? 0;
+  const recurringCredits = billingData?.recurringCreditBalance ?? user?.recurringCreditBalance ?? 0;
+  const totalCredits = permanentCredits + recurringCredits;
+
+  const invoices = billingData?.invoices?.content ?? [];
 
   const getPlanStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
+      case 'active':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'Past due':
+      case 'past_due':
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       case 'Canceled':
+      case 'canceled':
         return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getPaymentStatusColor = (status: string) => {
-    switch (status) {
-      case 'Paid':
+  const getInvoiceStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'paid':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'Failed':
+      case 'open':
+      case 'pending':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'failed':
+      case 'uncollectible':
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'Refunded':
+      case 'void':
+      case 'draft':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+      case 'refunded':
         return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'MMM d, yyyy');
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatCurrency = (amount: number | undefined, currency?: string) => {
+    if (amount == null) return '-';
+    const curr = currency?.toUpperCase() || 'USD';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: curr }).format(amount / 100);
   };
 
   return (
@@ -78,45 +118,45 @@ export function BillingTab({ user }: BillingTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Plan Name</p>
-              <p className="text-xl font-bold">{user?.plan?.name}</p>
-              <Badge variant="secondary" className="mt-1">
-                {user?.plan?.type}
-              </Badge>
+          {isLoadingBilling ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Billing Status</p>
-              <Badge className={getPlanStatusColor(user?.plan?.status)}>{user?.plan?.status}</Badge>
-              {user?.plan?.renewalDate && (
-                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  Renews: {user?.plan?.renewalDate}
-                </p>
-              )}
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Stripe IDs</p>
-              {user?.plan?.stripeCustomerId ? (
-                <div className="space-y-1 text-xs">
-                  <p className="font-mono">Customer: {user?.plan?.stripeCustomerId}</p>
-                  <p className="font-mono">Sub: {user?.plan?.stripeSubscriptionId}</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Plan Name</p>
+                  <p className="text-xl font-bold">{billingData?.planName ?? user?.planName ?? 'N/A'}</p>
+                  {billingData?.planType && (
+                    <Badge variant="secondary" className="mt-1">
+                      {billingData.planType}
+                    </Badge>
+                  )}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No Stripe account</p>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <Button variant="outline" size="sm" disabled={!user?.plan?.stripeCustomerId}>
-              <ExternalLink className="w-4 h-4 mr-1" />
-              Open in Stripe
-            </Button>
-            <Button variant="outline" size="sm" disabled={!user?.plan?.stripeCustomerId}>
-              Open Customer Portal
-            </Button>
-          </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Billing Status</p>
+                  <Badge className={getPlanStatusColor(billingData?.planStatus ?? user?.plan?.status)}>
+                    {billingData?.planStatus ?? user?.plan?.status ?? 'N/A'}
+                  </Badge>
+                  {(billingData?.renewalDate ?? user?.plan?.renewalDate) && (
+                    <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1">
+                      <Calendar className="w-4 h-4" />
+                      Renews: {formatDate(billingData?.renewalDate ?? user?.plan?.renewalDate)}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Stripe Customer ID</p>
+                  {(billingData?.subscription?.stripeCustomerId) ? (
+                    <p className="font-mono text-xs">{billingData?.subscription?.stripeCustomerId}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No Stripe account</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -129,138 +169,112 @@ export function BillingTab({ user }: BillingTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 rounded-lg bg-muted">
-              <p className="text-sm text-muted-foreground mb-1">Remaining</p>
-              <p className="text-3xl font-bold">{user?.credits?.remaining}</p>
+              <p className="text-sm text-muted-foreground mb-1">Permanent Credits</p>
+              <p className="text-3xl font-bold">{permanentCredits}</p>
+              <p className="text-xs text-muted-foreground mt-1">Non-expiring</p>
             </div>
             <div className="p-4 rounded-lg bg-muted">
-              <p className="text-sm text-muted-foreground mb-1">Used This Month</p>
-              <p className="text-3xl font-bold">{user?.credits?.usedThisMonth}</p>
+              <p className="text-sm text-muted-foreground mb-1">Recurring Credits</p>
+              <p className="text-3xl font-bold">{recurringCredits}</p>
+              <p className="text-xs text-muted-foreground mt-1">Resets every billing cycle</p>
             </div>
             <div className="p-4 rounded-lg bg-muted">
-              <p className="text-sm text-muted-foreground mb-1">Total Added</p>
-              <p className="text-3xl font-bold">
-                {user?.credits?.history.reduce((sum, h) => sum + h.creditsAdded, 0)}
-              </p>
+              <p className="text-sm text-muted-foreground mb-1">Total Credits</p>
+              <p className="text-3xl font-bold">{totalCredits}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {user?.credits?.history.length > 0 && (
-            <div>
-              <h4 className="font-medium mb-3">Credit History</h4>
+      {/* Payment History & Invoices */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <DollarSign className="w-5 h-5" />
+            Payment History & Invoices
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoadingBilling ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : invoices.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-50" />
+              <p>No invoices found</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Invoice Number</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead>Package</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Description</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Credits</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead>Stripe Invoice ID</TableHead>
+                    <TableHead>Stripe Event ID</TableHead>
+                    <TableHead>Invoice</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {user?.credits?.history.map((entry, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{entry.date}</TableCell>
-                      <TableCell>{entry.package}</TableCell>
-                      <TableCell>${entry.amount}</TableCell>
-                      <TableCell>
-                        <span className="flex items-center gap-1 text-green-600">
-                          <Plus className="w-3 h-3" />
-                          {entry.creditsAdded}
-                        </span>
+                  {invoices?.map((invoice: any, index: number) => (
+                    <TableRow key={invoice.stripeInvoiceId ?? index}>
+                      <TableCell className="font-mono text-xs whitespace-nowrap">
+                        {invoice.invoiceNumber ?? '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDate(invoice.createdAt)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {invoice.planName ?? '-'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={getPaymentStatusColor(entry.status)}>
-                          {entry.status}
+                        {invoice.description ?? '-'}
+                      </TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {formatCurrency(invoice.amount, invoice.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={getInvoiceStatusColor(invoice.status)}>
+                          {invoice.status ?? 'N/A'}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {invoice.reason ?? '-'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {invoice.stripeInvoiceId ?? '-'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {invoice.stripeEventId ?? '-'}
+                      </TableCell>
+                      <TableCell>
+                        {invoice.invoiceUrl ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto p-0 text-primary"
+                            onClick={() => window.open(invoice.invoiceUrl, '_blank')}
+                          >
+                            <ExternalLink className="w-3 h-3 mr-1" />
+                            View
+                          </Button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Payment History */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <DollarSign className="w-5 h-5" />
-              Payment History
-            </CardTitle>
-            <div className="flex gap-2">
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Subscription">Subscription</SelectItem>
-                  <SelectItem value="Credits purchase">Credits</SelectItem>
-                  <SelectItem value="Mentor session">Mentor</SelectItem>
-                  <SelectItem value="Refund">Refund</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="Paid">Paid</SelectItem>
-                  <SelectItem value="Failed">Failed</SelectItem>
-                  <SelectItem value="Refunded">Refunded</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredPayments?.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>No payment history</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments?.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>{payment.date}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{payment.type}</Badge>
-                    </TableCell>
-                    <TableCell>{payment.description}</TableCell>
-                    <TableCell className="font-medium">
-                      {payment.type === 'Refund' ? '-' : ''}${payment.amount}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {payment.paymentMethod || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={getPaymentStatusColor(payment.status)}>
-                        {payment.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           )}
         </CardContent>
       </Card>

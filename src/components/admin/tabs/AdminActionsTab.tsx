@@ -48,7 +48,7 @@ import {
   ShieldOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { banUser, changeUserPlan, resetUserPassword, deactivateUser } from '@/services/adminService';
+import { banUser, changeUserPlan, resetUserPassword, deactivateUser, updateUserBilling } from '@/services/adminService';
 
 interface AdminActionsTabProps {
   user: AdminUser;
@@ -81,6 +81,13 @@ export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
   // Deactivate state
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+
+  // Add credits state
+  const [addCreditsDialogOpen, setAddCreditsDialogOpen] = useState(false);
+  const [creditDelta, setCreditDelta] = useState('');
+  const [creditReason, setCreditReason] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [isAddingCredits, setIsAddingCredits] = useState(false);
 
   const handleAddTag = () => {
     if (newTag.trim() && !tags.includes(newTag.trim())) {
@@ -181,6 +188,36 @@ export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
       toast.error(error.response?.data?.message || 'Failed to deactivate user');
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  // Handle add/deduct credits
+  const handleAddCredits = async () => {
+    const delta = Number(creditDelta);
+    if (!delta || delta === 0) {
+      toast.error('Please enter a valid credit amount');
+      return;
+    }
+    try {
+      setIsAddingCredits(true);
+      const body: { delta: number; recurring?: boolean; reason?: string } = { delta };
+      if (isRecurring) body.recurring = true;
+      if (creditReason.trim()) body.reason = creditReason.trim();
+      await updateUserBilling(user.id, body);
+      const action = delta > 0 ? 'Added' : 'Deducted';
+      const absAmount = Math.abs(delta);
+      toast.success(
+        `${action} ${absAmount} ${isRecurring ? 'recurring' : 'permanent'} credits ${delta > 0 ? 'to' : 'from'} ${user.name}`
+      );
+      setAddCreditsDialogOpen(false);
+      setCreditDelta('');
+      setCreditReason('');
+      setIsRecurring(false);
+      onUserUpdated?.();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to adjust credits');
+    } finally {
+      setIsAddingCredits(false);
     }
   };
 
@@ -479,14 +516,89 @@ export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
                   <Percent className="w-4 h-4 mr-2" />
                   Apply Promo / Discount
                 </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => handleAction('Add credits')}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Credits Manually
-                </Button>
+                <Dialog open={addCreditsDialogOpen} onOpenChange={setAddCreditsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Credits Manually
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Adjust User Credits</DialogTitle>
+                      <DialogDescription>
+                        Adjust credits for {user?.name}'s account. Positive delta adds credits, negative delta deducts credits.
+                        Current balance:{' '}
+                        <span className="font-medium">{user?.creditBalance ?? 0} permanent</span>,{' '}
+                        <span className="font-medium">{user?.recurringCreditBalance ?? 0} recurring</span>
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">Delta (credit adjustment)</label>
+                        <Input
+                          type="number"
+                          placeholder="e.g. 50 to add, -20 to deduct"
+                          value={creditDelta}
+                          onChange={(e) => setCreditDelta(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Positive value adds credits, negative value deducts credits
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">Credit Type</label>
+                        <Select
+                          value={isRecurring ? 'recurring' : 'permanent'}
+                          onValueChange={(value) => setIsRecurring(value === 'recurring')}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="permanent">Permanent (non-expiring)</SelectItem>
+                            <SelectItem value="recurring">Recurring (resets every billing cycle)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">Reason (optional)</label>
+                        <Input
+                          placeholder="e.g. Manual adjustment, Compensation, etc."
+                          value={creditReason}
+                          onChange={(e) => setCreditReason(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setAddCreditsDialogOpen(false);
+                          setCreditDelta('');
+                          setCreditReason('');
+                          setIsRecurring(false);
+                        }}
+                        disabled={isAddingCredits}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddCredits}
+                        disabled={!creditDelta || isAddingCredits}
+                      >
+                        {isAddingCredits ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Adjusting...
+                          </>
+                        ) : (
+                          'Adjust Credits'
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
                 <Button
                   variant="outline"
                   className="w-full justify-start"
