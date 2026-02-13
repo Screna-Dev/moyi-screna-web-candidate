@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { InterviewService, ProfileService } from "../services";
 import { useToast } from "@/components/ui/use-toast";
+import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 const InterviewPrepEmpty = () => {
   const navigate = useNavigate();
@@ -179,94 +180,37 @@ const InterviewPrepEmpty = () => {
             )}
 
             {/* Add Target Job Card */}
-            <Dialog open={addJobModalOpen} onOpenChange={setAddJobModalOpen}>
-              <DialogTrigger asChild>
-                <Card className={`shadow-card hover:shadow-glow transition-smooth cursor-pointer group border-2 border-primary/50 ${!hasProfile ? 'opacity-60 pointer-events-none' : ''}`}>
-                  <CardHeader className="text-center">
-                    <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-primary flex items-center justify-center group-hover:scale-110 transition-smooth shadow-glow">
-                      <Target className="h-8 w-8 text-primary-foreground" />
-                    </div>
-                    <CardTitle>Add Target Job</CardTitle>
-                    <CardDescription>
-                      {hasProfile 
-                        ? "Set your target position to generate a custom preparation plan"
-                        : "Upload your resume first to unlock this feature"
-                      }
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-center">
-                    <Button 
-                      className="w-full gradient-primary shadow-glow"
-                      disabled={!hasProfile}
-                    >
-                      {hasProfile ? "Get Started" : "Resume Required"}
-                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Add Your Target Job</DialogTitle>
-                  <DialogDescription>Tell us about the position you're preparing for</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="jobTitle">Job Title</Label>
-                    <Input 
-                      id="jobTitle" 
-                      placeholder="e.g., Senior Product Manager" 
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="company">Company (Optional)</Label>
-                    <Input 
-                      id="company" 
-                      placeholder="e.g., Google" 
-                      value={company}
-                      onChange={(e) => setCompany(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="jobDescription">Job Description</Label>
-                    <Textarea 
-                      id="jobDescription" 
-                      placeholder="Paste the job description here..." 
-                      rows={4} 
-                      value={jobDescription}
-                      onChange={(e) => setJobDescription(e.target.value)}
-                    />
-                  </div>
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-                    <p className="text-sm flex items-start gap-2">
-                      <Sparkles className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                      <span>
-                        You can manage multiple target jobs once your first setup is complete. Each job gets its own
-                        personalized preparation plan.
-                      </span>
-                    </p>
-                  </div>
+            <Card
+              className={`shadow-card hover:shadow-glow transition-smooth cursor-pointer group border-2 border-primary/50 ${!hasProfile ? 'opacity-60 pointer-events-none' : ''}`}
+              onClick={() => hasProfile && setAddJobModalOpen(true)}
+            >
+              <CardHeader className="text-center">
+                <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-primary flex items-center justify-center group-hover:scale-110 transition-smooth shadow-glow">
+                  <Target className="h-8 w-8 text-primary-foreground" />
                 </div>
-                <div className="flex justify-end gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setAddJobModalOpen(false)}
-                    disabled={isLoading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    className="gradient-primary" 
-                    onClick={handleCreateTrainingPlan}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? "Generating..." : "Generate Plan"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                <CardTitle>Add Target Job</CardTitle>
+                <CardDescription>
+                  {hasProfile
+                    ? "Set your target position to generate a custom preparation plan"
+                    : "Upload your resume first to unlock this feature"
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-center">
+                <Button
+                  className="w-full gradient-primary shadow-glow"
+                  disabled={!hasProfile}
+                >
+                  {hasProfile ? "Get Started" : "Resume Required"}
+                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
+                </Button>
+              </CardContent>
+            </Card>
+            <ResumeAnalysisDialog
+              open={addJobModalOpen}
+              onOpenChange={setAddJobModalOpen}
+              skipAnalyzing
+            />
           </div>
 
           {/* Helper text when user doesn't have profile */}
