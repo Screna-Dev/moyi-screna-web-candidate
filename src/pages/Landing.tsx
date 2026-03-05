@@ -102,7 +102,7 @@ export default function Landing() {
                 Get AI-powered Readiness Metrics for technical interviews — personalized Training Plans with skill gap analysis, progress tracking, and smart job matching for your target role.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <Button size="lg" className="gradient-primbutterary shadow-glow hover:scale-105 transition-all" asChild>
+                <Button size="lg" className="gradient-primary shadow-glow hover:scale-105 transition-all" asChild>
                   <Link to="/auth">
                     Start Your Preparation Journey
                     <ArrowRight className="ml-2 w-5 h-5" />

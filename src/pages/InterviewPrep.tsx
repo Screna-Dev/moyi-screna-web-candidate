@@ -417,7 +417,9 @@ const InterviewPrep = () => {
       });
       
       // Normal start for pending sessions
-      navigate(`/interview/${selectedSessionPreview.id}`);
+      // navigate(`/interview/${selectedSessionPreview.id}`);
+      navigate(`/ai-mock?interviewId=${selectedSessionPreview.id}&mode=video`);
+
     }
   };
 
