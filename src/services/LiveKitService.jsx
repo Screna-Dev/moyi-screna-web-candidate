@@ -5,6 +5,8 @@ import {
   Track,
   createLocalVideoTrack,
   createLocalAudioTrack,
+  LocalAudioTrack,
+  LocalVideoTrack,
 } from 'livekit-client';
 
 class LiveKitService {
@@ -48,8 +50,18 @@ class LiveKitService {
     this._setupEventListeners();
 
     try {
+      // Capture reference before async operation — disconnect() may null this.room mid-connect
+      const roomRef = this.room;
       // Connect to LiveKit room
-      await this.room.connect(url, token);
+      await roomRef.connect(url, token);
+
+      // Guard: if disconnect() cleared this.room while we were connecting,
+      // recover by re-assigning roomRef (which is confirmed connected).
+      if (!this.room) {
+        console.warn('⚠️ Room ref was cleared during connect — recovering roomRef');
+        this.room = roomRef;
+      }
+
       console.log('✅ Connected to LiveKit room:', this.room.name);
       
       this.isConnected = true;
@@ -225,25 +237,25 @@ class LiveKitService {
     }
 
     try {
-      // Publish audio track if available
+      // Publish audio track if available.
+      // We use `new LocalAudioTrack(mediaStreamTrack)` directly instead of
+      // `createLocalAudioTrack({ track })` to avoid the LiveKit SDK calling
+      // structuredClone() on the options object — MediaStreamTrack cannot be
+      // structured-cloned (DataCloneError).
       if (audioStream) {
         const audioTracks = audioStream.getAudioTracks();
         if (audioTracks.length > 0) {
-          const audioTrack = await createLocalAudioTrack({
-            track: audioTracks[0],
-          });
+          const audioTrack = new LocalAudioTrack(audioTracks[0]);
           await this.room.localParticipant.publishTrack(audioTrack);
           console.log('✅ Audio track published');
         }
       }
 
-      // Publish video track if available
+      // Publish video track if available (same reason — use constructor directly).
       if (videoStream) {
         const videoTracks = videoStream.getVideoTracks();
         if (videoTracks.length > 0) {
-          const videoTrack = await createLocalVideoTrack({
-            track: videoTracks[0],
-          });
+          const videoTrack = new LocalVideoTrack(videoTracks[0]);
           await this.room.localParticipant.publishTrack(videoTrack);
           console.log('✅ Video track published');
         }
@@ -267,23 +279,26 @@ class LiveKitService {
   // Disconnect from room
   async disconnect(options = {}) {
     const { intentional = false } = options;
-    
+
     console.log(`🔌 Disconnecting from LiveKit (intentional: ${intentional})`);
 
-    if (this.room) {
+    // Capture before async — then clear synchronously so a racing connect()
+    // gets a clean slate and won't have its state overwritten by this async cleanup.
+    const roomToDisconnect = this.room;
+    this.room = null;
+    this.isConnected = false;
+    this.callbacks = {};
+
+    if (roomToDisconnect) {
       // Clean up audio elements
       document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
         console.log('🧹 Removing audio element:', el.id);
         el.remove();
       });
 
-      await this.room.disconnect();
-      this.room = null;
+      await roomToDisconnect.disconnect();
     }
 
-    this.isConnected = false;
-    this.callbacks = {};
-    
     console.log('✅ LiveKit disconnected');
   }
 }
