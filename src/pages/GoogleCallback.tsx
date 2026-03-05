@@ -97,8 +97,8 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
         
-        // Redirect to profile
-        navigate('/profile');
+        // Redirect to dashboard
+        navigate('/dashboard');
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);
