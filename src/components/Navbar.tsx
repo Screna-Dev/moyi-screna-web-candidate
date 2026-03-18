@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/newDesign/ui/button";
 import { Sparkles } from "lucide-react";
 import Logo from "@/assets/logo.png"
 export const Navbar = () => {

@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/newDesign/ui/card";
+import { Button } from "@/components/newDesign/ui/button";
+import { Textarea } from "@/components/newDesign/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/newDesign/ui/dialog";
 import {
   Upload,
   FileText,
@@ -32,8 +32,8 @@ import { ProfileService } from "../services";
 import {
   VISA_STATUS_OPTIONS,
 } from "@/types/profile";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/newDesign/ui/select";
+import { Label } from "@/components/newDesign/ui/label";
 import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 interface ProfileData {

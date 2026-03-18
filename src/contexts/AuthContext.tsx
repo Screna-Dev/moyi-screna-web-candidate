@@ -16,14 +16,13 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   loginWithGoogle: () => void;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
-  setUserFromToken: (token: string) => void; // Add this helper
+  setUserFromToken: (token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

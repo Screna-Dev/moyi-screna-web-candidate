@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+
+:root {
+  /* Cross-platform font system - Windows & macOS friendly */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Segoe UI Variable', 
+               system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', 'Cascadia Code', 
+               'Courier New', monospace;
+  --font-serif: 'Playfair Display', 'Georgia', 'Times New Roman', serif;
+  
+  /* Legacy support for existing code */
+  --font-manrope: var(--font-sans);
+  --font-source-serif: var(--font-serif);
+  --font-sf-mono: var(--font-mono);
+  
+  /* Font smoothing for better cross-platform rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}

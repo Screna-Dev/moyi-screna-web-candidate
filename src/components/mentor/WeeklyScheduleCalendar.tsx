@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AvailabilitySlot, MentorSession } from '@/data/mentorMockData';

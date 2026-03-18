@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Progress } from '@/components/newDesign/ui/progress';
+import { Badge } from '@/components/newDesign/ui/badge';
 import { Calendar, Target, Clock, CheckCircle2, Circle, Loader2, BookOpen, AlertCircle } from 'lucide-react';
 import {
   RadarChart,
@@ -15,7 +15,7 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from '@/components/ui/accordion';
+} from '@/components/newDesign/ui/accordion';
 import { adminService } from '@/services';
 
 export function TrainingPlanTab({ user }) {

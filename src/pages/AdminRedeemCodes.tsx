@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, LogOut, Settings, Users, Gift, Plus, Calendar, Coins, Loader2, RefreshCw } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
+import { Button } from '@/components/newDesign/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Input } from '@/components/newDesign/ui/input';
+import { Label } from '@/components/newDesign/ui/label';
+import { Badge } from '@/components/newDesign/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@/components/newDesign/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -20,7 +20,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/components/newDesign/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -29,14 +29,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
+} from '@/components/newDesign/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/newDesign/ui/select';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';

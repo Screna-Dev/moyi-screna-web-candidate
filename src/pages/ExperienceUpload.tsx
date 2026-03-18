@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Input } from '@/components/newDesign/ui/input';
+import { Label } from '@/components/newDesign/ui/label';
+import { Textarea } from '@/components/newDesign/ui/textarea';
+import { Switch } from '@/components/newDesign/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/newDesign/ui/select';
+import { Calendar } from '@/components/newDesign/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/newDesign/ui/popover';
+import { Badge } from '@/components/newDesign/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { 
@@ -31,7 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { currentUser, tierConfigs } from '@/data/experienceMockData';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/newDesign/ui/sidebar';
 
 interface InterviewQuestion {
   id: string;

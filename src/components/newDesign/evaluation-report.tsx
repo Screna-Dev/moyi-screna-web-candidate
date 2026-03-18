@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import {
@@ -164,6 +164,12 @@ export function EvaluationReport({
   const weakest = [...SKILL_DATA].sort((a, b) => a.score - b.score)[0];
   const strongest = [...SKILL_DATA].sort((a, b) => b.score - a.score)[0];
 
+  const [chartsReady, setChartsReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setChartsReady(true), 500);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50">
       {/* Compact header */}
@@ -267,27 +273,31 @@ export function EvaluationReport({
           <div className="flex flex-col lg:flex-row gap-5">
             {/* Radar chart */}
             <div className="w-full lg:w-1/2 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="72%" data={SKILL_DATA}>
-                  <PolarGrid
-                    gridType="polygon"
-                    stroke="rgba(148,163,184,0.12)"
-                  />
-                  <PolarAngleAxis
-                    dataKey="label"
-                    tick={{ fill: '#94a3b8', fontSize: 11 }}
-                    tickLine={false}
-                  />
-                  <Radar
-                    name="Score"
-                    dataKey="score"
-                    stroke="rgba(59,130,246,0.7)"
-                    fill="rgba(59,130,246,0.12)"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
+              {chartsReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <RadarChart cx="50%" cy="50%" outerRadius="72%" data={SKILL_DATA}>
+                    <PolarGrid
+                      gridType="polygon"
+                      stroke="rgba(148,163,184,0.12)"
+                    />
+                    <PolarAngleAxis
+                      dataKey="label"
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      tickLine={false}
+                    />
+                    <Radar
+                      name="Score"
+                      dataKey="score"
+                      stroke="rgba(59,130,246,0.7)"
+                      fill="rgba(59,130,246,0.12)"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full" />
+              )}
             </div>
 
             {/* Skill list with tips */}

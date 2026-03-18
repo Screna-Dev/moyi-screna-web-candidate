@@ -12,6 +12,7 @@ import {
   MessageSquareText,
 } from 'lucide-react';
 import LiveKitService from '@/services/LiveKitService';
+import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import type { SessionCredentials } from '@/pages/newDesign/ai-mock';
 
 // ─── Types ─────────────────────────────────────────────
@@ -86,17 +87,22 @@ function formatTime(seconds: number): string {
 // ════════════════════════════════════════════════════════
 export function LiveInterview({
   config,
+  interviewId,
   onEnd,
   theme = 'dark',
   sessionCredentials = null,
 }: {
   config: LiveConfig;
+  interviewId?: string;
   onEnd: () => void;
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
 }) {
   const isDark = theme === 'dark';
-  const [aiState, setAiState] = useState<AIState>('speaking');
+  // Demo runs ONLY when no interviewId provided.
+  const isDemoMode = !interviewId;
+  const isLiveMode = !isDemoMode;
+  const [aiState, setAiState] = useState<AIState>(isDemoMode ? 'speaking' : 'listening');
   const [muted, setMuted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [scriptIdx, setScriptIdx] = useState(0);
@@ -108,12 +114,7 @@ export function LiveInterview({
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // True only after LiveKit successfully connects (not just when credentials exist)
-  const [liveConnected, setLiveConnected] = useState(false);
-  // Demo runs when credentials are absent OR when LiveKit failed to connect
-  const isLiveMode = liveConnected;
-  // Guard: only auto-end after bot has actually spoken at least once
-  const botHasSpokenRef = useRef(false);
+  const [liveConnected, setLiveConnected] = useState(false); // kept for potential future use
   // Guard: prevent calling onEnd() more than once
   const endCalledRef = useRef(false);
   const safeEnd = useCallback(() => {
@@ -122,15 +123,8 @@ export function LiveInterview({
       onEnd();
     }
   }, [onEnd]);
-  // Debounce timer: keeps visual 'speaking' for a moment after AI audio stops
-  const aiSpeakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Whether the user is actually speaking right now (LiveKit VAD)
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
-
-  // Pre-captured audio stream — captured on mount so tracks are ready before
-  // onConnected fires. Avoids triggering a new getUserMedia() call during AI
-  // speech (which can cause an audio context interruption).
-  const localAudioStreamRef = useRef<MediaStream | null>(null);
 
   const totalSeconds = parseInt(config.duration) * 60;
   const progress = Math.min((elapsed / totalSeconds) * 100, 100);
@@ -141,142 +135,95 @@ export function LiveInterview({
     return () => clearInterval(t);
   }, []);
 
-  // ── Pre-capture microphone on mount ──
-  // Grab the audio stream early so onConnected can publish via publishExistingTracks()
-  // immediately — no new getUserMedia() call that could interrupt the AI's audio.
+  // ── LiveKit connection: use pre-fetched credentials OR create session ──
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    const capture = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
-        localAudioStreamRef.current = stream;
-        console.log('[LiveInterview] 🎤 Local audio pre-captured');
-      } catch (err) {
-        console.warn('[LiveInterview] Could not pre-capture audio:', err);
+    if (!interviewId && !sessionCredentials) return; // demo mode — skip LiveKit entirely
+
+    let cancelled = false;
+
+    const doConnect = (url: string, token: string) => {
+      if (cancelled) return;
+      // Guard: don't connect if already connected (mirrors old ai-interview pattern)
+      if (LiveKitService.getIsConnected()) {
+        console.log('[LiveInterview] Already connected, skipping duplicate connect');
+        return;
       }
-    };
-    capture();
-    return () => {
-      stream?.getTracks().forEach((t) => t.stop());
-      localAudioStreamRef.current = null;
-    };
-  }, []);
-
-  // ── LiveKit connection (when sessionCredentials are available) ──
-  useEffect(() => {
-    if (!sessionCredentials) return;
-
-    console.log('[LiveInterview] Connecting to LiveKit…');
-
-    LiveKitService.connect(
-      { url: sessionCredentials.url, token: sessionCredentials.token },
-      {
-        onConnected: () => {
-          console.log('[LiveInterview] ✅ LiveKit connected');
-          setLiveConnected(true);
-          setAiState('listening');
-          // Publish the pre-captured audio track so the AI can hear the user.
-          // Using publishExistingTracks avoids a new getUserMedia() call which
-          // would create a new audio context and can interrupt AI speech.
-          const audioStream = localAudioStreamRef.current;
-          if (audioStream) {
-            LiveKitService.publishExistingTracks(audioStream, null)
-              .then(() => console.log('[LiveInterview] 🎤 Pre-captured audio track published'))
-              .catch((err: unknown) => {
-                console.error('[LiveInterview] publishExistingTracks failed — falling back:', err);
-                LiveKitService.setMicrophoneEnabled(true).catch(console.error);
-              });
-          } else {
-            // No pre-captured stream (e.g. permissions denied) — request now
-            LiveKitService.setMicrophoneEnabled(true)
-              .then(() => console.log('[LiveInterview] 🎤 Microphone enabled (fallback)'))
-              .catch((err: unknown) => console.error('[LiveInterview] Failed to enable microphone:', err));
-          }
-          // Subscribe to per-participant speaking events for lower-latency visual sync
-          const room = LiveKitService.getRoom();
-          if (room) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const attachSpeakingHandler = (p: any) => {
-              p.on('isSpeakingChanged', (speaking: boolean) => {
-                if (speaking) {
-                  botHasSpokenRef.current = true;
-                  if (aiSpeakingTimerRef.current) {
-                    clearTimeout(aiSpeakingTimerRef.current);
-                    aiSpeakingTimerRef.current = null;
-                  }
-                  setAiState('speaking');
-                }
-              });
-            };
-            room.remoteParticipants.forEach(attachSpeakingHandler);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            room.on('participantConnected', (p: any) => attachSpeakingHandler(p));
-          }
-        },
-        onDisconnected: ({ reason }: { reason?: string }) => {
-          console.log('[LiveInterview] LiveKit disconnected:', reason);
-          // Only auto-end after the bot has actually spoken — prevents premature exit
-          // during the initial room setup / bot warm-up phase.
-          if (botHasSpokenRef.current) {
-            safeEnd();
-          } else {
-            console.warn('[LiveInterview] Disconnect before bot spoke — staying on screen');
-          }
-        },
-        onInterviewEnded: () => {
-          // Bot participant disconnected. Only treat as interview end if bot already spoke.
-          console.log('[LiveInterview] Bot participant disconnected');
-          if (botHasSpokenRef.current) {
-            safeEnd();
-          }
-        },
-        // isAISpeaking / isUserSpeaking drive the visual states
-        onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
-          setIsUserSpeaking(userSpeaking);
-          if (isAISpeaking) {
-            botHasSpokenRef.current = true;
-            if (aiSpeakingTimerRef.current) {
-              clearTimeout(aiSpeakingTimerRef.current);
-              aiSpeakingTimerRef.current = null;
+      console.log('[LiveInterview] Connecting to LiveKit…');
+      LiveKitService.connect(
+        { url, token },
+        {
+          onConnected: () => {
+            if (cancelled) return;
+            console.log('[LiveInterview] ✅ LiveKit connected');
+            setLiveConnected(true);
+            setAiState('listening');
+            // Delay mic enabling to let the AI bot finish initializing before receiving audio
+            setTimeout(() => {
+              if (cancelled) return;
+              LiveKitService.setMicrophoneEnabled(true)
+                .then(() => console.log('[LiveInterview] 🎤 Microphone enabled'))
+                .catch((err: unknown) => console.error('[LiveInterview] Failed to enable microphone:', err));
+            }, 1500);
+          },
+          onDisconnected: ({ reason }: { reason?: string }) => {
+            console.log('[LiveInterview] LiveKit disconnected:', reason);
+            setTimeout(() => { safeEnd(); }, 0);
+          },
+          onInterviewEnded: () => {
+            console.log('[LiveInterview] Bot participant disconnected');
+            setTimeout(() => { safeEnd(); }, 0);
+          },
+          onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
+            setIsUserSpeaking(userSpeaking);
+            setAiState(isAISpeaking ? 'speaking' : 'listening');
+          },
+          onDataReceived: (message: { type?: string; text?: string; role?: string }) => {
+            if (message?.type === 'transcript' && message.text) {
+              const role = message.role === 'bot' ? 'ai' : 'user';
+              setTranscript((prev) => [
+                ...prev,
+                { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
+              ]);
+              if (role === 'ai') setQuestionNum((q) => q + 1);
             }
-            setAiState('speaking');
-          } else {
-            // Debounce: keep 'speaking' visual for 600 ms after AI goes quiet
-            if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
-            aiSpeakingTimerRef.current = setTimeout(() => {
-              aiSpeakingTimerRef.current = null;
-              setAiState('listening');
-            }, 600);
-          }
-        },
-        // Data messages may carry transcript or AI state updates
-        onDataReceived: (message: { type?: string; text?: string; role?: string }) => {
-          if (message?.type === 'transcript' && message.text) {
-            const role = message.role === 'bot' ? 'ai' : 'user';
-            setTranscript((prev) => [
-              ...prev,
-              { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
-            ]);
-            if (role === 'ai') setQuestionNum((q) => q + 1);
-          }
-        },
-        onError: (err: unknown) => {
-          console.error('[LiveInterview] LiveKit error:', err);
-        },
-      }
-    ).catch((err: unknown) => {
-      console.error('[LiveInterview] LiveKit connect failed — falling back to demo', err);
-      // liveConnected stays false → demo script will run as fallback
-    });
+          },
+          onError: (err: unknown) => {
+            console.error('[LiveInterview] LiveKit error:', err);
+          },
+        }
+      ).catch((err: unknown) => {
+        console.error('[LiveInterview] LiveKit connect failed:', err);
+      });
+    };
+
+    if (sessionCredentials) {
+      // Credentials pre-fetched during warmup — connect immediately
+      doConnect(sessionCredentials.url, sessionCredentials.token);
+    } else {
+      // No pre-fetched credentials — create session now
+      (async () => {
+        console.log('[LiveInterview] Creating interview session for:', interviewId);
+        try {
+          const res = await createInterviewSession(interviewId!);
+          if (cancelled) return;
+          const data = res.data?.data ?? res.data;
+          const url = data.liveKitUrl ?? data.url;
+          const token = data.liveKitToken ?? data.token;
+          if (!url || !token) throw new Error('Missing LiveKit credentials in response');
+          doConnect(url, token);
+        } catch (err) {
+          if (cancelled) return;
+          console.error('[LiveInterview] Failed to create session:', err);
+        }
+      })();
+    }
 
     return () => {
-      if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
+      cancelled = true;
       LiveKitService.disconnect({ intentional: true }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionCredentials]);
+  }, [interviewId, sessionCredentials]);
 
   // ── Demo script cycle (only when NOT in live mode) ──
   useEffect(() => {
@@ -475,8 +422,10 @@ export function LiveInterview({
 
       {/* ── Bottom controls ── */}
       <div className="relative z-10 pb-6 px-6">
-        {/* Collapsible transcript */}
+        {/* Collapsible transcript — only show in live mode if there are real entries, always show in demo */}
         <div className="max-w-lg mx-auto mb-4">
+          {(isDemoMode || transcript.length > 0) && (
+            <>
           <button
             onClick={() => setTranscriptOpen((o) => !o)}
             className={`w-full flex items-center justify-center gap-2 py-2 text-[11px] transition-colors ${
@@ -539,6 +488,8 @@ export function LiveInterview({
               </motion.div>
             )}
           </AnimatePresence>
+            </>
+          )}
         </div>
 
         {/* Control buttons */}
