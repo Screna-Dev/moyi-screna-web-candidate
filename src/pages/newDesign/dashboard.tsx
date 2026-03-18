@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import { getPersonalInfo, getProfile, savePersonalInfo, uploadResume, updateProfile } from '@/services/ProfileServices';
+import { getTrainingPlans } from '@/services/InterviewServices';
 import {
   Mic,
   BookOpen,
@@ -36,14 +37,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/newDesign/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/newDesign/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
@@ -78,38 +79,49 @@ function formatRelativeTime(isoDate: string): string {
   return `${Math.floor(diffDays / 30)} months ago`;
 }
 
-const recentSessions = [
-  {
-    id: 1,
-    title: 'System Design Interview',
-    company: 'FAANG',
-    score: 82,
-    duration: '28 min',
-    date: 'Today, 2:30 PM',
-    tag: 'Technical',
-    tagColor: 'blue',
-  },
-  {
-    id: 2,
-    title: 'Behavioral — Leadership',
-    company: 'Mid-size Tech',
-    score: 91,
-    duration: '15 min',
-    date: 'Yesterday',
-    tag: 'Behavioral',
-    tagColor: 'green',
-  },
-  {
-    id: 3,
-    title: 'Product Sense',
-    company: 'Startup',
-    score: 74,
-    duration: '22 min',
-    date: 'Feb 15',
-    tag: 'PM',
-    tagColor: 'cyan',
-  },
-];
+type RecentSession = {
+  id: string;
+  title: string;
+  company: string;
+  score: number;
+  duration: string;
+  date: string;
+  tag: string;
+  tagColor: 'blue' | 'green' | 'cyan';
+};
+
+function mapScore(raw: number): number {
+  if (!raw) return 0;
+  if (raw <= 1)  return Math.round(raw * 100);
+  if (raw <= 10) return Math.round(raw * 10);
+  return Math.round(raw);
+}
+
+function mapPlansToRecentSessions(plans: any[]): RecentSession[] {
+  if (!Array.isArray(plans)) return [];
+  return plans
+    .flatMap((plan: any) => {
+      const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
+      return modules
+        .filter((m: any) => m.status === 'completed')
+        .map((m: any): RecentSession => ({
+          id: String(m.report_id ?? m.module_id ?? ''),
+          title: m.title ?? plan.target_job_title ?? 'Mock Interview',
+          company: plan.target_company ?? 'Practice Session',
+          score: mapScore(m.score ?? 0),
+          duration: m.duration_minutes ? `${m.duration_minutes} min` : '--',
+          date: plan.updated_at ?? plan.created_at ?? '',
+          tag: m.category ?? 'General',
+          tagColor: 'blue',
+        }));
+    })
+    .filter((s) => s.id)
+    .sort(
+      (a, b) =>
+        (b.date ? new Date(b.date).getTime() : 0) -
+        (a.date ? new Date(a.date).getTime() : 0),
+    );
+}
 
 const quickActions = [
   {
@@ -332,7 +344,19 @@ function ProfileHeader({
            <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
                  <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
-                   {userData?.resumeFileName || 'No resume yet'}
+                   {userData?.resume_path ? (
+                     <a
+                       href={userData.resume_path}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       download
+                       className="text-[hsl(221,91%,60%)] hover:underline"
+                     >
+                       {userData.resumeFileName || 'Resume.pdf'}
+                     </a>
+                   ) : (
+                     'No resume yet'
+                   )}
                  </p>
                  <p className="text-[10px] text-[hsl(222,12%,55%)]">
                    {userData?.resumeUploadedAt
@@ -379,9 +403,11 @@ function PlusIcon({ className }: { className?: string }) {
 
 export function DashboardPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const { toast } = useToast();
   const posthog = usePostHog();
-  
+
   // States for resume upload dialogs
   const [showReplaceConfirmDialog, setShowReplaceConfirmDialog] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -432,6 +458,16 @@ export function DashboardPage() {
           return merged;
         });
       } catch { /* silent — localStorage data remains */ }
+
+      // Fetch interview history
+      try {
+        const plansRes = await getTrainingPlans();
+        const plans = plansRes.data?.data ?? plansRes.data ?? [];
+        const mapped = mapPlansToRecentSessions(Array.isArray(plans) ? plans : []);
+        setRecentSessions(mapped.slice(0, 3));
+      } catch { /* silent */ } finally {
+        setSessionsLoading(false);
+      }
     };
 
     fetchProfileData();
@@ -608,120 +644,8 @@ export function DashboardPage() {
   return (
     <DashboardLayout headerTitle={`${greeting}, ${firstName} 👋`}>
       <div className="space-y-8">
-        <ProfileHeader 
-          userData={userData} 
-          onUpdateProfile={handleUpdateProfile}
-          onUploadResume={handleFileSelectForReplace}
-        />
+        <ProfileHeader userData={userData} onUpdateProfile={handleUpdateProfile} />
 
-        {/* Replace Resume Confirmation Dialog */}
-        <Dialog open={showReplaceConfirmDialog} onOpenChange={setShowReplaceConfirmDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                Replace Current Profile?
-              </DialogTitle>
-              <DialogDescription>
-                Uploading a new resume will completely replace your current profile data with information extracted from the new resume.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 py-4">
-              <p className="text-sm text-muted-foreground">
-                This action will overwrite:
-              </p>
-              <ul className="text-sm text-muted-foreground space-y-1 ml-4">
-                <li>• Personal information</li>
-                <li>• Work experience</li>
-                <li>• Education history</li>
-                <li>• Skills and certifications</li>
-                <li>• All other profile data</li>
-              </ul>
-              <p className="text-sm font-medium text-amber-600">
-                This action cannot be undone.
-              </p>
-            </div>
-            <DialogFooter className="gap-2">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowReplaceConfirmDialog(false);
-                  setPendingFile(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                variant="destructive"
-                onClick={handleConfirmedUpload}
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  "Replace Profile"
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Visa Status Dialog */}
-        <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Set Your Work Authorization</DialogTitle>
-              <DialogDescription>
-                Please select your current work authorization status
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Work Authorization Status</Label>
-                <Select
-                  value={tempVisaStatus}
-                  onValueChange={setTempVisaStatus}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VISA_STATUS_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={handleVisaStatusSave}
-                disabled={isSavingVisa}
-              >
-                {isSavingVisa ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save"
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Resume Analysis Dialog */}
-        <ResumeAnalysisDialog
-          open={showResumeAnalysis}
-          onOpenChange={setShowResumeAnalysis}
-          fileName={uploadedFileName}
-        />
 
         {/* Quick actions */}
         <motion.section
@@ -733,25 +657,60 @@ export function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {quickActions.map((action, i) => (
               <Link key={action.title} to={action.href}>
+                {action.title === 'Browse Questions' ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: 0.2 + i * 0.07 }}
+                    whileHover={{ y: -3, transition: { duration: 0.18 } }}
+                    className="group relative bg-white rounded-2xl p-7 shadow-[0_2px_24px_-4px_rgba(0,0,0,0.08),0_8px_48px_-12px_rgba(0,0,0,0.06)] cursor-pointer hover:shadow-[0_4px_32px_-4px_rgba(0,0,0,0.12),0_12px_60px_-16px_rgba(0,0,0,0.08)] transition-all duration-300 h-full overflow-hidden flex flex-col justify-between min-h-[200px]"
+                  >
+                    {/* Large watermark question mark */}
+                    <div className="absolute -right-4 -bottom-6 pointer-events-none select-none">
+                      <svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-[0.04] group-hover:opacity-[0.07] transition-opacity duration-500">
+                        <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontSize="150" fontWeight="800" fill="currentColor" className="text-[hsl(221,91%,60%)]">?</text>
+                      </svg>
+                    </div>
+
+                    {/* Content */}
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2.5 mb-5">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center`}>
+                          <action.icon className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-[hsl(222,12%,60%)]">Community</span>
+                      </div>
+                      <p className="text-lg font-semibold text-[hsl(222,22%,15%)] mb-1.5">Browse Interview Insights</p>
+                      <p className="text-sm text-[hsl(222,12%,50%)] leading-relaxed">{action.desc}</p>
+                    </div>
+
+                    {/* View all link */}
+                    <div className="relative z-10 flex justify-end mt-4">
+                      <span className="text-sm text-[hsl(221,91%,60%)] font-medium flex items-center gap-1 group-hover:gap-2 transition-all duration-200">
+                        View all <ArrowRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </motion.div>
+                ) : (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.35, delay: 0.2 + i * 0.07 }}
-                  whileHover={{ y: -3, transition: { duration: 0.18 } }}
-                  className="group bg-white rounded-2xl p-5 shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 h-full"
+                  whileHover={{ y: -2, transition: { duration: 0.18 } }}
+                  className="group bg-white rounded-2xl p-7 border border-[hsl(220,16%,92%)] cursor-pointer hover:border-[hsl(220,16%,85%)] transition-all duration-200 h-full flex flex-col justify-between min-h-[200px]"
                 >
-                  <div
-                    className={`w-10 h-10 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center mb-4`}
-                  >
-                    <action.icon className="w-5 h-5 text-white" />
+                  <div>
+                    <action.icon className="w-5 h-5 text-[hsl(222,12%,55%)] stroke-[1.5] mb-5" />
+                    <p className="text-lg font-medium text-[hsl(222,22%,15%)] mb-1.5">{action.title}</p>
+                    <p className="text-sm text-[hsl(222,12%,50%)] leading-relaxed">{action.desc}</p>
                   </div>
-                  <p className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-1">{action.title}</p>
-                  <p className="text-xs text-[hsl(222,12%,50%)] leading-relaxed">{action.desc}</p>
-                  <div className="mt-3 flex items-center gap-1 text-xs text-[hsl(221,91%,60%)] opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>Get started</span>
-                    <ArrowRight className="w-3 h-3" />
+                  <div className="flex justify-end mt-4">
+                    <span className="text-sm text-[hsl(222,12%,50%)] font-medium flex items-center gap-1 group-hover:gap-2 group-hover:text-[hsl(221,91%,60%)] transition-all duration-200">
+                      Start <ArrowRight className="w-3.5 h-3.5" />
+                    </span>
                   </div>
                 </motion.div>
+                )}
               </Link>
             ))}
           </div>
@@ -768,53 +727,71 @@ export function DashboardPage() {
           >
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-[hsl(222,22%,15%)]">Recent Sessions</h2>
-              <button className="text-xs text-[hsl(221,91%,60%)] hover:underline flex items-center gap-1">
+              <Link to="/history" className="text-xs text-[hsl(221,91%,60%)] hover:underline flex items-center gap-1">
                 View all <ChevronRight className="w-3 h-3" />
-              </button>
+              </Link>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              {recentSessions.map((session, i) => (
-                <div
-                  key={session.id}
-                  className={`flex items-center gap-4 px-5 py-4 hover:bg-[hsl(220,18%,98%)] transition-colors cursor-pointer ${
-                    i < recentSessions.length - 1 ? 'border-b border-[hsl(220,16%,92%)]' : ''
-                  }`}
-                >
-                  <ScoreRing score={session.score} />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-medium text-[hsl(222,22%,15%)] truncate">
-                        {session.title}
-                      </p>
-                      <span
-                        className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
-                          session.tagColor === 'blue'
-                            ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)]'
-                            : session.tagColor === 'green'
-                            ? 'bg-[hsl(165,82%,51%)]/10 text-[hsl(165,65%,40%)]'
-                            : 'bg-[hsl(190,90%,50%)]/10 text-[hsl(190,90%,40%)]'
-                        }`}
-                      >
-                        {session.tag}
-                      </span>
+              {sessionsLoading ? (
+                [0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-4 px-5 py-4 animate-pulse ${i < 2 ? 'border-b border-[hsl(220,16%,92%)]' : ''}`}
+                  >
+                    <div className="w-16 h-16 rounded-full bg-gray-100 shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3.5 w-40 bg-gray-100 rounded" />
+                      <div className="h-3 w-28 bg-gray-100 rounded" />
                     </div>
-                    <p className="text-xs text-[hsl(222,12%,50%)]">
-                      {session.company} · {session.duration}
-                    </p>
+                    <div className="h-3 w-14 bg-gray-100 rounded" />
                   </div>
-
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs text-[hsl(222,12%,55%)]">{session.date}</p>
-                    <ChevronRight className="w-4 h-4 text-[hsl(222,12%,65%)] mt-1 ml-auto" />
-                  </div>
-                </div>
-              ))}
-              <div className="px-5 py-3 bg-gray-50 border-t border-[hsl(220,16%,92%)] text-center">
-                  <Link to="/history" className="text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] font-medium transition-colors">
-                      View Full History
+                ))
+              ) : recentSessions.length === 0 ? (
+                <div className="py-10 text-center text-sm text-[hsl(222,12%,55%)]">
+                  No sessions yet.{' '}
+                  <Link to="/dashboard/mock-interview" className="text-[hsl(221,91%,60%)] hover:underline font-medium">
+                    Start your first mock interview
                   </Link>
+                </div>
+              ) : (
+                recentSessions.map((session, i) => (
+                  <Link
+                    key={session.id}
+                    to={`/evaluation?interviewId=${session.id}`}
+                    className={`flex items-center gap-4 px-5 py-4 hover:bg-[hsl(220,18%,98%)] transition-colors ${
+                      i < recentSessions.length - 1 ? 'border-b border-[hsl(220,16%,92%)]' : ''
+                    }`}
+                  >
+                    <ScoreRing score={session.score} />
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-sm font-medium text-[hsl(222,22%,15%)] truncate">
+                          {session.title}
+                        </p>
+                        <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)]">
+                          {session.tag}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[hsl(222,12%,50%)]">
+                        {session.company} · {session.duration}
+                      </p>
+                    </div>
+
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs text-[hsl(222,12%,55%)]">
+                        {session.date ? formatRelativeTime(session.date) : '--'}
+                      </p>
+                      <ChevronRight className="w-4 h-4 text-[hsl(222,12%,65%)] mt-1 ml-auto" />
+                    </div>
+                  </Link>
+                ))
+              )}
+              <div className="px-5 py-3 bg-gray-50 border-t border-[hsl(220,16%,92%)] text-center">
+                <Link to="/history" className="text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] font-medium transition-colors">
+                  View Full History
+                </Link>
               </div>
             </div>
           </motion.section>
@@ -826,14 +803,14 @@ export function DashboardPage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.32 }}
-              className="flex flex-col gap-4"
+              className="flex flex-col gap-4 flex-1"
             >
               {/* Today's tip */}
-              <div className="bg-gradient-to-br from-[hsl(222,45%,14%)] to-[hsl(221,40%,22%)] rounded-2xl p-5 text-white flex-1 relative overflow-hidden">
+              <div className="bg-gradient-to-br from-[hsl(222,45%,14%)] to-[hsl(221,40%,22%)] rounded-2xl p-5 text-white flex-1 relative overflow-hidden flex flex-col">
                 <div className="absolute top-0 right-0 p-3 opacity-10">
                     <Sparkles className="w-24 h-24 text-white" />
                 </div>
-                <div className="relative z-10">
+                <div className="relative z-10 flex flex-col flex-1">
                     <div className="flex items-center gap-2 mb-3">
                     <div className="w-7 h-7 rounded-lg bg-[hsl(165,82%,51%)]/20 flex items-center justify-center">
                         <Sparkles className="w-4 h-4 text-[hsl(165,82%,60%)]" />
@@ -842,7 +819,7 @@ export function DashboardPage() {
                         AI Insight
                     </span>
                     </div>
-                    <p className="text-sm leading-relaxed text-white/90 mb-4">
+                    <p className="text-sm leading-relaxed text-white/90 mb-4 flex-1">
                     You're consistently strong on behavioral questions. Focus on tightening your system design answers — particularly around trade-off reasoning.
                     </p>
                     <button className="text-xs text-[hsl(165,82%,60%)] hover:text-[hsl(165,82%,75%)] flex items-center gap-1 transition-colors">
@@ -853,94 +830,10 @@ export function DashboardPage() {
             </motion.section>
 
             {/* Daily Challenge Card */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="bg-white rounded-2xl shadow-sm p-5 relative group overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[hsl(221,91%,60%)]/5 rounded-full blur-2xl -mr-8 -mt-8 transition-transform group-hover:scale-150 duration-700" />
-              
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-[hsl(35,90%,55%)]/10 rounded-lg">
-                      <Zap className="w-4 h-4 text-[hsl(35,90%,55%)]" />
-                    </div>
-                    <span className="text-xs font-bold text-[hsl(222,22%,15%)] uppercase tracking-wide">
-                      Daily Question
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-medium px-2 py-0.5 bg-[hsl(220,16%,94%)] text-[hsl(222,12%,50%)] rounded-full">
-                    {dailyQuestion.timeEstimate}
-                  </span>
-                </div>
-
-                <h3 className="text-base font-semibold text-[hsl(222,22%,15%)] mb-2 line-clamp-2">
-                  {dailyQuestion.title}
-                </h3>
-
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[10px] font-medium px-2 py-0.5 bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)] rounded-full">
-                    {dailyQuestion.category}
-                  </span>
-                  <span className="text-[10px] font-medium px-2 py-0.5 bg-[hsl(35,90%,55%)]/10 text-[hsl(35,90%,45%)] rounded-full">
-                    {dailyQuestion.difficulty}
-                  </span>
-                  <span className="text-[10px] text-[hsl(222,12%,60%)] ml-auto">
-                    {dailyQuestion.participants.toLocaleString()} attempted
-                  </span>
-                </div>
-
-                <Link to={`/mock-interview?q=${dailyQuestion.id}`}>
-                  <Button className="w-full bg-white border border-[hsl(220,16%,90%)] hover:bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] shadow-sm hover:shadow transition-all group-hover:border-[hsl(221,91%,60%)]/40">
-                    <Mic className="w-3.5 h-3.5 mr-2 text-[hsl(221,91%,60%)]" />
-                    Start Quick Mock
-                  </Button>
-                </Link>
-              </div>
-            </motion.section>
+            
 
             {/* Applications Tracker Snapshot */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.42 }}
-              className="bg-white rounded-2xl shadow-sm p-5"
-            >
-              <div className="flex items-center justify-between mb-4">
-                 <h3 className="text-base font-semibold text-[hsl(222,22%,15%)]">Applications</h3>
-                 <Link to="/jobs">
-                   <Button variant="ghost" size="sm" className="h-6 text-xs text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)]">
-                     View All
-                   </Button>
-                 </Link>
-              </div>
-              <div className="space-y-3">
-                {applications.map((app, i) => (
-                  <div key={i} className="flex items-center gap-3 p-2 hover:bg-[hsl(220,20%,97%)] rounded-xl transition-colors cursor-pointer group">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm ${
-                      app.company === 'Netflix' ? 'bg-[#E50914]' :
-                      app.company === 'Uber' ? 'bg-black' :
-                      'bg-[#FF5A5F]'
-                    }`}>
-                      {app.logo}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[hsl(222,22%,15%)] truncate">{app.role}</p>
-                      <p className="text-xs text-[hsl(222,12%,50%)]">{app.company} · {app.date}</p>
-                    </div>
-                    <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                      app.status === 'Interview' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                      app.status === 'Offer' ? 'bg-green-50 text-green-600 border-green-100' :
-                      'bg-gray-50 text-gray-500 border-gray-100'
-                    }`}>
-                      {app.status}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.section>
+            
 
             {/* Next suggested practice - moved to bottom right */}
             

@@ -1,9 +1,9 @@
 import { format } from 'date-fns';
 import { Calendar, Clock, User, Video, ExternalLink } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/newDesign/ui/avatar';
 import { useBooking } from '@/contexts/BookingContext';
 import { useNavigate } from 'react-router-dom';
 

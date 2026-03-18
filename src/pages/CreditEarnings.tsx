@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/newDesign/ui/table';
 import { 
   Coins, 
   TrendingUp, 
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { creditStats, creditTransactions, currentUser } from '@/data/experienceMockData';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/newDesign/ui/sidebar';
 import { cn } from '@/lib/utils';
 
 const StatCard = ({ 

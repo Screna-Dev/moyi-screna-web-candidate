@@ -4,7 +4,7 @@ import {
   Card, Container, CircularProgress, Alert, Snackbar, Box, Typography,
   Avatar
 } from '@mui/material';
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/newDesign/ui/button";
 import { InterviewSessionService, InterviewService } from '../../services';
 import PipecatService from '../../services/PipecatService';
 import LiveKitService from '../../services/LiveKitService';

@@ -1,39 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router';
+import logoImg from '../../../assets/Navbar.png';
 import { Button } from '../ui/button';
-import Logo from '@/assets/logo.png';
-import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase } from 'lucide-react';
+import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-function useAuthState() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('screnaIsLoggedIn') === 'true';
-  });
-  const [userData, setUserData] = useState<{ firstName?: string; lastName?: string } | null>(() => {
-    try {
-      const raw = localStorage.getItem('screnaUserData');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    const handler = () => {
-      setIsLoggedIn(localStorage.getItem('screnaIsLoggedIn') === 'true');
-      try {
-        const raw = localStorage.getItem('screnaUserData');
-        setUserData(raw ? JSON.parse(raw) : null);
-      } catch {
-        setUserData(null);
-      }
-    };
-    window.addEventListener('screna-auth-change', handler);
-    return () => window.removeEventListener('screna-auth-change', handler);
-  }, []);
-
-  return { isLoggedIn, userData };
-}
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -45,12 +16,16 @@ export function Navbar({ transparent = false }: NavbarProps) {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const { isLoggedIn, userData } = useAuthState();
+  const { user, logout } = useAuth();
+  const isLoggedIn = !!user;
 
-  const initials = userData?.firstName && userData?.lastName
-    ? `${userData.firstName[0]}${userData.lastName[0]}`.toUpperCase()
-    : userData?.firstName
-    ? userData.firstName[0].toUpperCase()
+  const nameParts = (user?.name || '').trim().split(' ');
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.slice(1).join(' ') || '';
+  const initials = firstName && lastName
+    ? `${firstName[0]}${lastName[0]}`.toUpperCase()
+    : firstName
+    ? firstName[0].toUpperCase()
     : 'U';
 
   useEffect(() => {
@@ -70,17 +45,15 @@ export function Navbar({ transparent = false }: NavbarProps) {
   }, []);
 
   const handleSignOut = () => {
-    localStorage.removeItem('screnaIsLoggedIn');
-    window.dispatchEvent(new Event('screna-auth-change'));
     setAvatarOpen(false);
-    navigate('/');
+    logout();
   };
 
   const navLinks = [
-    { name: 'Jobs', path: '/job-board', hasDropdown: true, hidden: true },
-    { name: 'Interview', path: '/mock-interview', hasDropdown: true },
-    { name: 'Resources', path: '/question-bank', hasDropdown: true },
-    { name: 'Pricing', path: '/pricing', hidden: true },
+    // { name: 'Jobs', path: '/job-board', hasDropdown: true },
+    { name: 'Interview', path: '#interview', hasDropdown: true },
+    { name: 'Community', path: '#community', hasDropdown: true },
+    { name: 'Pricing', path: '/pricing' },
     { name: 'FAQ', path: '/faq' },
   ];
 
@@ -89,13 +62,13 @@ export function Navbar({ transparent = false }: NavbarProps) {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed top-5 left-0 right-0 mx-auto z-50 w-[calc(100%-2rem)] max-w-[860px]"
+      className="fixed top-5 inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
     >
       {/* ── Capsule Shell ── */}
       <div
         className={`
-          relative flex items-center justify-between
-          h-[58px] rounded-[999px] px-6
+          pointer-events-auto relative flex items-center justify-between
+          w-full max-w-[960px] h-[58px] rounded-[999px] px-8
           border transition-all duration-500 ease-in-out
           ${scrolled
             ? 'bg-white/80 border-slate-200/60 shadow-lg shadow-blue-900/[0.04] backdrop-blur-2xl'
@@ -105,16 +78,13 @@ export function Navbar({ transparent = false }: NavbarProps) {
       >
         {/* ── Left: Logo + Wordmark ── */}
         <Link to="/" className="flex items-center gap-3 shrink-0">
-          <img src={Logo} alt="Screna AI" className="w-8 h-8 object-contain" />
-          <span className="text-[15px] font-bold tracking-tight text-slate-900 hidden sm:block">
-            Screna AI
-          </span>
+          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
         </Link>
 
         {/* ── Center: Nav Links ── */}
         <div className="hidden md:flex items-center gap-7">
-          {navLinks.map((link) => (
-            <div key={link.name} className={`relative group${link.hidden ? ' hidden' : ''}`}>
+          {navLinks.filter(link => link.name !== 'Pricing').map((link) => (
+            <div key={link.name} className="relative group">
               <Link
                 to={link.path}
                 className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
@@ -154,28 +124,52 @@ export function Navbar({ transparent = false }: NavbarProps) {
                       <Bot className="w-[18px] h-[18px]" />
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">AI Mock</div>
-                      <div className="text-xs text-slate-500">Practice with AI Interviewer</div>
+                      <div className="text-sm font-semibold text-slate-900">Trendings</div>
+                      <div className="text-xs text-slate-500">Trending mock interviews</div>
+                    </div>
+                  </Link>
+                  <Link 
+                    to="/personalized-practice" 
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
+                      <Target className="w-[18px] h-[18px]" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
+                      <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
                     </div>
                   </Link>
                 </div>
               )}
 
-              {/* Resources Dropdown */}
-              {link.name === 'Resources' && (
+              {/* Community Dropdown */}
+              {link.name === 'Community' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
                   <Link 
-                    to="/question-bank" 
+                    to="/interview-insights" 
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
                   >
                     <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Question Bank</div>
-                      <div className="text-xs text-slate-500">Practice real interview questions</div>
+                      <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
+                      <div className="text-xs text-slate-500">Real interview experiences</div>
                     </div>
                   </Link>
+                  {/* <Link 
+                    to="/question-bank" 
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
+                      <MessageSquare className="w-[18px] h-[18px]" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Question Bank</div>
+                      <div className="text-xs text-slate-500">Practice real questions</div>
+                    </div>
+                  </Link> */}
                 </div>
               )}
             </div>
@@ -186,12 +180,6 @@ export function Navbar({ transparent = false }: NavbarProps) {
         <div className="hidden md:flex items-center gap-4 shrink-0">
           {isLoggedIn ? (
             <>
-              <Link to="/pricing">
-                <button className="h-[42px] px-4 rounded-full text-[13px] font-semibold text-slate-600 hover:text-blue-600 hover:bg-white/60 transition-all duration-200">
-                  Upgrade
-                </button>
-              </Link>
-
               <div className="relative" ref={avatarRef}>
                 <button
                   onClick={() => setAvatarOpen((v) => !v)}
@@ -212,11 +200,9 @@ export function Navbar({ transparent = false }: NavbarProps) {
                     >
                       <div className="px-3 py-2.5 border-b border-slate-100/60 mb-1">
                         <p className="text-sm font-semibold text-slate-900 truncate">
-                          {userData?.firstName
-                            ? `${userData.firstName} ${userData.lastName || ''}`
-                            : 'My Account'}
+                          {user?.name || 'My Account'}
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5">Free Plan</p>
+                        <p className="text-xs text-slate-400 mt-0.5">12 Credits remaining</p>
                       </div>
                       <Link
                         to="/dashboard"
@@ -224,7 +210,15 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <LayoutDashboard className="w-4 h-4 opacity-50" />
-                        Dashboard
+                        Personal Center
+                      </Link>
+                      <Link
+                        to="/messages"
+                        onClick={() => setAvatarOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                      >
+                        <MessageSquare className="w-4 h-4 opacity-50" />
+                        Messages
                       </Link>
                       <Link
                         to="/refer"
@@ -284,10 +278,10 @@ export function Navbar({ transparent = false }: NavbarProps) {
             className="mt-2 p-2 bg-white/95 backdrop-blur-2xl border border-slate-100/80 rounded-2xl shadow-xl shadow-slate-900/[0.06] origin-top"
           >
             {navLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
-                className={`block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors${link.hidden ? ' hidden' : ''}`}
+              <Link 
+                key={link.name} 
+                to={link.path} 
+                className="block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {link.name}

@@ -1,142 +1,9 @@
 import { motion } from 'motion/react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router';
-import { Search, Filter, ChevronRight, Lock, Sparkles, ThumbsUp, MessageSquare, Share2, Bookmark, FolderOpen, Plus, Check } from 'lucide-react';
+import { Search, Filter, ChevronRight, Lock, Sparkles, ThumbsUp, MessageSquare, Share2, Bookmark, FolderOpen, Plus, Check, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
-
-// Mock data for the question library
-const questions = [
-  {
-    id: 1,
-    title: "Explain the difference between a stack and a queue.",
-    preview: "A stack is a linear data structure that follows the Last In First Out (LIFO) principle, while a queue follows the First In First Out (FIFO) principle.",
-    role: "Software Engineer",
-    company: "Google",
-    askedAt: ["2023-01-15", "2023-02-20"],
-    difficulty: "Junior",
-    likes: 15,
-    comments: 3,
-    tags: ["Algorithms", "Data Structures"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 2,
-    title: "What is the difference between a shallow copy and a deep copy?",
-    preview: "A shallow copy creates a new object but copies the references of nested objects, whereas a deep copy creates a new object and recursively copies all objects found within the original.",
-    role: "Software Engineer",
-    company: "Meta",
-    askedAt: ["2023-03-10", "2023-04-25"],
-    difficulty: "Intermediate",
-    likes: 20,
-    comments: 5,
-    tags: ["JavaScript", "Data Structures"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 3,
-    title: "How would you design a system to handle a large number of concurrent users?",
-    preview: "To handle a large number of concurrent users, I would design a scalable architecture using load balancers, microservices, and a distributed database.",
-    role: "Engineering Manager",
-    company: "Amazon",
-    askedAt: ["2023-05-05", "2023-06-30"],
-    difficulty: "Senior",
-    likes: 25,
-    comments: 7,
-    tags: ["System Design", "Scalability"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 4,
-    title: "What is the difference between a RESTful API and a GraphQL API?",
-    preview: "RESTful APIs use HTTP methods to perform CRUD operations on resources, while GraphQL APIs use a single endpoint to query and mutate data.",
-    role: "Software Engineer",
-    company: "Microsoft",
-    askedAt: ["2023-07-15", "2023-08-30"],
-    difficulty: "Intermediate",
-    likes: 30,
-    comments: 10,
-    tags: ["API Design", "GraphQL"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 5,
-    title: "How would you handle a situation where a user reports a bug in your product?",
-    preview: "When a user reports a bug, I would first acknowledge the report, reproduce the issue, and then prioritize it based on its severity and impact on the user experience.",
-    role: "Product Manager",
-    company: "Netflix",
-    askedAt: ["2023-09-01", "2023-10-15"],
-    difficulty: "Junior",
-    likes: 35,
-    comments: 12,
-    tags: ["Product Management", "Bug Reporting"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 6,
-    title: "What is the difference between a synchronous and an asynchronous function?",
-    preview: "A synchronous function executes in a blocking manner, meaning it waits for the operation to complete before moving on to the next line of code. An asynchronous function, on the other hand, allows the program to continue executing other code while waiting for the operation to complete.",
-    role: "Software Engineer",
-    company: "Apple",
-    askedAt: ["2023-11-01", "2023-12-15"],
-    difficulty: "Intermediate",
-    likes: 40,
-    comments: 15,
-    tags: ["JavaScript", "Asynchronous Programming"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 7,
-    title: "How would you design a recommendation system for a streaming service?",
-    preview: "To design a recommendation system for a streaming service, I would use collaborative filtering techniques to analyze user behavior and preferences, and then use machine learning algorithms to generate personalized recommendations.",
-    role: "Data Scientist",
-    company: "Netflix",
-    askedAt: ["2023-01-01", "2023-02-15"],
-    difficulty: "Senior",
-    likes: 45,
-    comments: 18,
-    tags: ["Machine Learning", "Recommendation Systems"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 8,
-    title: "What is the difference between a monolithic and a microservices architecture?",
-    preview: "A monolithic architecture is a single, unified application that is built and deployed as a single unit. A microservices architecture, on the other hand, is composed of many small, independent services that communicate with each other through APIs.",
-    role: "Engineering Manager",
-    company: "Google",
-    askedAt: ["2023-03-01", "2023-04-15"],
-    difficulty: "Senior",
-    likes: 50,
-    comments: 20,
-    tags: ["System Design", "Microservices"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 9,
-    title: "How would you handle a situation where a user reports a bug in your product?",
-    preview: "When a user reports a bug, I would first acknowledge the report, reproduce the issue, and then prioritize it based on its severity and impact on the user experience.",
-    role: "Product Manager",
-    company: "Meta",
-    askedAt: ["2023-05-01", "2023-06-15"],
-    difficulty: "Junior",
-    likes: 55,
-    comments: 22,
-    tags: ["Product Management", "Bug Reporting"],
-    logo: "https://via.placeholder.com/50"
-  },
-  {
-    id: 10,
-    title: "What is the difference between a RESTful API and a GraphQL API?",
-    preview: "RESTful APIs use HTTP methods to perform CRUD operations on resources, while GraphQL APIs use a single endpoint to query and mutate data.",
-    role: "Software Engineer",
-    company: "Amazon",
-    askedAt: ["2023-07-01", "2023-08-15"],
-    difficulty: "Intermediate",
-    likes: 60,
-    comments: 25,
-    tags: ["API Design", "GraphQL"],
-    logo: "https://via.placeholder.com/50"
-  }
-];
+import { searchQuestions } from '../../../services/QuestionBankService';
 
 const bookmarkFolders = [
   {
@@ -161,9 +28,25 @@ const bookmarkFolders = [
 
 const trendingCompanies = ["Google", "Meta", "Amazon", "Microsoft", "Netflix", "Apple"];
 
+interface Question {
+  id: string;
+  question: string;
+  company: string;
+  role: string;
+  level: string;
+  round: string;
+  category: string;
+  createdAt: string;
+}
+
 const FeaturedQuestionLibrary = () => {
-  const [savedTo, setSavedTo] = useState<Record<number, string[]>>({});
-  const [bookmarkOpen, setBookmarkOpen] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [savedTo, setSavedTo] = useState<Record<string, string[]>>({});
+  const [bookmarkOpen, setBookmarkOpen] = useState<string | null>(null);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string[]>>({
     Role: [],
@@ -175,6 +58,38 @@ const FeaturedQuestionLibrary = () => {
     Company: [],
     Category: [],
   });
+
+  const fetchQuestions = useCallback(async (pageNum: number, reset: boolean) => {
+    setLoading(true);
+    try {
+      const params: Record<string, string | number> = { page: pageNum };
+      if (searchInput) params.search = searchInput;
+      if (appliedFilters.Role.length > 0) params.role = appliedFilters.Role[0];
+      if (appliedFilters.Company.length > 0) params.company = appliedFilters.Company[0];
+      if (appliedFilters.Category.length > 0) params.category = appliedFilters.Category[0];
+      const res = await searchQuestions(params);
+      const data = res.data?.data ?? res.data;
+      const content: Question[] = data?.content ?? [];
+      const pageMeta = data?.pageMeta ?? {};
+      setQuestions(prev => reset ? content : [...prev, ...content]);
+      setHasMore(!pageMeta.last);
+    } catch {
+      // keep existing questions on error
+    } finally {
+      setLoading(false);
+    }
+  }, [searchInput, appliedFilters]);
+
+  useEffect(() => {
+    setPage(1);
+    fetchQuestions(1, true);
+  }, [appliedFilters, searchInput]);
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchQuestions(nextPage, false);
+  };
 
   const toggleTempFilter = (filter: string, option: string) => {
     setTempFilters(prev => {
@@ -204,14 +119,7 @@ const FeaturedQuestionLibrary = () => {
     }
   };
 
-  const filteredQuestions = questions.filter(q => {
-    if (appliedFilters.Role.length > 0 && !appliedFilters.Role.includes(q.role)) return false;
-    if (appliedFilters.Company.length > 0 && !appliedFilters.Company.includes(q.company)) return false;
-    if (appliedFilters.Category.length > 0 && !q.tags.some(t => appliedFilters.Category.includes(t))) return false;
-    return true;
-  });
-
-  const toggleSaveToFolder = (questionId: number, folderId: string) => {
+  const toggleSaveToFolder = (questionId: string, folderId: string) => {
     setSavedTo(prev => {
       const current = prev[questionId] || [];
       if (current.includes(folderId)) {
@@ -367,10 +275,10 @@ const FeaturedQuestionLibrary = () => {
 
             {/* Questions List */}
             <div className="space-y-4">
-              {filteredQuestions.length === 0 && (
+              {!loading && questions.length === 0 && (
                 <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <p className="text-[hsl(222,12%,45%)] text-sm mb-2">No questions match your filters.</p>
-                  <button 
+                  <button
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
                     onClick={() => {
                       setAppliedFilters({ Role: [], Company: [], Category: [] });
@@ -381,81 +289,62 @@ const FeaturedQuestionLibrary = () => {
                   </button>
                 </div>
               )}
-              {filteredQuestions.map((q) => (
+              {questions.map((q) => (
                 <motion.div 
                   key={q.id}
                   initial={{ opacity: 0, y: 10 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.3 }}
-                  className="group bg-white rounded-2xl p-6 border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/30 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/5 transition-all duration-300 cursor-pointer relative"
+                  className="group bg-white overflow-hidden rounded-2xl p-6 border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/30 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/5 transition-all duration-300 cursor-pointer relative"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-full bg-white border border-[hsl(220,16%,90%)] p-1 shrink-0 overflow-hidden shadow-sm flex items-center justify-center">
-                        <img 
-                          src={q.logo} 
-                          alt={q.company} 
-                          className="w-full h-full object-cover rounded-full"
-                          onError={(e) => {
-                            const img = e.currentTarget;
-                            const parent = img.parentElement;
-                            img.style.display = 'none';
-                            if (parent) {
-                              parent.innerText = q.company[0];
-                              parent.className = "w-7 h-7 rounded-full bg-[hsl(220,20%,98%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[hsl(222,22%,15%)] text-xs font-bold shrink-0";
-                            }
-                          }}
-                        />
+                      <div className="w-7 h-7 rounded-full bg-[hsl(220,20%,98%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[hsl(222,22%,15%)] text-xs font-bold shrink-0">
+                        {q.company?.[0] ?? '?'}
                       </div>
                       <div className="space-y-1">
                         <div className="text-xs text-[hsl(222,12%,45%)] flex flex-wrap items-center gap-1 leading-none pt-2.5">
-                          Asked at <span className="font-semibold text-[hsl(222,22%,15%)]">{q.askedAt.join(', ')}</span>
+                          <span className="font-semibold text-[hsl(222,22%,15%)]">{q.company}</span>
+                          {q.round && <><span>·</span><span>{q.round}</span></>}
                         </div>
                       </div>
                     </div>
 
-                    <div className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${
-                      q.difficulty === 'Junior' ? 'bg-green-50 text-green-700 border-green-200' :
-                      q.difficulty === 'Intermediate' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      q.difficulty === 'Senior' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                      'bg-red-50 text-red-700 border-red-200'
-                    }`}>
-                      {q.difficulty}
-                    </div>
+                    {q.level && (
+                      <div className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${
+                        q.level === 'JUNIOR' ? 'bg-green-50 text-green-700 border-green-200' :
+                        q.level === 'MID' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        q.level === 'SENIOR' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                        'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}>
+                        {q.level}
+                      </div>
+                    )}
                   </div>
-                  
+
                   <h3 className="text-lg font-semibold text-[hsl(222,22%,15%)] mb-3 group-hover:text-[hsl(221,91%,60%)] transition-colors">
-                    {q.title}
+                    {q.question}
                   </h3>
-                  
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {q.tags.map(tag => (
-                      <span key={tag} className="px-2 py-1 rounded-md bg-[hsl(220,20%,98%)] text-[hsl(222,12%,45%)] text-xs border border-[hsl(220,16%,90%)]">
-                        {tag}
+
+                  {q.category && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <span className="px-2 py-1 rounded-md bg-[hsl(220,20%,98%)] text-[hsl(222,12%,45%)] text-xs border border-[hsl(220,16%,90%)]">
+                        {q.category.replace(/_/g, ' ')}
                       </span>
-                    ))}
-                  </div>
-                  
-                  <div className="bg-[hsl(220,20%,98%)] rounded-xl p-4 mb-4 border border-[hsl(220,16%,90%)] group-hover:bg-white transition-colors relative">
-                    <div className="absolute top-3 right-3 text-[hsl(221,91%,60%)]">
-                      <Sparkles className="w-4 h-4" />
+                      {q.role && (
+                        <span className="px-2 py-1 rounded-md bg-[hsl(220,20%,98%)] text-[hsl(222,12%,45%)] text-xs border border-[hsl(220,16%,90%)]">
+                          {q.role.replace(/_/g, ' ')}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-[hsl(222,12%,45%)] line-clamp-2 italic">
-                      "{q.preview}"
-                    </p>
-                  </div>
-                  
+                  )}
+
                   <div className="flex items-center justify-between text-[hsl(222,12%,45%)] text-sm">
                     <div className="flex items-center gap-4">
-                      <button className="flex items-center gap-1.5 hover:text-[hsl(222,22%,15%)] transition-colors">
-                        <ThumbsUp className="w-4 h-4" />
-                        <span>{q.likes}</span>
-                      </button>
-                      <button className="flex items-center gap-1.5 hover:text-[hsl(222,22%,15%)] transition-colors">
-                        <MessageSquare className="w-4 h-4" />
-                        <span>{q.comments}</span>
-                      </button>
+                      <span className="text-xs text-[hsl(222,12%,45%)]">
+                        {new Date(q.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3">
                       <button className="flex items-center hover:text-[hsl(222,22%,15%)] transition-colors">
@@ -542,11 +431,18 @@ const FeaturedQuestionLibrary = () => {
                 </motion.div>
               ))}
               
-              <div className="text-center pt-4">
-                <Button variant="outline" className="text-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)]/20 hover:bg-[hsl(221,91%,60%)]/5">
-                  Load more questions
-                </Button>
-              </div>
+              {loading && (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-[hsl(221,91%,60%)]" />
+                </div>
+              )}
+              {!loading && hasMore && questions.length > 0 && (
+                <div className="text-center pt-4">
+                  <Button variant="outline" onClick={handleLoadMore} className="text-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)]/20 hover:bg-[hsl(221,91%,60%)]/5">
+                    Load more questions
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -566,9 +462,11 @@ const FeaturedQuestionLibrary = () => {
             <div className="bg-white rounded-2xl p-4 border border-[hsl(220,16%,90%)] shadow-sm">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,45%)]" />
-                <input 
-                  type="text" 
-                  placeholder="Search questions..." 
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search questions..."
                   className="w-full pl-10 pr-4 py-2 rounded-xl border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] text-sm focus:bg-white focus:border-[hsl(221,91%,60%)] transition-all outline-none"
                 />
               </div>

@@ -1,31 +1,40 @@
 import { motion, useInView } from 'motion/react';
 import { useRef } from 'react';
-import { Brain, Users, FileText, Target } from 'lucide-react';
+import { Brain, Users, FileText, Target, Mic, MessageSquareText, TrendingUp, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router';
 
 const features = [
   {
-    icon: Brain,
-    title: 'AI Mock Interview - Skill Mastery',
+    icon: Mic,
+    title: 'AI Mock Interviews (Voice / Video / Text)',
     description:
-      'Our AI doesn\'t just give you answers - it teaches you how to think and respond like a top performer. Build genuine interview skills from the ground up.',
+      'Practice realistic interviews with follow-up questions—choose voice, video, or text and build structured answers.',
+    link: '/mock-interview',
+    linkLabel: 'Start practicing',
   },
   {
     icon: Users,
-    title: 'Community Learning',
+    title: 'Interview Insights (Community)',
     description:
-      'Connect with tech professionals, share experiences, and learn together. Get peer feedback and support from people who understand your journey.',
+      'Learn from real interview experiences and discussions—then jump straight into practice based on what you read.',
+    link: '/community',
+    linkLabel: 'Explore insights',
   },
   {
-    icon: FileText,
-    title: 'Personalized Training Plan',
+    icon: MessageSquareText,
+    title: 'Coach-style Evaluation',
     description:
-      'We analyze your resume and career goals to create a custom interview preparation roadmap tailored specifically to your strengths and areas for growth.',
+      'Get evidence-based feedback (quotes + next steps), and retry weak moments instantly to improve faster.',
+    link: '/mock-interview',
+    linkLabel: 'See how it works',
   },
   {
-    icon: Target,
-    title: 'High-Match Job Recommendations',
+    icon: TrendingUp,
+    title: 'Trending Practice Sets',
     description:
-      'Discover positions that truly fit your skills, experience, and aspirations. We connect you with opportunities where you\'re most likely to succeed.',
+      'Start from hot role/company-style sets in one click—no guessing what to practice next.',
+    link: '/question-bank',
+    linkLabel: 'Browse sets',
   },
 ];
 
@@ -33,11 +42,15 @@ function FeatureCard({
   icon: Icon,
   title,
   description,
+  link,
+  linkLabel,
   index,
 }: {
   icon: any;
   title: string;
   description: string;
+  link: string;
+  linkLabel: string;
   index: number;
 }) {
   const ref = useRef(null);
@@ -49,15 +62,37 @@ function FeatureCard({
       initial={{ opacity: 0, y: 30 }}
       animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
       transition={{ duration: 0.5, delay: index * 0.1, ease: 'easeOut' }}
-      className="bg-[#E3E3E3]/50 backdrop-blur-sm border border-[hsl(220,16%,90%)] rounded-xl p-8 hover:shadow-lg transition-all duration-300 hover:border-[hsl(221,91%,60%)]/30 flex flex-col items-center text-center"
     >
-      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[hsl(221,91%,60%)] to-[hsl(165,82%,51%)] flex items-center justify-center mb-4">
-        <Icon className="w-6 h-6 text-white" />
-      </div>
-      <h3 className="text-xl font-semibold text-[hsl(222,22%,15%)] mb-3">
-        {title}
-      </h3>
-      <p className="text-[hsl(222,12%,45%)] leading-relaxed">{description}</p>
+      <Link
+        to={link}
+        className="group block bg-white rounded-2xl p-7 border border-slate-100 shadow-sm shadow-slate-900/[0.03] transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-900/[0.06] hover:border-blue-200"
+      >
+        <div className="flex items-start gap-5">
+          {/* Icon */}
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-slate-900 group-hover:bg-blue-600 transition-colors duration-300"
+          >
+            <Icon className="w-5 h-5 text-white" />
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[15px] font-semibold text-slate-900 mb-1.5">
+              {title}
+            </h3>
+            <p
+              className="text-sm text-slate-500 mb-4"
+              style={{ lineHeight: 1.6 }}
+            >
+              {description}
+            </p>
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 group-hover:gap-2 transition-all duration-200">
+              {linkLabel}
+              <ArrowRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+      </Link>
     </motion.div>
   );
 }
@@ -94,7 +129,7 @@ export function Features() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {features.map((feature, index) => (
             <FeatureCard key={index} {...feature} index={index} />
           ))}

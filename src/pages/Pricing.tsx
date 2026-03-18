@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/newDesign/ui/button";
+import { Card } from "@/components/newDesign/ui/card";
+import { Badge } from "@/components/newDesign/ui/badge";
 import { Check, Sparkles, Zap, Crown, Star } from "lucide-react";
 
 

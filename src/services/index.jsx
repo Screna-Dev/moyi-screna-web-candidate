@@ -7,6 +7,7 @@ import * as InterviewSessionService from './IntervewSesstionServices'
 import * as PipecatService from './PipecatService'
 import * as adminService from './adminService'
 import * as PaymentService from './PaymentServices'
+import * as QuestionBankService from './QuestionBankService'
 // Export the API instance and all services
 
 export {
@@ -17,5 +18,6 @@ export {
   InterviewSessionService,
   PipecatService,
   adminService,
-  PaymentService
+  PaymentService,
+  QuestionBankService
 };

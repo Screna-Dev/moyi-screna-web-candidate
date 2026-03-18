@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Textarea } from '@/components/newDesign/ui/textarea';
+import { Switch } from '@/components/newDesign/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/newDesign/ui/dialog';
 import { toast } from 'sonner';
 import { 
   Building2, 
@@ -37,7 +37,7 @@ import {
   type InterviewQuestion
 } from '@/data/experienceMockData';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/newDesign/ui/sidebar';
 
 const difficultyColors = {
   Easy: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',

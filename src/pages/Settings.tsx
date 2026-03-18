@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/newDesign/ui/tabs";
 import { User, CreditCard, Receipt } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import ProfileSettings from "@/components/settings/ProfileSettings";

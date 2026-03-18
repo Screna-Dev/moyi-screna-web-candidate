@@ -1,398 +1,507 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { Navbar } from '@/components/newDesign/home/navbar';
-import { Footer } from '@/components/newDesign/home/footer';
-import { Button } from '@/components/newDesign/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/newDesign/ui/card';
-import { Badge } from '@/components/newDesign/ui/badge';
-import { Label } from '@/components/newDesign/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
+import { Link, useNavigate } from 'react-router';
+import {
+  Clock,
+  ArrowRight,
+  Coins,
+  Zap,
+  BarChart2,
+  Building2,
+  RefreshCw,
+  Flame,
+  Search,
+  Sparkles,
+  Users,
+} from 'lucide-react';
+import { Button } from '../../../components/newDesign/ui/button';
+import { Badge } from '../../../components/newDesign/ui/badge';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/newDesign/ui/select";
-import { 
-  Zap, 
-  Mic, 
-  Video, 
-  Clock, 
-  ArrowRight, 
-  Sparkles, 
-  Play, 
-  History,
-  Filter,
-  BarChart,
-  BrainCircuit,
-  Code,
-  Coins
-} from 'lucide-react';
-import { Separator } from '@/components/newDesign/ui/separator';
+} from '../../../components/newDesign/ui/select';
+import { Navbar } from '../../../components/newDesign/home/navbar';
+import { Footer } from '../../../components/newDesign/home/footer';
 
-// Mock Data for Practice Sets
-const PRACTICE_SETS = [
+// ─── Types ─────────────────────────────────────────────
+interface PracticeSet {
+  id: number;
+  title: string;
+  role: string;
+  focus: string;
+  time: string;
+  difficulty: 'Junior' | 'Intermediate' | 'Senior' | 'Staff';
+  credits: number;
+  practiced: number;
+  popular?: boolean;
+  category: string;
+  company: string;
+}
+
+// ─── Data ──────────────────────────────────────────────
+const PRACTICE_SETS: PracticeSet[] = [
   {
     id: 1,
-    title: "Product Sense Essentials",
-    role: "Product Manager",
-    type: "Product",
-    count: 5,
-    duration: "30 min",
-    difficulty: "Intermediate",
+    title: 'Product Sense Essentials',
+    role: 'Product Manager',
+    focus: 'Product',
+    time: '30 min',
+    difficulty: 'Intermediate',
+    credits: 5,
+    practiced: 539,
     popular: true,
-    credits: 5
+    category: 'product',
+    company: 'FAANG / Big Tech',
   },
   {
     id: 2,
-    title: "Behavioral STAR Method",
-    role: "General",
-    type: "Behavioral",
-    count: 8,
-    duration: "45 min",
-    difficulty: "Junior",
+    title: 'Behavioral STAR Method',
+    role: 'General',
+    focus: 'Behavioral',
+    time: '45 min',
+    difficulty: 'Junior',
+    credits: 8,
+    practiced: 198,
     popular: true,
-    credits: 5
+    category: 'behavioral',
+    company: 'Mid-size tech',
   },
   {
     id: 3,
-    title: "System Design Scalability",
-    role: "Software Engineer",
-    type: "System",
-    count: 3,
-    duration: "45 min",
-    difficulty: "Senior",
-    popular: false,
-    credits: 10
+    title: 'System Design Scalability',
+    role: 'Software Engineer',
+    focus: 'System',
+    time: '48 min',
+    difficulty: 'Senior',
+    credits: 10,
+    practiced: 340,
+    category: 'system-design',
+    company: 'FAANG / Big Tech',
   },
   {
     id: 4,
-    title: "React Frontend Core",
-    role: "Software Engineer",
-    type: "Technical",
-    count: 10,
-    duration: "20 min",
-    difficulty: "Intermediate",
-    popular: false,
-    credits: 5
+    title: 'React Frontend Core',
+    role: 'Software Engineer',
+    focus: 'Technical',
+    time: '20 min',
+    difficulty: 'Intermediate',
+    credits: 5,
+    practiced: 181,
+    category: 'technical',
+    company: 'Startups',
   },
   {
     id: 5,
-    title: "A/B Testing & Metrics",
-    role: "Data Scientist",
-    type: "Analytical",
-    count: 6,
-    duration: "30 min",
-    difficulty: "Staff",
-    popular: false,
-    credits: 10
+    title: 'A/B Testing & Metrics',
+    role: 'Data Scientist',
+    focus: 'Analytical',
+    time: '30 min',
+    difficulty: 'Staff',
+    credits: 10,
+    practiced: 198,
+    category: 'analytical',
+    company: 'FAANG / Big Tech',
   },
   {
     id: 6,
-    title: "Leadership Principles",
-    role: "Engineering Manager",
-    type: "Behavioral",
-    count: 5,
-    duration: "25 min",
-    difficulty: "Senior",
+    title: 'Leadership Principles',
+    role: 'Engineering Manager',
+    focus: 'Behavioral',
+    time: '25 min',
+    difficulty: 'Senior',
+    credits: 5,
+    practiced: 831,
     popular: true,
-    credits: 5
-  }
+    category: 'behavioral',
+    company: 'Mid-size tech',
+  },
+  {
+    id: 7,
+    title: 'PM Strategy & Vision',
+    role: 'Product Manager',
+    focus: 'Product',
+    time: '35 min',
+    difficulty: 'Senior',
+    credits: 8,
+    practiced: 412,
+    category: 'product',
+    company: 'FAANG / Big Tech',
+  },
+  {
+    id: 8,
+    title: 'API Design Patterns',
+    role: 'Software Engineer',
+    focus: 'Technical',
+    time: '25 min',
+    difficulty: 'Intermediate',
+    credits: 5,
+    practiced: 267,
+    category: 'technical',
+    company: 'Mid-size tech',
+  },
 ];
 
-const RECENT_MOCKS = [
-  { id: 101, title: "Product Execution", date: "2 days ago", score: "8/10", type: "Product" },
-  { id: 102, title: "Google Behavioral", date: "5 days ago", score: "Pending", type: "Behavioral" },
-  { id: 103, title: "System Design Practice", date: "1 week ago", score: "7/10", type: "System" },
+const TRENDING_ROLES_POOL = [
+  { rank: '#1', role: 'Product Manager', count: '1.2k' },
+  { rank: '#2', role: 'Frontend Engineer', count: '850' },
+  { rank: '#3', role: 'Data Scientist', count: '620' },
+  { rank: '#4', role: 'UX Designer', count: '580' },
+  { rank: '#5', role: 'Backend Engineer', count: '540' },
+  { rank: '#6', role: 'DevOps Engineer', count: '470' },
+  { rank: '#7', role: 'Machine Learning Engineer', count: '430' },
+  { rank: '#8', role: 'iOS Developer', count: '390' },
+  { rank: '#9', role: 'Solutions Architect', count: '350' },
 ];
 
-export function MockInterviewPage() {
-  const [selectedMode, setSelectedMode] = useState("voice");
+// ─── Helpers ───────────────────────────────────────────
+const ROLE_COLORS: Record<string, string> = {
+  'Product Manager': 'bg-blue-50 text-blue-700 border-blue-200/60',
+  General: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
+  'Software Engineer': 'bg-slate-50 text-slate-700 border-slate-200',
+  'Data Scientist': 'bg-violet-50 text-violet-700 border-violet-200/60',
+  'Engineering Manager': 'bg-amber-50 text-amber-700 border-amber-200/60',
+};
+
+const TRENDING_CARD_STYLES = [
+  {
+    gradient: 'from-blue-500/[0.06] via-blue-400/[0.03] to-transparent',
+    accent: 'text-blue-600',
+    border: 'border-blue-200/40 hover:border-blue-300/60',
+    rankBg: 'bg-blue-600',
+    btnClass: 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600',
+  },
+  {
+    gradient: 'from-violet-500/[0.06] via-violet-400/[0.03] to-transparent',
+    accent: 'text-violet-600',
+    border: 'border-violet-200/40 hover:border-violet-300/60',
+    rankBg: 'bg-violet-600',
+    btnClass: 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600',
+  },
+  {
+    gradient: 'from-emerald-500/[0.06] via-emerald-400/[0.03] to-transparent',
+    accent: 'text-emerald-600',
+    border: 'border-emerald-200/40 hover:border-emerald-300/60',
+    rankBg: 'bg-emerald-600',
+    btnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600',
+  },
+];
+
+const DIFFICULTY_COLORS: Record<string, string> = {
+  Junior: 'text-emerald-600',
+  Intermediate: 'text-blue-600',
+  Senior: 'text-amber-600',
+  Staff: 'text-rose-600',
+};
+
+const AVATAR_COLOR_SETS = [
+  ['bg-rose-200 text-rose-700', 'bg-blue-200 text-blue-700', 'bg-amber-200 text-amber-700'],
+  ['bg-purple-200 text-purple-700', 'bg-green-200 text-green-700', 'bg-pink-200 text-pink-700'],
+  ['bg-cyan-200 text-cyan-700', 'bg-orange-200 text-orange-700', 'bg-indigo-200 text-indigo-700'],
+];
+
+const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
+
+
+// ════════════════════════════════════════════════════════
+// TRENDING CARD
+// ════════════════════════════════════════════════════════
+function TrendingCard({
+  item,
+  style,
+  onStart,
+}: {
+  item: { rank: string; role: string; count: string };
+  style: typeof TRENDING_CARD_STYLES[number];
+  onStart: () => void;
+}) {
+  return (
+    <div
+      className={`relative flex-1 min-w-[260px] rounded-2xl border ${style.border} bg-gradient-to-br ${style.gradient} backdrop-blur-sm p-5 transition-all duration-200 hover:shadow-md hover:shadow-slate-900/[0.04]`}
+    >
+      {/* Rank badge */}
+      <div className="flex items-start justify-between mb-4">
+        <span className="text-[22px] font-bold text-blue-600">
+          {item.rank}
+        </span>
+        <div className="flex items-center gap-1 text-xs text-slate-400">
+          <Users className="w-3 h-3" />
+          <span>{item.count} practicing</span>
+        </div>
+      </div>
+
+      {/* Role name */}
+      <h3 className="text-[16px] font-bold text-slate-900 mb-4 leading-tight">
+        {item.role}
+      </h3>
+
+      {/* Start button */}
+      <Button
+        size="sm"
+        className={`w-full h-9 text-xs font-semibold rounded-lg transition-all ${style.btnClass} shadow-none`}
+        onClick={(e) => {
+          e.preventDefault();
+          onStart();
+        }}
+      >
+        Start Practice
+      </Button>
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════
+// PRACTICE SET CARD
+// ════════════════════════════════════════════════════════
+function PracticeSetCard({ set }: { set: PracticeSet }) {
+  const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
+  const visibleAvatars = 3;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      <Navbar />
-      
-      <main className="pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto space-y-12">
-        
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
-          <div className="space-y-3 max-w-2xl">
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight">
-              AI Mock Interview
-            </h1>
-            <p className="text-lg text-slate-600 leading-relaxed">
-              Start a realistic mock in under a minute. Choose a curated set or customize your session to fit your goals.
-            </p>
+    <Link
+      to={`/session-confirm?session=${set.id}`}
+      className="group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col"
+    >
+      {/* Top: Role + Popular badge */}
+      <div className="px-5 pt-5 pb-0">
+        <div className="flex items-start justify-between gap-3">
+          <Badge
+            variant="outline"
+            className={`font-medium text-xs rounded-full px-3 py-1 ${
+              ROLE_COLORS[set.role] || 'bg-slate-50 text-slate-700 border-slate-200'
+            }`}
+          >
+            {set.role}
+          </Badge>
+          {set.popular && (
+            <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
+              <Sparkles className="w-3 h-3" />
+              Popular
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Title */}
+      <div className="px-5 pt-3 pb-0 flex-1">
+        <h3 className="text-[18px] font-bold text-[#0F172A] leading-snug group-hover:text-blue-600 transition-colors mb-4">
+          {set.title}
+        </h3>
+
+        {/* Metadata chips row */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
+            <Coins className="w-3.5 h-3.5 text-amber-500" style={{ strokeWidth: 1.5 }} />
+            <span className="font-semibold text-slate-700">{set.credits} Credits</span>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <Button variant="outline" className="bg-white" onClick={() => document.getElementById('practice-sets')?.scrollIntoView({ behavior: 'smooth' })}>
-              Browse sets
-            </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200">
-              <Zap className="w-4 h-4 mr-2" />
-              Start mock
-            </Button>
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
+            <Zap className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
+            <span>{set.focus}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
+            <Clock className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
+            <span>{set.time}</span>
           </div>
         </div>
 
-        {/* Quick Start Card */}
-        <Card className="border-slate-200 shadow-sm bg-white overflow-hidden" style={{ borderTop: "4px solid #2563eb" }}>
-          <CardHeader className="bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 pb-6">
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
-              <span className="text-sm font-bold uppercase tracking-wider text-amber-600">Quick Start</span>
-            </div>
-            <CardTitle className="text-xl">Custom Session</CardTitle>
-            <CardDescription>Configure a personalized interview session instantly.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 md:p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Target Role</Label>
-                <Select defaultValue="pm">
-                  <SelectTrigger className="bg-white border-slate-200">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pm">Product Manager</SelectItem>
-                    <SelectItem value="swe">Software Engineer</SelectItem>
-                    <SelectItem value="ds">Data Scientist</SelectItem>
-                    <SelectItem value="pd">Product Designer</SelectItem>
-                    <SelectItem value="em">Engineering Manager</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Interview Type</Label>
-                <Select defaultValue="behavioral">
-                  <SelectTrigger className="bg-white border-slate-200">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="behavioral">Behavioral</SelectItem>
-                    <SelectItem value="product">Product Sense</SelectItem>
-                    <SelectItem value="system">System Design</SelectItem>
-                    <SelectItem value="coding">Coding / Technical</SelectItem>
-                    <SelectItem value="mixed">Mixed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Duration</Label>
-                <Select defaultValue="20">
-                  <SelectTrigger className="bg-white border-slate-200">
-                    <SelectValue placeholder="Select duration" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 min (Quick)</SelectItem>
-                    <SelectItem value="20">20 min (Standard)</SelectItem>
-                    <SelectItem value="30">30 min (Deep Dive)</SelectItem>
-                    <SelectItem value="45">45 min (Full)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Difficulty</Label>
-                <Select defaultValue="intermediate">
-                  <SelectTrigger className="bg-white border-slate-200">
-                    <SelectValue placeholder="Select difficulty" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="junior">Junior</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="senior">Senior</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-            </div>
-
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 mt-8 pt-6 border-t border-slate-100">
-              <div className="flex items-center gap-4 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                 <Tabs value={selectedMode} onValueChange={setSelectedMode} className="w-full">
-                    <TabsList className="h-9">
-                      <TabsTrigger value="voice" className="px-4 text-xs gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        <Mic className="w-3.5 h-3.5" /> Voice Mode
-                      </TabsTrigger>
-                      <TabsTrigger value="video" className="px-4 text-xs gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        <Video className="w-3.5 h-3.5" /> Video Mode
-                      </TabsTrigger>
-                    </TabsList>
-                 </Tabs>
-              </div>
-              
-              <div className="flex items-center gap-4 w-full md:w-auto">
-                 <span className="hidden md:inline text-xs text-slate-400">
-                   You can preview question titles before starting.
-                 </span>
-                 <Link to="/ai-mock">
-                   <Button className="w-full md:w-auto bg-slate-900 text-white hover:bg-slate-800 px-8">
-                     Start Practice
-                   </Button>
-                 </Link>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Practice Sets Section */}
-        <div id="practice-sets" className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h2 className="text-2xl font-bold text-slate-900">Curated Practice Sets</h2>
-            
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
-               <Select defaultValue="all">
-                  <SelectTrigger className="h-9 w-[130px] bg-white text-xs">
-                    <SelectValue placeholder="All Roles" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="pm">Product Manager</SelectItem>
-                    <SelectItem value="swe">Software Engineer</SelectItem>
-                  </SelectContent>
-               </Select>
-               <Select defaultValue="all">
-                  <SelectTrigger className="h-9 w-[130px] bg-white text-xs">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="behavioral">Behavioral</SelectItem>
-                    <SelectItem value="technical">Technical</SelectItem>
-                  </SelectContent>
-               </Select>
-               <Select defaultValue="recommended">
-                  <SelectTrigger className="h-9 w-[160px] bg-white text-xs">
-                    <SelectValue placeholder="Interview Style" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recommended">Recommended</SelectItem>
-                    <SelectItem value="startup">Startup Style</SelectItem>
-                    <SelectItem value="midsize">Mid-size Company</SelectItem>
-                    <SelectItem value="bigtech">Big Tech Style</SelectItem>
-                  </SelectContent>
-               </Select>
-               <Button variant="outline" size="sm" className="h-9 gap-2 text-xs bg-white text-slate-600">
-                 <Filter className="w-3.5 h-3.5" /> Sort: Popular
-               </Button>
-            </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
+            <BarChart2 className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
+            <span className={`font-medium ${DIFFICULTY_COLORS[set.difficulty] || 'text-slate-600'}`}>{set.difficulty}</span>
           </div>
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
+            <Building2 className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
+            <span>{set.company}</span>
+          </div>
+        </div>
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {PRACTICE_SETS.map((set) => (
-              <Card key={set.id} className="group hover:border-blue-200 hover:shadow-md transition-all duration-200 bg-white border-slate-200 flex flex-col">
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start gap-4">
-                    <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200 font-normal">
-                      {set.role}
-                    </Badge>
-                    {set.popular && (
-                      <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200 shadow-none font-medium text-[10px] px-1.5 py-0">
-                        Popular
-                      </Badge>
-                    )}
-                  </div>
-                  <CardTitle className="text-lg mt-2 group-hover:text-blue-700 transition-colors">
-                    {set.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-4">
-                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 mt-1">
-                     <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                       <Coins className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-                       {set.credits || 5} Credits
-                     </span>
-                     <span className="flex items-center gap-1.5">
-                       <Zap className="w-3.5 h-3.5 text-slate-400" />
-                       {set.type}
-                     </span>
-                     <span className="flex items-center gap-1.5">
-                       <Clock className="w-3.5 h-3.5 text-slate-400" />
-                       {set.duration}
-                     </span>
-                     <span className="flex items-center gap-1.5">
-                       <BarChart className="w-3.5 h-3.5 text-slate-400" />
-                       {set.difficulty}
-                     </span>
-                   </div>
-                </CardContent>
-                <CardFooter className="pt-0 mt-auto flex items-center justify-between">
-                   <div className="flex items-center gap-2">
-                      <div className="flex -space-x-2">
-                         {/* Mock Company Logos based on set ID to show variety */}
-                         {set.id % 2 === 0 ? (
-                            <>
-                               <div className="w-6 h-6 rounded-full bg-[#4285F4]/10 border border-white flex items-center justify-center text-[9px] font-bold text-[#4285F4]" title="Google">G</div>
-                               <div className="w-6 h-6 rounded-full bg-[#0668E1]/10 border border-white flex items-center justify-center text-[9px] font-bold text-[#0668E1]" title="Meta">M</div>
-                               <div className="w-6 h-6 rounded-full bg-black/5 border border-white flex items-center justify-center text-[9px] font-bold text-black" title="Uber">U</div>
-                            </>
-                         ) : (
-                            <>
-                               <div className="w-6 h-6 rounded-full bg-[#FF9900]/10 border border-white flex items-center justify-center text-[9px] font-bold text-[#FF9900]" title="Amazon">A</div>
-                               <div className="w-6 h-6 rounded-full bg-[#E50914]/10 border border-white flex items-center justify-center text-[9px] font-bold text-[#E50914]" title="Netflix">N</div>
-                               <div className="w-6 h-6 rounded-full bg-[#000000]/5 border border-white flex items-center justify-center text-[9px] font-bold text-black" title="Apple">A</div>
-                            </>
-                         )}
-                         <div className="w-6 h-6 rounded-full bg-slate-100 border border-white flex items-center justify-center text-[8px] font-medium text-slate-500">+2</div>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        {520 + set.id * 15} practiced
-                      </span>
-                   </div>
-                   <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 -mr-2">
-                     <ArrowRight className="w-4 h-4" />
-                   </Button>
-                </CardFooter>
-              </Card>
+      {/* Footer – Social proof */}
+      <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex -space-x-1.5">
+            {colorSet.slice(0, visibleAvatars).map((color, i) => (
+              <div
+                key={i}
+                className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
+              >
+                {INITIALS[(set.id + i) % INITIALS.length]}
+              </div>
             ))}
           </div>
+          <span className="text-xs font-medium text-slate-400">
+            +{set.practiced.toLocaleString()} practiced
+          </span>
         </div>
+        <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
+          <ArrowRight className="w-3.5 h-3.5" />
+        </div>
+      </div>
+    </Link>
+  );
+}
 
-        <Separator className="bg-slate-200" />
+// ════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ════════════════════════════════════════════════════════
+export function MockInterviewPage() {
+  const navigate = useNavigate();
 
-        {/* Recent Mocks Section */}
-        <div className="space-y-6">
-           <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <History className="w-5 h-5 text-slate-400" />
-                Recent Mocks
-              </h3>
-              <Link to="/history" className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                View all history <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {RECENT_MOCKS.map(mock => (
-                 <div key={mock.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3 hover:border-slate-300 transition-colors">
-                    <div className="flex justify-between items-start">
-                       <div>
-                          <h4 className="font-semibold text-slate-900 text-sm">{mock.title}</h4>
-                          <p className="text-xs text-slate-500 mt-0.5">{mock.type} • {mock.date}</p>
-                       </div>
-                       <Badge variant="outline" className={`
-                          ${mock.score === 'Pending' ? 'bg-slate-50 text-slate-500' : 'bg-green-50 text-green-700 border-green-200'}
-                       `}>
-                          {mock.score}
-                       </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 mt-auto pt-2">
-                       <Button size="sm" variant="outline" className="h-8 flex-1 text-xs">Review</Button>
-                       <Button size="sm" variant="ghost" className="h-8 flex-1 text-xs text-blue-600 hover:bg-blue-50">Practice again</Button>
-                    </div>
-                 </div>
+  // Role filter for practice sets
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Trending Today shuffle
+  const [trendingGroupIndex, setTrendingGroupIndex] = useState(0);
+  const [isShuffling, setIsShuffling] = useState(false);
+
+  const trendingGroups: typeof TRENDING_ROLES_POOL[] = [];
+  for (let i = 0; i < TRENDING_ROLES_POOL.length; i += 3) {
+    trendingGroups.push(TRENDING_ROLES_POOL.slice(i, i + 3));
+  }
+  const currentTrendingRoles = trendingGroups[trendingGroupIndex] || trendingGroups[0];
+
+  const handleShuffleTrending = () => {
+    setIsShuffling(true);
+    setTimeout(() => {
+      setTrendingGroupIndex((prev) => (prev + 1) % trendingGroups.length);
+      setIsShuffling(false);
+    }, 300);
+  };
+
+  // ─── Filtered sets ─────────────────────────────
+  const filteredSets = PRACTICE_SETS.filter((set) => {
+    if (roleFilter !== 'all' && set.role !== roleFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return (
+        set.title.toLowerCase().includes(q) ||
+        set.role.toLowerCase().includes(q) ||
+        set.focus.toLowerCase().includes(q) ||
+        set.company.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  }).sort((a, b) => (b.practiced || 0) - (a.practiced || 0));
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col">
+      <Navbar />
+
+      <main className="flex-1">
+        <div className="max-w-7xl mx-auto px-6 pt-[150px] pb-16">
+          {/* ─── Page Header ─────────────────────────── */}
+          <div className="mb-8">
+            <h1 className="text-[#0F172A] mb-2 font-bold text-[40px]">Trendings</h1>
+            <p className="text-slate-500 max-w-lg">
+              See what roles are trending today — updated daily.
+            </p>
+          </div>
+
+          {/* ─── Trending Hero Strip ────────────────── */}
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  Trending Today
+                </div>
+                <span className="text-[11px] text-slate-400 bg-slate-50 rounded-full px-2 py-0.5">Updated daily</span>
+              </div>
+              <button
+                onClick={handleShuffleTrending}
+                disabled={isShuffling}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isShuffling ? 'animate-spin' : ''}`} />
+                Shuffle
+              </button>
+            </div>
+
+            <div
+              className="flex gap-4 overflow-x-auto transition-opacity duration-300"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', opacity: isShuffling ? 0.3 : 1 }}
+            >
+              {currentTrendingRoles.map((item, idx) => (
+                <TrendingCard
+                  key={item.rank}
+                  item={item}
+                  style={{
+                    gradient: 'from-blue-50/60 to-white',
+                    accent: 'text-slate-900',
+                    border: 'border-blue-100/80 hover:border-blue-200/90 shadow-sm shadow-blue-900/[0.03]',
+                    rankBg: idx === 0 ? 'bg-blue-600' : 'bg-slate-100 !text-slate-500',
+                    btnClass: 'bg-white hover:bg-blue-50/60 !text-blue-700 border border-blue-200/70',
+                  }}
+                  onStart={() => navigate('/ai-mock')}
+                />
               ))}
-           </div>
-        </div>
+            </div>
+          </div>
 
+          {/* ─── Curated Practice Sets ────────────────  */}
+          <div className="mb-12">
+            {/* Section header + filters */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <h2 className="text-[#0F172A] font-bold text-[24px]">Curated Practice Sets</h2>
+              <div className="flex items-center gap-3">
+                {/* Search bar */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search sets..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-8 text-xs bg-white border border-slate-200 rounded-lg pl-8 pr-3 w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 transition-all placeholder:text-slate-400"
+                  />
+                </div>
+                {/* Role filter */}
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger className="h-8 text-xs bg-white border-slate-200 w-[140px] rounded-lg">
+                    <SelectValue placeholder="All Roles" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[hsl(222,22%,15%)] border-[hsl(222,22%,25%)] text-white">
+                    <SelectItem value="all" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">All Roles</SelectItem>
+                    <SelectItem value="Product Manager" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Product Manager</SelectItem>
+                    <SelectItem value="Software Engineer" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Software Engineer</SelectItem>
+                    <SelectItem value="Data Scientist" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Data Scientist</SelectItem>
+                    <SelectItem value="Engineering Manager" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Eng. Manager</SelectItem>
+                    <SelectItem value="General" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">General</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Cards Grid – 24px gap */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredSets.map((set) => (
+                <PracticeSetCard key={set.id} set={set} />
+              ))}
+            </div>
+
+            {/* Empty state */}
+            {filteredSets.length === 0 && (
+              <div className="text-center py-16">
+                <p className="text-sm text-slate-500 mb-3">No practice sets match your search.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setRoleFilter('all');
+                    setSearchQuery('');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
+
       <Footer />
     </div>
   );

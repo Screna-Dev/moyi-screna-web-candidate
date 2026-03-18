@@ -14,12 +14,11 @@ import {
   Trash2,
   Check
 } from 'lucide-react';
-import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
-import { Button } from '@/components/newDesign/ui/button';
-import { Input } from '@/components/newDesign/ui/input';
-import { Label } from '@/components/newDesign/ui/label';
-import { getPersonalInfo, savePersonalInfo } from '@/services/ProfileServices';
-import { useToast } from '@/hooks/use-toast';
+import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
+import { Button } from '../../components/newDesign/ui/button';
+import { Input } from '../../components/newDesign/ui/input';
+import { Label } from '../../components/newDesign/ui/label';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Settings Tabs
 const SETTINGS_TABS = [
@@ -32,11 +31,11 @@ const SETTINGS_TABS = [
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Profile Form State
+  // Profile Form State — seeded from auth user
   const [profileData, setProfileData] = useState({
     firstName: '',
     lastName: '',
@@ -44,61 +43,23 @@ export function SettingsPage() {
     timezone: 'Pacific Time (US & Canada)',
   });
 
-  // Load real data from API on mount
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await getPersonalInfo();
-        const info = res.data?.data ?? res.data;
-        if (!info) return;
-        
-        // Parse name into first and last
-        const [firstName = '', ...rest] = (info.name || '').split(' ');
-        
-        setProfileData((prev) => ({
-          firstName: firstName || prev.firstName,
-          lastName: rest.join(' ') || prev.lastName,
-          email: info.email || prev.email,
-          timezone: info.timezone || prev.timezone,
-        }));
-      } catch (error) {
-        console.error('Failed to fetch profile:', error);
-        // Keep empty defaults - no toast to avoid disturbing user
-      }
-    };
-    fetchProfile();
-  }, []);
+    if (user) {
+      const parts = (user.name || '').trim().split(' ');
+      setProfileData((prev) => ({
+        ...prev,
+        firstName: parts[0] || '',
+        lastName: parts.slice(1).join(' ') || '',
+        email: user.email || '',
+      }));
+    }
+  }, [user]);
 
-  const handleProfileSave = async (e: React.FormEvent) => {
+  const handleProfileSave = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    try {
-      const name = [profileData.firstName, profileData.lastName].filter(Boolean).join(' ');
-      await savePersonalInfo({ name, timezone: profileData.timezone });
-
-      // Keep localStorage in sync
-      const raw = localStorage.getItem('screnaUserData');
-      const stored = raw ? JSON.parse(raw) : {};
-      localStorage.setItem('screnaUserData', JSON.stringify({
-        ...stored,
-        firstName: profileData.firstName,
-        lastName: profileData.lastName,
-      }));
-
-      toast({
-        title: "Profile Updated",
-        description: "Your profile has been saved successfully.",
-      });
-    } catch (err) {
-      console.error('Failed to save profile settings:', err);
-      toast({
-        title: "Error",
-        description: "Failed to save profile. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    // Simulate API call
+    setTimeout(() => setIsLoading(false), 1000);
   };
 
   return (
@@ -158,7 +119,7 @@ export function SettingsPage() {
                   </div>
                   <div className="hidden sm:block">
                      <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-2xl font-bold text-slate-400 border border-slate-200">
-                        {profileData.firstName?.[0]?.toUpperCase() || '?'}
+                        {profileData.firstName[0]}
                      </div>
                   </div>
                 </div>
@@ -193,10 +154,8 @@ export function SettingsPage() {
                         className="pl-9"
                         value={profileData.email}
                         onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                        disabled // Email cannot be changed via this form
                       />
                     </div>
-                    <p className="text-xs text-slate-500">Email cannot be changed. Contact support if needed.</p>
                   </div>
 
                   <div className="space-y-2">
