@@ -3,10 +3,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 
 // Public / marketing pages (home subdirectory, use @/ aliases)
-import HomePageDefault from './pages/newDesign/home/home';
-import QuestionBankPage from './pages/newDesign/home/question-bank';
-import QuestionDetailPage from './pages/newDesign/home/question-detail';
-import PricingPage from './pages/newDesign/home/pricing-page';
+import { QuestionBankPage } from './pages/newDesign/home/question-bank';
+import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
+import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
 import JobBoardPage from './pages/newDesign/home/job-board';
 
@@ -17,22 +16,26 @@ import { OnboardingPage } from './pages/newDesign/onboarding';
 
 // Dashboard / post-login pages
 import { DashboardPage } from './pages/newDesign/dashboard';
-import { DashboardMockInterviewPage } from './pages/newDesign/dashboard-mock-interview';
 import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
 import { AIMockPage } from './pages/newDesign/ai-mock';
 import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
 import { HistoryPage } from './pages/newDesign/history';
 import { JobsPage } from './pages/newDesign/jobs';
-import { LibraryPage } from './pages/newDesign/library';
 import { ReferEarnPage } from './pages/newDesign/refer-earn';
 import { SettingsPage } from './pages/newDesign/settings';
 import { BillingPage } from './pages/newDesign/billing';
 import { EvaluationPage } from './pages/newDesign/evaluation-page';
 import { AddExperiencePage } from './pages/newDesign/add-experience';
 import { MessageCenterPage } from './pages/newDesign/message-center';
-import { QuestionUnknownPage } from './pages/newDesign/question-unknown';
+import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
+import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
 import InterviewPrep from './pages/InterviewPrep';
+import { MyContributionsPage } from './pages/newDesign/my-contributions';
+import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
+import HomePage from './pages/newDesign/home/home';
+import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
+import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -70,111 +73,35 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     errorElement: <ErrorBoundary />,
     children: [
-      {
-        path: '/',
-        element: <HomePageDefault />,
-      },
-      {
-        path: '/question-bank',
-        element: <QuestionBankPage />,
-      },
-      {
-        path: '/question/:id',
-        element: <QuestionDetailPage />,
-      },
-      {
-        path: '/question-unknown',
-        element: <QuestionUnknownPage />,
-      },
-      {
-        path: '/pricing',
-        element: <PricingPage />,
-      },
-      {
-        path: '/faq',
-        element: <FaqPage />,
-      },
-      {
-        path: '/auth',
-        element: <AuthPage />,
-      },
-      {
-        path: '/auth/google/callback',
-        element: <GoogleCallback />,
-      },
-      {
-        path: '/signup-flow',
-        element: <SignupFlowPage />,
-      },
-      {
-        path: '/onboarding',
-        element: <OnboardingPage />,
-      },
-      {
-        path: '/mock-interview',
-        element: <MockInterviewPage />,
-      },
-      {
-        path: '/ai-mock',
-        element: <AIMockPage />,
-      },
-      {
-        path: '/ai-mockwhite',
-        element: <AIMockWhitePage />,
-      },
-      {
-        path: '/dashboard',
-        element: <DashboardPage />,
-      },
-      {
-        path: '/dashboard/mock-interview',
-        // element: <DashboardMockInterviewPage />,
-        element: <InterviewPrep />
-      },
-      {
-        path: '/jobs',
-        element: <JobsPage />,
-      },
-      {
-        path: '/job-board',
-        element: <JobBoardPage />,
-      },
-      {
-        path: '/library',
-        element: <LibraryPage />,
-      },
-      {
-        path: '/refer',
-        element: <ReferEarnPage />,
-      },
-      {
-        path: '/history',
-        element: <HistoryPage />,
-      },
-      {
-        path: '/settings',
-        element: <SettingsPage />,
-      },
-      {
-        path: '/billing',
-        element: <BillingPage />,
-      },
-      {
-        path: '/evaluation',
-        element: <EvaluationPage />,
-      },
-      {
-        path: '/add-experience',
-        element: <AddExperiencePage />,
-      },
-      {
-        path: '/messages',
-        element: <MessageCenterPage />,
-      },
-      {
-        path: '*',
-        element: <ErrorBoundary />,
-      },
+      { path: '/', element: <HomePage /> },
+      { path: '/question-bank', element: <QuestionBankPage /> },
+      { path: '/question/:id', element: <QuestionDetailPage /> },
+      { path: '/question-unknown/:id', element: <QuestionUnknownPage /> },
+      { path: '/pricing', element: <PricingPage /> },
+      { path: '/faq', element: <FaqPage /> },
+      { path: '/auth', element: <AuthPage /> },
+      { path: '/auth/google/callback', element: <GoogleCallback /> },
+      { path: '/signup-flow', element: <SignupFlowPage /> },
+      { path: '/onboarding', element: <OnboardingPage /> },
+      { path: '/mock-interview', element: <MockInterviewPage /> },
+      { path: '/personalized-practice', element: <PersonalizedPracticePage /> },
+      { path: '/session-confirm', element: <SessionConfirmPage /> },
+      { path: '/ai-mock', element: <AIMockPage /> },
+      { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
+      { path: '/dashboard', element: <DashboardPage /> },
+      { path: '/dashboard/contributions', element: <MyContributionsPage /> },
+      { path: '/jobs', element: <JobsPage /> },
+      { path: '/job-board', element: <JobBoardPage /> },
+      { path: '/refer', element: <ReferEarnPage /> },
+      { path: '/history', element: <HistoryPage /> },
+      { path: '/settings', element: <SettingsPage /> },
+      { path: '/billing', element: <BillingPage /> },
+      { path: '/evaluation', element: <EvaluationPage /> },
+      { path: '/add-experience', element: <AddExperiencePage /> },
+      { path: '/messages', element: <MessageCenterPage /> },
+      { path: '/interview-insights', element: <InterviewInsightsPage /> },
+      { path: '/experience/:id', element: <ExperienceDetailPage /> },
+      { path: '*', element: <ErrorBoundary /> },
     ],
   },
 ]);

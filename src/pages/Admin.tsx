@@ -4,16 +4,16 @@ import {
   LogOut,
   Settings,
 } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
+import { Button } from '@/components/newDesign/ui/button';
+import { Card } from '@/components/newDesign/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@/components/newDesign/ui/dropdown-menu';
 import { UsersList } from '@/components/admin/UsersList';
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
 import { useNavigate } from 'react-router-dom';

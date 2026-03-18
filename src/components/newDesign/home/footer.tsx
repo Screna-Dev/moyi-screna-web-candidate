@@ -1,6 +1,6 @@
 import { Linkedin, Twitter, Github, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import Logo from '@/assets/logo.png';
+import Logo from '@/assets/Navbar.png';
 
 const linkClass = 'text-[hsl(222,12%,45%)] hover:text-[hsl(221,91%,60%)] transition-colors text-sm';
 
@@ -12,10 +12,7 @@ export function Footer() {
           {/* Brand */}
           <div className="col-span-1 md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <img src={Logo} alt="Screna AI" className="w-8 h-8 object-contain" />
-              <span className="text-xl font-semibold text-[hsl(222,22%,15%)]">
-                Screna AI
-              </span>
+              <img src={Logo} alt="Screna AI" className="h-6 object-contain" />
             </Link>
             <p className="text-[hsl(222,12%,45%)] text-sm leading-relaxed mb-6">
               AI-powered interview practice and job search platform designed to

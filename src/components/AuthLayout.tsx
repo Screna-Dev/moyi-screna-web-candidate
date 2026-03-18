@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarTrigger } from '@/components/newDesign/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { AlertTriangle, X } from 'lucide-react';

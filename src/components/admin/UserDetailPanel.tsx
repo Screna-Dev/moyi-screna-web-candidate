@@ -1,7 +1,7 @@
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Card, CardContent } from '@/components/newDesign/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
 import type { AdminUser } from '@/data/adminMockData';
 import { CreditCard, Users, Brain, DollarSign, TrendingUp } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';

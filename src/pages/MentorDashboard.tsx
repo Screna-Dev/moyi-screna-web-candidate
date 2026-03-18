@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, DollarSign, Star, Users, Eye, MessageSquare, Calendar as CalendarIcon, Settings, User, FileText, Clock, UserCheck, Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/newDesign/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/newDesign/ui/avatar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/newDesign/ui/table';
+import { Switch } from '@/components/newDesign/ui/switch';
+import { Input } from '@/components/newDesign/ui/input';
 import {
   mockMentorApplication,
   mockMentorSessions,

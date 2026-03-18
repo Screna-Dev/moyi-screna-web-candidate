@@ -5,6 +5,8 @@ import { HowItWorks } from '@/components/newDesign/home/how-it-works';
 import { Testimonials } from '@/components/newDesign/home/testimonials';
 import { CTA } from '@/components/newDesign/home/cta';
 import { Footer } from '@/components/newDesign/home/footer';
+import { Security } from '@/components/newDesign/security';
+import { PricingFaq } from '@/components/newDesign/home/pricing-faq';
 
 export function HomePage() {
   return (
@@ -15,6 +17,8 @@ export function HomePage() {
         <HowItWorks />
         <Features />
         <Testimonials />
+        <Security/>
+        <PricingFaq />
         <CTA />
       </main>
       <Footer />

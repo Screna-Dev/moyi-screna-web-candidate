@@ -1,22 +1,285 @@
-import { Navbar } from '@/components/newDesign/home/navbar';
-import { Footer } from '@/components/newDesign/home/footer';
-import { Button } from '@/components/newDesign/ui/button';
-import { 
-  ArrowLeft, 
-  Bookmark, 
-  MoreHorizontal, 
-  Play, 
-  Check, 
-  ThumbsUp, 
-  MessageSquare, 
-  Share2, 
-  Flag, 
+import { useState, useEffect } from 'react';
+import { Navbar } from '../../../components/newDesign/home/navbar';
+import { Footer } from '../../../components/newDesign/home/footer';
+import { Button } from '../../../components/newDesign/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/newDesign/ui/select';
+import {
+  ArrowLeft,
+  Bookmark,
+  Check,
+  MessageSquare,
+  Share2,
+  Flag,
+  Info,
+  FolderOpen,
+  Plus,
+  Lightbulb,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
   User,
-  Info
+  Send,
 } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useParams } from 'react-router';
+import { getQuestion, getQuestionAiHints, getAnswerReplies, createAnswerReply } from '../../../services/QuestionBankService';
 
-export default function QuestionDetailPage() {
+const bookmarkFolders = [
+  { id: 'fav', name: 'My Favorites', icon: '⭐', count: 12 },
+  { id: 'tech', name: 'Technical', icon: '💻', count: 8 },
+  { id: 'behavioral', name: 'Behavioral', icon: '🗣️', count: 5 },
+  { id: 'system', name: 'System Design', icon: '🏗️', count: 3 },
+  { id: 'pm', name: 'Product Management', icon: '📊', count: 6 },
+];
+
+interface QuestionData {
+  id: string;
+  question: string;
+  company: string;
+  role: string;
+  level: string;
+  round: string;
+  category: string;
+  createdAt: string;
+}
+
+interface AiHints {
+  suggested_approach: string;
+  pro_tip: string;
+  framework: { step: number; title: string; description: string }[];
+  key_points_to_mention: string[];
+}
+
+interface Reply {
+  id: string;
+  reply: string;
+  createdAt: string;
+}
+
+function AnswerReplySection({ answerId }: { answerId: string }) {
+  const [showReplies, setShowReplies] = useState(false);
+  const [repliesLoaded, setRepliesLoaded] = useState(false);
+  const [replies, setReplies] = useState<Reply[]>([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadReplies = async (pageNum: number, reset: boolean) => {
+    setRepliesLoading(true);
+    try {
+      const res = await getAnswerReplies(answerId, pageNum);
+      const data = res.data?.data ?? res.data;
+      const content: Reply[] = data?.content ?? (Array.isArray(data) ? data : []);
+      const pageMeta = data?.pageMeta;
+      setReplies(prev => reset ? content : [...prev, ...content]);
+      setHasMore(pageMeta ? !pageMeta.last : false);
+      setPage(pageNum);
+      setRepliesLoaded(true);
+    } catch {
+      setRepliesLoaded(true);
+    } finally {
+      setRepliesLoading(false);
+    }
+  };
+
+  const handleToggle = () => {
+    const next = !showReplies;
+    setShowReplies(next);
+    if (next && !repliesLoaded) {
+      loadReplies(1, true);
+    }
+  };
+
+  const handleSubmitReply = async () => {
+    if (!replyText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await createAnswerReply(answerId, replyText.trim());
+      const newReply: Reply = res.data?.data ?? res.data;
+      setReplies(prev => [...prev, newReply]);
+      setReplyText('');
+      if (!showReplies) setShowReplies(true);
+      setRepliesLoaded(true);
+    } catch {
+      // silent
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-slate-100">
+      {/* Toggle */}
+      <button
+        onClick={handleToggle}
+        className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors mb-2"
+      >
+        <MessageSquare className="w-3.5 h-3.5" />
+        {showReplies
+          ? 'Hide replies'
+          : repliesLoaded && replies.length > 0
+            ? `View ${replies.length} repl${replies.length === 1 ? 'y' : 'ies'}`
+            : 'Reply'}
+        {!showReplies && <ChevronDown className="w-3 h-3 opacity-50" />}
+        {showReplies && <ChevronUp className="w-3 h-3 opacity-50" />}
+      </button>
+
+      {showReplies && (
+        <div className="ml-4 border-l-2 border-slate-100 pl-4 space-y-3">
+          {/* Loading state */}
+          {repliesLoading && replies.length === 0 && (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+              <span className="text-xs text-slate-400">Loading replies...</span>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!repliesLoading && repliesLoaded && replies.length === 0 && (
+            <p className="text-xs text-slate-400 py-1">No replies yet. Be the first to reply.</p>
+          )}
+
+          {/* Reply list */}
+          {replies.map(r => (
+            <div key={r.id} className="flex gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <div className="flex-1 bg-slate-50 rounded-lg px-3 py-2">
+                <p className="text-xs text-slate-700 leading-relaxed">{r.reply}</p>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {new Date(r.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {/* Load more */}
+          {hasMore && !repliesLoading && (
+            <button
+              onClick={() => loadReplies(page + 1, false)}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Load more replies
+            </button>
+          )}
+          {repliesLoading && replies.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+              <span className="text-xs text-slate-400">Loading...</span>
+            </div>
+          )}
+
+          {/* Reply composer */}
+          <div className="flex gap-2 pt-1">
+            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+              <User className="w-3.5 h-3.5 text-slate-400" />
+            </div>
+            <div className="flex-1 flex gap-2">
+              <input
+                type="text"
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmitReply(); } }}
+                placeholder="Write a reply..."
+                className="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10 outline-none transition-all"
+              />
+              <button
+                onClick={handleSubmitReply}
+                disabled={!replyText.trim() || submitting}
+                className="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                {submitting
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Send className="w-3 h-3" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function QuestionDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const [questionData, setQuestionData] = useState<QuestionData | null>(null);
+  const [questionLoading, setQuestionLoading] = useState(false);
+  const [aiHints, setAiHints] = useState<AiHints | null>(null);
+  const [hintsLoading, setHintsLoading] = useState(false);
+  const [bookmarkOpen, setBookmarkOpen] = useState(false);
+  const [savedFolders, setSavedFolders] = useState<string[]>([]);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [showHints, setShowHints] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setQuestionLoading(true);
+    getQuestion(id)
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        setQuestionData(data);
+      })
+      .catch(() => {})
+      .finally(() => setQuestionLoading(false));
+  }, [id]);
+
+  const handleToggleHints = () => {
+    const next = !showHints;
+    setShowHints(next);
+    if (next && !aiHints && id && !hintsLoading) {
+      setHintsLoading(true);
+      getQuestionAiHints(id)
+        .then((res) => {
+          const data = res.data?.data ?? res.data;
+          setAiHints(data);
+        })
+        .catch(() => {})
+        .finally(() => setHintsLoading(false));
+    }
+  };
+
+  const handleShare = () => {
+    const url = window.location.href;
+    // Fallback for environments where Clipboard API is blocked
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(url).then(() => {
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }).catch(() => {
+        fallbackCopy(url);
+      });
+    } else {
+      fallbackCopy(url);
+    }
+  };
+
+  const fallbackCopy = (text: string) => {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (_) {
+      // silent fail
+    }
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
+  const toggleSaveToFolder = (folderId: string) => {
+    setSavedFolders((prev) =>
+      prev.includes(folderId) ? prev.filter((id) => id !== folderId) : [...prev, folderId]
+    );
+  };
+
+  const isSaved = savedFolders.length > 0;
+
   return (
     <div className="min-h-screen bg-[#F7F8FA] font-sans text-slate-900">
       <Navbar />
@@ -35,85 +298,112 @@ export default function QuestionDetailPage() {
 
             {/* Header */}
             <div className="mb-8">
-              <div className="flex items-start justify-between gap-4">
-                <h1 className="text-3xl font-semibold text-slate-900 leading-tight mb-3">
-                  How do you approach GenAI safety in consumer products?
-                </h1>
-                
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="outline" className="rounded-full border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-600 gap-2">
-                    <Bookmark className="w-4 h-4" />
-                    <span className="text-xs font-medium bg-slate-100 px-1.5 py-0.5 rounded-full text-slate-600">13</span>
-                  </Button>
-                  <Button variant="ghost" size="icon" className="rounded-full text-slate-400 hover:text-slate-600">
-                    <MoreHorizontal className="w-5 h-5" />
-                  </Button>
+              {questionLoading ? (
+                <div className="flex items-center gap-3 mb-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                  <span className="text-slate-400 text-sm">Loading question...</span>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <div className="w-5 h-5 rounded bg-black text-white flex items-center justify-center text-[10px] font-bold">O</div>
-                <span className="font-medium text-slate-700">OpenAI</span>
-                <span>•</span>
-                <span>Asked 23 days ago</span>
-              </div>
-            </div>
-
-            {/* Content Module A: Video Answer Upsell */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-              <div className="flex flex-col md:flex-row">
-                {/* Left: Video Preview */}
-                <div className="md:w-1/2 bg-slate-900 relative group cursor-pointer">
-                  <img 
-                    src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1632&q=80" 
-                    alt="Video preview" 
-                    className="w-full h-full object-cover opacity-60 group-hover:opacity-50 transition-opacity"
-                  />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center">
-                    <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                      <Play className="w-5 h-5 fill-white" />
-                    </div>
-                    <h3 className="font-semibold text-lg mb-1">Upgrade to see our video answer</h3>
-                    <p className="text-sm text-white/80">See how a real interviewer answers this question</p>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <h1 className="text-3xl font-semibold text-slate-900 leading-tight mb-3">
+                      {questionData?.question ?? 'Question not found'}
+                    </h1>
                   </div>
-                </div>
 
-                {/* Right: Membership Benefits */}
-                <div className="md:w-1/2 p-6 md:p-8 flex flex-col justify-center bg-white">
-                  <h3 className="text-xl font-semibold mb-6">Become a member today</h3>
-                  <ul className="space-y-3 mb-8">
-                    {[
-                      '100+ expert answer videos',
-                      'Access to all courses',
-                      'Peer-to-peer practice',
-                      'Private Slack community',
-                      'Full question database'
-                    ].map((item, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm text-slate-600">
-                        <div className="w-5 h-5 rounded-full bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-                          <Check className="w-3 h-3" />
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    {questionData?.company && (
+                      <>
+                        <div className="w-5 h-5 rounded bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
+                          {questionData.company[0]}
                         </div>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-6 rounded-lg shadow-sm shadow-blue-200">
-                    Upgrade now
-                  </Button>
-                </div>
-              </div>
+                        <span className="font-medium text-slate-700">{questionData.company}</span>
+                        <span>•</span>
+                      </>
+                    )}
+                    {questionData?.round && <><span>{questionData.round}</span><span>•</span></>}
+                    {questionData?.createdAt && (
+                      <span>{new Date(questionData.createdAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Action Row */}
             <div className="flex items-center gap-2 mb-8">
-              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-blue-600 gap-2">
-                <Bookmark className="w-4 h-4" /> Save
-              </Button>
+              <div className="relative">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`gap-2 text-center ${ isSaved ? 'text-[hsl(221,91%,60%)]' : 'text-slate-500 hover:text-blue-600' } p-[0px]`}
+                  onClick={() => setBookmarkOpen(!bookmarkOpen)}
+                >
+                  <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} /> Save
+                </Button>
+
+                {/* Bookmark Folder Popover */}
+                {bookmarkOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-30" 
+                      onClick={() => setBookmarkOpen(false)} 
+                    />
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-40 overflow-hidden">
+                      <div className="p-3 border-b border-[hsl(220,16%,90%)]">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-[hsl(222,12%,45%)] uppercase tracking-wider">
+                          <FolderOpen className="w-3.5 h-3.5" />
+                          Save to folder
+                        </div>
+                      </div>
+                      <div className="p-1.5 max-h-48 overflow-y-auto">
+                        {bookmarkFolders.map((folder) => {
+                          const folderSaved = savedFolders.includes(folder.id);
+                          return (
+                            <button
+                              key={folder.id}
+                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                                folderSaved 
+                                  ? 'bg-[hsl(221,91%,60%)]/5 text-[hsl(221,91%,60%)]' 
+                                  : 'hover:bg-[hsl(220,20%,98%)] text-[hsl(222,22%,15%)]'
+                              }`}
+                              onClick={() => toggleSaveToFolder(folder.id)}
+                            >
+                              <span className="text-sm">{folder.icon}</span>
+                              <span className="flex-1 text-left">{folder.name}</span>
+                              <span className="text-xs text-[hsl(222,12%,45%)]">{folder.count}</span>
+                              {folderSaved && <Check className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="p-1.5 border-t border-[hsl(220,16%,90%)]">
+                        <button 
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[hsl(222,12%,45%)] hover:bg-[hsl(220,20%,98%)] hover:text-[hsl(221,91%,60%)] transition-colors"
+                          onClick={() => {}}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Create new folder</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
               <Button variant="ghost" size="sm" className="text-slate-500 hover:text-blue-600 gap-2">
                 <Check className="w-4 h-4" /> I was asked this
               </Button>
-              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-blue-600 gap-2">
-                <Share2 className="w-4 h-4" /> Share
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className={`gap-2 ${shareCopied ? 'text-green-600' : 'text-slate-500 hover:text-blue-600'}`}
+                onClick={handleShare}
+              >
+                {shareCopied ? (
+                  <><Check className="w-4 h-4" /> URL copied to clipboard!</>
+                ) : (
+                  <><Share2 className="w-4 h-4" /> Share</>
+                )}
               </Button>
               <div className="grow" />
               <Button variant="ghost" size="sm" className="text-slate-400 hover:text-red-500 gap-2">
@@ -122,7 +412,7 @@ export default function QuestionDetailPage() {
             </div>
 
             {/* Content Module B: AI Practice Banner */}
-            <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 mb-12">
+            {/* <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
               <div>
                 <h3 className="text-lg font-semibold text-blue-600 mb-1">Practice this question with AI</h3>
                 <p className="text-slate-600">Try our mock interview experience and get feedback instantly.</p>
@@ -130,6 +420,127 @@ export default function QuestionDetailPage() {
               <Button className="bg-blue-600 hover:bg-blue-700 text-white border-0 shadow-md shadow-blue-500/20 whitespace-nowrap">
                 Practice with AI
               </Button>
+            </div> */}
+
+            {/* Hints: Answer Frameworks Module */}
+            <div className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden mb-12">
+              <button
+                onClick={handleToggleHints}
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-blue-50/50 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Lightbulb className={`w-5 h-5 ${showHints ? 'text-amber-500' : 'text-blue-600'}`} />
+                  </div>
+                  <div>
+                    <span className="block text-slate-800" style={{ fontWeight: 600, fontSize: '0.9375rem' }}>AI Hints</span>
+                    <span className="block text-slate-500" style={{ fontSize: '0.8125rem' }}>AI-generated answer framework and key points for this question</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-4">
+                  <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                    {showHints ? 'Hide' : 'Show'}
+                  </span>
+                  {showHints
+                    ? <ChevronUp className="w-5 h-5 text-blue-500" />
+                    : <ChevronDown className="w-5 h-5 text-blue-500" />
+                  }
+                </div>
+              </button>
+
+              <div
+                style={{
+                  maxHeight: showHints ? '1200px' : '0px',
+                  opacity: showHints ? 1 : 0,
+                  transition: 'max-height 0.45s ease, opacity 0.3s ease',
+                  overflow: 'hidden',
+                }}
+              >
+                <div className="px-5 pb-5 pt-1 border-t border-blue-100">
+                  {hintsLoading ? (
+                    <div className="flex items-center justify-center gap-3 py-8">
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                      <span className="text-slate-400 text-sm">Generating AI hints...</span>
+                    </div>
+                  ) : aiHints ? (
+                    <>
+                      {/* AI badge */}
+                      <div className="flex items-center gap-2 mt-4 mb-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-blue-500 to-violet-500 text-white" style={{ fontSize: '0.6875rem', fontWeight: 600 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26z"/></svg>
+                          AI Generated
+                        </span>
+                        <span className="text-slate-400" style={{ fontSize: '0.75rem' }}>Tailored analysis for this specific question</span>
+                      </div>
+
+                      {/* Suggested Approach */}
+                      <div className="bg-gradient-to-br from-blue-50 via-white to-indigo-50/50 rounded-xl border border-blue-100 p-5 mb-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                          </span>
+                          <h4 className="text-slate-800" style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Suggested Approach</h4>
+                        </div>
+                        <p className="text-slate-600 mb-3" style={{ fontSize: '0.8125rem', lineHeight: '1.7' }}>
+                          {aiHints.suggested_approach}
+                        </p>
+                        {aiHints.pro_tip && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg" style={{ fontSize: '0.8125rem' }}>
+                            <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                            <span className="text-amber-800"><strong>Pro tip:</strong> {aiHints.pro_tip}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Step-by-step framework */}
+                      {aiHints.framework?.length > 0 && (
+                        <div className="space-y-3">
+                          {aiHints.framework.map((item, idx) => {
+                            const colors = [
+                              { bg: 'from-indigo-50', border: 'border-indigo-100', dot: 'bg-indigo-500' },
+                              { bg: 'from-violet-50', border: 'border-violet-100', dot: 'bg-violet-500' },
+                              { bg: 'from-pink-50', border: 'border-pink-100', dot: 'bg-pink-500' },
+                              { bg: 'from-teal-50', border: 'border-teal-100', dot: 'bg-teal-500' },
+                            ];
+                            const c = colors[idx % colors.length];
+                            return (
+                              <div key={item.step} className={`bg-gradient-to-br ${c.bg} to-white p-4 rounded-xl border ${c.border}`}>
+                                <div className="flex items-start gap-3">
+                                  <span className={`w-7 h-7 rounded-full ${c.dot} text-white flex items-center justify-center shrink-0 mt-0.5`} style={{ fontSize: '0.75rem', fontWeight: 700 }}>{item.step}</span>
+                                  <div>
+                                    <h4 className="text-slate-800 mb-1" style={{ fontWeight: 700, fontSize: '0.875rem' }}>{item.title}</h4>
+                                    <p className="text-slate-600" style={{ fontSize: '0.8125rem', lineHeight: '1.6' }}>{item.description}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Key talking points */}
+                      {aiHints.key_points_to_mention?.length > 0 && (
+                        <div className="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-4">
+                          <h4 className="text-slate-700 mb-3 flex items-center gap-2" style={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>
+                            Key Points to Mention
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {aiHints.key_points_to_mention.map((point, i) => (
+                              <div key={i} className="flex items-start gap-2 px-3 py-2 bg-white rounded-lg border border-slate-100" style={{ fontSize: '0.8125rem' }}>
+                                <Check className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                                <span className="text-slate-600">{point}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-slate-400 text-sm text-center py-6">No hints available for this question.</p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Community Answers Section */}
@@ -137,11 +548,16 @@ export default function QuestionDetailPage() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-slate-900">Community Answers</h2>
                 <div className="relative">
-                  <select className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-medium py-2 pl-4 pr-10 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    <option>🔥 Hot</option>
-                    <option>Newest</option>
-                    <option>Top Rated</option>
-                  </select>
+                  <Select defaultValue="hot">
+                    <SelectTrigger className="bg-white border border-slate-200 text-slate-700 text-sm font-medium h-9 px-4 rounded-lg cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hot">🔥 Hot</SelectItem>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="top">Top Rated</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -187,85 +603,24 @@ export default function QuestionDetailPage() {
                 </div>
               </div>
 
-              {/* Realistic Answer Cards */}
-              <div className="space-y-6">
-                {/* Answer 1 */}
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-sky-100 flex items-center justify-center text-blue-600 font-semibold shrink-0">
-                      SP
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-slate-900">Sai Sathwik P.</h4>
-                        <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide">Member</span>
-                        <span className="text-xs text-slate-400">• Last Monday at 8:07 PM</span>
-                      </div>
-                      
-                      <div className="prose prose-sm text-slate-600 max-w-none mb-4">
-                        <p className="mb-3">
-                          When approaching safety in GenAI consumer products, I always start with the user trust framework. Safety isn't just a feature; it's the foundation of adoption.
-                        </p>
-                        <p className="mb-3 font-medium text-slate-800">My 3-step framework:</p>
-                        <ol className="list-decimal pl-4 space-y-1 mb-3">
-                          <li><strong>Pre-training filtering:</strong> Cleaning dataset to remove harmful biases.</li>
-                          <li><strong>Model alignment (RLHF):</strong> Training the model to refuse unsafe prompts.</li>
-                          <li><strong>Output moderation:</strong> Real-time scanning of generated content.</li>
-                        </ol>
-                        <p>
-                          For example, in a product for children, false positives (blocking safe content) are acceptable tradeoffs to ensure zero harmful output...
-                        </p>
-                        <button className="text-blue-600 hover:underline font-medium text-sm">Read more</button>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-sm text-slate-500 border-t border-slate-100 pt-4">
-                        <button className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
-                          <ThumbsUp className="w-4 h-4" /> 64
-                        </button>
-                        <button className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
-                          <MessageSquare className="w-4 h-4" /> 3
-                        </button>
-                        <button className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
-                          <Share2 className="w-4 h-4" /> Share
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+              {/* No answers empty state */}
+              <div className="flex flex-col items-center justify-center py-14 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                  <MessageSquare className="w-6 h-6 text-slate-400" />
                 </div>
-
-                {/* Answer 2 */}
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
-                      <User className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-slate-900">Elena R.</h4>
-                        <span className="text-xs text-slate-400">• 2 days ago</span>
-                      </div>
-                      
-                      <div className="prose prose-sm text-slate-600 max-w-none mb-4">
-                        <p className="mb-3">
-                          I agree with Sai, but I'd also emphasize the importance of <strong>User Feedback Loops</strong>. Automated systems will always have edge cases.
-                        </p>
-                        <p>
-                          We need clear "Report" flows that feed directly into the fine-tuning pipeline. At my last role, we implemented a "thumbs down" with categorization (e.g., "Not helpful", "Harmful", "Inaccurate") which improved our safety score by 15% in Q3.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-sm text-slate-500 border-t border-slate-100 pt-4">
-                        <button className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
-                          <ThumbsUp className="w-4 h-4" /> 28
-                        </button>
-                        <button className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
-                          <MessageSquare className="w-4 h-4" /> Reply
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <p className="text-slate-500 font-medium mb-1">No answers yet</p>
+                <p className="text-sm text-slate-400">Be the first to share your answer to this question.</p>
               </div>
+
+              {/* Answer card template — rendered for each answer once answers API is connected.
+                  Each card includes the live AnswerReplySection below. Example shape:
+                  answers.map(answer => (
+                    <div key={answer.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                      ...answer content...
+                      <AnswerReplySection answerId={answer.id} />
+                    </div>
+                  ))
+              */}
 
             </section>
           </div>
@@ -279,97 +634,58 @@ export default function QuestionDetailPage() {
                 <h3 className="font-semibold text-slate-900 mb-4">Interview Details</h3>
                 <div className="space-y-4">
                   <div>
-                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Roles</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Role</span>
                     <div className="flex flex-wrap gap-2">
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">Product Manager</span>
+                      {questionData?.role ? (
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                          {questionData.role.replace(/_/g, ' ')}
+                        </span>
+                      ) : <span className="text-xs text-slate-400">—</span>}
                     </div>
                   </div>
                   <div>
-                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Companies</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Company</span>
                     <div className="flex flex-wrap gap-2">
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">OpenAI</span>
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">Anthropic</span>
+                      {questionData?.company ? (
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                          {questionData.company}
+                        </span>
+                      ) : <span className="text-xs text-slate-400">—</span>}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Categories</span>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">Artificial Intelligence</span>
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">Product Strategy</span>
+                  {questionData?.level && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Level</span>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                          {questionData.level}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {questionData?.category && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-2">Category</span>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                          {questionData.category.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Related Courses */}
-              <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                <h3 className="font-semibold text-slate-900 mb-4">Related Articles</h3>
-                <div className="space-y-4">
-                  <div className="group cursor-pointer">
-                    <div className="aspect-video bg-slate-100 rounded-lg mb-3 overflow-hidden relative">
-                      <img 
-                        src="https://images.unsplash.com/photo-1555212697-194d092e3b8f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJlZXIlMjBhZHZpY2UlMjB3cml0aW5nJTIwb2ZmaWNlJTIwZGVza3xlbnwxfHx8fDE3NzE0NTA3NjZ8MA&ixlib=rb-4.1.0&q=80&w=1080" 
-                        alt="Article thumbnail" 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors duration-300" />
-                    </div>
-                    <h4 className="font-medium text-sm text-slate-900 group-hover:text-blue-600 transition-colors leading-snug mb-1.5">
-                      How to Ace the Product Management Interview: A Comprehensive Guide
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                      <span>5 min read</span>
-                      <span className="text-slate-300">•</span>
-                      <span>By Sarah Jenkins</span>
-                    </div>
-                  </div>
-                  
-                  <div className="group cursor-pointer pt-4 border-t border-slate-100">
-                    <h4 className="font-medium text-sm text-slate-900 group-hover:text-blue-600 transition-colors leading-snug mb-1.5">
-                      The Ultimate Guide to Product Strategy Frameworks
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                      <span>8 min read</span>
-                      <span className="text-slate-300">•</span>
-                      <span>By Michael Chen</span>
-                    </div>
-                  </div>
-
-                  <div className="group cursor-pointer pt-4 border-t border-slate-100">
-                    <h4 className="font-medium text-sm text-slate-900 group-hover:text-blue-600 transition-colors leading-snug mb-1.5">
-                      Top 10 Behavioral Questions and How to Answer Them
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                      <span>6 min read</span>
-                      <span className="text-slate-300">•</span>
-                      <span>By Eleanor Rigby</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              
               
 
               {/* Related Questions */}
               <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                 <h3 className="font-semibold text-slate-900 mb-4">Related Questions</h3>
-                <div className="space-y-4">
-                  {[
-                    'How do you collect insights and apply them to products?',
-                    'How would you approach product planning?',
-                    'How do you launch a product?',
-                    'How do you create a product roadmap?',
-                    'How do you approach problems you’ve never seen before?'
-                  ].map((q, i) => (
-                    <div key={i} className="group cursor-pointer border-b border-slate-50 last:border-0 pb-3 last:pb-0">
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-1">
-                         <div className="w-3 h-3 rounded-full bg-slate-200 flex items-center justify-center text-[6px] font-bold text-slate-500">G</div>
-                         Asked at Google • 2 months ago
-                      </div>
-                      <h4 className="text-sm font-medium text-slate-700 group-hover:text-blue-600 transition-colors leading-snug">
-                        {q}
-                      </h4>
-                    </div>
-                  ))}
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <MessageSquare className="w-5 h-5 text-slate-300 mb-2" />
+                  <p className="text-sm text-slate-400">No related questions</p>
                 </div>
               </div>
 

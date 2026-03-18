@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Star, DollarSign, Clock, MapPin, GraduationCap, Calendar, Users, Filter, ExternalLink, XCircle, RefreshCw, CheckCircle2, LinkedinIcon, FileText } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/newDesign/ui/input';
+import { Button } from '@/components/newDesign/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/newDesign/ui/card';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/newDesign/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/newDesign/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/newDesign/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/newDesign/ui/sheet';
+import { ScrollArea } from '@/components/newDesign/ui/scroll-area';
+import { Separator } from '@/components/newDesign/ui/separator';
 import { mockMentorApplications, type MentorApplication } from '@/data/mentorMockData';
 
 interface Mentor {

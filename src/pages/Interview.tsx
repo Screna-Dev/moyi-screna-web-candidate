@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/newDesign/ui/button";
+import { Card } from "@/components/newDesign/ui/card";
+import { Progress } from "@/components/newDesign/ui/progress";
 import { Mic, MicOff, Video, VideoOff, SkipForward } from "lucide-react";
 import aiBrain from "@/assets/ai-brain.png";
 

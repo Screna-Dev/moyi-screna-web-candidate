@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/newDesign/ui/button";
+import { Input } from "@/components/newDesign/ui/input";
+import { Label } from "@/components/newDesign/ui/label";
+import { Textarea } from "@/components/newDesign/ui/textarea";
+import { Badge } from "@/components/newDesign/ui/badge";
+import { Card, CardContent } from "@/components/newDesign/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+} from "@/components/newDesign/ui/dialog";
+import { ScrollArea } from "@/components/newDesign/ui/scroll-area";
+import { Separator } from "@/components/newDesign/ui/separator";
 import {
   Sparkles,
   Briefcase,

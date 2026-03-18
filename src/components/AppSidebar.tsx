@@ -12,9 +12,9 @@ import {
   SidebarHeader,
   SidebarFooter,
   useSidebar,
-} from '@/components/ui/sidebar';
+} from '@/components/newDesign/ui/sidebar';
 import { User, Briefcase, Target, DollarSign, LogOut, Settings, Users, ShieldCheck, Gift } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/newDesign/ui/button';
 import Logo from "@/assets/logo.png"
 
 const candidateNavItems = [

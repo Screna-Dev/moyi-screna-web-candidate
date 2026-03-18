@@ -1,0 +1,164 @@
+:root {
+  /* ============================================ */
+  /* CORE: shadcn/ui tokens (single source of truth) */
+  /* ============================================ */
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222 22% 15%);
+
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 22% 15%);
+
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 22% 15%);
+
+  --primary: hsl(221 91% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+
+  --secondary: hsl(220 18% 96%);
+  --secondary-foreground: hsl(222 22% 15%);
+
+  --muted: hsl(220 18% 94%);
+  --muted-foreground: hsl(222 12% 40%); /* slightly stronger for readability */
+
+  --accent: hsl(165 82% 51%);
+  --accent-foreground: hsl(222 22% 15%);
+
+  --destructive: hsl(0 60% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(220 16% 90%);
+  --input: hsl(220 16% 90%);
+  --ring: hsl(221 91% 60%);
+
+  /* One radius token only (shadcn style) */
+  --radius: 0.75rem;
+
+  /* ============================================ */
+  /* SEMANTIC SURFACES (optional, but recommended) */
+  /* ============================================ */
+  --surface-0: hsl(220 20% 98%); /* page bg */
+  --surface-1: hsl(0 0% 100%);   /* cards */
+  --surface-2: hsl(220 18% 96%); /* elevated panels / subtle areas */
+
+  /* Inputs / switches need explicit backgrounds for dark mode parity */
+  --input-background: hsl(0 0% 100%);
+  --switch-background: hsl(220 16% 85%);
+
+  /* Charts (keep) */
+  --chart-1: hsl(221 91% 60%);
+  --chart-2: hsl(165 82% 51%);
+  --chart-3: hsl(220 25% 35%);
+  --chart-4: hsl(200 70% 55%);
+  --chart-5: hsl(180 65% 50%);
+
+  /* Sidebar (if you use shadcn sidebar tokens) */
+  --sidebar: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(222 22% 15%);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: hsl(220 18% 96%);
+  --sidebar-accent-foreground: hsl(222 22% 15%);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Typography + spacing (keep yours; no conflicts) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  --background: hsl(222 45% 12%);
+  --foreground: hsl(0 0% 98%);
+
+  --card: hsl(221 40% 18%);
+  --card-foreground: hsl(0 0% 98%);
+
+  --popover: hsl(221 40% 18%);
+  --popover-foreground: hsl(0 0% 98%);
+
+  --primary: hsl(221 91% 60%);
+  --primary-foreground: hsl(0 0% 100%);
+
+  --secondary: hsl(220 25% 25%);
+  --secondary-foreground: hsl(0 0% 98%);
+
+  --muted: hsl(220 25% 25%);
+  --muted-foreground: hsl(220 12% 70%);
+
+  --accent: hsl(165 82% 51%);
+  --accent-foreground: hsl(222 22% 15%);
+
+  --destructive: hsl(0 60% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(220 25% 25%);
+  --input: hsl(220 25% 25%);
+  --ring: hsl(221 91% 60%);
+
+  /* ✅ critical: dark-mode parity */
+  --input-background: hsl(221 40% 18%);
+  --switch-background: hsl(220 25% 30%);
+
+  --surface-0: hsl(222 45% 12%);
+  --surface-1: hsl(221 40% 18%);
+  --surface-2: hsl(220 25% 25%);
+
+  --sidebar: hsl(221 40% 18%);
+  --sidebar-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(220 25% 25%);
+  --sidebar-accent-foreground: hsl(0 0% 98%);
+  --sidebar-border: hsl(220 25% 25%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    font-size: 16px; /* keep one source of truth */
+    scroll-behavior: smooth;
+  }
+
+  h1 { font-size: var(--text-2xl); font-weight: var(--font-weight-medium); line-height: 1.3; letter-spacing: -0.02em; }
+  h2 { font-size: var(--text-xl);  font-weight: var(--font-weight-medium); line-height: 1.3; letter-spacing: -0.01em; }
+  h3 { font-size: var(--text-lg);  font-weight: var(--font-weight-medium); line-height: 1.3; }
+  h4 { font-size: var(--text-base);font-weight: var(--font-weight-medium); line-height: 1.3; }
+
+  /* ✅ labels usually smaller in SaaS */
+  label { font-size: var(--text-sm); font-weight: var(--font-weight-medium); line-height: 1.4; }
+
+  button { font-size: var(--text-sm); font-weight: var(--font-weight-medium); line-height: 1.4; transition: all var(--transition-base); }
+
+  input, textarea, select { font-size: var(--text-sm); font-weight: var(--font-weight-normal); line-height: 1.4; transition: all var(--transition-base); }
+
+  *:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}

@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { Search, ChevronDown, ChevronUp, ArrowUpDown, Loader2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Input } from '@/components/newDesign/ui/input';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/newDesign/ui/select';
 import {
   Table,
   TableBody,
@@ -19,7 +19,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/components/newDesign/ui/table';
 import { adminService } from '@/services';
 import { toast } from 'sonner';
 

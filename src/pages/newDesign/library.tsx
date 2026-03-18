@@ -416,7 +416,7 @@ export function LibraryPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {COLLECTIONS.map((collection) => (
-                  <Card key={collection.id} className="group hover:border-[hsl(221,91%,60%)]/50 transition-all hover:shadow-md cursor-pointer">
+                  <Card key={collection.id} className="group bg-white border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/50 transition-all hover:shadow-md cursor-pointer">
                     <CardHeader className="pb-3 relative">
                       <div className="flex justify-between items-start">
                         <div className="w-10 h-10 rounded-lg bg-[hsl(220,20%,97%)] flex items-center justify-center text-[hsl(222,12%,45%)] group-hover:bg-[hsl(221,91%,60%)] group-hover:text-white transition-colors">
@@ -484,7 +484,7 @@ export function LibraryPage() {
                         </span>
                       ))}
                     </div>
-                    <Button variant="outline" size="sm" className="w-full justify-between group-hover:border-[hsl(221,91%,60%)]/30 group-hover:text-[hsl(221,91%,60%)] transition-all">
+                    <Button variant="outline" size="sm" className="w-full justify-between border-[hsl(220,16%,90%)] group-hover:border-[hsl(221,91%,60%)]/30 group-hover:text-[hsl(221,91%,60%)] transition-all">
                       Read Again
                       <ChevronRight className="w-4 h-4 ml-1 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                     </Button>

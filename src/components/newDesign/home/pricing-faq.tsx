@@ -34,12 +34,6 @@ const faqItems = [
       'Based on your target job title and profile, our system scans multiple job platforms daily and recommends the latest positions that match your criteria. You\'ll receive personalized job alerts to keep your applications timely.',
   },
   {
-    id: 'premium',
-    question: "What's included in Premium?",
-    answer:
-      'Premium includes unlimited Training Plans, full access to the community experience library, daily job recommendations across all platforms, detailed post-session reports, and advanced readiness metrics to track your improvement.',
-  },
-  {
     id: 'readiness-metrics',
     question: 'How are Readiness Metrics calculated?',
     answer:
@@ -65,10 +59,6 @@ export function PricingFaq() {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="text-center mb-14"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-50 border border-blue-100 rounded-full mb-6">
-            <HelpCircle className="w-4 h-4 text-blue-600" />
-            <span className="text-sm font-medium text-blue-600">FAQ</span>
-          </div>
           <h2 className="text-3xl md:text-4xl font-bold text-[hsl(222,22%,15%)] mb-4 tracking-tight">
             Frequently asked questions
           </h2>

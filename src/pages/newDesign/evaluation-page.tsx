@@ -4,11 +4,12 @@ import {
   MessageSquare, Users, Shield, Lightbulb, Crown,
   Scale, Quote, ArrowRight, Zap, BookOpen, Dumbbell,
   CheckCircle2, AlertTriangle, Clock, CalendarDays, Mic,
-  Play, Plus, Library, Video, Lock,
-  Pause, SkipForward, SkipBack, Volume2, Sparkles,
+  Play, Plus, Library, Video,
+  Pause, SkipForward, SkipBack, Volume2, FileText,
+  Download, Share2, ThumbsUp, CircleAlert,
 } from 'lucide-react';
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -18,8 +19,12 @@ import { Button } from '@/components/newDesign/ui/button';
 import {
   Tooltip, TooltipTrigger, TooltipContent,
 } from '@/components/newDesign/ui/tooltip';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
+import { getInterviewSession } from '@/services/IntervewSesstionServices';
+import { InterviewService } from '@/services';
 
-// ════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════���══════
 // DATA LAYER
 // ════════════════════════════════════════════════════════
 
@@ -44,7 +49,11 @@ interface EvidenceItem {
 interface QuestionItem {
   id: string;
   prompt: string;
+  score: number;
   dimensions: string[];
+  yourAnswer: string;
+  sampleAnswer: string;
+  feedback: string;
   dimScores: { dim: string; score: number; note: string }[];
   evidence: EvidenceItem[];
   improvements: string[];
@@ -246,7 +255,11 @@ const QUESTIONS: QuestionItem[] = [
   {
     id: 'q1',
     prompt: 'Tell me about a time you had to influence a decision without having direct authority.',
+    score: 78,
     dimensions: ['Problem Solving', 'Communication Clarity', 'Collaboration & Stakeholder Mgmt'],
+    yourAnswer: 'At my previous company, I was a product manager leading a cross-functional initiative to revamp our onboarding flow. The engineering director was hesitant because his team was already at capacity. I pulled together a dashboard showing the 40% drop-off rate during onboarding and mapped it to projected revenue impact. Then I proposed a phased rollout that wouldn\'t disrupt the current sprint commitments, and presented a shared dashboard tying our drop-off metrics to his team\'s performance goals, making it a shared win.',
+    sampleAnswer: 'In my role as PM, I identified a critical 40% onboarding drop-off impacting $2M ARR. Without direct authority over engineering, I built a data-driven case: (1) created a dashboard linking drop-off to revenue, (2) proposed a phased plan minimizing sprint disruption, and (3) framed it as a shared OKR win. The engineering director agreed within a week, and we reduced drop-off by 25% in the first quarter — demonstrating that influence comes from aligning incentives, not authority.',
+    feedback: 'Your answer demonstrates strong data-driven persuasion and stakeholder empathy. The dashboard approach was compelling. However, you could tighten the opening by leading with the outcome first, then explaining how you got there. Also, explicitly naming the alternative approaches you considered would show deeper strategic thinking.',
     dimScores: [
       { dim: 'Problem Solving', score: 78, note: 'Identified the problem clearly; solution-first approach.' },
       { dim: 'Communication Clarity', score: 75, note: 'Strong mid-answer, but slow start with too much context.' },
@@ -267,7 +280,11 @@ const QUESTIONS: QuestionItem[] = [
   {
     id: 'q2',
     prompt: 'Describe a situation where you had to make a difficult trade-off under time pressure.',
+    score: 60,
     dimensions: ['Decision Making & Prioritization', 'Ownership & Accountability', 'Self-awareness & Reflection'],
+    yourAnswer: 'We had a production issue that was affecting about 15% of users. The team decided to prioritize the quick fix over the long-term refactor because we were under a tight deadline. We patched it within a day, but the underlying architecture issue remained. Later we scheduled a proper refactor in the next quarter.',
+    sampleAnswer: 'During a critical production outage affecting 15% of our user base, I faced a clear trade-off: a quick patch (1-day fix, addresses symptoms) vs. a full refactor (2-week effort, addresses root cause). I chose the patch because: (1) revenue impact was $50K/day, (2) the refactor could be isolated and scheduled, and (3) I could de-risk the patch with feature flags. I personally owned the hotfix, deployed it within 6 hours, and then authored an RFC for the refactor — which we completed the following sprint with zero regressions.',
+    feedback: 'Your answer identifies the trade-off but lacks structure and personal ownership. Using phrases like "the team decided" makes it unclear who drove the decision. A stronger answer would use an explicit framework: state the trade-off, your criteria for choosing, your specific role, and the measurable result. Own the decision with "I recommended" instead of passive attribution.',
     dimScores: [
       { dim: 'Decision Making & Prioritization', score: 60, note: 'Trade-off was mentioned but not structured.' },
       { dim: 'Ownership & Accountability', score: 55, note: 'Used passive language; unclear who made the final call.' },
@@ -288,7 +305,11 @@ const QUESTIONS: QuestionItem[] = [
   {
     id: 'q3',
     prompt: 'Tell me about a project that didn\'t go as planned. What did you learn?',
+    score: 62,
     dimensions: ['Self-awareness & Reflection', 'Leadership', 'Ownership & Accountability'],
+    yourAnswer: 'We were building a new feature for our enterprise clients. The project timeline slipped by about three weeks because we underestimated the integration complexity. I coordinated tasks across the team and we eventually delivered. Looking back, I would have communicated the timeline risk earlier to the stakeholders and set better expectations.',
+    sampleAnswer: 'I led the launch of an enterprise SSO integration that slipped 3 weeks past deadline. The root cause was my own planning gap — I estimated integration work based on our REST API patterns, but the SAML/OIDC handshake required 2x the testing I\'d budgeted. When I recognized the slip at week 2, I took three actions: (1) immediately informed stakeholders with a revised timeline and risk matrix, (2) re-scoped Phase 1 to ship core SSO without advanced role-mapping, and (3) ran daily standups to unblock the team. We shipped Phase 1 on the revised date. My key takeaway: I now add a 40% buffer for integration work and run pre-mortems before every cross-system project.',
+    feedback: 'Your answer acknowledges the failure but stays surface-level. Saying "we underestimated" without explaining your specific role in the estimation weakens ownership. The reflection ("I would have communicated earlier") is a good start but doesn\'t show genuine self-insight into your tendencies. A stronger answer would describe how you led the recovery, not just coordinated tasks, and share a concrete behavioral change you adopted as a result.',
     dimScores: [
       { dim: 'Self-awareness & Reflection', score: 72, note: 'Mentioned what you\'d change; could go deeper.' },
       { dim: 'Leadership', score: 55, note: 'Described task coordination, not leadership.' },
@@ -323,7 +344,7 @@ const TREND_LINES = [
   { key: 'leadership', label: 'Leadership', color: '#8b5cf6' },
 ];
 
-// ─── Video recording timeline ─────────────────────────
+// ─── Video recording timeline ────────────────���────────
 interface VideoMarker {
   id: string;
   label: string;
@@ -343,6 +364,44 @@ const VIDEO_MARKERS: VideoMarker[] = [
   { id: 't2', label: '', startSec: 900, endSec: 930, type: 'transition' },
   { id: 'q3', label: 'Q3', startSec: 930, endSec: 1260, question: 'Project failure & learning', type: 'question' },
   { id: 'closing', label: 'Closing', startSec: 1260, endSec: 1320, type: 'closing' },
+];
+
+// ─── Transcript lines ─────────────────────────────────
+interface TranscriptLine {
+  id: string;
+  startSec: number;
+  endSec: number;
+  speaker: 'ai' | 'user';
+  text: string;
+}
+
+const TRANSCRIPT_LINES: TranscriptLine[] = [
+  { id: 'tl-01', startSec: 0, endSec: 15, speaker: 'ai', text: "Welcome! Thanks for joining today's behavioral interview session. I'll be asking you three questions focused on leadership, influence, and decision-making." },
+  { id: 'tl-02', startSec: 15, endSec: 30, speaker: 'ai', text: "Feel free to take a moment before answering each question. There are no right or wrong answers — I'm looking for specific examples from your experience." },
+  { id: 'tl-03', startSec: 30, endSec: 45, speaker: 'user', text: "Sounds great, I'm ready to get started." },
+  { id: 'tl-04', startSec: 45, endSec: 65, speaker: 'ai', text: "Let's begin. Tell me about a time you had to influence a decision without having direct authority. Walk me through the situation and your approach." },
+  { id: 'tl-05', startSec: 65, endSec: 120, speaker: 'user', text: "Sure. At my previous company, I was a product manager leading a cross-functional initiative to revamp our onboarding flow. The engineering director was hesitant because his team was already at capacity with the current sprint." },
+  { id: 'tl-06', startSec: 120, endSec: 180, speaker: 'user', text: "I pulled together a dashboard showing the 40% drop-off rate during onboarding and mapped it to projected revenue impact. Then I proposed a phased rollout that wouldn't disrupt the current sprint commitments." },
+  { id: 'tl-07', startSec: 180, endSec: 220, speaker: 'user', text: "I also presented a shared dashboard tying our drop-off metrics to his team's performance goals, making it a shared win rather than an interruption to their roadmap." },
+  { id: 'tl-08', startSec: 220, endSec: 260, speaker: 'ai', text: "That's a strong start. Can you walk me through the specific tactics you used to get buy-in? What data or framing helped shift the conversation?" },
+  { id: 'tl-09', startSec: 260, endSec: 340, speaker: 'user', text: "The key was reframing the problem from 'product wants engineering resources' to 'here's a revenue leak we can fix together.' I mapped each initiative on a 2×2 of impact vs. engineering effort, which made the priority clear." },
+  { id: 'tl-10', startSec: 340, endSec: 400, speaker: 'user', text: "I also brought in the VP of Sales who was seeing churn data that supported the same thesis. Having a cross-functional advocate made it harder to dismiss as just a product team initiative." },
+  { id: 'tl-11', startSec: 400, endSec: 440, speaker: 'ai', text: "Excellent. What was the outcome, and how did the relationship with the engineering director evolve after this?" },
+  { id: 'tl-12', startSec: 440, endSec: 480, speaker: 'user', text: "We shipped the first phase in 6 weeks and saw onboarding completion jump from 60% to 78%. The engineering director actually became one of the project's strongest advocates in the next planning cycle." },
+  { id: 'tl-13', startSec: 510, endSec: 540, speaker: 'ai', text: "Great, let's move on. Describe a situation where you had to make a difficult trade-off under time pressure. What was the context and how did you decide?" },
+  { id: 'tl-14', startSec: 540, endSec: 610, speaker: 'user', text: "Last year, we were two weeks from a major product launch when we discovered a significant performance issue in our search feature. We had to choose between delaying the launch or shipping with a known degradation." },
+  { id: 'tl-15', startSec: 610, endSec: 680, speaker: 'user', text: "I chose to optimize for speed because the team was under pressure from a Q3 deadline. The team decided to prioritize the quick fix over the long-term refactor, with a plan to address technical debt in the next sprint." },
+  { id: 'tl-16', startSec: 680, endSec: 730, speaker: 'ai', text: "Interesting. When you say 'the team decided' — what was your specific role in driving that decision? Walk me through the reasoning." },
+  { id: 'tl-17', startSec: 730, endSec: 800, speaker: 'user', text: "I just felt like the first option was better, so we went with that. I evaluated the risk of delay vs. the user impact of degraded search, and the data showed search was used by only 15% of users during onboarding." },
+  { id: 'tl-18', startSec: 800, endSec: 860, speaker: 'user', text: "So the exposure was limited. I presented this analysis to the team and recommended we ship on time with monitoring in place, and schedule the deeper fix for sprint 2." },
+  { id: 'tl-19', startSec: 860, endSec: 900, speaker: 'ai', text: "Good analysis. How did you communicate this trade-off to stakeholders who might have had different priorities?" },
+  { id: 'tl-20', startSec: 930, endSec: 960, speaker: 'ai', text: "Final question. Tell me about a project that didn't go as planned. What happened, what was your role, and what did you learn from it?" },
+  { id: 'tl-21', startSec: 960, endSec: 1040, speaker: 'user', text: "We had a redesign project where I underestimated the complexity of migrating user data to the new schema. I assigned tasks to the team members and we met the initial deadline, but the data migration caused issues for about 5% of users." },
+  { id: 'tl-22', startSec: 1040, endSec: 1120, speaker: 'user', text: "Looking back, I would have communicated the timeline risk earlier to the stakeholders. We shipped it and the metrics improved overall, but those first two weeks were rough for the affected users." },
+  { id: 'tl-23', startSec: 1120, endSec: 1180, speaker: 'ai', text: "What did that experience teach you about how you approach project planning now? Has anything fundamentally changed in your process?" },
+  { id: 'tl-24', startSec: 1180, endSec: 1260, speaker: 'user', text: "I now build in a 'risk discovery' phase before committing to timelines. I also do pre-mortems with the team — we imagine the project has failed and work backward to identify what could go wrong. It's helped catch issues earlier in three subsequent projects." },
+  { id: 'tl-25', startSec: 1260, endSec: 1300, speaker: 'ai', text: "That's a great reflection. Thank you for sharing those examples today. You gave some really strong, specific answers. We'll have your detailed evaluation ready shortly." },
+  { id: 'tl-26', startSec: 1300, endSec: 1320, speaker: 'user', text: "Thank you! I appreciate the questions — they really made me think. Looking forward to the feedback." },
 ];
 
 // ─── Helpers ──────────────────────────────────────────
@@ -376,21 +435,141 @@ function overallLevel(score: number) {
   return 'Needs more structure';
 }
 
+function dimensionStatus(score: number): Dimension['status'] {
+  if (score >= 80) return 'Strong';
+  if (score >= 70) return 'Developing';
+  if (score >= 60) return 'Inconsistent';
+  return 'Needs work';
+}
+
+// ─── API response shape ───────────────────────────────
+interface ApiReportData {
+  interview_id: string;
+  status: string;
+  overall_score: number;
+  scores: {
+    resume_background?: number;
+    domain_knowledge?: number;
+    technical_skills?: number;
+    behavioral?: number;
+  };
+  summary?: string;
+  strengths?: string[];
+  areas_for_improvement?: string[];
+  improvement_advice?: string;
+  questions?: {
+    question_id: number;
+    seq: number;
+    question_text: string;
+    answer_text: string;
+    score: number;
+    feedback: string;
+  }[];
+  video_url?: string;
+  generated_at?: string;
+}
+
 // ════════════════════════════════════════════════════════
 // MAIN PAGE COMPONENT
 // ════════════════════════════════════════════════════════
 export function EvaluationPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
   const [expandedQs, setExpandedQs] = useState<Set<string>>(new Set());
+  const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set());
+  const toggleCard = (id: string) => setCollapsedCards(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [trendKeys, setTrendKeys] = useState<Set<string>>(new Set(['problemSolving', 'communication']));
-  const [isPremium, setIsPremium] = useState(true); // Mock: toggle to see free vs premium
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTopic, setDrawerTopic] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const overall = Math.round(DIMENSIONS.reduce((s, d) => s + d.score, 0) / DIMENSIONS.length);
-  const strongest = [...DIMENSIONS].sort((a, b) => b.score - a.score)[0];
-  const weakest = [...DIMENSIONS].sort((a, b) => a.score - b.score)[0];
+  // ── API state ──────────────────────────────────────
+  const [apiData, setApiData] = useState<ApiReportData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Extract the string value so the effect only re-runs when the ID actually changes
+  const interviewId = searchParams.get('interviewId');
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current !== null) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!interviewId) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+    setApiData(null);
+
+    const fetchReport = async () => {
+      try {
+        const res = await getInterviewSession(interviewId);
+        if (cancelled) return;
+        const data = res.data?.data ?? res.data;
+        if (data?.status === 'processing') {
+          // Keep loading, poll will retry
+          return;
+        }
+        if (data) {
+          setApiData(data);
+          setIsLoading(false);
+          stopPolling();
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('Failed to load interview report:', err);
+          setIsLoading(false);
+          stopPolling();
+        }
+      }
+    };
+
+    fetchReport();
+    pollingRef.current = setInterval(fetchReport, 5000);
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [interviewId, stopPolling]);
+
+  // ── Computed display data (API or mock fallback) ───
+  // When interviewId is provided, never show placeholder data — wait for real data.
+  const displayDimensions: Dimension[] = apiData?.scores
+    ? [
+        { id: 'resume_background', name: 'Background & Experience', icon: BookOpen, score: Math.round((apiData.scores.resume_background ?? 0)), status: dimensionStatus(Math.round((apiData.scores.resume_background ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
+        { id: 'domain_knowledge',  name: 'Domain Knowledge',        icon: Brain,    score: Math.round((apiData.scores.domain_knowledge  ?? 0)), status: dimensionStatus(Math.round((apiData.scores.domain_knowledge  ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
+        { id: 'technical_skills',  name: 'Technical Skills',        icon: Target,   score: Math.round((apiData.scores.technical_skills  ?? 0)), status: dimensionStatus(Math.round((apiData.scores.technical_skills  ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
+        { id: 'behavioral',        name: 'Behavioral Skills',       icon: Users,    score: Math.round((apiData.scores.behavioral        ?? 0)), status: dimensionStatus(Math.round((apiData.scores.behavioral        ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
+      ]
+    : interviewId ? [] : DIMENSIONS;
+
+  const displayQuestions: QuestionItem[] = apiData?.questions?.length
+    ? apiData.questions.map((q) => ({
+        id: `q${q.seq ?? q.question_id}`,
+        prompt: q.question_text ?? '',
+        score: Math.round((q.score ?? 0)),
+        dimensions: [],
+        yourAnswer: q.answer_text ?? '',
+        sampleAnswer: '',
+        feedback: q.feedback ?? '',
+        dimScores: [],
+        evidence: [],
+        improvements: [],
+      }))
+    : interviewId ? [] : QUESTIONS;
+
+  const overall = apiData
+    ? apiData.overall_score
+    : Math.round(displayDimensions.reduce((s, d) => s + d.score, 0) / (displayDimensions.length || 1));
+  const strongest = [...displayDimensions].sort((a, b) => b.score - a.score)[0];
+  const weakest = [...displayDimensions].sort((a, b) => a.score - b.score)[0];
 
   const toggleDim = (id: string) =>
     setExpandedDims((prev) => {
@@ -418,12 +597,57 @@ export function EvaluationPage() {
       return next;
     });
 
-  const handleClose = () => navigate('/ai-mock');
-  const handleRetry = () => navigate('/ai-mock');
-  const handlePractice = () => navigate('/ai-mock');
+  const [isRetaking, setIsRetaking] = useState(false);
+
+  const handleClose = () => navigate('/personalized-practice');
+
+  const handleRetry = async () => {
+    if (!interviewId) return;
+    setIsRetaking(true);
+    try {
+      const response = await InterviewService.retakeTrainingModule(interviewId);
+      const isSuccess =
+        response.status === 200 ||
+        response.data?.status === 'success' ||
+        response.data?.data;
+      if (isSuccess) {
+        const newModuleId = response.data?.data?.module_id || interviewId;
+        navigate(`/ai-mock?interviewId=${newModuleId}`);
+      }
+    } catch (err) {
+      console.error('Retake failed:', err);
+    } finally {
+      setIsRetaking(false);
+    }
+  };
+
+  const handlePractice = () => navigate('/personalized-practice');
+  const handleSeeSimilar = (topic: string) => {
+    setDrawerTopic(topic);
+    setDrawerOpen(true);
+  };
 
   // Radar data
-  const radarData = DIMENSIONS.map((d) => ({ subject: d.name.replace(' & Stakeholder Mgmt', '').replace(' & ', ' & '), score: d.score, fullMark: 100 }));
+  const radarData = displayDimensions.map((d) => ({ subject: d.name.replace(' & Stakeholder Mgmt', '').replace(' & ', ' & '), score: d.score, fullMark: 100 }));
+
+  // Delay chart rendering until modal open-animation settles
+  const [chartsReady, setChartsReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setChartsReady(true), 500);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl p-10 flex flex-col items-center gap-4 shadow-2xl">
+          <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-500">Generating your evaluation…</p>
+          <p className="text-xs text-slate-400">This may take a moment</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -467,17 +691,10 @@ export function EvaluationPage() {
             </div>
             {/* Actions */}
             <div className="flex items-center gap-2 shrink-0">
-              <Button
-                size="sm"
-                onClick={handlePractice}
-                className="h-8 text-xs gap-1.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-sm shadow-blue-500/15"
-              >
-                <Dumbbell className="w-3.5 h-3.5" />
-                Practice Weak Areas
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleRetry} className="h-8 text-xs gap-1.5 border-slate-200">
-                <RotateCcw className="w-3.5 h-3.5" />
-                Retry
+              
+              <Button variant="outline" size="sm" onClick={handleRetry} disabled={isRetaking} className="h-8 text-xs gap-1.5 border-slate-200">
+                <RotateCcw className={`w-3.5 h-3.5 ${isRetaking ? 'animate-spin' : ''}`} />
+                {isRetaking ? 'Starting...' : 'Retry'}
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -489,14 +706,7 @@ export function EvaluationPage() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setIsExpanded((e) => !e)}
-                    className="h-8 w-8 flex items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 transition-colors"
-                  >
-                    {isExpanded
-                      ? <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
-                      : <Maximize2 className="w-3.5 h-3.5 text-slate-400" />}
-                  </button>
+                  
                 </TooltipTrigger>
                 <TooltipContent>{isExpanded ? 'Exit full page' : 'Expand to full page'}</TooltipContent>
               </Tooltip>
@@ -513,6 +723,18 @@ export function EvaluationPage() {
         {/* ─── SCROLLABLE CONTENT ─── */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain bg-slate-50/60">
           <div className="max-w-[1120px] mx-auto px-6 py-6 space-y-8">
+            {/* Download & Share */}
+            <div className="flex items-center gap-3">
+              <Button variant="outline" className="h-9 text-[12px] gap-2 border-slate-200 rounded-lg">
+                <Download className="w-3.5 h-3.5" />
+                Download Report
+              </Button>
+              <Button variant="outline" className="h-9 text-[12px] gap-2 border-slate-200 rounded-lg">
+                <Share2 className="w-3.5 h-3.5" />
+                Share
+              </Button>
+            </div>
+
             {/* ═══ SECTION 1: Overall Summary ═══ */}
             <motion.section
               initial={{ opacity: 0, y: 12 }}
@@ -527,20 +749,17 @@ export function EvaluationPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] text-slate-600 leading-relaxed">
-                    You demonstrated strong communication skills with concrete examples and solid metrics — a real differentiator.
-                    However, two patterns held you back: <span className="text-slate-800">passive ownership language</span> ("the team decided")
-                    and <span className="text-slate-800">under-developed leadership signals</span>. Fixing these two areas would
-                    move you from "strong candidate" to "standout hire" at most tech companies.
+                    {apiData?.summary
+                      ? apiData.summary
+                      : <>You demonstrated strong communication skills with concrete examples and solid metrics — a real differentiator.
+                          However, two patterns held you back: <span className="text-slate-800">passive ownership language</span> ("the team decided")
+                          and <span className="text-slate-800">under-developed leadership signals</span>. Fixing these two areas would
+                          move you from "strong candidate" to "standout hire" at most tech companies.</>
+                    }
                   </p>
                   <div className="flex flex-wrap gap-3 mt-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-[12px] text-emerald-700">Top strength: {strongest.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-100">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                      <span className="text-[12px] text-amber-700">Biggest opportunity: {weakest.name}</span>
-                    </div>
+                    
+                    
                   </div>
                 </div>
               </div>
@@ -552,7 +771,7 @@ export function EvaluationPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
             >
-              <SessionRecording isPremium={isPremium} onTogglePremium={() => setIsPremium(p => !p)} />
+              <SessionRecording videoUrl={apiData?.video_url} questions={apiData?.questions} />
             </motion.section>
 
             {/* ═══ SECTION 2: Multi-dimensional Score Overview ═══ */}
@@ -567,134 +786,114 @@ export function EvaluationPage() {
                 <div>
                   <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-blue-500" />
-                    Score Overview
+                    Questions & Feedback
                   </h2>
-                  <p className="text-[11.5px] text-slate-400 mt-0.5">
-                    {DIMENSIONS.length} dimensions evaluated
-                  </p>
+                  
                 </div>
                 <button
-                  onClick={allDimsExpanded ? collapseAllDims : expandAllDims}
+                  onClick={() => {
+                    const allExpanded = collapsedCards.size === 0;
+                    setCollapsedCards(allExpanded ? new Set(['strengths', 'improve', 'advice']) : new Set());
+                  }}
                   className="text-[11.5px] text-blue-500 hover:text-blue-600 transition-colors px-2.5 py-1 rounded-md hover:bg-blue-50"
                 >
-                  {allDimsExpanded ? 'Collapse all' : 'Expand all'}
+                  {collapsedCards.size === 0 ? 'Collapse all' : 'Expand all'}
                 </button>
               </div>
 
               {/* 2-column body */}
-              <div className="flex gap-4">
-                {/* Left: Compact Radar Chart Card (secondary) */}
-                <div className="hidden lg:flex w-[232px] shrink-0 flex-col rounded-xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                  <div className="px-4 pt-3.5 pb-0">
-                    <span className="text-[10.5px] text-slate-400 uppercase tracking-wider">Shape</span>
-                  </div>
-                  <div className="flex-1 flex items-center justify-center px-1 pb-0">
-                    <ResponsiveContainer width="100%" height={192} minWidth={0}>
-                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                        <PolarGrid gridType="polygon" stroke="rgba(148,163,184,0.06)" />
-                        <PolarAngleAxis
-                          dataKey="subject"
-                          tick={{ fill: '#c0c7d3', fontSize: 8.5 }}
-                          tickLine={false}
-                        />
-                        <Radar
-                          dataKey="score"
-                          stroke="rgba(59,130,246,0.35)"
-                          fill="rgba(59,130,246,0.05)"
-                          strokeWidth={1.5}
-                          dot={{ r: 2, fill: 'rgba(59,130,246,0.5)', strokeWidth: 0 }}
-                        />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {/* Mini stats footer */}
-                  <div className="px-3 pb-3 pt-1 flex items-center justify-between border-t border-slate-50 mt-0">
-                    <div className="text-center flex-1">
-                      <div className="text-[16px] tabular-nums text-slate-700">{overall}</div>
-                      <div className="text-[9.5px] text-slate-400">Avg</div>
-                    </div>
-                    <div className="w-px h-6 bg-slate-100" />
-                    <div className="text-center flex-1">
-                      <div className="text-[16px] tabular-nums text-emerald-600">{strongest.score}</div>
-                      <div className="text-[9.5px] text-slate-400">Best</div>
-                    </div>
-                    <div className="w-px h-6 bg-slate-100" />
-                    <div className="text-center flex-1">
-                      <div className="text-[16px] tabular-nums text-amber-600">{weakest.score}</div>
-                      <div className="text-[9.5px] text-slate-400">Low</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right: Dimension Score List Card (primary focus) */}
-                <div className="flex-1 min-w-0 rounded-xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-                  {DIMENSIONS.map((dim, i) => {
-                    const isOpen = expandedDims.has(dim.id);
-                    return (
-                      <div key={dim.id} className={i > 0 ? 'border-t border-slate-100' : ''}>
-                        {/* Collapsed Row — fixed 52px height, 4-column grid */}
-                        <button
-                          onClick={() => toggleDim(dim.id)}
-                          className={`w-full h-[52px] flex items-center px-4 gap-3 transition-colors text-left cursor-pointer ${
-                            isOpen ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'
-                          }`}
-                        >
-                          {/* Col 1: Icon */}
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                            isOpen ? 'bg-blue-50 text-blue-500' : 'bg-slate-50 text-slate-400'
-                          }`}>
-                            <dim.icon className="w-3.5 h-3.5" />
+              <div className="space-y-4">
+                {/* Strengths */}
+                <div className="rounded-xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+                  <button onClick={() => toggleCard('strengths')} className="w-full px-5 py-3 flex items-center gap-2 border-b border-slate-50 cursor-pointer hover:bg-slate-50/60 transition-colors">
+                    <ThumbsUp className="w-4 h-4 text-emerald-500" />
+                    <h3 className="text-[13px] text-slate-700">Strengths</h3>
+                    <ChevronRight className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform duration-200 ${!collapsedCards.has('strengths') ? 'rotate-90' : ''}`} />
+                  </button>
+                  {!collapsedCards.has('strengths') && <div className="px-5 py-3 space-y-2.5">
+                    {apiData?.strengths?.length
+                      ? apiData.strengths.map((s, i) => (
+                          <div key={i} className="flex items-start gap-2.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                            <span className="text-[12.5px] text-slate-900">{s}</span>
                           </div>
-
-                          {/* Col 2: Title + Status Tag */}
-                          <div className="w-[210px] shrink-0 flex items-center gap-2 min-w-0">
-                            <span className={`text-[13px] truncate ${isOpen ? 'text-slate-800' : 'text-slate-700'}`}>
-                              {dim.name}
-                            </span>
-                            <span className={`px-1.5 py-px text-[10px] rounded border whitespace-nowrap shrink-0 ${statusColor(dim.status)}`}>
-                              {dim.status}
-                            </span>
-                          </div>
-
-                          {/* Col 3: Progress Bar */}
-                          <div className="flex-1 min-w-0 px-1">
-                            <div className={`h-[6px] w-full ${barTrack(dim.score)} rounded-full overflow-hidden`}>
-                              <motion.div
-                                className={`h-full ${barFill(dim.score)} rounded-full`}
-                                initial={{ width: 0 }}
-                                animate={{ width: `${dim.score}%` }}
-                                transition={{ duration: 0.7, delay: 0.15 + i * 0.06, ease: [0.22, 1, 0.36, 1] }}
-                              />
+                        ))
+                      : [...displayDimensions].filter(d => d.score >= 70).sort((a, b) => b.score - a.score).map(d => (
+                          <div key={d.id} className="flex items-start gap-2.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12.5px] text-slate-600 font-medium">{d.name}</span>
+                                <span className="text-[11px] text-emerald-600">{d.score}/100</span>
+                              </div>
+                              {d.reasoning && <span className="text-[12px] text-slate-500">{d.reasoning}</span>}
                             </div>
                           </div>
-
-                          {/* Col 4: Score + Chevron */}
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[14px] tabular-nums text-slate-700 w-7 text-right">{dim.score}</span>
-                            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                              isOpen ? 'rotate-90 text-blue-400' : 'text-slate-300'
-                            }`} />
-                          </div>
-                        </button>
-
-                        {/* Expanded Detail Panel — nested below row */}
-                        <AnimatePresence>
-                          {isOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                              className="overflow-hidden"
-                            >
-                              <InlineDimDetail dim={dim} onPractice={handlePractice} />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
+                        ))
+                    }
+                  </div>}
                 </div>
+
+                {/* Areas to Improve */}
+                <div className="rounded-xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+                  <button onClick={() => toggleCard('improve')} className="w-full px-5 py-3 flex items-center gap-2 border-b border-slate-50 cursor-pointer hover:bg-slate-50/60 transition-colors">
+                    <CircleAlert className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-[13px] text-slate-700">Areas to Improve</h3>
+                    <ChevronRight className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform duration-200 ${!collapsedCards.has('improve') ? 'rotate-90' : ''}`} />
+                  </button>
+                  {!collapsedCards.has('improve') && <div className="px-5 py-3 space-y-2.5">
+                    {apiData?.areas_for_improvement?.length
+                      ? apiData.areas_for_improvement.map((area, i) => (
+                          <div key={i} className="flex items-start gap-2.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                            <span className="text-[12.5px] text-slate-900">{area}</span>
+                          </div>
+                        ))
+                      : [...displayDimensions].filter(d => d.score < 70).sort((a, b) => a.score - b.score).map(d => (
+                          <div key={d.id} className="flex items-start gap-2.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[12.5px] text-slate-600 font-medium">{d.name}</span>
+                                <span className="text-[11px] text-amber-600">{d.score}/100</span>
+                              </div>
+                              {d.reasoning && <span className="text-[12px] text-slate-500">{d.reasoning}</span>}
+                            </div>
+                          </div>
+                        ))
+                    }
+                  </div>}
+                </div>
+
+                {/* Improvement Advice */}
+                <div className="rounded-xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+                  <button onClick={() => toggleCard('advice')} className="w-full px-5 py-3 flex items-center gap-2 border-b border-slate-50 cursor-pointer hover:bg-slate-50/60 transition-colors">
+                    <Lightbulb className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-[13px] text-slate-700">Improvement Advice</h3>
+                    <ChevronRight className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform duration-200 ${!collapsedCards.has('advice') ? 'rotate-90' : ''}`} />
+                  </button>
+                  {!collapsedCards.has('advice') && <div className="px-5 py-3 space-y-2.5">
+                    {apiData?.improvement_advice
+                      ? <p className="text-[12px] text-slate-600 leading-relaxed whitespace-pre-line">{apiData.improvement_advice}</p>
+                      : <>
+                          <div className="flex items-start gap-2.5">
+                            <span className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5 text-[10px] text-blue-600">1</span>
+                            <p className="text-[12px] text-slate-600 leading-relaxed">Use the STAR framework consistently — lead with a concise Situation, define your specific Task, detail Actions you personally took, and close with measurable Results.</p>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <span className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5 text-[10px] text-blue-600">2</span>
+                            <p className="text-[12px] text-slate-600 leading-relaxed">Replace passive language ("the team decided") with active ownership ("I recommended X because Y") to demonstrate accountability and leadership.</p>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <span className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5 text-[10px] text-blue-600">3</span>
+                            <p className="text-[12px] text-slate-600 leading-relaxed">Quantify your impact wherever possible — attach numbers, percentages, or dollar amounts to your outcomes to make your stories more compelling and credible.</p>
+                          </div>
+                        </>
+                    }
+                  </div>}
+                </div>
+
+
               </div>
             </motion.section>
 
@@ -704,160 +903,30 @@ export function EvaluationPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 }}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 cursor-pointer" onClick={() => toggleCard('breakdown')}>
                 <div>
                   <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
                     <MessageSquare className="w-4 h-4 text-blue-500" />
                     Question-level Breakdown
                   </h2>
-                  <p className="text-[11.5px] text-slate-400 mt-0.5">{QUESTIONS.length} questions analyzed</p>
+                  <p className="text-[11.5px] text-slate-400 mt-0.5">{displayQuestions.length} questions analyzed</p>
                 </div>
+                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${!collapsedCards.has('breakdown') ? 'rotate-90' : ''}`} />
               </div>
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+              {!collapsedCards.has('breakdown') && <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
                 <div className="divide-y divide-slate-50">
-                  {QUESTIONS.map((q) => (
+                  {displayQuestions.map((q) => (
                     <QuestionRow key={q.id} q={q} isExpanded={expandedQs.has(q.id)} onToggle={() => toggleQ(q.id)} />
                   ))}
                 </div>
-              </div>
+              </div>}
             </motion.section>
 
             {/* ═══ SECTION 5: Progress Trend ═══ */}
-            <motion.section
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-blue-500" />
-                    Progress Over Time
-                  </h2>
-                  <p className="text-[11.5px] text-slate-400 mt-0.5">Across {TREND_DATA.length} recent sessions</p>
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  {TREND_LINES.map((tl) => (
-                    <button
-                      key={tl.key}
-                      onClick={() => toggleTrend(tl.key)}
-                      className={`px-2 py-1 text-[11px] rounded-md border transition-all ${
-                        trendKeys.has(tl.key)
-                          ? 'border-slate-200 bg-white shadow-sm text-slate-700'
-                          : 'border-transparent bg-transparent text-slate-400 hover:text-slate-500'
-                      }`}
-                    >
-                      <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: tl.color, opacity: trendKeys.has(tl.key) ? 1 : 0.3 }} />
-                      {tl.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-                <div className="px-4 py-4 h-52">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <LineChart data={TREND_DATA} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" />
-                      <XAxis dataKey="session" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                      <YAxis domain={[30, 100]} tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                      <RTooltip
-                        contentStyle={{
-                          backgroundColor: 'white',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                          fontSize: '12px',
-                        }}
-                      />
-                      {TREND_LINES.filter((tl) => trendKeys.has(tl.key)).map((tl) => (
-                        <Line
-                          key={tl.key}
-                          type="monotone"
-                          dataKey={tl.key}
-                          name={tl.label}
-                          stroke={tl.color}
-                          strokeWidth={2}
-                          dot={{ r: 3, fill: tl.color, strokeWidth: 0 }}
-                          activeDot={{ r: 5 }}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </motion.section>
+            
 
             {/* ═══ SECTION 6: Next Best Actions ═══ */}
-            <motion.section
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <div className="mb-4">
-                <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-blue-500" />
-                  Your Coaching Plan
-                </h2>
-              </div>
-              <div className="bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/40 rounded-xl border border-blue-100/60 p-5">
-                <div className="grid sm:grid-cols-3 gap-4">
-                {/* Recommended practice */}
-                <div className="bg-white/80 backdrop-blur rounded-xl border border-slate-100 p-4 flex flex-col">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center mb-3">
-                    <Dumbbell className="w-4 h-4 text-blue-500" />
-                  </div>
-                  <h3 className="text-[13px] text-slate-800 mb-1">10-min Targeted Drill</h3>
-                  <p className="text-[12px] text-slate-400 leading-relaxed flex-1 mb-3">
-                    Practice ownership & accountability framing with 3 rapid-fire prompts designed for your weak spots.
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={handlePractice}
-                    className="h-8 text-xs gap-1.5 w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-sm shadow-blue-500/15"
-                  >
-                    <Play className="w-3 h-3" />
-                    Start Targeted Retry
-                  </Button>
-                </div>
-                {/* Weakest dimension */}
-                <div className="bg-white/80 backdrop-blur rounded-xl border border-slate-100 p-4 flex flex-col">
-                  <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center mb-3">
-                    <Target className="w-4 h-4 text-amber-500" />
-                  </div>
-                  <h3 className="text-[13px] text-slate-800 mb-1">Focus: {weakest.name}</h3>
-                  <p className="text-[12px] text-slate-400 leading-relaxed flex-1 mb-3">
-                    Your lowest dimension at {weakest.score}/100. Work on replacing passive language with clear ownership signals.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5 w-full border-slate-200"
-                  >
-                    <BookOpen className="w-3 h-3" />
-                    Open Practice Sets
-                  </Button>
-                </div>
-                {/* Question set */}
-                <div className="bg-white/80 backdrop-blur rounded-xl border border-slate-100 p-4 flex flex-col">
-                  <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center mb-3">
-                    <Library className="w-4 h-4 text-violet-500" />
-                  </div>
-                  <h3 className="text-[13px] text-slate-800 mb-1">Curated Question Set</h3>
-                  <p className="text-[12px] text-slate-400 leading-relaxed flex-1 mb-3">
-                    5 hand-picked questions targeting {weakest.name.toLowerCase()} and {DIMENSIONS.sort((a, b) => a.score - b.score)[1]?.name.toLowerCase()}.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5 w-full border-slate-200"
-                  >
-                    <ArrowRight className="w-3 h-3" />
-                    View Questions
-                  </Button>
-                </div>
-              </div>
-              </div>
-            </motion.section>
+            
 
             {/* Footer note */}
             <p className="text-center text-[11px] text-slate-400 pb-4">
@@ -866,6 +935,13 @@ export function EvaluationPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* Similar Questions Drawer */}
+      <SimilarQuestionsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        topic={drawerTopic}
+      />
     </div>
   );
 }
@@ -888,9 +964,11 @@ function MetaChip({ icon, label }: { icon: React.ReactNode; label: string }) {
 function InlineDimDetail({
   dim,
   onPractice,
+  onSeeSimilar,
 }: {
   dim: Dimension;
   onPractice: () => void;
+  onSeeSimilar: (topic: string) => void;
 }) {
   return (
     <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-4 space-y-4">
@@ -957,16 +1035,9 @@ function InlineDimDetail({
 
       {/* ── Actions ── */}
       <div className="flex items-center gap-3 pt-1">
-        <Button
-          size="sm"
-          onClick={(e) => { e.stopPropagation(); onPractice(); }}
-          className="h-7 text-[11px] gap-1.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-sm shadow-blue-500/15"
-        >
-          <Dumbbell className="w-3 h-3" />
-          Practice this dimension
-        </Button>
+        
         <button
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onSeeSimilar(dim.name); }}
           className="text-[11px] text-blue-500 hover:text-blue-600 transition-colors flex items-center gap-1"
         >
           See similar questions
@@ -993,22 +1064,18 @@ function QuestionRow({
     <div>
       <button
         onClick={onToggle}
-        className="w-full px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50/60 transition-colors text-left"
+        className="w-full px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50/60 transition-colors text-left"
       >
-        <span className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+        <span className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
           <span className="text-[11px] text-slate-500 tabular-nums">{q.id.replace('q', '')}</span>
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-slate-700 leading-relaxed">{q.prompt}</p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {q.dimensions.map((d) => (
-              <span key={d} className="px-1.5 py-0.5 text-[10px] rounded bg-slate-50 text-slate-500 border border-slate-100">
-                {d}
-              </span>
-            ))}
-          </div>
+          <p className="text-[13px] text-slate-700 leading-relaxed line-clamp-1">{q.prompt}</p>
         </div>
-        <ChevronRight className={`w-4 h-4 text-slate-300 shrink-0 mt-1 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+        <span className={`text-[13px] tabular-nums shrink-0 ${q.score >= 80 ? 'text-emerald-600' : q.score >= 70 ? 'text-blue-600' : q.score >= 60 ? 'text-amber-600' : 'text-orange-600'}`}>
+          {q.score}<span className="text-slate-400">/100</span>
+        </span>
+        <ChevronRight className={`w-4 h-4 text-slate-300 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
       </button>
 
       <AnimatePresence>
@@ -1020,84 +1087,35 @@ function QuestionRow({
             className="overflow-hidden"
           >
             <div className="px-5 pb-4 pl-14 space-y-4">
-              {/* Per-dimension scores */}
+              {/* Your Answer */}
               <div>
-                <h4 className="text-[11px] text-slate-400 mb-2">Dimension Performance</h4>
-                <div className="space-y-2">
-                  {q.dimScores.map((ds) => (
-                    <div key={ds.dim} className="flex items-center gap-3">
-                      <span className="text-[12px] text-slate-500 w-[200px] shrink-0 truncate">{ds.dim}</span>
-                      <div className={`flex-1 h-1.5 ${barTrack(ds.score)} rounded-full overflow-hidden`}>
-                        <motion.div
-                          className={`h-full ${barFill(ds.score)} rounded-full`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${ds.score}%` }}
-                          transition={{ duration: 0.5 }}
-                        />
-                      </div>
-                      <span className="text-[12px] text-slate-500 tabular-nums w-7 text-right">{ds.score}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Notes */}
-                <div className="mt-2 space-y-1">
-                  {q.dimScores.map((ds) => (
-                    <p key={ds.dim} className="text-[11px] text-slate-400 leading-relaxed">
-                      <span className="text-slate-500">{ds.dim}:</span> {ds.note}
-                    </p>
-                  ))}
+                <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Your Answer</h4>
+                <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-blue-300">
+                  <p className="text-[12px] text-slate-600 leading-relaxed">{q.yourAnswer}</p>
                 </div>
               </div>
 
-              {/* Evidence */}
-              {q.evidence.length > 0 && (
-                <div>
-                  <h4 className="text-[11px] text-slate-400 mb-2">Evidence</h4>
-                  {q.evidence.map((ev, i) => (
-                    <div key={i} className="rounded-lg border border-slate-100 overflow-hidden mb-2">
-                      <div className="px-3.5 py-2.5 bg-slate-50/50 border-l-2 border-l-blue-300">
-                        <p className="text-[12px] text-slate-700 italic leading-relaxed">{ev.quote}</p>
-                        <span className="text-[10px] text-slate-400 mt-1 inline-block">{ev.source}</span>
-                      </div>
-                      <div className="px-3.5 py-2 bg-white">
-                        <p className="text-[11px] text-slate-500">
-                          <span className="text-slate-400">Why it matters: </span>{ev.whyItMatters}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Improvements */}
+              {/* Sample Answer */}
               <div>
-                <h4 className="text-[11px] text-slate-400 mb-2">How to Improve This Answer</h4>
-                <div className="space-y-1.5">
-                  {q.improvements.map((imp, i) => (
-                    <div key={i} className="flex items-start gap-2 text-[12px] text-slate-600 leading-relaxed">
-                      <span className="w-4 h-4 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-[9px] text-amber-600 tabular-nums">{i + 1}</span>
-                      </span>
-                      {imp}
-                    </div>
-                  ))}
+                <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Sample Answer</h4>
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3.5 py-2.5 border-l-2 border-l-emerald-400">
+                  <p className="text-[12px] text-slate-700 leading-relaxed">{q.sampleAnswer}</p>
+                </div>
+              </div>
+
+              {/* Feedback */}
+              <div>
+                <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Feedback</h4>
+                <div className="rounded-lg border border-amber-100 bg-amber-50/40 px-3.5 py-2.5 border-l-2 border-l-amber-400">
+                  <p className="text-[12px] text-slate-600 leading-relaxed">{q.feedback}</p>
                 </div>
               </div>
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 pt-1">
-                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-slate-200">
-                  <RotateCcw className="w-3 h-3" />
-                  Retry this question
-                </Button>
-                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-slate-200">
-                  <Plus className="w-3 h-3" />
-                  Add to weak areas
-                </Button>
-                <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 border-slate-200">
-                  <Bookmark className="w-3 h-3" />
-                  Save to Library
-                </Button>
+                
+                
+                
               </div>
             </div>
           </motion.div>
@@ -1108,61 +1126,94 @@ function QuestionRow({
 }
 
 // ════════════════════════════════════════════════════════
-// SESSION RECORDING (Premium)
+// SESSION RECORDING
 // ════════════════════════════════════════════════════════
-function SessionRecording({ isPremium, onTogglePremium }: { isPremium: boolean; onTogglePremium: () => void }) {
+function SessionRecording({ videoUrl, questions }: { videoUrl?: string; questions?: ApiReportData['questions'] }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentSec, setCurrentSec] = useState(134);
+  const [currentSec, setCurrentSec] = useState(0);
+  const [duration, setDuration] = useState(VIDEO_TOTAL_SEC);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [activeMarker, setActiveMarker] = useState<string | null>('q1');
 
-  const fmt = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, '0')}`;
-  const pct = (currentSec / VIDEO_TOTAL_SEC) * 100;
+  // Derive transcript lines from API questions, or fall back to mock
+  const hasApiTranscript = questions && questions.length > 0;
+  const transcriptLines: { id: string; speaker: 'ai' | 'user'; text: string; startSec?: number; endSec?: number }[] =
+    hasApiTranscript
+      ? questions.flatMap((q, i) => [
+          { id: `q${i}-ai`, speaker: 'ai' as const, text: q.question_text },
+          { id: `q${i}-user`, speaker: 'user' as const, text: q.answer_text },
+        ])
+      : TRANSCRIPT_LINES;
 
-  const seekTo = (m: typeof VIDEO_MARKERS[number]) => { setCurrentSec(m.startSec); setActiveMarker(m.id); };
+  // Transcript state
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [autoFollow, setAutoFollow] = useState(true);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const userScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Active line tracking only works with mock data that has timing info
+  const activeLineId = hasApiTranscript
+    ? null
+    : TRANSCRIPT_LINES.find((l) => currentSec >= l.startSec && currentSec < l.endSec)?.id ?? null;
+
+  // Auto-scroll transcript to active line
+  useEffect(() => {
+    if (!autoFollow || !activeLineId || !transcriptRef.current) return;
+    const el = transcriptRef.current.querySelector(`[data-line-id="${activeLineId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeLineId, autoFollow]);
+
+  // Detect manual scroll to pause auto-follow, resume after 4s idle
+  const handleTranscriptScroll = useCallback(() => {
+    if (!userScrollingRef.current) {
+      userScrollingRef.current = true;
+      setAutoFollow(false);
+    }
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      userScrollingRef.current = false;
+      setAutoFollow(true);
+    }, 4000);
+  }, []);
+
+  const seekToSec = (sec: number) => {
+    if (videoRef.current) videoRef.current.currentTime = sec;
+    setCurrentSec(sec);
+    setActiveMarker(VIDEO_MARKERS.find((m) => sec >= m.startSec && sec < m.endSec)?.id ?? null);
+  };
+
+  const fmt = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, '0')}`;
+  const pct = duration > 0 ? (currentSec / duration) * 100 : 0;
+
+  const seekTo = (m: typeof VIDEO_MARKERS[number]) => {
+    if (videoRef.current) videoRef.current.currentTime = m.startSec;
+    setCurrentSec(m.startSec);
+    setActiveMarker(m.id);
+  };
   const onTimeline = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const s = Math.round(((e.clientX - r.left) / r.width) * VIDEO_TOTAL_SEC);
-    setCurrentSec(Math.max(0, Math.min(s, VIDEO_TOTAL_SEC)));
+    const s = Math.round(((e.clientX - r.left) / r.width) * duration);
+    const clamped = Math.max(0, Math.min(s, duration));
+    if (videoRef.current) videoRef.current.currentTime = clamped;
+    setCurrentSec(clamped);
     setActiveMarker(VIDEO_MARKERS.find((m) => s >= m.startSec && s < m.endSec)?.id ?? null);
   };
 
-  if (!isPremium) {
+  if (!videoUrl) {
     return (
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
-            <Video className="w-4 h-4 text-blue-500" />
-            Session Recording
-            <span className="px-1.5 py-0.5 text-[10px] rounded bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 border border-amber-200">Premium</span>
-          </h2>
-          <button onClick={onTogglePremium} className="text-[10px] text-slate-400 hover:text-slate-500 transition-colors underline decoration-dashed underline-offset-2">demo: toggle</button>
-        </div>
+        <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2 mb-4">
+          <Video className="w-4 h-4 text-blue-500" />
+          Session Recording
+        </h2>
         <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="relative">
-            <div className="h-48 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 relative overflow-hidden">
-              <div className="absolute inset-0 flex items-center justify-center" style={{ filter: 'blur(6px)' }}>
-                <div className="w-20 h-20 rounded-full bg-slate-700/80" />
-              </div>
-              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-10">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/10">
-                  <Lock className="w-6 h-6 text-white/70" />
-                </div>
-                <p className="text-[14px] text-white/90">Video Playback</p>
-                <p className="text-[12px] text-white/50 max-w-[280px] text-center">Upgrade to Premium to replay your full interview with timestamped question markers</p>
-                <Button size="sm" className="h-9 text-xs gap-1.5 mt-1 bg-gradient-to-r from-amber-400 to-yellow-400 text-amber-950 hover:from-amber-500 hover:to-yellow-500 shadow-lg shadow-amber-500/20">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Upgrade to Premium
-                </Button>
-              </div>
-            </div>
-            <div className="px-5 py-3 bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] text-slate-300 tabular-nums">0:00</span>
-                <div className="flex-1 h-2 bg-slate-100 rounded-full" />
-                <span className="text-[11px] text-slate-300 tabular-nums">22:00</span>
-              </div>
-            </div>
+          <div className="h-48 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 flex flex-col items-center justify-center gap-2">
+            <Video className="w-8 h-8 text-slate-500" />
+            <p className="text-[13px] text-slate-400">No recording available for this session</p>
           </div>
         </div>
       </div>
@@ -1175,66 +1226,41 @@ function SessionRecording({ isPremium, onTogglePremium }: { isPremium: boolean; 
         <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
           <Video className="w-4 h-4 text-blue-500" />
           Session Recording
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border border-blue-100">Premium</span>
+          
         </h2>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
             {[0.5, 1, 1.5, 2].map((sp) => (
-              <button key={sp} onClick={() => setPlaybackSpeed(sp)} className={`px-1.5 py-0.5 text-[10px] rounded transition-all ${playbackSpeed === sp ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'text-slate-400 hover:text-slate-500'}`}>{sp}x</button>
+              <button key={sp} onClick={() => { setPlaybackSpeed(sp); if (videoRef.current) videoRef.current.playbackRate = sp; }} className={`px-1.5 py-0.5 text-[10px] rounded transition-all ${playbackSpeed === sp ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'text-slate-400 hover:text-slate-500'}`}>{sp}x</button>
             ))}
           </div>
-          <button onClick={onTogglePremium} className="text-[10px] text-slate-400 hover:text-slate-500 transition-colors underline decoration-dashed underline-offset-2 ml-2">demo: toggle</button>
+          
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
         <div className="flex flex-col lg:flex-row">
         <div className="flex-1">
-          {/* Mock video frame */}
-          <div className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 aspect-video max-h-[300px] flex items-center justify-center overflow-hidden">
-            <div className="absolute inset-0 flex">
-              <div className="flex-1 border-r border-slate-700/50 flex flex-col items-center justify-center">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center border border-blue-500/20">
-                  <Mic className="w-5 h-5 text-blue-400/60" />
-                </div>
-                <span className="text-[10px] text-white/40 mt-1.5">AI Interviewer</span>
-                <div className="flex items-center gap-0.5 mt-1.5">
-                  {[3,5,8,6,4,7,5,3].map((h,i) => (
-                    <motion.div key={i} className="w-0.5 bg-blue-400/40 rounded-full"
-                      animate={isPlaying ? { height: [h, h*1.8, h], opacity: [0.4,0.8,0.4] } : { height: h, opacity: 0.3 }}
-                      transition={isPlaying ? { repeat: Infinity, duration: 0.6, delay: i*0.08 } : {}}
-                      style={{ height: h }}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 flex flex-col items-center justify-center">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center border border-emerald-500/20">
-                  <Video className="w-5 h-5 text-emerald-400/60" />
-                </div>
-                <span className="text-[10px] text-white/40 mt-1.5">You</span>
-                <div className="flex items-center gap-0.5 mt-1.5">
-                  {[4,6,9,7,5,8,6,4].map((h,i) => (
-                    <motion.div key={i} className="w-0.5 bg-emerald-400/40 rounded-full"
-                      animate={isPlaying ? { height: [h, h*2, h], opacity: [0.4,0.8,0.4] } : { height: h*0.5, opacity: 0.3 }}
-                      transition={isPlaying ? { repeat: Infinity, duration: 0.5, delay: i*0.07 } : {}}
-                      style={{ height: isPlaying ? h : h*0.5 }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            {activeMarker && VIDEO_MARKERS.find((m) => m.id === activeMarker)?.question && (
-              <div className="absolute bottom-3 left-3 right-3 z-10">
-                <div className="px-3 py-2 bg-black/50 backdrop-blur-sm rounded-lg border border-white/10">
-                  <p className="text-[10px] text-white/50">Current question</p>
-                  <p className="text-[12px] text-white/90 mt-0.5">{VIDEO_MARKERS.find((m) => m.id === activeMarker)?.question}</p>
-                </div>
-              </div>
-            )}
+          {/* Real video element */}
+          <div className="relative bg-black aspect-video overflow-hidden">
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              className="w-full h-full object-contain"
+              onTimeUpdate={() => setCurrentSec(Math.floor(videoRef.current?.currentTime ?? 0))}
+              onLoadedMetadata={() => setDuration(Math.floor(videoRef.current?.duration ?? VIDEO_TOTAL_SEC))}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
+            />
             {!isPlaying && (
-              <button onClick={() => setIsPlaying(true)} className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity">
-                <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center border border-white/20"><Play className="w-6 h-6 text-white ml-0.5" /></div>
+              <button
+                onClick={() => videoRef.current?.play()}
+                className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
+              >
+                <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center border border-white/20">
+                  <Play className="w-6 h-6 text-white ml-0.5" />
+                </div>
               </button>
             )}
           </div>
@@ -1242,12 +1268,15 @@ function SessionRecording({ isPremium, onTogglePremium }: { isPremium: boolean; 
           {/* Controls */}
           <div className="px-5 py-3 space-y-2.5">
             <div className="flex items-center gap-3">
-              <button onClick={() => setIsPlaying(!isPlaying)} className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-colors">
+              <button
+                onClick={() => isPlaying ? videoRef.current?.pause() : videoRef.current?.play()}
+                className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-colors"
+              >
                 {isPlaying ? <Pause className="w-3.5 h-3.5 text-slate-600" /> : <Play className="w-3.5 h-3.5 text-slate-600 ml-0.5" />}
               </button>
               <button onClick={() => { const i = VIDEO_MARKERS.findIndex((m) => m.id === activeMarker); if (i > 0) seekTo(VIDEO_MARKERS[i-1]); }} className="w-7 h-7 rounded-md hover:bg-slate-50 flex items-center justify-center transition-colors"><SkipBack className="w-3.5 h-3.5 text-slate-400" /></button>
               <button onClick={() => { const i = VIDEO_MARKERS.findIndex((m) => m.id === activeMarker); if (i < VIDEO_MARKERS.length-1) seekTo(VIDEO_MARKERS[i+1]); }} className="w-7 h-7 rounded-md hover:bg-slate-50 flex items-center justify-center transition-colors"><SkipForward className="w-3.5 h-3.5 text-slate-400" /></button>
-              <span className="text-[12px] text-slate-500 tabular-nums">{fmt(currentSec)} / {fmt(VIDEO_TOTAL_SEC)}</span>
+              <span className="text-[12px] text-slate-500 tabular-nums">{fmt(currentSec)} / {fmt(duration)}</span>
               <div className="flex-1" />
               <button className="w-7 h-7 rounded-md hover:bg-slate-50 flex items-center justify-center transition-colors"><Volume2 className="w-3.5 h-3.5 text-slate-400" /></button>
             </div>
@@ -1256,31 +1285,151 @@ function SessionRecording({ isPremium, onTogglePremium }: { isPremium: boolean; 
                 <div className="absolute inset-y-0 left-0 bg-blue-500 rounded-full transition-all duration-150" style={{ width: `${pct}%` }} />
                 <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full border-2 border-blue-500 shadow-sm transition-all duration-150 group-hover:scale-110" style={{ left: `calc(${pct}% - 7px)` }} />
                 {VIDEO_MARKERS.filter((m) => m.type === 'question').map((m) => (
-                  <div key={m.id} className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-blue-300 border border-white z-[1]" style={{ left: `${(m.startSec/VIDEO_TOTAL_SEC)*100}%` }} />
+                  <div key={m.id} className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-blue-300 border border-white z-[1]" style={{ left: `${(m.startSec/duration)*100}%` }} />
                 ))}
               </div>
               <div className="relative h-4">
                 {VIDEO_MARKERS.filter((m) => m.type === 'question').map((m) => (
-                  <button key={m.id} onClick={() => seekTo(m)} className={`absolute -translate-x-1/2 text-[10px] px-1.5 py-0.5 rounded transition-all ${activeMarker === m.id ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'text-slate-400 hover:text-slate-500'}`} style={{ left: `${((m.startSec+(m.endSec-m.startSec)/2)/VIDEO_TOTAL_SEC)*100}%` }}>{m.label}</button>
+                  <button key={m.id} onClick={() => seekTo(m)} className={`absolute -translate-x-1/2 text-[10px] px-1.5 py-0.5 rounded transition-all ${activeMarker === m.id ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'text-slate-400 hover:text-slate-500'}`} style={{ left: `${((m.startSec+(m.endSec-m.startSec)/2)/duration)*100}%` }}>{m.label}</button>
                 ))}
               </div>
             </div>
           </div>
+
+          {/* Transcript */}
+          <div className="border-t border-slate-100">
+            <div
+              onClick={() => setShowTranscript((v) => !v)}
+              className="w-full px-5 py-2.5 flex items-center justify-between hover:bg-slate-50/60 transition-colors cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[12px] text-slate-600">Transcript</span>
+                <span className="text-[10px] text-slate-400">{transcriptLines.length} lines</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {showTranscript && !autoFollow && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAutoFollow(true); }}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 transition-colors"
+                  >
+                    Resume follow
+                  </button>
+                )}
+                <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${showTranscript ? 'rotate-90' : ''}`} />
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {showTranscript && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div
+                    ref={transcriptRef}
+                    onScroll={handleTranscriptScroll}
+                    className="max-h-[240px] overflow-y-auto px-5 pb-4 space-y-0.5 scroll-smooth"
+                  >
+                    {transcriptLines.map((line) => {
+                      const isActive = line.id === activeLineId;
+                      return (
+                        <div
+                          key={line.id}
+                          data-line-id={line.id}
+                          className={`w-full text-left flex gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                            isActive
+                              ? 'bg-blue-50/80 border border-blue-100'
+                              : 'border border-transparent'
+                          }`}
+                        >
+
+                          {/* Speaker badge + text */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className={`text-[9px] px-1.5 py-px rounded-full ${
+                                line.speaker === 'ai'
+                                  ? 'bg-blue-100 text-blue-600'
+                                  : 'bg-emerald-100 text-emerald-600'
+                              }`}>
+                                {line.speaker === 'ai' ? 'AI' : 'You'}
+                              </span>
+                              {isActive && (
+                                <motion.div
+                                  className="flex items-center gap-[2px]"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                >
+                                  {[2, 4, 6, 4, 2].map((h, i) => (
+                                    <motion.span
+                                      key={i}
+                                      className="w-[2px] rounded-full bg-blue-400"
+                                      animate={{ height: [h * 0.5, h, h * 0.5], opacity: [0.4, 0.8, 0.4] }}
+                                      transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.08 }}
+                                      style={{ height: h * 0.5 }}
+                                    />
+                                  ))}
+                                </motion.div>
+                              )}
+                            </div>
+                            <p className={`text-[12px] leading-relaxed ${
+                              isActive ? 'text-slate-800' : 'text-slate-500'
+                            }`}>
+                              {line.text}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* Sidebar */}
-        <div className="lg:w-[220px] shrink-0 border-t lg:border-t-0 lg:border-l border-slate-100 divide-y divide-slate-50">
-          <div className="px-4 py-2.5"><span className="text-[11px] text-slate-400">Jump to</span></div>
-          {VIDEO_MARKERS.filter((m) => m.type !== 'transition').map((m) => (
-            <button key={m.id} onClick={() => seekTo(m)} className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left transition-colors ${activeMarker === m.id ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'}`}>
-              <span className={`text-[10px] tabular-nums shrink-0 ${activeMarker === m.id ? 'text-blue-500' : 'text-slate-400'}`}>{fmt(m.startSec)}</span>
-              <p className={`text-[12px] truncate flex-1 min-w-0 ${activeMarker === m.id ? 'text-blue-700' : 'text-slate-600'}`}>{m.question || m.label}</p>
-              {activeMarker === m.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
-            </button>
-          ))}
-        </div>
+
       </div>
       </div>
     </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// SIMILAR QUESTIONS DRAWER
+// ════════════════════════════════════════════════════════
+function SimilarQuestionsDrawer({
+  open,
+  onClose,
+  topic,
+}: {
+  open: boolean;
+  onClose: () => void;
+  topic: string;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="right" className="w-full max-w-md">
+        <SheetHeader>
+          <SheetTitle className="text-[15px]">Similar Questions — {topic}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-3">
+          <p className="text-[13px] text-slate-500">
+            Practice more questions related to <span className="text-slate-800 font-medium">{topic}</span> in the question bank.
+          </p>
+          <a
+            href="/question-bank"
+            className="inline-flex items-center gap-2 text-[13px] text-blue-600 hover:text-blue-700 transition-colors"
+          >
+            Browse question bank
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

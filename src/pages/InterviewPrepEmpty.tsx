@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/newDesign/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/newDesign/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/newDesign/ui/dialog";
+import { Label } from "@/components/newDesign/ui/label";
+import { Input } from "@/components/newDesign/ui/input";
+import { Textarea } from "@/components/newDesign/ui/textarea";
 import { Navbar } from "@/components/Navbar";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
@@ -23,7 +23,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { InterviewService, ProfileService } from "../services";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/newDesign/ui/use-toast";
 import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 const InterviewPrepEmpty = () => {

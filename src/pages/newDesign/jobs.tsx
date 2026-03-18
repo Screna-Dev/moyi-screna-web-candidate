@@ -53,12 +53,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
+} from "@/components/newDesign/ui/dialog";
+import { Checkbox } from "@/components/newDesign/ui/checkbox";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/newDesign/ui/sheet";
+import { ScrollArea } from "@/components/newDesign/ui/scroll-area";
+import { Separator } from "@/components/newDesign/ui/separator";
+import { Label } from "@/components/newDesign/ui/label";
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
