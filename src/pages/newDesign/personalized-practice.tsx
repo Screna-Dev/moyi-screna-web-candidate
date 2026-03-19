@@ -21,6 +21,7 @@ import {
   ClipboardPaste,
   Calendar,
   Crosshair,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Badge } from '../../components/newDesign/ui/badge';
@@ -41,6 +42,8 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
+import { getJobTitleRecommendations } from '@/services/ProfileServices';
+import { createTrainingPlan } from '@/services/InterviewServices';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Auth helper (same as navbar) ──────────────────────
@@ -256,26 +259,6 @@ const RECENT_SESSIONS = [
   { id: 3, title: 'Behavioral STAR', score: 91, date: 'Mar 12, 4:15 PM', duration: '22 min', tag: 'Behavioral' },
 ];
 
-const SUGGESTED_ROLES = [
-  {
-    title: 'Software Engineer, Backend',
-    company: 'Tech Startup',
-    skills: 'API design, scalability, ownership',
-    description: 'We are looking for a backend engineer to design scalable APIs and take ownership of key features.',
-  },
-  {
-    title: 'Senior Product Manager',
-    company: 'Big Tech',
-    skills: 'Strategy, user research, roadmap',
-    description: 'Lead product strategy and roadmap for a high-impact product area.',
-  },
-  {
-    title: 'Frontend Developer',
-    company: 'Mid-size Company',
-    skills: 'React, performance, UI/UX',
-    description: 'Build performant and responsive user interfaces using React and modern frontend tools.',
-  },
-];
 
 // ─── Helpers ───────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
@@ -448,40 +431,106 @@ function SignInModal({
 // ════════════════════════════════════════════════════════
 // TARGET JOB MODAL
 // ════════════════════════════════════════════════════════
+interface RecommendedJob {
+  job_title: string;
+  match_percentage: number;
+  reason: string;
+  key_requirements: string[];
+}
+
 function TargetJobModal({
   open,
   onOpenChange,
   onApply,
+  onPlanCreated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onApply: (job: string) => void;
+  onPlanCreated?: () => void;
 }) {
   const [tab, setTab] = useState<'quick' | 'paste'>('quick');
   const [selectedRole, setSelectedRole] = useState('');
+  const [selectedJobData, setSelectedJobData] = useState<RecommendedJob | null>(null);
   const [jobTitle, setJobTitle] = useState('');
   const [jobCompany, setJobCompany] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [interviewDate, setInterviewDate] = useState('');
   const [dailyPrepTime, setDailyPrepTime] = useState('2');
+  const [recommendedJobs, setRecommendedJobs] = useState<RecommendedJob[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const handleQuickApply = () => {
-    if (selectedRole) {
-      onApply(selectedRole);
-      onOpenChange(false);
+  useEffect(() => {
+    if (open) {
       setSelectedRole('');
+      setSelectedJobData(null);
+      setTab('quick');
+      setApiError(null);
+      fetchRecommendations();
+    }
+  }, [open]);
+
+  const fetchRecommendations = async () => {
+    setIsLoading(true);
+    try {
+      const response = await getJobTitleRecommendations();
+      const data = response.data?.data;
+      setRecommendedJobs(data?.recommendations || []);
+    } catch {
+      setRecommendedJobs([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handlePasteApply = () => {
-    const label = jobTitle ? `${jobTitle}${jobCompany ? ` at ${jobCompany}` : ''}` : 'Custom JD';
-    onApply(label);
-    onOpenChange(false);
-    setJobTitle('');
-    setJobCompany('');
-    setJobDescription('');
-    setInterviewDate('');
-    setDailyPrepTime('2');
+  const handleQuickApply = async () => {
+    if (!selectedRole || !selectedJobData) return;
+    setIsCreatingPlan(true);
+    setApiError(null);
+    try {
+      await createTrainingPlan({
+        jobTitle: selectedJobData.job_title,
+        company: '',
+        jobDescription: selectedJobData.key_requirements.join(', '),
+      });
+      onApply(selectedJobData.job_title);
+      onOpenChange(false);
+      setSelectedRole('');
+      setSelectedJobData(null);
+      onPlanCreated?.();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
+    } finally {
+      setIsCreatingPlan(false);
+    }
+  };
+
+  const handlePasteApply = async () => {
+    if (!jobTitle.trim()) return;
+    setIsCreatingPlan(true);
+    setApiError(null);
+    try {
+      await createTrainingPlan({
+        jobTitle: jobTitle.trim(),
+        company: jobCompany.trim(),
+        jobDescription: jobDescription.trim(),
+      });
+      const label = `${jobTitle.trim()}${jobCompany.trim() ? ` at ${jobCompany.trim()}` : ''}`;
+      onApply(label);
+      onOpenChange(false);
+      setJobTitle('');
+      setJobCompany('');
+      setJobDescription('');
+      setInterviewDate('');
+      setDailyPrepTime('2');
+      onPlanCreated?.();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
+    } finally {
+      setIsCreatingPlan(false);
+    }
   };
 
   return (
@@ -526,60 +575,88 @@ function TargetJobModal({
         {tab === 'quick' ? (
           <div className="px-6 pt-5 pb-6 space-y-4">
             <p className="text-sm text-slate-400">Suggested based on your profile</p>
-            <div className="space-y-3">
-              {SUGGESTED_ROLES.map((role) => {
-                const roleKey = `${role.title}`;
-                const isSelected = selectedRole === roleKey;
-                return (
-                  <button
-                    key={roleKey}
-                    onClick={() => setSelectedRole(roleKey)}
-                    className={`w-full text-left px-5 py-4 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'border-blue-300 bg-blue-50/40'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Radio circle */}
-                      <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected ? 'border-blue-500' : 'border-slate-300'
-                      }`}>
-                        {isSelected && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                        )}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+              </div>
+            ) : recommendedJobs.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">
+                No recommendations found. Use &ldquo;Paste JD&rdquo; to enter a custom role.
+              </p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                {recommendedJobs.map((role) => {
+                  const roleKey = role.job_title;
+                  const isSelected = selectedRole === roleKey;
+                  return (
+                    <button
+                      key={roleKey}
+                      onClick={() => {
+                        setSelectedRole(roleKey);
+                        setSelectedJobData(role);
+                      }}
+                      className={`w-full text-left px-5 py-4 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'border-blue-300 bg-blue-50/40'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Radio circle */}
+                        <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'border-blue-500' : 'border-slate-300'
+                        }`}>
+                          {isSelected && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-[15px] text-slate-900">{role.job_title}</h4>
+                            <span className="text-xs font-medium text-blue-600 bg-blue-50 rounded-full px-2 py-0.5 border border-blue-200/60">
+                              {role.match_percentage}% match
+                            </span>
+                          </div>
+                          {role.key_requirements.length > 0 && (
+                            <p className="text-sm text-slate-500 mt-0.5">
+                              {role.key_requirements.slice(0, 3).join(' · ')}
+                            </p>
+                          )}
+                          {role.reason && (
+                            <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
+                              {role.reason}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-[15px] text-slate-900">{role.title}</h4>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                          <span className="text-slate-600">{role.company}</span>
-                          <span className="mx-1.5 text-slate-300">&bull;</span>
-                          <span>{role.skills}</span>
-                        </p>
-                        <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
-                          {role.description}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {apiError && (
+              <p className="text-sm text-red-500">{apiError}</p>
+            )}
             {/* Buttons */}
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button
                 variant="outline"
                 className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
                 onClick={() => onOpenChange(false)}
+                disabled={isCreatingPlan}
               >
                 Cancel
               </Button>
               <Button
                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!selectedRole}
+                disabled={!selectedRole || isCreatingPlan}
                 onClick={handleQuickApply}
               >
-                Use selected role
+                {isCreatingPlan ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
+                ) : (
+                  'Use selected role'
+                )}
               </Button>
             </div>
           </div>
@@ -661,21 +738,29 @@ function TargetJobModal({
                 />
               </div>
             </div>
+            {apiError && (
+              <p className="text-sm text-red-500">{apiError}</p>
+            )}
             {/* Buttons */}
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button
                 variant="outline"
                 className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
                 onClick={() => onOpenChange(false)}
+                disabled={isCreatingPlan}
               >
                 Cancel
               </Button>
               <Button
                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!jobTitle.trim()}
+                disabled={!jobTitle.trim() || isCreatingPlan}
                 onClick={handlePasteApply}
               >
-                Generate Plan
+                {isCreatingPlan ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
+                ) : (
+                  'Generate Plan'
+                )}
               </Button>
             </div>
           </div>
@@ -1064,6 +1149,28 @@ export function PersonalizedPracticePage() {
         onApply={(job) => {
           setTargetJob(job);
           showToast(`Target Job set: ${job}`);
+        }}
+        onPlanCreated={() => {
+          setIsLoadingPlan(true);
+          InterviewService.getTrainingPlans()
+            .then((response) => {
+              let plansData = response.data?.data ?? response.data ?? [];
+              if (!Array.isArray(plansData)) plansData = [];
+              const pendingModules: { module: any; planTitle: string }[] = [];
+              for (const plan of plansData) {
+                const planTitle = plan.target_job_title || 'Your Training Plan';
+                const modules: any[] = plan.modules || [];
+                for (const m of modules) {
+                  if (m.status === 'pending') {
+                    pendingModules.push({ module: m, planTitle });
+                  }
+                }
+              }
+              const first8 = pendingModules.slice(0, 8);
+              setPlanSets(first8.map(({ module, planTitle }, i) => mapModuleToPracticeSet(module, i, planTitle)));
+            })
+            .catch(() => setPlanSets([]))
+            .finally(() => setIsLoadingPlan(false));
         }}
       />
       <Toast message={toast.message} visible={toast.visible} />
