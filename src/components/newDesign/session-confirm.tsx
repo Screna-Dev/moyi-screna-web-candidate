@@ -16,6 +16,7 @@ import {
   Users,
   Sparkles,
   BookOpen,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -24,6 +25,7 @@ import { Footer } from './home/footer';
 import { DashboardLayout } from './dashboard-layout';
 import { motion, AnimatePresence } from 'motion/react';
 import imgRectangle from '@/assets/a7264fd48ee44c90a6ee1d9d5f038a62ea570b04.png';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 // ─── Session Detail Data ─────────────────────────────────
 interface SessionDetail {
@@ -303,6 +305,8 @@ export function SessionConfirmPage() {
 
   const [expectOpen, setExpectOpen] = useState(false);
   const selectedMode = 'Video' as const;
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
+  const hasEnoughCredits = isPlanLoading || (planData.permanentCreditBalance >= (session?.credits ?? 0));
   // If session not found
   if (!session) {
     const notFound = (
@@ -508,34 +512,70 @@ export function SessionConfirmPage() {
             </div>
 
             {/* ── Footer / CTA ────────────────────────── */}
-            <div className="px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
-              <div className="flex items-center gap-4 text-sm text-slate-500">
-                <div className="flex items-center gap-1.5">
-                  <Coins className="w-4 h-4 text-amber-500" />
-                  <span>
-                    This session will use <span className="text-slate-700 font-medium">{session.credits}</span> credits
-                  </span>
+            <div className="px-8 py-6 flex flex-col gap-4 bg-slate-50/50">
+              {/* Insufficient credit banner */}
+              {!isPlanLoading && !hasEnoughCredits && (
+                <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-red-50 border border-red-200">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-red-700">
+                      <span className="font-medium">Insufficient credits.</span>{' '}
+                      You have <span className="font-medium">{planData.permanentCreditBalance}</span> credit{planData.permanentCreditBalance !== 1 ? 's' : ''}, but this session requires{' '}
+                      <span className="font-medium">{session.credits}</span>.
+                    </p>
+                  </div>
+                  <Link
+                    to="/pricing"
+                    className="shrink-0 text-xs font-medium text-red-600 hover:text-red-800 underline underline-offset-2 whitespace-nowrap"
+                  >
+                    Buy credits
+                  </Link>
                 </div>
-              </div>
+              )}
 
-              <Link to={(() => {
-                const domainTypeMap: Record<string, string> = {
-                  'Behavioral': 'behavioral',
-                  'Product Sense': 'product',
-                  'System Design': 'system-design',
-                  'Resume': 'resume',
-                };
-                const type = domainTypeMap[session.domain] ?? 'behavioral';
-                const difficulty = session.difficulty.toLowerCase();
-                const duration = session.time.replace(' min', '');
-                const mode = selectedMode.toLowerCase();
-                return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=${mode}`;
-              })()}>
-                <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
-                  Begin Session
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4 text-sm text-slate-500">
+                  <div className="flex items-center gap-1.5">
+                    <Coins className="w-4 h-4 text-amber-500" />
+                    <span>
+                      This session will use <span className="text-slate-700 font-medium">{session.credits}</span> credits
+                    </span>
+                  </div>
+                  {!isPlanLoading && (
+                    <span className="text-slate-400 text-xs">
+                      Balance: <span className={`font-medium ${hasEnoughCredits ? 'text-slate-600' : 'text-red-500'}`}>{planData.permanentCreditBalance}</span>
+                    </span>
+                  )}
+                </div>
+
+                {hasEnoughCredits ? (
+                  <Link to={(() => {
+                    const domainTypeMap: Record<string, string> = {
+                      'Behavioral': 'behavioral',
+                      'Product Sense': 'product',
+                      'System Design': 'system-design',
+                      'Resume': 'resume',
+                    };
+                    const type = domainTypeMap[session.domain] ?? 'behavioral';
+                    const difficulty = session.difficulty.toLowerCase();
+                    const duration = session.time.replace(' min', '');
+                    const mode = selectedMode.toLowerCase();
+                    return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=${mode}`;
+                  })()}>
+                    <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
+                      Begin Session
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                ) : (
+                  <Link to="/pricing">
+                    <Button className="bg-red-500 hover:bg-red-600 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm shadow-red-200">
+                      <Coins className="w-4 h-4" />
+                      Get More Credits
+                    </Button>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </div>

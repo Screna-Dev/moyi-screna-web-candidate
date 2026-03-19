@@ -21,6 +21,7 @@ import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from './ui/sheet';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 type UserData = {
   firstName?: string;
@@ -34,12 +35,12 @@ const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   // { icon: Briefcase, label: 'Jobs', path: '/jobs' },
   { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
-  { icon: Gift, label: 'Refer & Earn', path: '/refer' },
+  // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
 
-function SidebarContent({ currentPath }: { currentPath: string }) {
+function SidebarContent({ currentPath, creditBalance, isPlanLoading }: { currentPath: string; creditBalance: number; isPlanLoading: boolean }) {
   return (
     <div className="flex flex-col h-full">
       {/* Nav links */}
@@ -63,19 +64,30 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         })}
       </nav>
 
-      {/* Bottom: Upgrade CTA */}
+      {/* Bottom: Credits CTA */}
       <div className="px-3 pb-5 space-y-2 mt-auto shrink-0">
         <div className="rounded-xl bg-gradient-to-br from-[hsl(221,91%,60%)] to-[hsl(165,82%,51%)] p-4 text-white">
-          <div className="flex items-center gap-2 mb-1">
-            <Coins className="w-4 h-4" />
-            <span className="text-sm font-semibold">Low on Credits</span>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <Coins className="w-4 h-4" />
+              <span className="text-sm font-semibold">Credits</span>
+            </div>
+            {!isPlanLoading && (
+              <span className="text-sm font-bold tabular-nums">{creditBalance}</span>
+            )}
           </div>
           <p className="text-xs text-white/80 mb-3 leading-relaxed">
-            Top up credits to keep practicing mock interviews
+            {isPlanLoading
+              ? 'Loading your balance…'
+              : creditBalance === 0
+                ? 'You have no credits left. Top up to continue.'
+                : creditBalance <= 5
+                  ? 'Running low — top up to keep practicing.'
+                  : 'Top up credits to keep practicing mock interviews'}
           </p>
           <Link to="/pricing">
             <button className="w-full py-1.5 bg-white text-[hsl(221,91%,55%)] rounded-lg text-xs font-semibold hover:bg-white/90 transition-colors">
-              Buy Credits
+              {creditBalance === 0 ? 'Buy Credits Now' : 'Buy More Credits'}
             </button>
           </Link>
         </div>
@@ -91,10 +103,14 @@ function GlobalTopHeader({
   firstName,
   userData,
   currentPath,
+  creditBalance,
+  isPlanLoading,
 }: {
   firstName: string;
   userData: UserData | null;
   currentPath: string;
+  creditBalance: number;
+  isPlanLoading: boolean;
 }) {
   const navigate = useNavigate();
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -277,8 +293,15 @@ function GlobalTopHeader({
 
       {/* Right: Credits + Avatar */}
       <div className="flex items-center gap-3 shrink-0 ml-auto md:ml-0">
-        <Link to="/pricing">
-          
+        <Link
+          to="/pricing"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+          title="Buy more credits"
+        >
+          <Coins className="w-3.5 h-3.5 text-amber-500" />
+          <span className="text-xs font-medium text-amber-700 tabular-nums">
+            {isPlanLoading ? '—' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}
+          </span>
         </Link>
 
         {/* Avatar + Dropdown */}
@@ -307,8 +330,10 @@ function GlobalTopHeader({
                       : 'My Account'}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <Coins className="w-3 h-3 text-[hsl(221,91%,60%)]" />
-                    <span className="text-xs text-slate-500">12 Credits remaining</span>
+                    <Coins className="w-3 h-3 text-amber-500" />
+                    <span className="text-xs text-slate-500">
+                      {isPlanLoading ? 'Loading…' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
+                    </span>
                   </div>
                 </div>
 
@@ -368,6 +393,8 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
   const location = useLocation();
   const { user, isLoading } = useAuth();
   const [userData, setUserData] = useState<UserData | null>(null);
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
+  const creditBalance = planData.permanentCreditBalance;
 
   useEffect(() => {
     if (isLoading) return;
@@ -391,13 +418,15 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
         firstName={firstName}
         userData={userData}
         currentPath={location.pathname}
+        creditBalance={creditBalance}
+        isPlanLoading={isPlanLoading}
       />
 
       {/* ── Below header: Sidebar + Content ── */}
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex flex-col w-60 bg-white border-r border-[hsl(220,16%,90%)] sticky top-14 h-[calc(100vh-3.5rem)] z-40 shrink-0 overflow-y-auto">
-          <SidebarContent currentPath={location.pathname} />
+          <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
         </aside>
 
         {/* Main content */}
@@ -415,7 +444,7 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
                 <SheetContent side="left" className="p-0 w-72">
                   <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                   <SheetDescription className="sr-only">Main navigation links</SheetDescription>
-                  <SidebarContent currentPath={location.pathname} />
+                  <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
                 </SheetContent>
               </Sheet>
 
@@ -439,8 +468,10 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
 
             {/* Credits indicator (compact, visible on sub-header for quick reference) */}
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              
-              
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
+              <span className="tabular-nums">
+                {isPlanLoading ? '—' : creditBalance} credit{!isPlanLoading && creditBalance === 1 ? '' : 's'}
+              </span>
             </div>
           </div>
 

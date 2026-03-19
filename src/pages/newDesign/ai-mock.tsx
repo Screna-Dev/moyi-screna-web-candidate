@@ -25,10 +25,9 @@ import {
   SelectValue,
 } from '@/components/newDesign/ui/select';
 import { Label } from '@/components/newDesign/ui/label';
-import { LiveInterview } from '@/components/newDesign/live-interview';
 import { VideoInterview } from '@/components/newDesign/video-interview';
 import { CooldownScreen } from '@/components/newDesign/cooldown-screen';
-import { createInterviewSession } from '@/services/IntervewSesstionServices';
+import { endTrainingModule } from '@/services/InterviewServices';
 
 // ─── Session credentials from API ──────────────────────
 export interface SessionCredentials {
@@ -40,7 +39,7 @@ export interface SessionCredentials {
 }
 
 // ─── Types ─────────────────────────────────────────────
-type Stage = 'setup' | 'warmup' | 'opening' | 'live' | 'cooldown';
+type Stage = 'modeSelect' | 'warmup' | 'live' | 'cooldown';
 type InterviewType = 'behavioral' | 'product' | 'system-design' | 'resume';
 type Difficulty = 'junior' | 'intermediate' | 'senior' | 'staff';
 type Mode = 'text' | 'voice' | 'video';
@@ -138,19 +137,16 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════
 export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode }) {
-  const [stage, setStage] = useState<Stage>('setup');
-  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  // Session credentials obtained from the API during warmup
-  const [sessionCredentials, setSessionCredentials] = useState<SessionCredentials | null>(null);
-  // Ref prevents duplicate API calls in React StrictMode double-invocation
-  const sessionCallMade = useRef(false);
+  const navigate = useNavigate();
+  // If mode is already provided via URL params, skip mode selection and go straight to warmup
+  const initialStage: Stage = searchParams.get('mode') ? 'warmup' : 'modeSelect';
+  const [stage, setStage] = useState<Stage>(initialStage);
+  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
+  const interviewId = searchParams.get('interviewId') ?? undefined;
 
   const [config, setConfig] = useState<SetupConfig>(() => {
     // Pre-fill from URL params when navigating from InterviewPrep or dashboard
-    const interviewId = searchParams.get('interviewId');
     const typeParam = (searchParams.get('type') as InterviewType) || 'behavioral';
     const difficultyParam = (searchParams.get('difficulty') as Difficulty) || 'intermediate';
     const durationParam = searchParams.get('duration') || '20';
@@ -165,46 +161,6 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
       company: companyParam,
     };
   });
-
-  // ── API: create session when warmup begins ──────────────
-  // interviewId comes from URL param (set by InterviewPrep or any caller).
-  // Without it we silently run in demo mode.
-  useEffect(() => {
-    if (stage !== 'warmup') return;
-    if (sessionCallMade.current) return;
-    sessionCallMade.current = true;
-
-    const interviewId = searchParams.get('interviewId');
-    if (!interviewId) {
-      console.log('[AIMock] No interviewId — running in demo mode');
-      return;
-    }
-
-    const startSession = async () => {
-      try {
-        console.log('[AIMock] Creating interview session for id:', interviewId);
-        const response = await createInterviewSession(interviewId);
-        const data = response.data?.data ?? response.data;
-
-        if (data?.url && data?.token) {
-          setSessionCredentials({
-            sessionId: data.session_id ?? interviewId,
-            url: data.url,
-            token: data.token,
-            roomName: data.room_name,
-            maxDuration: data.max_interview_duration,
-          });
-          console.log('[AIMock] ✅ Session created — LiveKit mode enabled');
-        } else {
-          console.warn('[AIMock] Session response missing url/token — falling back to demo mode');
-        }
-      } catch (err) {
-        console.error('[AIMock] Session creation failed — falling back to demo mode', err);
-      }
-    };
-
-    startSession();
-  }, [stage, searchParams]);
 
   const toggleTheme = () => {
     setTheme(t => {
@@ -221,18 +177,19 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
       <ThemeToggle theme={theme} onToggle={toggleTheme} />
 
       <AnimatePresence mode="wait">
-        {stage === 'setup' && (
+        {stage === 'modeSelect' && (
           <motion.div
-            key="setup"
+            key="modeSelect"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           >
-            <SetupStage
-              config={config}
-              setConfig={setConfig}
-              onStart={() => setStage('warmup')}
+            <ModeSelectStage
+              onSelect={(mode) => {
+                setConfig((c) => ({ ...c, mode }));
+                setStage('warmup');
+              }}
               theme={theme}
             />
           </motion.div>
@@ -247,21 +204,13 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
           >
             <WarmupStage
               config={config}
-              onReady={() => setStage('opening')}
-              onCancel={() => setStage('setup')}
+              interviewId={interviewId}
+              onReady={() => {
+                setStage('live');
+              }}
+              onCancel={() => navigate(-1)}
               theme={theme}
             />
-          </motion.div>
-        )}
-        {stage === 'opening' && (
-          <motion.div
-            key="opening"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <OpeningStage config={config} onBack={() => setStage('setup')} onBegin={() => setStage('live')} theme={theme} />
           </motion.div>
         )}
         {stage === 'live' && (
@@ -272,21 +221,12 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            {config.mode === 'video' ? (
-              <VideoInterview
-                config={config}
-                onEnd={() => setStage('cooldown')}
-                theme={theme}
-                sessionCredentials={sessionCredentials}
-              />
-            ) : (
-              <LiveInterview
-                config={config}
-                onEnd={() => setStage('cooldown')}
-                theme={theme}
-                sessionCredentials={sessionCredentials}
-              />
-            )}
+            <VideoInterview
+              config={config}
+              interviewId={interviewId}
+              onEnd={() => setStage('cooldown')}
+              theme={theme}
+            />
           </motion.div>
         )}
         {stage === 'cooldown' && (
@@ -297,7 +237,11 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            <CooldownScreen config={config} onComplete={() => navigate('/evaluation')} />
+            <CooldownScreen config={config} onComplete={() => {
+              const interviewId = searchParams.get('interviewId');
+              if (interviewId) endTrainingModule(interviewId).catch(() => {});
+              navigate(interviewId ? `/evaluation?interviewId=${interviewId}` : '/evaluation');
+            }} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -306,7 +250,114 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
 }
 
 // ════════════════════════════════════════════════════════
-// STAGE 1: PRACTICE SETUP
+// STAGE 1: MODE SELECTION
+// ════════════════════════════════════════════════════════
+function ModeSelectStage({
+  onSelect,
+  theme,
+}: {
+  onSelect: (mode: Mode) => void;
+  theme: ThemeMode;
+}) {
+  const isDark = theme === 'dark';
+  return (
+    <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-500 ${
+      isDark
+        ? 'bg-gradient-to-b from-[#0f172a] via-[#131c33] to-[#0c1322]'
+        : 'bg-gradient-to-b from-slate-50 via-white to-slate-50/80'
+    }`}>
+      <div className="w-full max-w-sm px-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="text-center mb-10"
+        >
+          <div className={`w-12 h-12 mx-auto mb-5 rounded-2xl flex items-center justify-center ${
+            isDark
+              ? 'bg-gradient-to-br from-blue-500/20 to-teal-500/20'
+              : 'bg-gradient-to-br from-blue-500/10 to-teal-500/10'
+          }`}>
+            <Sparkles className="w-5 h-5 text-blue-500" />
+          </div>
+          <h1 className={`text-2xl mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            How would you like to practice?
+          </h1>
+          <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-400'}`}>
+            Choose your interview mode to get started.
+          </p>
+        </motion.div>
+
+        {/* Mode cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="grid grid-cols-2 gap-4"
+        >
+          {/* Voice */}
+          <button
+            onClick={() => onSelect('voice')}
+            className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border transition-all duration-200 ${
+              isDark
+                ? 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] hover:border-blue-400/40'
+                : 'bg-white border-slate-100 hover:border-blue-400/60 hover:shadow-md shadow-sm'
+            }`}
+          >
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors duration-200 ${
+              isDark
+                ? 'bg-blue-500/10 group-hover:bg-blue-500/20'
+                : 'bg-blue-50 group-hover:bg-blue-100'
+            }`}>
+              <Mic className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="text-center">
+              <p className={`font-medium text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>Voice</p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Speak your answers</p>
+            </div>
+          </button>
+
+          {/* Video */}
+          <button
+            onClick={() => onSelect('video')}
+            className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border transition-all duration-200 ${
+              isDark
+                ? 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] hover:border-blue-400/40'
+                : 'bg-white border-slate-100 hover:border-blue-400/60 hover:shadow-md shadow-sm'
+            }`}
+          >
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors duration-200 ${
+              isDark
+                ? 'bg-blue-500/10 group-hover:bg-blue-500/20'
+                : 'bg-blue-50 group-hover:bg-blue-100'
+            }`}>
+              <Video className="w-6 h-6 text-blue-500" />
+            </div>
+            <div className="text-center">
+              <p className={`font-medium text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>Video</p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Face-to-face practice</p>
+            </div>
+          </button>
+        </motion.div>
+
+        {/* Privacy note */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className={`text-center text-xs mt-8 flex items-center justify-center gap-1.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}
+        >
+          <Shield className="w-3 h-3" />
+          Private session · No recordings stored
+        </motion.p>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// STAGE 2 (OLD SETUP — KEPT FOR REFERENCE, NO LONGER USED IN MAIN FLOW)
 // ════════════════════════════════════════════════════════
 function SetupStage({
   config,
@@ -500,28 +551,37 @@ function WarmupStage({
   onReady,
   onCancel,
   theme,
+  interviewId,
 }: {
   config: SetupConfig;
   onReady: () => void;
   onCancel: () => void;
   theme: ThemeMode;
+  interviewId?: string;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [breathIndex, setBreathIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [stepsComplete, setStepsComplete] = useState(false);
+
+  // Transition once steps complete
+  useEffect(() => {
+    if (!stepsComplete) return;
+    const t = setTimeout(() => onReady(), 600);
+    return () => clearTimeout(t);
+  }, [stepsComplete, onReady]);
 
   // Walk through warm-up steps
   useEffect(() => {
     if (stepIndex >= WARMUP_STEPS.length) {
-      // All steps done → transition
-      const t = setTimeout(onReady, 600);
-      return () => clearTimeout(t);
+      setStepsComplete(true);
+      return;
     }
     const t = setTimeout(() => {
       setStepIndex((i) => i + 1);
     }, WARMUP_STEPS[stepIndex].duration);
     return () => clearTimeout(t);
-  }, [stepIndex, onReady]);
+  }, [stepIndex]);
 
   // Smooth progress bar
   useEffect(() => {
@@ -540,7 +600,9 @@ function WarmupStage({
     return () => clearInterval(interval);
   }, []);
 
-  const currentStep = stepIndex < WARMUP_STEPS.length ? WARMUP_STEPS[stepIndex] : null;
+  const currentStep = stepIndex < WARMUP_STEPS.length
+    ? WARMUP_STEPS[stepIndex]
+    : null;
   const isDark = theme === 'dark';
 
   return (
@@ -1022,3 +1084,4 @@ function WaveformRing({ active }: { active: boolean }) {
     </div>
   );
 }
+

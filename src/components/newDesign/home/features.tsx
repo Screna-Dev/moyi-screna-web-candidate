@@ -6,9 +6,9 @@ import { Link } from 'react-router';
 const features = [
   {
     icon: Mic,
-    title: 'AI Mock Interviews (Voice / Video / Text)',
+    title: 'AI Mock Interviews (Voice / Video)',
     description:
-      'Practice realistic interviews with follow-up questions—choose voice, video, or text and build structured answers.',
+      'Practice realistic interviews with follow-up questions—choose voice or video and build structured answers.',
     link: '/mock-interview',
     linkLabel: 'Start practicing',
   },
@@ -27,14 +27,6 @@ const features = [
       'Get evidence-based feedback (quotes + next steps), and retry weak moments instantly to improve faster.',
     link: '/mock-interview',
     linkLabel: 'See how it works',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Trending Practice Sets',
-    description:
-      'Start from hot role/company-style sets in one click—no guessing what to practice next.',
-    link: '/question-bank',
-    linkLabel: 'Browse sets',
   },
 ];
 
@@ -129,7 +121,7 @@ export function Features() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {features.map((feature, index) => (
             <FeatureCard key={index} {...feature} index={index} />
           ))}

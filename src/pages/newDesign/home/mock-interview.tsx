@@ -1,508 +1,722 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import {
-  Clock,
-  ArrowRight,
-  Coins,
-  Zap,
-  BarChart2,
-  Building2,
-  RefreshCw,
   Flame,
-  Search,
-  Sparkles,
   Users,
+  ArrowRight,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Info,
+  Lock,
+  Search,
+  X,
+  MessageSquare,
+  Zap,
+  ChevronDown,
 } from 'lucide-react';
-import { Button } from '../../../components/newDesign/ui/button';
-import { Badge } from '../../../components/newDesign/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../../components/newDesign/ui/select';
 import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
 
-// ─── Types ─────────────────────────────────────────────
-interface PracticeSet {
-  id: number;
-  title: string;
+// ─── Types ──────────────────────────────────────────────
+type Difficulty = 'Easy' | 'Medium' | 'Hard';
+type Competition = 'Low' | 'Medium' | 'High';
+type Level = 'All levels' | 'New grad' | 'Junior' | 'Mid' | 'Senior';
+type SortMode = 'Trending' | 'Most practiced' | 'Rising fast';
+type RoleFamily = 'All' | 'Engineering' | 'Product' | 'Data' | 'Design';
+
+interface TrendingRole {
+  rank: number;
   role: string;
-  focus: string;
-  time: string;
-  difficulty: 'Junior' | 'Intermediate' | 'Senior' | 'Staff';
-  credits: number;
-  practiced: number;
-  popular?: boolean;
-  category: string;
-  company: string;
+  family: 'Engineering' | 'Product' | 'Data' | 'Design';
+  practicingNow: number;
+  delta: number;
+  sparkline: number[];
+  isNew?: boolean;
+  difficulty: Difficulty;
+  competition: Competition;
+  risingFast?: boolean;
+  focusChips: string[];
+  salaryRange: string;
+  interviewFormats: string[];
+  typicalProcess: string;
+  insightsCount: number;
+  level: Level;
 }
 
-// ─── Data ──────────────────────────────────────────────
-const PRACTICE_SETS: PracticeSet[] = [
-  {
-    id: 1,
-    title: 'Product Sense Essentials',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '30 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 539,
-    popular: true,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 2,
-    title: 'Behavioral STAR Method',
-    role: 'General',
-    focus: 'Behavioral',
-    time: '45 min',
-    difficulty: 'Junior',
-    credits: 8,
-    practiced: 198,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 3,
-    title: 'System Design Scalability',
-    role: 'Software Engineer',
-    focus: 'System',
-    time: '48 min',
-    difficulty: 'Senior',
-    credits: 10,
-    practiced: 340,
-    category: 'system-design',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 4,
-    title: 'React Frontend Core',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '20 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 181,
-    category: 'technical',
-    company: 'Startups',
-  },
-  {
-    id: 5,
-    title: 'A/B Testing & Metrics',
-    role: 'Data Scientist',
-    focus: 'Analytical',
-    time: '30 min',
-    difficulty: 'Staff',
-    credits: 10,
-    practiced: 198,
-    category: 'analytical',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 6,
-    title: 'Leadership Principles',
-    role: 'Engineering Manager',
-    focus: 'Behavioral',
-    time: '25 min',
-    difficulty: 'Senior',
-    credits: 5,
-    practiced: 831,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 7,
-    title: 'PM Strategy & Vision',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '35 min',
-    difficulty: 'Senior',
-    credits: 8,
-    practiced: 412,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 8,
-    title: 'API Design Patterns',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '25 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 267,
-    category: 'technical',
-    company: 'Mid-size tech',
-  },
+// ─── Sparkline generator ─────────────────────────────
+function generateSparkline(seed: number): number[] {
+  const pts: number[] = [];
+  let v = 30 + ((seed * 17) % 40);
+  for (let i = 0; i < 7; i++) {
+    v += ((seed * (i + 3) * 7) % 21) - 8;
+    v = Math.max(10, Math.min(90, v));
+    pts.push(v);
+  }
+  return pts;
+}
+
+// ─── Data ───────────────────────────────────────────────
+const LEADERBOARD: TrendingRole[] = [
+  { rank: 1, role: 'Product Manager', family: 'Product', practicingNow: 1243, delta: 18, sparkline: generateSparkline(1), difficulty: 'Hard', competition: 'High', risingFast: true, focusChips: ['Metrics', 'Tradeoffs', 'Stakeholder Mgmt'], salaryRange: '$120k – $185k', interviewFormats: ['Behavioral', 'Case Study', 'Product Sense'], typicalProcess: 'Phone · Onsite · HM', insightsCount: 284, level: 'Mid' },
+  { rank: 2, role: 'Frontend Engineer', family: 'Engineering', practicingNow: 852, delta: 12, sparkline: generateSparkline(2), difficulty: 'Medium', competition: 'High', focusChips: ['System Design', 'React Patterns', 'Performance'], salaryRange: '$110k – $170k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · Onsite', insightsCount: 196, level: 'Mid' },
+  { rank: 3, role: 'Data Scientist', family: 'Data', practicingNow: 621, delta: 9, sparkline: generateSparkline(3), difficulty: 'Hard', competition: 'Medium', focusChips: ['ML Fundamentals', 'SQL', 'Experimentation'], salaryRange: '$125k – $190k', interviewFormats: ['Coding', 'Case Study', 'Technical'], typicalProcess: 'Phone · Take-home · Onsite', insightsCount: 158, level: 'Mid' },
+  { rank: 4, role: 'UX Designer', family: 'Design', practicingNow: 584, delta: 15, sparkline: generateSparkline(4), difficulty: 'Medium', competition: 'Medium', risingFast: true, focusChips: ['Portfolio Review', 'Design Critique', 'User Research'], salaryRange: '$95k – $150k', interviewFormats: ['Portfolio', 'Design Challenge', 'Behavioral'], typicalProcess: 'Screen · Portfolio · Onsite', insightsCount: 132, level: 'Mid' },
+  { rank: 5, role: 'Backend Engineer', family: 'Engineering', practicingNow: 541, delta: 7, sparkline: generateSparkline(5), difficulty: 'Hard', competition: 'High', focusChips: ['APIs', 'Scalability', 'Databases'], salaryRange: '$120k – $180k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · System Design · HM', insightsCount: 211, level: 'Mid' },
+  { rank: 6, role: 'DevOps Engineer', family: 'Engineering', practicingNow: 472, delta: -3, sparkline: generateSparkline(6), difficulty: 'Hard', competition: 'Low', focusChips: ['CI/CD', 'Infrastructure', 'Monitoring'], salaryRange: '$115k – $175k', interviewFormats: ['Technical', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Technical · Onsite', insightsCount: 87, level: 'Senior' },
+  { rank: 7, role: 'ML Engineer', family: 'Data', practicingNow: 431, delta: 22, sparkline: generateSparkline(7), difficulty: 'Hard', competition: 'Medium', risingFast: true, focusChips: ['MLOps', 'Model Training', 'Data Pipelines'], salaryRange: '$135k – $210k', interviewFormats: ['Coding', 'ML Design', 'Behavioral'], typicalProcess: 'Phone · Coding · ML Deep-dive · HM', insightsCount: 143, level: 'Senior' },
+  { rank: 8, role: 'iOS Developer', family: 'Engineering', practicingNow: 393, delta: 4, sparkline: generateSparkline(8), difficulty: 'Medium', competition: 'Low', focusChips: ['Swift', 'UIKit', 'App Architecture'], salaryRange: '$110k – $165k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · Onsite', insightsCount: 64, level: 'Mid' },
+  { rank: 9, role: 'Solutions Architect', family: 'Engineering', practicingNow: 351, delta: -1, sparkline: generateSparkline(9), difficulty: 'Hard', competition: 'Medium', focusChips: ['Cloud Design', 'Cost Optimization', 'Security'], salaryRange: '$140k – $200k', interviewFormats: ['System Design', 'Case Study', 'Behavioral'], typicalProcess: 'Phone · Architecture · HM', insightsCount: 91, level: 'Senior' },
+  { rank: 10, role: 'Data Analyst', family: 'Data', practicingNow: 328, delta: 11, sparkline: generateSparkline(10), difficulty: 'Easy', competition: 'Medium', focusChips: ['SQL', 'Dashboards', 'Storytelling'], salaryRange: '$75k – $120k', interviewFormats: ['SQL', 'Case Study', 'Behavioral'], typicalProcess: 'Phone · SQL · Case · HM', insightsCount: 108, level: 'Junior' },
+  { rank: 11, role: 'Product Designer', family: 'Design', practicingNow: 305, delta: 8, sparkline: generateSparkline(11), difficulty: 'Medium', competition: 'Medium', focusChips: ['Figma', 'Design Systems', 'Prototyping'], salaryRange: '$105k – $160k', interviewFormats: ['Portfolio', 'Design Challenge', 'Behavioral'], typicalProcess: 'Screen · Portfolio · Challenge · HM', insightsCount: 95, level: 'Mid' },
+  { rank: 12, role: 'Engineering Manager', family: 'Engineering', practicingNow: 289, delta: 6, sparkline: generateSparkline(12), difficulty: 'Hard', competition: 'High', focusChips: ['Leadership', 'Prioritization', 'Hiring'], salaryRange: '$160k – $230k', interviewFormats: ['Behavioral', 'System Design', 'Leadership'], typicalProcess: 'Phone · Behavioral · System Design · HM · VP', insightsCount: 127, level: 'Senior' },
+  { rank: 13, role: 'Android Developer', family: 'Engineering', practicingNow: 264, delta: -2, sparkline: generateSparkline(13), difficulty: 'Medium', competition: 'Low', focusChips: ['Kotlin', 'Jetpack Compose', 'Architecture'], salaryRange: '$105k – $160k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · Onsite', insightsCount: 52, level: 'Mid' },
+  { rank: 14, role: 'Technical PM', family: 'Product', practicingNow: 247, delta: 14, sparkline: generateSparkline(14), difficulty: 'Medium', competition: 'Medium', isNew: true, risingFast: true, focusChips: ['API Design', 'Roadmapping', 'Cross-Functional'], salaryRange: '$130k – $185k', interviewFormats: ['Product Sense', 'Technical', 'Behavioral'], typicalProcess: 'Phone · Case · Technical · HM', insightsCount: 74, level: 'Mid' },
+  { rank: 15, role: 'Data Engineer', family: 'Data', practicingNow: 231, delta: 5, sparkline: generateSparkline(15), difficulty: 'Hard', competition: 'Low', focusChips: ['ETL', 'Spark', 'Data Modeling'], salaryRange: '$120k – $175k', interviewFormats: ['Coding', 'System Design', 'SQL'], typicalProcess: 'Phone · Coding · Data Design · HM', insightsCount: 63, level: 'Mid' },
+  { rank: 16, role: 'UX Researcher', family: 'Design', practicingNow: 218, delta: 0, sparkline: generateSparkline(16), difficulty: 'Medium', competition: 'Low', isNew: true, focusChips: ['User Interviews', 'Surveys', 'Synthesis'], salaryRange: '$90k – $140k', interviewFormats: ['Case Study', 'Portfolio', 'Behavioral'], typicalProcess: 'Phone · Case · Portfolio · HM', insightsCount: 41, level: 'Mid' },
+  { rank: 17, role: 'Full-Stack Engineer', family: 'Engineering', practicingNow: 204, delta: 3, sparkline: generateSparkline(17), difficulty: 'Medium', competition: 'High', focusChips: ['Frontend', 'Backend', 'DevOps'], salaryRange: '$110k – $170k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · System Design · HM', insightsCount: 89, level: 'Mid' },
+  { rank: 18, role: 'Growth PM', family: 'Product', practicingNow: 189, delta: 19, sparkline: generateSparkline(18), difficulty: 'Medium', competition: 'Medium', isNew: true, risingFast: true, focusChips: ['Experimentation', 'Funnels', 'Activation'], salaryRange: '$125k – $180k', interviewFormats: ['Product Sense', 'Case Study', 'Behavioral'], typicalProcess: 'Phone · Case · Metrics · HM', insightsCount: 56, level: 'Mid' },
+  { rank: 19, role: 'QA Engineer', family: 'Engineering', practicingNow: 172, delta: -4, sparkline: generateSparkline(19), difficulty: 'Easy', competition: 'Low', focusChips: ['Test Strategy', 'Automation', 'Regression'], salaryRange: '$80k – $130k', interviewFormats: ['Technical', 'Coding', 'Behavioral'], typicalProcess: 'Phone · Technical · HM', insightsCount: 34, level: 'Junior' },
+  { rank: 20, role: 'Platform Engineer', family: 'Engineering', practicingNow: 158, delta: 10, sparkline: generateSparkline(20), difficulty: 'Hard', competition: 'Low', focusChips: ['Internal Tools', 'Developer Experience', 'Infra'], salaryRange: '$125k – $185k', interviewFormats: ['Coding', 'System Design', 'Behavioral'], typicalProcess: 'Phone · Coding · System Design · HM', insightsCount: 47, level: 'Senior' },
 ];
 
-const TRENDING_ROLES_POOL = [
-  { rank: '#1', role: 'Product Manager', count: '1.2k' },
-  { rank: '#2', role: 'Frontend Engineer', count: '850' },
-  { rank: '#3', role: 'Data Scientist', count: '620' },
-  { rank: '#4', role: 'UX Designer', count: '580' },
-  { rank: '#5', role: 'Backend Engineer', count: '540' },
-  { rank: '#6', role: 'DevOps Engineer', count: '470' },
-  { rank: '#7', role: 'Machine Learning Engineer', count: '430' },
-  { rank: '#8', role: 'iOS Developer', count: '390' },
-  { rank: '#9', role: 'Solutions Architect', count: '350' },
-];
+const FAMILIES: RoleFamily[] = ['All', 'Engineering', 'Product', 'Data', 'Design'];
+const LEVELS: Level[] = ['All levels', 'New grad', 'Junior', 'Mid', 'Senior'];
+const SORT_MODES: SortMode[] = ['Trending', 'Most practiced', 'Rising fast'];
 
-// ─── Helpers ───────────────────────────────────────────
-const ROLE_COLORS: Record<string, string> = {
-  'Product Manager': 'bg-blue-50 text-blue-700 border-blue-200/60',
-  General: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
-  'Software Engineer': 'bg-slate-50 text-slate-700 border-slate-200',
-  'Data Scientist': 'bg-violet-50 text-violet-700 border-violet-200/60',
-  'Engineering Manager': 'bg-amber-50 text-amber-700 border-amber-200/60',
-};
+// ─── Helpers ────────────────────────────────────────────
+function formatCount(n: number) {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString();
+}
 
-const TRENDING_CARD_STYLES = [
-  {
-    gradient: 'from-blue-500/[0.06] via-blue-400/[0.03] to-transparent',
-    accent: 'text-blue-600',
-    border: 'border-blue-200/40 hover:border-blue-300/60',
-    rankBg: 'bg-blue-600',
-    btnClass: 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600',
-  },
-  {
-    gradient: 'from-violet-500/[0.06] via-violet-400/[0.03] to-transparent',
-    accent: 'text-violet-600',
-    border: 'border-violet-200/40 hover:border-violet-300/60',
-    rankBg: 'bg-violet-600',
-    btnClass: 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600',
-  },
-  {
-    gradient: 'from-emerald-500/[0.06] via-emerald-400/[0.03] to-transparent',
-    accent: 'text-emerald-600',
-    border: 'border-emerald-200/40 hover:border-emerald-300/60',
-    rankBg: 'bg-emerald-600',
-    btnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600',
-  },
-];
-
-const DIFFICULTY_COLORS: Record<string, string> = {
-  Junior: 'text-emerald-600',
-  Intermediate: 'text-blue-600',
-  Senior: 'text-amber-600',
-  Staff: 'text-rose-600',
-};
-
-const AVATAR_COLOR_SETS = [
-  ['bg-rose-200 text-rose-700', 'bg-blue-200 text-blue-700', 'bg-amber-200 text-amber-700'],
-  ['bg-purple-200 text-purple-700', 'bg-green-200 text-green-700', 'bg-pink-200 text-pink-700'],
-  ['bg-cyan-200 text-cyan-700', 'bg-orange-200 text-orange-700', 'bg-indigo-200 text-indigo-700'],
-];
-
-const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
-
-
-// ════════════════════════════════════════════════════════
-// TRENDING CARD
-// ════════════════════════════════════════════════════════
-function TrendingCard({
-  item,
-  style,
-  onStart,
-}: {
-  item: { rank: string; role: string; count: string };
-  style: typeof TRENDING_CARD_STYLES[number];
-  onStart: () => void;
-}) {
+// ─── InfoTooltip ────────────────────────────────────────
+function InfoTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!show) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [show]);
   return (
-    <div
-      className={`relative flex-1 min-w-[260px] rounded-2xl border ${style.border} bg-gradient-to-br ${style.gradient} backdrop-blur-sm p-5 transition-all duration-200 hover:shadow-md hover:shadow-slate-900/[0.04]`}
-    >
-      {/* Rank badge */}
-      <div className="flex items-start justify-between mb-4">
-        <span className="text-[22px] font-bold text-blue-600">
-          {item.rank}
-        </span>
-        <div className="flex items-center gap-1 text-xs text-slate-400">
-          <Users className="w-3 h-3" />
-          <span>{item.count} practicing</span>
+    <div className="relative inline-flex" ref={ref}>
+      <button onClick={() => setShow(!show)} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)} className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+        <Info className="w-3 h-3" />
+      </button>
+      {show && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 px-3 py-2 rounded-lg bg-foreground text-background text-xs leading-relaxed shadow-lg pointer-events-none">
+          {text}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-foreground" />
         </div>
-      </div>
-
-      {/* Role name */}
-      <h3 className="text-[16px] font-bold text-slate-900 mb-4 leading-tight">
-        {item.role}
-      </h3>
-
-      {/* Start button */}
-      <Button
-        size="sm"
-        className={`w-full h-9 text-xs font-semibold rounded-lg transition-all ${style.btnClass} shadow-none`}
-        onClick={(e) => {
-          e.preventDefault();
-          onStart();
-        }}
-      >
-        Start Practice
-      </Button>
+      )}
     </div>
   );
 }
 
+// ─── Pills ──────────────────────────────────────────────
+const DIFF_STYLES: Record<Difficulty, string> = {
+  Easy: 'bg-emerald-50 text-emerald-600 border-emerald-200/60',
+  Medium: 'bg-amber-50 text-amber-600 border-amber-200/60',
+  Hard: 'bg-red-50 text-red-600 border-red-200/60',
+};
+const COMP_STYLES: Record<Competition, string> = {
+  Low: 'bg-secondary text-muted-foreground border-border',
+  Medium: 'bg-blue-50 text-blue-600 border-blue-200/60',
+  High: 'bg-violet-50 text-violet-600 border-violet-200/60',
+};
 
-// ════════════════════════════════════════════════════════
-// PRACTICE SET CARD
-// ════════════════════════════════════════════════════════
-function PracticeSetCard({ set }: { set: PracticeSet }) {
-  const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
-  const visibleAvatars = 3;
+function DifficultyPill({ level }: { level: Difficulty }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${DIFF_STYLES[level]}`}>
+      {level}
+      <InfoTooltip text="Estimated from practice completion and evaluation patterns." />
+    </span>
+  );
+}
+function CompetitionPill({ level }: { level: Competition }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${COMP_STYLES[level]}`}>
+      {level}
+      <InfoTooltip text="Estimated from community demand signals (practice volume, trend growth, insights activity). Not applicant counts." />
+    </span>
+  );
+}
+
+// ─── SVG Sparkline ──────────────────────────────────────
+function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }) {
+  const w = 56, h = 20, pad = 2;
+  const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1;
+  const pts = data.map((v, i) => ({ x: pad + (i / (data.length - 1)) * (w - pad * 2), y: h - pad - ((v - mn) / rng) * (h - pad * 2) }));
+  const poly = pts.map(p => `${p.x},${p.y}`).join(' ');
+  const area = `M${pts[0].x},${pts[0].y} ${pts.map(p => `L${p.x},${p.y}`).join(' ')} L${pts[pts.length - 1].x},${h} L${pts[0].x},${h} Z`;
+  const col = positive ? '#3b82f6' : '#94a3b8';
+  const gid = `sp-${data[0]}-${data[3]}`;
+  return (
+    <svg width={w} height={h} className="shrink-0">
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={col} stopOpacity={0.12} /><stop offset="100%" stopColor={col} stopOpacity={0} /></linearGradient></defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <polyline fill="none" stroke={col} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" points={poly} />
+    </svg>
+  );
+}
+
+// ─── DeltaBadge ─────────────────────────────────────────
+function DeltaBadge({ delta }: { delta: number }) {
+  if (delta === 0) return <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><Minus className="w-3 h-3" />0%</span>;
+  const pos = delta > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs ${pos ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+      {pos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+      {pos ? '+' : ''}{delta}%
+    </span>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// HOW WE RANK MODAL
+// ════════════════════════════════════════════════════════════
+function HowWeRankModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm">
+      <div ref={ref} className="bg-card rounded-2xl shadow-xl border border-border max-w-lg w-full mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="text-base font-semibold text-foreground">How we rank</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-6 py-5 space-y-3 text-sm text-muted-foreground leading-relaxed">
+          <p><span className="font-medium text-foreground">Ranking</span> — Roles are ranked by a composite of practice volume, engagement intensity, and week-over-week growth across the Screna community. This is not a job market ranking.</p>
+          <p><span className="font-medium text-foreground">Difficulty (est.)</span> — Estimated from aggregated completion rates and evaluation feedback from mock sessions. Reflects community perception, not an objective measure.</p>
+          <p><span className="font-medium text-foreground">Competition (est.)</span> — Derived from community demand signals — practice volume, trend velocity, and insights frequency. Not based on real applicant counts.</p>
+          <p><span className="font-medium text-foreground">Salary (est.)</span> — Approximate US ranges from public compensation databases. Varies significantly by company, location, level, and negotiation.</p>
+          <p><span className="font-medium text-foreground">Insights</span> — Count of community-contributed interview tips, question breakdowns, and experience reports for each role.</p>
+          <p className="text-xs text-muted-foreground/70 pt-1">All "estimated" metrics are approximations. Use as directional guidance, not definitive assessments.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// TOP 3 SPOTLIGHT CARD
+// ════════════════════════════════════════════════════════════
+function SpotlightCard({ item, onStart }: { item: TrendingRole; onStart: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight);
+    }
+  }, [expanded]);
 
   return (
-    <Link
-      to={`/session-confirm?session=${set.id}`}
-      className="group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col"
-    >
-      {/* Top: Role + Popular badge */}
-      <div className="px-5 pt-5 pb-0">
-        <div className="flex items-start justify-between gap-3">
-          <Badge
-            variant="outline"
-            className={`font-medium text-xs rounded-full px-3 py-1 ${
-              ROLE_COLORS[set.role] || 'bg-slate-50 text-slate-700 border-slate-200'
-            }`}
-          >
-            {set.role}
-          </Badge>
-          {set.popular && (
-            <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
-              <Sparkles className="w-3 h-3" />
-              Popular
-            </Badge>
+    <div className="relative bg-card border border-border rounded-2xl px-6 py-6 hover:shadow-md transition-shadow group cursor-default flex flex-col">
+      {/* Rank badge + Role */}
+      <div className="flex items-center gap-3 mb-4">
+        <span className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+          {item.rank}
+        </span>
+        <div>
+          <h3 className="text-base font-semibold text-foreground leading-snug">{item.role}</h3>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-muted-foreground">{formatCount(item.practicingNow)} practicing</span>
+            <DeltaBadge delta={item.delta} />
+          </div>
+        </div>
+      </div>
+
+      {/* Tags */}
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        {item.risingFast && (
+          <span className="text-xs font-medium text-amber-600 bg-amber-50 rounded-full px-2.5 py-1 border border-amber-200/60 flex items-center gap-1">
+            <Zap className="w-3 h-3" />Rising fast
+          </span>
+        )}
+        {item.isNew && (
+          <span className="text-xs font-medium text-primary bg-primary/5 rounded-full px-2.5 py-1 border border-primary/20">New</span>
+        )}
+        <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2.5 py-1 border border-border">{item.family}</span>
+      </div>
+
+      {/* Collapsible details toggle */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mx-[0px] mt-[0px] mb-[10px]"
+      >
+        <span>{expanded ? 'Less details' : 'More details'}</span>
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Collapsible details panel */}
+      <div
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+        style={{ maxHeight: expanded ? `${contentHeight}px` : '0px', opacity: expanded ? 1 : 0 }}
+      >
+        <div ref={contentRef} className="pt-4 space-y-2.5">
+          <div className="border-t border-border/60 pt-3 space-y-2.5">
+            {/* Focus chips */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground shrink-0">Focus:</span>
+              {item.focusChips.map(c => (
+                <span key={c} className="text-xs font-medium text-primary bg-primary/5 rounded-full px-2.5 py-1">{c}</span>
+              ))}
+            </div>
+            {/* Difficulty */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Difficulty (est.)</span>
+              <DifficultyPill level={item.difficulty} />
+            </div>
+            {/* Competition */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Competition (est.)</span>
+              <CompetitionPill level={item.competition} />
+            </div>
+            {/* Salary */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Salary (est.)</span>
+              <span className="text-xs text-foreground tabular-nums">{item.salaryRange}</span>
+            </div>
+            {/* 7d trend */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">7d trend</span>
+              <MiniSparkline data={item.sparkline} positive={item.delta >= 0} />
+            </div>
+            {/* Interview formats */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">Format</span>
+              <div className="flex items-center gap-1 flex-wrap justify-end">
+                {item.interviewFormats.map(f => (
+                  <span key={f} className="text-xs text-foreground/60 bg-secondary rounded-md px-1.5 py-0.5 border border-border">{f}</span>
+                ))}
+              </div>
+            </div>
+            {/* Typical process */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Rounds</span>
+              <span className="text-xs text-foreground/70">{item.typicalProcess}</span>
+            </div>
+            {/* Insights */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Insights</span>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <MessageSquare className="w-3 h-3" />{item.insightsCount}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <button
+        onClick={onStart}
+        className="mt-auto w-full h-10 text-sm font-medium rounded-xl border border-border text-foreground/70 bg-card hover:bg-primary/5 hover:text-primary hover:border-primary/30 transition-all flex items-center justify-center gap-1.5"
+      >
+        Start practice
+        <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+      </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// RANKED ROW (#4-#20)
+// ════════════════════════════════════════════════════════════
+function RankedRow({ item, onStart, isLoggedIn }: { item: TrendingRole; onStart: () => void; isLoggedIn: boolean }) {
+  return (
+    <div className="flex gap-4 px-5 py-4 border-b border-border/60 last:border-b-0 hover:bg-secondary/30 transition-colors group">
+      {/* LEFT: Rank + Title + Practicing */}
+      <div className="w-44 shrink-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-semibold text-muted-foreground tabular-nums w-6 text-right">{item.rank}</span>
+          <span className="text-sm font-semibold text-foreground truncate">{item.role}</span>
+        </div>
+        <div className="flex items-center gap-2 pl-8">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Users className="w-3 h-3" />
+            {formatCount(item.practicingNow)}
+          </div>
+          <DeltaBadge delta={item.delta} />
+        </div>
+        {/* Tags */}
+        <div className="flex items-center gap-1 pl-8 mt-1.5">
+          {item.risingFast && (
+            <span className="text-xs font-medium text-amber-600 bg-amber-50 rounded-full px-1.5 py-px border border-amber-200/60 flex items-center gap-0.5">
+              <Zap className="w-2.5 h-2.5" />Rising
+            </span>
+          )}
+          {item.isNew && (
+            <span className="text-xs font-medium text-primary bg-blue-50 rounded-full px-1.5 py-px border border-blue-200/60">New</span>
           )}
         </div>
       </div>
 
-      {/* Title */}
-      <div className="px-5 pt-3 pb-0 flex-1">
-        <h3 className="text-[18px] font-bold text-[#0F172A] leading-snug group-hover:text-blue-600 transition-colors mb-4">
-          {set.title}
-        </h3>
-
-        {/* Metadata chips row */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
-            <Coins className="w-3.5 h-3.5 text-amber-500" style={{ strokeWidth: 1.5 }} />
-            <span className="font-semibold text-slate-700">{set.credits} Credits</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
-            <Zap className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
-            <span>{set.focus}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
-            <Clock className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
-            <span>{set.time}</span>
-          </div>
+      {/* MIDDLE: Focus + Format + Process */}
+      <div className="flex-1 min-w-0">
+        {/* Focus chips */}
+        <div className="flex items-center gap-1 flex-wrap mb-1.5">
+          <span className="text-xs text-muted-foreground shrink-0">Focus on:</span>
+          {item.focusChips.map(c => (
+            <span key={c} className="text-xs font-medium text-primary/80 bg-primary/5 rounded-full px-2 py-0.5">{c}</span>
+          ))}
         </div>
+        {/* Interview format chips */}
+        <div className="flex items-center gap-1 flex-wrap mb-1">
+          <span className="text-xs text-muted-foreground shrink-0">Format:</span>
+          {item.interviewFormats.map(f => (
+            <span key={f} className="text-xs text-foreground/60 bg-secondary rounded-md px-1.5 py-0.5 border border-border">{f}</span>
+          ))}
+        </div>
+        {/* Typical process */}
+        <p className="text-xs text-muted-foreground/70">Rounds: {item.typicalProcess}</p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
-            <BarChart2 className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
-            <span className={`font-medium ${DIFFICULTY_COLORS[set.difficulty] || 'text-slate-600'}`}>{set.difficulty}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
-            <Building2 className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
-            <span>{set.company}</span>
-          </div>
+      {/* RIGHT: Stats column */}
+      <div className="w-48 shrink-0 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground/70">Difficulty</span>
+          <DifficultyPill level={item.difficulty} />
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground/70">Competition</span>
+          <CompetitionPill level={item.competition} />
+        </div>
+        <div className="flex items-center justify-between pt-0.5">
+          <span className="text-xs text-muted-foreground/70">7d trend</span>
+          <MiniSparkline data={item.sparkline} positive={item.delta >= 0} />
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground/70">Salary (est.)</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{item.salaryRange}</span>
         </div>
       </div>
 
-      {/* Footer – Social proof */}
-      <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex -space-x-1.5">
-            {colorSet.slice(0, visibleAvatars).map((color, i) => (
-              <div
-                key={i}
-                className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
-              >
-                {INITIALS[(set.id + i) % INITIALS.length]}
-              </div>
-            ))}
-          </div>
-          <span className="text-xs font-medium text-slate-400">
-            +{set.practiced.toLocaleString()} practiced
+      {/* ACTIONS */}
+      <div className="w-32 shrink-0 flex flex-col items-end justify-center gap-1.5">
+        <button
+          onClick={onStart}
+          className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary transition-all"
+        >
+          Start <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+        {isLoggedIn ? (
+          <button onClick={onStart} className="text-xs font-medium text-primary hover:underline transition-all opacity-0 group-hover:opacity-100">
+            Generate plan
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-all">
+            <Lock className="w-3 h-3" /> Sign in to plan
           </span>
-        </div>
-        <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-          <ArrowRight className="w-3.5 h-3.5" />
-        </div>
+        )}
       </div>
-    </Link>
+    </div>
   );
 }
 
-// ════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// RESPONSIVE RANKED ROW (mobile-friendly)
+// ════════════════════════════════════════════════════════════
+function RankedRowMobile({ item, onStart }: { item: TrendingRole; onStart: () => void }) {
+  return (
+    <div className="px-4 py-3.5 border-b border-border/60 last:border-b-0">
+      <div className="flex items-start gap-3 mb-2">
+        <span className="text-sm font-semibold text-muted-foreground tabular-nums w-5 text-right shrink-0 mt-0.5">{item.rank}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-semibold text-foreground truncate">{item.role}</span>
+            {item.risingFast && <Zap className="w-3 h-3 text-amber-500 shrink-0" />}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+            <span>{formatCount(item.practicingNow)} practicing</span>
+            <DeltaBadge delta={item.delta} />
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            <DifficultyPill level={item.difficulty} />
+            <CompetitionPill level={item.competition} />
+          </div>
+          <div className="flex items-center gap-1 flex-wrap">
+            {item.focusChips.map(c => (
+              <span key={c} className="text-xs font-medium text-primary/80 bg-primary/5 rounded-full px-2 py-0.5">{c}</span>
+            ))}
+          </div>
+        </div>
+        <button onClick={onStart} className="text-sm font-medium text-primary shrink-0">Start</button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// FILTER SIDEBAR
+// ════════════════════════════════════════════════════════════
+function FilterSidebar({
+  family, setFamily,
+  level, setLevel,
+  sort, setSort,
+  search, setSearch,
+}: {
+  family: RoleFamily; setFamily: (f: RoleFamily) => void;
+  level: Level; setLevel: (l: Level) => void;
+  sort: SortMode; setSort: (s: SortMode) => void;
+  search: string; setSearch: (s: string) => void;
+}) {
+  return (
+    <aside className="w-52 shrink-0 hidden lg:block">
+      <div className="sticky top-32 space-y-6">
+        {/* Search */}
+        <div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search roles…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full h-8 pl-8 pr-3 text-xs text-foreground bg-card border border-border rounded-lg placeholder-muted-foreground/60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/20 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Job family */}
+        <div>
+          <p className="text-xs font-semibold text-foreground mb-2">Job family</p>
+          <div className="space-y-0.5">
+            {FAMILIES.map(f => (
+              <button
+                key={f}
+                onClick={() => setFamily(f)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                  family === f
+                    ? 'bg-primary/8 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Level */}
+        <div>
+          <p className="text-xs font-semibold text-foreground mb-2">Level</p>
+          <div className="space-y-0.5">
+            {LEVELS.map(l => (
+              <button
+                key={l}
+                onClick={() => setLevel(l)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                  level === l
+                    ? 'bg-primary/8 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sort */}
+        <div>
+          <p className="text-xs font-semibold text-foreground mb-2">Sort by</p>
+          <div className="space-y-0.5">
+            {SORT_MODES.map(s => (
+              <button
+                key={s}
+                onClick={() => setSort(s)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                  sort === s
+                    ? 'bg-primary/8 text-primary font-medium'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// MOBILE FILTERS (horizontal pills)
+// ════════════════════════════════════════════════════════════
+function MobileFilters({
+  family, setFamily,
+  search, setSearch,
+}: {
+  family: RoleFamily; setFamily: (f: RoleFamily) => void;
+  search: string; setSearch: (s: string) => void;
+}) {
+  return (
+    <div className="lg:hidden space-y-3 mb-6">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search roles…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full h-9 pl-8 pr-3 text-sm text-foreground bg-card border border-border rounded-lg placeholder-muted-foreground/60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/20 transition-all"
+        />
+      </div>
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {FAMILIES.map(f => (
+          <button
+            key={f}
+            onClick={() => setFamily(f)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+              family === f
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-card text-muted-foreground border border-border'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ════════════════════════════════════════════════════════════
 export function MockInterviewPage() {
   const navigate = useNavigate();
+  const [family, setFamily] = useState<RoleFamily>('All');
+  const [level, setLevel] = useState<Level>('All levels');
+  const [sort, setSort] = useState<SortMode>('Trending');
+  const [search, setSearch] = useState('');
+  const [showHowWeRank, setShowHowWeRank] = useState(false);
 
-  // Role filter for practice sets
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const isLoggedIn = false;
 
-  // Trending Today shuffle
-  const [trendingGroupIndex, setTrendingGroupIndex] = useState(0);
-  const [isShuffling, setIsShuffling] = useState(false);
+  const top3 = LEADERBOARD.slice(0, 3);
+  const rest = LEADERBOARD.slice(3);
 
-  const trendingGroups: typeof TRENDING_ROLES_POOL[] = [];
-  for (let i = 0; i < TRENDING_ROLES_POOL.length; i += 3) {
-    trendingGroups.push(TRENDING_ROLES_POOL.slice(i, i + 3));
-  }
-  const currentTrendingRoles = trendingGroups[trendingGroupIndex] || trendingGroups[0];
-
-  const handleShuffleTrending = () => {
-    setIsShuffling(true);
-    setTimeout(() => {
-      setTrendingGroupIndex((prev) => (prev + 1) % trendingGroups.length);
-      setIsShuffling(false);
-    }, 300);
-  };
-
-  // ─── Filtered sets ─────────────────────────────
-  const filteredSets = PRACTICE_SETS.filter((set) => {
-    if (roleFilter !== 'all' && set.role !== roleFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        set.title.toLowerCase().includes(q) ||
-        set.role.toLowerCase().includes(q) ||
-        set.focus.toLowerCase().includes(q) ||
-        set.company.toLowerCase().includes(q)
-      );
+  const filtered = useMemo(() => {
+    let items = [...rest];
+    if (family !== 'All') items = items.filter(i => i.family === family);
+    if (level !== 'All levels') items = items.filter(i => i.level === level);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter(i => i.role.toLowerCase().includes(q));
     }
-    return true;
-  }).sort((a, b) => (b.practiced || 0) - (a.practiced || 0));
+    if (sort === 'Most practiced') items.sort((a, b) => b.practicingNow - a.practicingNow);
+    if (sort === 'Rising fast') items.sort((a, b) => b.delta - a.delta);
+    return items;
+  }, [rest, family, level, search, sort]);
+
+  const handleStart = () => navigate('/ai-mock');
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
 
       <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-6 pt-[150px] pb-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-[140px] pb-16">
           {/* ─── Page Header ─────────────────────────── */}
-          <div className="mb-8">
-            <h1 className="text-[#0F172A] mb-2 font-bold text-[40px]">Trendings</h1>
-            <p className="text-slate-500 max-w-lg">
+          <div className="mb-10">
+            <h1 className="text-foreground font-bold text-[40px] mb-1">Trending Roles</h1>
+            <p className="text-muted-foreground mb-2">
               See what roles are trending today — updated daily.
             </p>
-          </div>
-
-          {/* ─── Trending Hero Strip ────────────────── */}
-          <div className="mb-12">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                  <Flame className="w-4 h-4 text-orange-500" />
-                  Trending Today
-                </div>
-                <span className="text-[11px] text-slate-400 bg-slate-50 rounded-full px-2 py-0.5">Updated daily</span>
-              </div>
-              <button
-                onClick={handleShuffleTrending}
-                disabled={isShuffling}
-                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isShuffling ? 'animate-spin' : ''}`} />
-                Shuffle
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-muted-foreground/60">Last updated: 9:30 AM</span>
+              <span className="text-muted-foreground/30">·</span>
+              <button onClick={() => setShowHowWeRank(true)} className="text-xs text-primary hover:underline font-medium transition-colors">
+                How we rank
               </button>
+              <span className="text-muted-foreground/30">·</span>
+              <span className="text-xs text-muted-foreground/60">Based on community activity signals. Updated daily.</span>
             </div>
+          </div>
 
-            <div
-              className="flex gap-4 overflow-x-auto transition-opacity duration-300"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', opacity: isShuffling ? 0.3 : 1 }}
-            >
-              {currentTrendingRoles.map((item, idx) => (
-                <TrendingCard
-                  key={item.rank}
-                  item={item}
-                  style={{
-                    gradient: 'from-blue-50/60 to-white',
-                    accent: 'text-slate-900',
-                    border: 'border-blue-100/80 hover:border-blue-200/90 shadow-sm shadow-blue-900/[0.03]',
-                    rankBg: idx === 0 ? 'bg-blue-600' : 'bg-slate-100 !text-slate-500',
-                    btnClass: 'bg-white hover:bg-blue-50/60 !text-blue-700 border border-blue-200/70',
-                  }}
-                  onStart={() => navigate('/ai-mock')}
-                />
+          {/* ─── Top 3 Spotlight ──────────────────────── */}
+          <div className="mb-10">
+            <div className="flex items-center gap-2 mb-4">
+              <Flame className="w-4 h-4 text-orange-400" />
+              <span className="text-sm font-semibold text-foreground">Top Trending Today</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {top3.map(item => (
+                <SpotlightCard key={item.rank} item={item} onStart={handleStart} />
               ))}
             </div>
           </div>
 
-          {/* ─── Curated Practice Sets ────────────────  */}
-          <div className="mb-12">
-            {/* Section header + filters */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-              <h2 className="text-[#0F172A] font-bold text-[24px]">Curated Practice Sets</h2>
-              <div className="flex items-center gap-3">
-                {/* Search bar */}
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search sets..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-8 text-xs bg-white border border-slate-200 rounded-lg pl-8 pr-3 w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 transition-all placeholder:text-slate-400"
-                  />
+          {/* ─── Mobile filters ──────────────────────── */}
+          <MobileFilters family={family} setFamily={setFamily} search={search} setSearch={setSearch} />
+
+          {/* ─── Two-column layout ───────────────────── */}
+          <div className="flex gap-8">
+            {/* Left: Filter sidebar */}
+            <FilterSidebar
+              family={family} setFamily={setFamily}
+              level={level} setLevel={setLevel}
+              sort={sort} setSort={setSort}
+              search={search} setSearch={setSearch}
+            />
+
+            {/* Right: Ranked list */}
+            <div className="flex-1 min-w-0">
+              {/* List header */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-foreground">
+                  All roles
+                  <span className="font-normal text-muted-foreground ml-1">({filtered.length})</span>
+                </span>
+              </div>
+
+              {/* Desktop rows */}
+              <div className="hidden lg:block border border-border rounded-xl bg-card overflow-hidden shadow-sm">
+                {/* Column header */}
+                <div className="flex gap-4 px-5 py-2 border-b border-border/60 text-xs text-muted-foreground font-medium bg-secondary/30">
+                  <span className="w-44 shrink-0">Role</span>
+                  <span className="flex-1">Details</span>
+                  <span className="w-48 shrink-0 text-right">Stats</span>
+                  <span className="w-32 shrink-0" />
                 </div>
-                {/* Role filter */}
-                <Select value={roleFilter} onValueChange={setRoleFilter}>
-                  <SelectTrigger className="h-8 text-xs bg-white border-slate-200 w-[140px] rounded-lg">
-                    <SelectValue placeholder="All Roles" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[hsl(222,22%,15%)] border-[hsl(222,22%,25%)] text-white">
-                    <SelectItem value="all" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">All Roles</SelectItem>
-                    <SelectItem value="Product Manager" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Product Manager</SelectItem>
-                    <SelectItem value="Software Engineer" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Software Engineer</SelectItem>
-                    <SelectItem value="Data Scientist" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Data Scientist</SelectItem>
-                    <SelectItem value="Engineering Manager" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">Eng. Manager</SelectItem>
-                    <SelectItem value="General" className="text-white focus:bg-[hsl(160,70%,50%)] focus:text-white data-[state=checked]:bg-[hsl(160,70%,50%)] data-[state=checked]:text-white">General</SelectItem>
-                  </SelectContent>
-                </Select>
+                {filtered.length > 0 ? (
+                  filtered.map(item => (
+                    <RankedRow key={item.rank} item={item} onStart={handleStart} isLoggedIn={isLoggedIn} />
+                  ))
+                ) : (
+                  <div className="px-5 py-12 text-center text-sm text-muted-foreground">No roles match your filters.</div>
+                )}
+              </div>
+
+              {/* Mobile rows */}
+              <div className="lg:hidden border border-border rounded-xl bg-card overflow-hidden shadow-sm">
+                {filtered.length > 0 ? (
+                  filtered.map(item => (
+                    <RankedRowMobile key={item.rank} item={item} onStart={handleStart} />
+                  ))
+                ) : (
+                  <div className="px-4 py-12 text-center text-sm text-muted-foreground">No roles match your filters.</div>
+                )}
               </div>
             </div>
-
-            {/* Cards Grid – 24px gap */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSets.map((set) => (
-                <PracticeSetCard key={set.id} set={set} />
-              ))}
-            </div>
-
-            {/* Empty state */}
-            {filteredSets.length === 0 && (
-              <div className="text-center py-16">
-                <p className="text-sm text-slate-500 mb-3">No practice sets match your search.</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setRoleFilter('all');
-                    setSearchQuery('');
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </main>
 
       <Footer />
+      <HowWeRankModal open={showHowWeRank} onClose={() => setShowHowWeRank(false)} />
     </div>
   );
 }

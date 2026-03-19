@@ -33,9 +33,10 @@ import GoogleCallback from './pages/GoogleCallback';
 import InterviewPrep from './pages/InterviewPrep';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
-import HomePage from './pages/newDesign/home/home';
+import { HomePage } from './pages/newDesign/home/home';
 import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
+import { ContactPage } from './pages/newDesign/contact';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -101,6 +102,7 @@ export const router = createBrowserRouter([
       { path: '/messages', element: <MessageCenterPage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
+      {path: '/contact',element: <ContactPage />},
       { path: '*', element: <ErrorBoundary /> },
     ],
   },

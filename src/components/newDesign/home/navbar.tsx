@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -18,6 +19,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
 
   const nameParts = (user?.name || '').trim().split(' ');
   const firstName = nameParts[0] || '';
@@ -54,7 +56,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
     { name: 'Interview', path: '#interview', hasDropdown: true },
     { name: 'Community', path: '#community', hasDropdown: true },
     { name: 'Pricing', path: '/pricing' },
-    { name: 'FAQ', path: '/faq' },
+    // { name: 'FAQ', path: '/faq' },
   ];
 
   return (
@@ -202,7 +204,9 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         <p className="text-sm font-semibold text-slate-900 truncate">
                           {user?.name || 'My Account'}
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5">12 Credits remaining</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {isPlanLoading ? 'Loading…' : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
+                        </p>
                       </div>
                       <Link
                         to="/dashboard"
@@ -220,14 +224,14 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         <MessageSquare className="w-4 h-4 opacity-50" />
                         Messages
                       </Link>
-                      <Link
+                      {/* <Link
                         to="/refer"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <Gift className="w-4 h-4 opacity-50" />
                         Refer & Earn
-                      </Link>
+                      </Link> */}
                       <div className="border-t border-slate-100/60 mt-1 pt-1">
                         <button
                           onClick={handleSignOut}
