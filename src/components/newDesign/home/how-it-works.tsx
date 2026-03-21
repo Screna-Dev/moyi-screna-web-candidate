@@ -108,7 +108,7 @@ export function HowItWorks() {
           
           
           <Link
-            to="/mock"
+            to="/personalized-practice"
             className="h-11 px-7 rounded-full text-sm font-semibold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all duration-200 inline-flex items-center gap-1.5"
           >
             Start your personalized mock
