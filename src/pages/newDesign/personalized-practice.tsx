@@ -42,7 +42,7 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
-import { getJobTitleRecommendations } from '@/services/ProfileServices';
+import { getJobTitleRecommendations, getProfile } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -799,6 +799,22 @@ export function PersonalizedPracticePage() {
   const userData = user ? { role: user.role } : null;
   const hasProfile = !!userData?.role;
 
+  // Resume check
+  const [hasResume, setHasResume] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setHasResume(null);
+      return;
+    }
+    getProfile()
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        setHasResume(!!(data?.structured_resume || data?.resume_path));
+      })
+      .catch(() => setHasResume(false));
+  }, [isLoggedIn]);
+
   // Training plan modules (real data)
   const [planSets, setPlanSets] = useState<PracticeSet[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
@@ -889,6 +905,41 @@ export function PersonalizedPracticePage() {
     ...set,
     matchScore: Math.floor(65 + Math.random() * 30),
   })).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+
+  if (isLoggedIn && hasResume === false) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6 py-20 max-w-md">
+            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-5">
+              <FileText className="w-7 h-7 text-blue-500" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 mb-3">Upload your resume first</h1>
+            <p className="text-slate-500 mb-7 leading-relaxed">
+              Personalized practice uses your resume to tailor mock interviews and training plans to your background. Upload your resume to get started.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none px-6"
+                onClick={() => navigate('/dashboard')}
+              >
+                Upload resume
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
+                onClick={() => navigate('/')}
+              >
+                Go home
+              </Button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
