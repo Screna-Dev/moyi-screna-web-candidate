@@ -33,7 +33,7 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getComments, createComment, deleteComment } from '../../services/CommunityService';
+import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply } from '../../services/CommunityService';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -120,6 +120,15 @@ interface Comment {
   id: string;
   user: { id: string; name: string };
   questionSeq: number | null;
+  content: string;
+  status: string;
+  createdAt: string;
+}
+
+// ─── Reply interface matching API ───────────────────────
+interface Reply {
+  id: string;
+  user: { id: string; name: string };
   content: string;
   status: string;
   createdAt: string;
@@ -255,6 +264,12 @@ export function ExperienceDetailPage() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+
+  // ── Replies ──
+  const [replies, setReplies] = useState<Record<string, Reply[]>>({});
+  const [repliesLoadingSet, setRepliesLoadingSet] = useState<Set<string>>(new Set());
+  const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
+  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
 
   const fetchPost = useCallback(async () => {
     if (!id) return;
@@ -452,6 +467,52 @@ export function ExperienceDetailPage() {
       // silent
     } finally {
       setDeletingCommentId(null);
+    }
+  };
+
+  const fetchReplies = useCallback(async (commentId: string) => {
+    setRepliesLoadingSet(prev => { const s = new Set(prev); s.add(commentId); return s; });
+    try {
+      const res = await getReplies(commentId, { page: 0 });
+      const data = res.data?.data ?? res.data;
+      setReplies(prev => ({ ...prev, [commentId]: data?.content ?? [] }));
+    } catch {
+      // silent
+    } finally {
+      setRepliesLoadingSet(prev => { const s = new Set(prev); s.delete(commentId); return s; });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showReplyId && !replies[showReplyId]) {
+      fetchReplies(showReplyId);
+    }
+  }, [showReplyId, replies, fetchReplies]);
+
+  const handleSubmitReply = async (commentId: string) => {
+    const text = (replyTexts[commentId] || '').trim();
+    if (!text) return;
+    setSubmittingReplyId(commentId);
+    try {
+      await createReply(commentId, { content: text });
+      setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
+      await fetchReplies(commentId);
+    } catch {
+      // silent
+    } finally {
+      setSubmittingReplyId(null);
+    }
+  };
+
+  const handleDeleteReply = async (replyId: string, commentId: string) => {
+    setDeletingReplyId(replyId);
+    try {
+      await deleteReply(replyId);
+      setReplies(prev => ({ ...prev, [commentId]: (prev[commentId] ?? []).filter(r => r.id !== replyId) }));
+    } catch {
+      // silent
+    } finally {
+      setDeletingReplyId(null);
     }
   };
 
@@ -1296,7 +1357,7 @@ export function ExperienceDetailPage() {
                             )}
                           </div>
 
-                          {/* Reply composer */}
+                          {/* Replies list */}
                           <AnimatePresence>
                             {showReplyId === comment.id && (
                               <motion.div
@@ -1305,6 +1366,51 @@ export function ExperienceDetailPage() {
                                 exit={{ opacity: 0, height: 0 }}
                                 className="overflow-hidden"
                               >
+                                {/* Existing replies */}
+                                {repliesLoadingSet.has(comment.id) && (
+                                  <div className="mt-3 pl-5 flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Loading replies…
+                                  </div>
+                                )}
+                                {!repliesLoadingSet.has(comment.id) && (replies[comment.id] ?? []).length > 0 && (
+                                  <div className="mt-3 space-y-3 pl-5 border-l-2 border-[hsl(220,16%,92%)] ml-1">
+                                    {(replies[comment.id] ?? []).map(reply => {
+                                      const replyInitials = reply.user.name
+                                        ? reply.user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+                                        : '?';
+                                      const isOwnReply = currentUser?.id === reply.user.id;
+                                      return (
+                                        <div key={reply.id} className="group/reply flex gap-2">
+                                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[hsl(221,91%,90%)] to-[hsl(221,91%,80%)] flex items-center justify-center text-[hsl(221,91%,50%)] text-[9px] font-bold shrink-0">
+                                            {replyInitials}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 mb-0.5">
+                                              <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user.name || 'Anonymous'}</span>
+                                              <span className="text-[10px] text-[hsl(222,12%,55%)]">· {formatRelativeTime(reply.createdAt)}</span>
+                                            </div>
+                                            <p className="text-xs text-[hsl(222,12%,30%)] leading-relaxed">{reply.content}</p>
+                                            {isOwnReply && (
+                                              <button
+                                                onClick={() => handleDeleteReply(reply.id, comment.id)}
+                                                disabled={deletingReplyId === reply.id}
+                                                className="mt-1 flex items-center gap-1 text-[10px] text-[hsl(222,12%,55%)] hover:text-red-500 transition-colors opacity-0 group-hover/reply:opacity-100"
+                                              >
+                                                {deletingReplyId === reply.id
+                                                  ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                                  : <X className="w-2.5 h-2.5" />}
+                                                Delete
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                {/* Reply composer */}
                                 <div className="mt-3 flex gap-2 pl-1">
                                   <CornerDownRight className="w-3.5 h-3.5 text-[hsl(222,12%,70%)] shrink-0 mt-2.5" />
                                   <div className="flex-1 flex gap-2">
@@ -1313,14 +1419,16 @@ export function ExperienceDetailPage() {
                                       placeholder="Write a reply…"
                                       value={replyTexts[comment.id] || ''}
                                       onChange={e => setReplyTexts(prev => ({ ...prev, [comment.id]: e.target.value }))}
+                                      onKeyDown={e => { if (e.key === 'Enter') handleSubmitReply(comment.id); }}
                                       className="flex-1 h-9 px-3 rounded-lg border border-[hsl(220,16%,90%)] bg-white text-sm focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 outline-none transition-all"
                                     />
                                     <Button
                                       size="sm"
-                                      disabled={!(replyTexts[comment.id] || '').trim()}
+                                      disabled={!(replyTexts[comment.id] || '').trim() || submittingReplyId === comment.id}
+                                      onClick={() => handleSubmitReply(comment.id)}
                                       className="bg-[hsl(222,22%,15%)] hover:bg-[hsl(222,22%,20%)] text-white rounded-lg h-9 text-xs px-3 disabled:opacity-40"
                                     >
-                                      Reply
+                                      {submittingReplyId === comment.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Reply'}
                                     </Button>
                                   </div>
                                 </div>

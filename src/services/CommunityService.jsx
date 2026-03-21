@@ -23,3 +23,15 @@ export const createComment = (postId, data) => {
 export const deleteComment = (commentId) => {
   return API.delete(`/community/comments/${commentId}`);
 };
+
+export const getReplies = (commentId, query = {}) => {
+  return API.get(`/community/comments/${commentId}/replies`, { params: query });
+};
+
+export const createReply = (commentId, data) => {
+  return API.post(`/community/comments/${commentId}/replies`, data);
+};
+
+export const deleteReply = (replyId) => {
+  return API.delete(`/community/replies/${replyId}`);
+};
