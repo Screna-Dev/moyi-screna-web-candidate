@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getAuditLogs } from '@/services/adminService';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 
 interface AuditLogEntry {
   id: string;
@@ -129,9 +130,8 @@ export default function AdminAuditLogs() {
   const errorLogs = logs.filter((l) => l.statusCode >= 400).length;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Main Content */}
-      <div className="flex-1 p-6 space-y-6 overflow-auto">
+    <DashboardLayout headerTitle="Audit Logs">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -293,6 +293,6 @@ export default function AdminAuditLogs() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
