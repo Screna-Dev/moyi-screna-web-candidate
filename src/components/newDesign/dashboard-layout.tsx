@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Bot,
   FileText,
-  Target
+  Target,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from './ui/sheet';
@@ -39,13 +40,25 @@ const sidebarLinks = [
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
+const adminSidebarLinks = [
+  { icon: ShieldCheck, label: 'Dashboard', path: '/admin' },
+  { icon: Gift, label: 'Redeem Codes', path: '/redeem-code' },
+  { icon: Settings, label: 'Audit Log', path: '/audit-logs' },
+];
 
 function SidebarContent({ currentPath, creditBalance, isPlanLoading }: { currentPath: string; creditBalance: number; isPlanLoading: boolean }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  const links = isAdmin ? adminSidebarLinks : sidebarLinks;
+
   return (
     <div className="flex flex-col h-full">
       {/* Nav links */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {sidebarLinks.map((item) => {
+        {isAdmin && (
+          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Admin</p>
+        )}
+        {links.map((item) => {
           const isActive = currentPath === item.path || (item.path === '/settings' && currentPath.startsWith('/settings'));
           return (
             <Link
@@ -64,8 +77,8 @@ function SidebarContent({ currentPath, creditBalance, isPlanLoading }: { current
         })}
       </nav>
 
-      {/* Bottom: Credits CTA */}
-      <div className="px-3 pb-5 space-y-2 mt-auto shrink-0">
+      {/* Bottom: Credits CTA (hidden for admins) */}
+      {!isAdmin && <div className="px-3 pb-5 space-y-2 mt-auto shrink-0">
         <div className="rounded-xl bg-gradient-to-br from-[hsl(221,91%,60%)] to-[hsl(165,82%,51%)] p-4 text-white">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
@@ -91,7 +104,7 @@ function SidebarContent({ currentPath, creditBalance, isPlanLoading }: { current
             </button>
           </Link>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -329,38 +342,74 @@ function GlobalTopHeader({
                       ? `${userData.firstName} ${userData.lastName || ''}`
                       : 'My Account'}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Coins className="w-3 h-3 text-amber-500" />
-                    <span className="text-xs text-slate-500">
-                      {isPlanLoading ? 'Loading…' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
-                    </span>
-                  </div>
+                  {userData?.role !== 'ADMIN' && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Coins className="w-3 h-3 text-amber-500" />
+                      <span className="text-xs text-slate-500">
+                        {isPlanLoading ? 'Loading…' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
+                      </span>
+                    </div>
+                  )}
+                  {userData?.role === 'ADMIN' && (
+                    <span className="inline-block mt-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Admin</span>
+                  )}
                 </div>
 
-                <Link
-                  to="/dashboard"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  <LayoutDashboard className="w-4 h-4 opacity-50" />
-                  Dashboard
-                </Link>
-                {/* <Link
-                  to="/messages"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  <MessageSquare className="w-4 h-4 opacity-50" />
-                  Messages
-                </Link> */}
-                <Link
-                  to="/settings"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  <Settings className="w-4 h-4 opacity-50" />
-                  Settings
-                </Link>
+                {userData?.role === 'ADMIN' ? (
+                  <>
+                    <Link
+                      to="/admin"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <ShieldCheck className="w-4 h-4 opacity-50" />
+                      Admin Dashboard
+                    </Link>
+                    <Link
+                      to="/redeem-code"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <Gift className="w-4 h-4 opacity-50" />
+                      Redeem Codes
+                    </Link>
+                    <Link
+                      to="/audit-logs"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <Settings className="w-4 h-4 opacity-50" />
+                      Audit Log
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <LayoutDashboard className="w-4 h-4 opacity-50" />
+                      Dashboard
+                    </Link>
+                    {/* <Link
+                      to="/messages"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <MessageSquare className="w-4 h-4 opacity-50" />
+                      Messages
+                    </Link> */}
+                    <Link
+                      to="/settings"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                    >
+                      <Settings className="w-4 h-4 opacity-50" />
+                      Settings
+                    </Link>
+                  </>
+                )}
 
                 <div className="border-t border-slate-100/60 mt-1 pt-1">
                   <button

@@ -37,8 +37,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/newDesign/ui/select';
-import { useNavigate, NavLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { adminService } from '@/services';
@@ -211,10 +212,8 @@ export default function AdminRedeemCodes() {
   const notExpiredCodes = codes.filter((c) => new Date(c.expiresAt) > new Date()).length;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-
-      {/* Main Content */}
-      <div className="flex-1 p-6 space-y-6 overflow-auto">
+    <DashboardLayout headerTitle="Redeem Codes">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -557,6 +556,6 @@ export default function AdminRedeemCodes() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

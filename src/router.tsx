@@ -36,6 +36,9 @@ import { HomePage } from './pages/newDesign/home/home';
 import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { ContactPage } from './pages/newDesign/contact';
+import Admin from './pages/Admin';
+import AdminRedeemCodes from './pages/AdminRedeemCodes';
+import AdminAuditLogs from './pages/AdminAuditLogs';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -103,6 +106,11 @@ export const router = createBrowserRouter([
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       {path: '/contact',element: <ContactPage />},
       { path: '*', element: <ErrorBoundary /> },
+
+      // admin
+      { path: '/admin', element: <Admin /> },
+      { path: '/redeem-code',element: <AdminRedeemCodes />},
+      { path: '/audit-logs', element: <AdminAuditLogs /> },
     ],
   },
 ]);
