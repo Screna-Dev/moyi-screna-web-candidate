@@ -9,7 +9,7 @@ export const getQuestion = (questionId) => {
 };
 
 export const getQuestionAiHints = (questionId) => {
-  return API.get(`/question-bank/questions/${questionId}/ai-hints`);
+  return API.get(`/community/questions/${questionId}/ai-hints`);
 };
 
 export const deleteQuestion = (questionId) => {

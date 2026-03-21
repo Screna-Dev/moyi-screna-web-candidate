@@ -54,6 +54,8 @@ interface QuestionItem {
   yourAnswer: string;
   sampleAnswer: string;
   feedback: string;
+  gapAnalysis: string;
+  answered: boolean;
   dimScores: { dim: string; score: number; note: string }[];
   evidence: EvidenceItem[];
   improvements: string[];
@@ -462,11 +464,23 @@ interface ApiReportData {
     seq: number;
     question_text: string;
     answer_text: string;
+    answered: boolean;
     score: number;
     feedback: string;
+    sample_answer?: string;
+    gap_analysis?: string;
+    duration_sec?: number | null;
+  }[];
+  transcript?: {
+    speaker: string;
+    sequence_number: number;
+    text: string;
+    time: number;
   }[];
   video_url?: string;
   generated_at?: string;
+  job_id?: number;
+  attempts?: number;
 }
 
 // ════════════════════════════════════════════════════════
@@ -554,16 +568,18 @@ export function EvaluationPage() {
     ? apiData.questions.map((q) => ({
         id: `q${q.seq ?? q.question_id}`,
         prompt: q.question_text ?? '',
-        score: Math.round((q.score ?? 0)),
+        score: Math.round((q.score ?? 0) * 10),
         dimensions: [],
         yourAnswer: q.answer_text ?? '',
-        sampleAnswer: '',
+        sampleAnswer: q.sample_answer ?? '',
         feedback: q.feedback ?? '',
+        gapAnalysis: q.gap_analysis ?? '',
+        answered: q.answered ?? false,
         dimScores: [],
         evidence: [],
         improvements: [],
       }))
-    : interviewId ? [] : QUESTIONS;
+    : interviewId ? [] : QUESTIONS.map(q => ({ ...q, gapAnalysis: '', answered: true }));
 
   const overall = apiData
     ? apiData.overall_score
@@ -686,7 +702,10 @@ export function EvaluationPage() {
                 <MetaChip icon={<Mic className="w-3 h-3" />} label={SESSION_META.type} />
                 <MetaChip icon={<Target className="w-3 h-3" />} label={SESSION_META.role} />
                 <MetaChip icon={<Clock className="w-3 h-3" />} label={SESSION_META.duration} />
-                <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={SESSION_META.completedAt} />
+                {apiData?.generated_at
+                  ? <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={new Date(apiData.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+                  : <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={SESSION_META.completedAt} />
+                }
               </div>
             </div>
             {/* Actions */}
@@ -745,16 +764,13 @@ export function EvaluationPage() {
                 {/* Score badge */}
                 <div className="shrink-0 w-[88px] h-[88px] rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white flex flex-col items-center justify-center shadow-sm">
                   <span className="text-[28px] tabular-nums text-slate-800">{overall}</span>
-                  <span className="text-[11px] text-slate-400 -mt-0.5">{overallLevel(overall)}</span>
+                  <span className="text-[11px] text-slate-400 -mt-0.5 text-center">{overallLevel(overall)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14px] text-slate-600 leading-relaxed">
+                  <p className="text-[14px] text-slate-600 leading-relaxed whitespace-pre-line">
                     {apiData?.summary
                       ? apiData.summary
-                      : <>You demonstrated strong communication skills with concrete examples and solid metrics — a real differentiator.
-                          However, two patterns held you back: <span className="text-slate-800">passive ownership language</span> ("the team decided")
-                          and <span className="text-slate-800">under-developed leadership signals</span>. Fixing these two areas would
-                          move you from "strong candidate" to "standout hire" at most tech companies.</>
+                      : <>No Summary</>
                     }
                   </p>
                   <div className="flex flex-wrap gap-3 mt-3">
@@ -771,7 +787,7 @@ export function EvaluationPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
             >
-              <SessionRecording videoUrl={apiData?.video_url} questions={apiData?.questions} />
+              <SessionRecording videoUrl={apiData?.video_url} questions={apiData?.questions} transcript={apiData?.transcript} />
             </motion.section>
 
             {/* ═══ SECTION 2: Multi-dimensional Score Overview ═══ */}
@@ -1069,8 +1085,11 @@ function QuestionRow({
         <span className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
           <span className="text-[11px] text-slate-500 tabular-nums">{q.id.replace('q', '')}</span>
         </span>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-center gap-2">
           <p className="text-[13px] text-slate-700 leading-relaxed line-clamp-1">{q.prompt}</p>
+          {!q.answered && (
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">Not answered</span>
+          )}
         </div>
         <span className={`text-[13px] tabular-nums shrink-0 ${q.score >= 80 ? 'text-emerald-600' : q.score >= 70 ? 'text-blue-600' : q.score >= 60 ? 'text-amber-600' : 'text-orange-600'}`}>
           {q.score}<span className="text-slate-400">/100</span>
@@ -1090,18 +1109,28 @@ function QuestionRow({
               {/* Your Answer */}
               <div>
                 <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Your Answer</h4>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-blue-300">
-                  <p className="text-[12px] text-slate-600 leading-relaxed">{q.yourAnswer}</p>
-                </div>
+                {q.yourAnswer
+                  ? (
+                    <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-blue-300">
+                      <p className="text-[12px] text-slate-600 leading-relaxed">{q.yourAnswer}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-slate-200">
+                      <p className="text-[12px] text-slate-400 italic">No response recorded for this question.</p>
+                    </div>
+                  )
+                }
               </div>
 
               {/* Sample Answer */}
-              <div>
-                <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Sample Answer</h4>
-                <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3.5 py-2.5 border-l-2 border-l-emerald-400">
-                  <p className="text-[12px] text-slate-700 leading-relaxed">{q.sampleAnswer}</p>
+              {q.sampleAnswer && (
+                <div>
+                  <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Sample Answer</h4>
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3.5 py-2.5 border-l-2 border-l-emerald-400">
+                    <p className="text-[12px] text-slate-700 leading-relaxed">{q.sampleAnswer}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Feedback */}
               <div>
@@ -1110,6 +1139,16 @@ function QuestionRow({
                   <p className="text-[12px] text-slate-600 leading-relaxed">{q.feedback}</p>
                 </div>
               </div>
+
+              {/* Gap Analysis */}
+              {q.gapAnalysis && (
+                <div>
+                  <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Gap Analysis</h4>
+                  <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-3.5 py-2.5 border-l-2 border-l-orange-400">
+                    <p className="text-[12px] text-slate-600 leading-relaxed whitespace-pre-line">{q.gapAnalysis}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 pt-1">
@@ -1128,7 +1167,7 @@ function QuestionRow({
 // ════════════════════════════════════════════════════════
 // SESSION RECORDING
 // ════════════════════════════════════════════════════════
-function SessionRecording({ videoUrl, questions }: { videoUrl?: string; questions?: ApiReportData['questions'] }) {
+function SessionRecording({ videoUrl, questions, transcript }: { videoUrl?: string; questions?: ApiReportData['questions']; transcript?: ApiReportData['transcript'] }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSec, setCurrentSec] = useState(0);
@@ -1136,15 +1175,22 @@ function SessionRecording({ videoUrl, questions }: { videoUrl?: string; question
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [activeMarker, setActiveMarker] = useState<string | null>('q1');
 
-  // Derive transcript lines from API questions, or fall back to mock
-  const hasApiTranscript = questions && questions.length > 0;
+  // Derive transcript lines from API transcript, fallback to question pairs, then mock
+  const hasApiTranscript = (transcript && transcript.length > 0) || (questions && questions.length > 0);
   const transcriptLines: { id: string; speaker: 'ai' | 'user'; text: string; startSec?: number; endSec?: number }[] =
-    hasApiTranscript
-      ? questions.flatMap((q, i) => [
-          { id: `q${i}-ai`, speaker: 'ai' as const, text: q.question_text },
-          { id: `q${i}-user`, speaker: 'user' as const, text: q.answer_text },
-        ])
-      : TRANSCRIPT_LINES;
+    transcript && transcript.length > 0
+      ? transcript.map((line, i) => ({
+          id: `tl-${i}`,
+          speaker: line.speaker === 'interviewer' ? 'ai' as const : 'user' as const,
+          text: line.text,
+          startSec: line.time,
+        }))
+      : questions && questions.length > 0
+        ? questions.flatMap((q, i) => [
+            { id: `q${i}-ai`, speaker: 'ai' as const, text: q.question_text },
+            ...(q.answer_text ? [{ id: `q${i}-user`, speaker: 'user' as const, text: q.answer_text }] : []),
+          ])
+        : TRANSCRIPT_LINES;
 
   // Transcript state
   const [showTranscript, setShowTranscript] = useState(true);

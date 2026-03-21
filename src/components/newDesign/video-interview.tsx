@@ -228,6 +228,14 @@ export function VideoInterview({
     };
   }, []);
 
+  // ── Auto-start interview once media is ready ──
+  useEffect(() => {
+    if (!localStream || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startInterview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStream]);
+
   // ── Hint after long pause ──
   useEffect(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -250,6 +258,7 @@ export function VideoInterview({
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const autoStartedRef = useRef(false);
   const [aiProfile] = useState(generateRandomAI());
   
   // Audio level detection state
@@ -579,14 +588,6 @@ export function VideoInterview({
       } else {
         updateConnectionStatus('aiWebSocket', 'connected');
       }
-      // STEP 4: Countdown
-      setShowCountdown(true);
-      setCountdown(3);
-      for (let i = 3; i > 0; i--) {
-        setCountdown(i);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      setShowCountdown(false);
       // STEP 3: Publish local media tracks to LiveKit
       try {
         console.log('📤 Publishing media tracks to LiveKit...');
