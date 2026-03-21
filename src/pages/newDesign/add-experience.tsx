@@ -976,12 +976,12 @@ export function AddExperiencePage() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <Link to="/dashboard/contributions">
+            {/* <Link to="/dashboard/contributions">
               <Button className="w-full bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl h-11 gap-2">
                 <Eye className="w-4 h-4" />
                 View in My Contributions
               </Button>
-            </Link>
+            </Link> */}
             <div className="flex gap-3">
               <Link to="/interview-insights" className="flex-1">
                 <Button variant="outline" className="w-full rounded-xl h-10 text-sm gap-2">
