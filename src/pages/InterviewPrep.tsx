@@ -18,6 +18,7 @@ import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { InterviewService, InterviewSessionService } from "@/services";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
+import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 import {
   Target,
@@ -1299,81 +1300,26 @@ const InterviewPrep = () => {
                 <span>Auto-updating...</span>
               </div>
             )}
-            <Dialog open={addJobModalOpen} onOpenChange={setAddJobModalOpen}>
-              <DialogTrigger asChild>
-                <Button size="lg" className="gradient-primary shadow-glow"
-                disabled={targetJobs.length === 3}>
-                  
-                  {targetJobs.length === 3 ? 
-                  "Reach the limit"
-                  :
-                  <>
-                    <Plus className="mr-2 h-5 w-5" />
-                    Add Target Job
-                  </>
-                  }
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Add New Target Job</DialogTitle>
-                  <DialogDescription>Enter details for your target job position</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="jobTitle">Job Title</Label>
-                    <Input 
-                      id="jobTitle" 
-                      placeholder="e.g., Senior Product Manager" 
-                      value={jobTitle}
-                      onChange={(e) => setJobTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="company">Company (Optional)</Label>
-                    <Input 
-                      id="company" 
-                      placeholder="e.g., Google" 
-                      value={company}
-                      onChange={(e) => setCompany(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="jobDescription">Job Description</Label>
-                    <Textarea 
-                      id="jobDescription" 
-                      placeholder="Paste the job description here..." 
-                      rows={4} 
-                      value={jobDescription}
-                      onChange={(e) => setJobDescription(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setAddJobModalOpen(false)}
-                    disabled={isCreatingPlan}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    className="gradient-primary" 
-                    onClick={handleCreateTrainingPlan}
-                    disabled={isCreatingPlan}
-                  >
-                    {isCreatingPlan ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      "Generate Plan"
-                    )}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button size="lg" className="gradient-primary shadow-glow"
+              disabled={targetJobs.length === 3}
+              onClick={() => setAddJobModalOpen(true)}>
+              {targetJobs.length === 3 ?
+                "Reach the limit"
+              :
+                <>
+                  <Plus className="mr-2 h-5 w-5" />
+                  Add Target Job
+                </>
+              }
+            </Button>
+            <ResumeAnalysisDialog
+              open={addJobModalOpen}
+              onOpenChange={setAddJobModalOpen}
+              skipAnalyzing
+              onPlanCreated={() => {
+                loadTrainingPlans();
+              }}
+            />
           </div>
         </div>
 

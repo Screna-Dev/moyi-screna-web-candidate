@@ -97,6 +97,14 @@ export const changePassword = (passwordData) => {
   return API.post(`${BASE_URL}/change-password`, passwordData);
 };
 
+/**
+ * Get job title recommendations based on user's resume
+ * @returns {Promise} API response with recommended job titles
+ */
+export const getJobTitleRecommendations = () => {
+  return API.get(`${BASE_URL}/job-title-recommendations`);
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile
@@ -109,6 +117,7 @@ const ProfileService = {
   savePersonalInfo,
   uploadAvatar,
   changePassword,
+  getJobTitleRecommendations,
 };
 
 export default ProfileService;
