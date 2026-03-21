@@ -30,6 +30,7 @@ type UserData = {
   role?: string;
   experienceLevel?: string;
   targetCompanies?: string[];
+  avatar?: string;
 };
 
 const sidebarLinks = [
@@ -306,24 +307,34 @@ function GlobalTopHeader({
 
       {/* Right: Credits + Avatar */}
       <div className="flex items-center gap-3 shrink-0 ml-auto md:ml-0">
-        <Link
-          to="/pricing"
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
-          title="Buy more credits"
-        >
-          <Coins className="w-3.5 h-3.5 text-amber-500" />
-          <span className="text-xs font-medium text-amber-700 tabular-nums">
-            {isPlanLoading ? '—' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}
-          </span>
-        </Link>
+        {userData?.role !== 'ADMIN' && (
+          <Link
+            to="/pricing"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+            title="Buy more credits"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-medium text-amber-700 tabular-nums">
+              {isPlanLoading ? '—' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}
+            </span>
+          </Link>
+        )}
 
         {/* Avatar + Dropdown */}
         <div className="relative" ref={avatarRef}>
           <button
             onClick={() => setAvatarOpen((v) => !v)}
-            className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[12px] transition-all duration-200 bg-[hsl(221,91%,60%)] text-white hover:opacity-90 border border-[hsl(221,91%,55%)]"
+            className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
+              userData?.role === 'ADMIN'
+                ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
+                : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
+            }`}
           >
-            {initials}
+            {userData?.avatar ? (
+              <img src={userData.avatar} alt={initials} className="w-full h-full object-cover" />
+            ) : (
+              initials
+            )}
           </button>
 
           <AnimatePresence>
@@ -452,7 +463,7 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
       return;
     }
     const [firstName, ...rest] = (user.name || '').split(' ');
-    setUserData({ firstName, lastName: rest.join(' ') || undefined, role: user.role });
+    setUserData({ firstName, lastName: rest.join(' ') || undefined, role: user.role, avatar: user.avatar });
   }, [user, isLoading, navigate]);
 
   const firstName = userData?.firstName || 'there';
