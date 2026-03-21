@@ -40,42 +40,6 @@ interface TranscriptEntry {
   timestamp: string;
 }
 
-// ─── Demo script ───────────────────────────────────────
-const DEMO_SCRIPT: { state: AIState; duration: number; text?: string; role?: 'ai' | 'user' }[] = [
-  {
-    state: 'speaking',
-    duration: 7000,
-    role: 'ai',
-    text: "Welcome! I'm glad you could join us today. Let's start with a behavioral question — tell me about a time you had to influence a decision without having direct authority.",
-  },
-  {
-    state: 'listening',
-    duration: 15000,
-    role: 'user',
-    text: "At my previous company, I was a product manager leading a cross-functional initiative to revamp our onboarding flow. The engineering director was hesitant because his team was already at capacity...",
-  },
-  { state: 'thinking', duration: 3500 },
-  {
-    state: 'speaking',
-    duration: 6000,
-    role: 'ai',
-    text: "That's a strong start. Can you walk me through the specific tactics you used to get buy-in? What data or framing helped shift the conversation?",
-  },
-  {
-    state: 'listening',
-    duration: 16000,
-    role: 'user',
-    text: "I pulled together a dashboard showing the 40% drop-off rate during onboarding and mapped it to projected revenue impact. Then I proposed a phased rollout that wouldn't disrupt the current sprint...",
-  },
-  { state: 'thinking', duration: 3000 },
-  {
-    state: 'speaking',
-    duration: 5500,
-    role: 'ai',
-    text: "Excellent use of data to frame the problem. Now let's shift gears — tell me about a time you had to deliver difficult feedback to a peer or manager.",
-  },
-];
-
 const TOTAL_QUESTIONS = 6;
 
 // ─── Helpers ───────────────────────────────────────────
@@ -112,79 +76,138 @@ export function VideoInterview({
   sessionCredentials?: SessionCredentials | null;
 }) {
   const isDark = theme === 'dark';
-  const [aiState, setAiState] = useState<AIState>('speaking');
+
+  // ── AI state (driven by LiveKit / RTVI callbacks) ──
+  const [aiState, setAiState] = useState('speaking');
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [currentSpeakingText, setCurrentSpeakingText] = useState('');
+  const [questionNum, setQuestionNum] = useState(1);
+  const [transcript, setTranscript] = useState([]);
+  const transcriptEndRef = useRef(null);
+  const hintTimerRef = useRef(null);
+  const aiSpeakingTimerRef = useRef(null);
+  const botHasSpokenRef = useRef(false);
+  const endCalledRef = useRef(false);
+
+  // ── UI state ──
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
   const [elapsed, setElapsed] = useState(0);
-  const [scriptIdx, setScriptIdx] = useState(0);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [hintRevealed, setHintRevealed] = useState(false);
-  const [questionNum, setQuestionNum] = useState(1);
-  const [showEndModal, setShowEndModal] = useState(false);
   const [selfViewHidden, setSelfViewHidden] = useState(false);
-  const [currentSpeakingText, setCurrentSpeakingText] = useState('');
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
-  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // True only after LiveKit successfully connects (not just when credentials exist)
+  const [showEndModal, setShowEndModal] = useState(false);
+  const [localStream, setLocalStream] = useState(null);
+  const localStreamRef = useRef(null);
   const [liveConnected, setLiveConnected] = useState(false);
-  // True while createSession / connectToLiveKit is in progress
-  const [isConnecting, setIsConnecting] = useState(false);
-  // Demo runs when credentials are absent OR when LiveKit failed to connect
+  const [sessionStartError, setSessionStartError] = useState<string | null>(null);
+
+  // ── Derived ──
   const isLiveMode = liveConnected;
-  // Guard: only auto-end after bot has actually spoken at least once
-  const botHasSpokenRef = useRef(false);
-  // Guard: prevent calling onEnd() more than once
-  const endCalledRef = useRef(false);
-  const safeEnd = useCallback(() => {
-    if (!endCalledRef.current) {
-      endCalledRef.current = true;
-      onEnd();
-    }
-  }, [onEnd]);
-  // Debounce: keeps visual 'speaking' for a moment after AI audio stops to
-  // prevent flickering during brief natural pauses in the AI's speech.
-  const aiSpeakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Whether the user is actually speaking right now (LiveKit VAD)
-  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
-
-  // Pre-captured media stream — captured on mount so tracks are ready before
-  // onConnected fires. Avoids triggering a new getUserMedia() call during AI
-  // speech (which can cause an audio context interruption).
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-
-  // ── Interview flow state (matching InterviewStep pattern) ──
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [interviewStarted, setInterviewStarted] = useState(false);
-  const [showCountdown, setShowCountdown] = useState(false);
-  const [countdown, setCountdown] = useState(3);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [remainingTime, setRemainingTime] = useState<number | null>(null);
-  const [totalDuration, setTotalDuration] = useState<number | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState({ aiWebSocket: 'disconnected', mediaStream: 'disconnected' });
-  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
-  const audioLevelIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const connectionMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const interviewStartedRef = useRef(false);
-
+  const aiSpeaking = aiState === 'speaking';
+  const interviewEndedRef = endCalledRef;
+  const interviewEnded = endCalledRef.current;
   const totalSeconds = parseInt(config.duration) * 60;
   const remaining = Math.max(totalSeconds - elapsed, 0);
 
-  // ── Timer ──
+  // ── Stubs for ai-interview deps not present in this component ──
+  // mediaState: ai-interview reads from MediaContext; here we use own getUserMedia capture
+  const mediaState = {
+    get mediaReady() { return !!localStreamRef.current; },
+    get audioTestStream() { return localStreamRef.current; },
+    get videoTestStream() { return localStreamRef.current; },
+    get cameraEnabled() { return cameraOn; },
+  };
+  // setError/setOpenSnackbar/setSuccess: no MUI Snackbar in this component
+  const setError = (msg) => console.error('[VideoInterview]', msg);
+  const setOpenSnackbar = (_open) => {};
+  const setSuccess = (msg) => console.log('[VideoInterview]', msg);
+
+  // endMeeting: ai-interview calls this to end; maps to onEnd() prop here
+  const endMeeting = () => {
+    if (!endCalledRef.current) {
+      endCalledRef.current = true;
+      LiveKitService.disconnect({ intentional: true }).catch(() => {});
+      onEnd();
+    }
+  };
+  const safeEnd = endMeeting;
+
+  // generateRandomAI: ai-interview imports this from a module; stub it here
+  const generateRandomAI = () => ({ name: 'Alex Chen', role: 'Interviewer' });
+
+  // connectToInterview: defined in ai-interview; we provide it here with LiveKit + RTVI callbacks
+  const connectToInterview = async (session) => {
+    await LiveKitService.connect(
+      { url: session.liveKitUrl, token: session.liveKitToken },
+      {
+        onConnected: () => {
+          console.log('[VideoInterview] ✅ LiveKit connected');
+          setLiveConnected(true);
+        },
+        onDisconnected: ({ reason }) => {
+          console.log('[VideoInterview] LiveKit disconnected:', reason);
+          setLiveConnected(false);
+          if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
+        },
+        onInterviewEnded: () => {
+          if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
+        },
+        onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }) => {
+          if (userSpeaking) console.log('[VideoInterview] 🗣️ User speaking');
+          if (isAISpeaking) console.log('[VideoInterview] 🤖 AI is speaking');
+          setIsUserSpeaking(userSpeaking);
+        },
+        onDataReceived: (message) => {
+          console.log('[VideoInterview] 📨 Data received:', message);
+          if (message?.label === 'rtvi-ai') {
+            switch (message.type) {
+              case 'bot-started-speaking':
+                console.log('[VideoInterview] 🤖 RTVI: bot started speaking');
+                botHasSpokenRef.current = true;
+                if (aiSpeakingTimerRef.current) { clearTimeout(aiSpeakingTimerRef.current); aiSpeakingTimerRef.current = null; }
+                setAiState('speaking');
+                break;
+              case 'bot-stopped-speaking':
+                console.log('[VideoInterview] 🎧 RTVI: bot stopped speaking');
+                if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
+                break;
+              case 'transcript': {
+                const d = message.data;
+                const text = d?.text;
+                const isFinal = d?.final ?? true;
+                if (text && isFinal) {
+                  const role = d?.role === 'bot' ? 'ai' : 'user';
+                  if (role === 'ai') { setCurrentSpeakingText(text); setQuestionNum((q) => q + 1); }
+                  setTranscript((prev) => [...prev, { id: Date.now(), role, text, timestamp: formatTime(elapsed) }]);
+                }
+                break;
+              }
+              default: break;
+            }
+            return;
+          }
+          if (message?.type === 'transcript' && message.text) {
+            const role = message.role === 'bot' ? 'ai' : 'user';
+            if (role === 'ai') { setCurrentSpeakingText(message.text); setQuestionNum((q) => q + 1); }
+            setTranscript((prev) => [...prev, { id: Date.now(), role, text: message.text, timestamp: formatTime(elapsed) }]);
+          }
+        },
+        onError: (err) => console.error('[VideoInterview] LiveKit error:', err),
+      }
+    );
+  };
+
+  // ── Elapsed timer ──
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // ── Pre-capture camera & mic on mount ──
-  // Grab the stream early so that when onConnected fires we can call
-  // publishExistingTracks() immediately without any new getUserMedia() call
-  // that could interrupt the AI's audio context.
+  // ── Pre-capture camera & mic for video preview and mediaState ──
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let stream = null;
     const capture = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -200,338 +223,10 @@ export function VideoInterview({
     };
     capture();
     return () => {
-      stream?.getTracks().forEach((t) => t.stop());
+      if (stream) stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     };
   }, []);
-
-  // ── Cleanup on unmount only ──
-  useEffect(() => {
-    return () => {
-      if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
-      if (audioLevelIntervalRef.current) clearInterval(audioLevelIntervalRef.current);
-      if (connectionMonitorRef.current) clearInterval(connectionMonitorRef.current);
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      LiveKitService.disconnect({ intentional: true }).catch(() => {});
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Audio level detection ──
-  const startAudioLevelDetection = (stream: MediaStream | null) => {
-    if (!stream || audioLevelIntervalRef.current) return;
-    try {
-      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.3;
-      source.connect(analyser);
-      audioAnalyserRef.current = analyser;
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      audioLevelIntervalRef.current = setInterval(() => {
-        if (!audioAnalyserRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
-        const rms = Math.sqrt(sum / dataArray.length);
-        setAudioLevel(Math.min(100, (rms / 255) * 100));
-      }, 50);
-    } catch (err) {
-      console.error('[VideoInterview] Audio level detection setup failed:', err);
-    }
-  };
-
-  const stopAudioLevelDetection = () => {
-    if (audioLevelIntervalRef.current) { clearInterval(audioLevelIntervalRef.current); audioLevelIntervalRef.current = null; }
-    audioAnalyserRef.current = null;
-    setAudioLevel(0);
-  };
-
-  // ── Connection status helper ──
-  const updateConnectionStatus = (component: 'aiWebSocket' | 'mediaStream', status: string) => {
-    setConnectionStatus((prev) => ({ ...prev, [component]: status }));
-  };
-
-  // ── Connection monitoring ──
-  const startConnectionMonitoring = () => {
-    if (connectionMonitorRef.current) clearInterval(connectionMonitorRef.current);
-    connectionMonitorRef.current = setInterval(() => {
-      if (!interviewStartedRef.current) return;
-      updateConnectionStatus('aiWebSocket', LiveKitService.getIsConnected() ? 'connected' : 'disconnected');
-      const stream = localStreamRef.current;
-      if (stream) {
-        const hasLiveAudio = stream.getAudioTracks().some((t) => t.readyState === 'live');
-        updateConnectionStatus('mediaStream', hasLiveAudio ? 'connected' : 'error');
-      } else {
-        updateConnectionStatus('mediaStream', 'disconnected');
-      }
-    }, 2000);
-  };
-
-  const stopConnectionMonitoring = () => {
-    if (connectionMonitorRef.current) { clearInterval(connectionMonitorRef.current); connectionMonitorRef.current = null; }
-  };
-
-  // ── Interview timer ──
-  const startInterviewTimer = (durationInSeconds: number) => {
-    if (!durationInSeconds || timerIntervalRef.current) return;
-    setRemainingTime(durationInSeconds);
-    setTotalDuration(durationInSeconds);
-    timerIntervalRef.current = setInterval(() => {
-      setRemainingTime((prev) => {
-        if (prev === null || prev <= 0) {
-          if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
-          if (prev === 0) setTimeout(() => safeEnd(), 0);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const stopInterviewTimer = () => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
-    setRemainingTime(null);
-    setTotalDuration(null);
-  };
-
-  // Timer display helpers
-  const formatRemainingTime = (secs: number | null) => {
-    if (secs === null) return '--:--';
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const getTimerColor = () => {
-    if (remainingTime === null) return '#3b82f6';
-    if (remainingTime < 60) return '#ef4444';
-    if (remainingTime < 300) return '#f59e0b';
-    return '#3b82f6';
-  };
-
-  // ── Start connection monitoring when interviewStarted changes ──
-  useEffect(() => {
-    interviewStartedRef.current = interviewStarted;
-    if (interviewStarted) {
-      startConnectionMonitoring();
-    } else {
-      stopConnectionMonitoring();
-    }
-    return () => stopConnectionMonitoring();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interviewStarted]);
-
-  // ── Standalone: connect to LiveKit with given credentials ──
-  const connectToLiveKit = async (url: string, token: string) => {
-    console.log('[VideoInterview] Connecting to LiveKit…', { url, interviewId });
-    await LiveKitService.connect({ url, token }, {
-      onConnected: () => {
-        const room = LiveKitService.getRoom();
-        console.log('[VideoInterview] ✅ LiveKit connected — room:', room?.name, 'participants:', room?.remoteParticipants.size);
-        setLiveConnected(true);
-        setAiState('listening');
-        const stream = localStreamRef.current;
-        if (stream) {
-          LiveKitService.publishExistingTracks(stream, stream)
-            .then(() => console.log('[VideoInterview] 🎤📹 Pre-captured tracks published'))
-            .catch((err: unknown) => {
-              console.error('[VideoInterview] publishExistingTracks failed — falling back:', err);
-              LiveKitService.setMicrophoneEnabled(true).catch(console.error);
-              LiveKitService.setCameraEnabled(true).catch(console.error);
-            });
-        } else {
-          LiveKitService.setMicrophoneEnabled(true)
-            .then(() => console.log('[VideoInterview] 🎤 Microphone enabled (fallback)'))
-            .catch((err: unknown) => console.error('[VideoInterview] Failed to enable microphone:', err));
-          LiveKitService.setCameraEnabled(true)
-            .catch((err: unknown) => console.error('[VideoInterview] Failed to enable camera:', err));
-        }
-        if (room) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const attachSpeakingHandler = (p: any) => {
-            p.on('isSpeakingChanged', (speaking: boolean) => {
-              if (speaking) {
-                botHasSpokenRef.current = true;
-                if (aiSpeakingTimerRef.current) {
-                  clearTimeout(aiSpeakingTimerRef.current);
-                  aiSpeakingTimerRef.current = null;
-                }
-                setAiState('speaking');
-              }
-            });
-          };
-          room.remoteParticipants.forEach(attachSpeakingHandler);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          room.on('participantConnected', (p: any) => attachSpeakingHandler(p));
-        }
-      },
-      onDisconnected: ({ reason }: { reason?: string }) => {
-        console.log('[VideoInterview] LiveKit disconnected:', reason);
-        if (botHasSpokenRef.current) {
-          safeEnd();
-        } else {
-          console.warn('[VideoInterview] Disconnect before bot spoke — staying on screen');
-        }
-      },
-      onInterviewEnded: () => {
-        console.log('[VideoInterview] Bot participant disconnected');
-        if (botHasSpokenRef.current) {
-          safeEnd();
-        }
-      },
-      onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
-        setIsUserSpeaking(userSpeaking);
-        if (isAISpeaking) {
-          botHasSpokenRef.current = true;
-          if (aiSpeakingTimerRef.current) {
-            clearTimeout(aiSpeakingTimerRef.current);
-            aiSpeakingTimerRef.current = null;
-          }
-          setAiState('speaking');
-        } else {
-          if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
-          aiSpeakingTimerRef.current = setTimeout(() => {
-            aiSpeakingTimerRef.current = null;
-            setAiState('listening');
-          }, 600);
-        }
-      },
-      onDataReceived: (message: { type?: string; text?: string; role?: string }) => {
-        if (message?.type === 'transcript' && message.text) {
-          const role = message.role === 'bot' ? 'ai' : 'user';
-          if (role === 'ai') setCurrentSpeakingText(message.text);
-          setTranscript((prev) => [
-            ...prev,
-            { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
-          ]);
-          if (role === 'ai') setQuestionNum((q) => q + 1);
-        }
-      },
-      onError: (err: unknown) => {
-        console.error('[VideoInterview] LiveKit error:', err);
-      },
-    });
-  };
-
-  // ── Standalone: create session then connect (called on user action, not useEffect) ──
-  // Matches InterviewStep.startInterview() exactly:
-  // STEP 1: createInterviewSession → STEP 2: connectToLiveKit → STEP 3: countdown → STEP 4: start
-  const handleStartInterview = async () => {
-    if (isConnecting || interviewStarted) return;
-    setIsConnecting(true);
-
-    // STEP 1: Create session (gets LiveKit credentials)
-    setIsCreatingSession(true);
-    updateConnectionStatus('aiWebSocket', 'connecting');
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let sessionData: any = null;
-    try {
-      if (sessionCredentials) {
-        sessionData = { liveKitUrl: sessionCredentials.url, liveKitToken: sessionCredentials.token, maxInterviewDuration: null };
-      } else if (interviewId) {
-        console.log('[VideoInterview] Creating interview session for interviewId:', interviewId);
-        const res = await createInterviewSession(interviewId);
-        console.log('[VideoInterview] Raw API response:', JSON.stringify(res.data));
-        const d = res.data?.data ?? res.data;
-        const url = d.liveKitUrl ?? d.url;
-        const token = d.liveKitToken ?? d.token;
-        if (!url || !token) {
-          console.error('[VideoInterview] Missing credentials. Full data keys:', Object.keys(d));
-          throw new Error('Missing LiveKit credentials in response');
-        }
-        console.log('[VideoInterview] Session created — url:', url, 'token length:', token?.length, 'roomName:', d.room_name ?? d.roomName);
-        sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d.max_interview_duration ?? null };
-      } else {
-        setIsConnecting(false);
-        setIsCreatingSession(false);
-        return; // demo mode — no real interview
-      }
-      setIsCreatingSession(false);
-    } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const axiosErr = err as any;
-      console.error('[VideoInterview] Session creation failed:', {
-        status: axiosErr?.response?.status,
-        message: axiosErr?.response?.data?.message ?? axiosErr?.message,
-        body: axiosErr?.response?.data,
-      });
-      setIsCreatingSession(false);
-      updateConnectionStatus('aiWebSocket', 'error');
-      setIsConnecting(false);
-      return;
-    }
-
-    // STEP 2: Connect to LiveKit
-    try {
-      if (!LiveKitService.getIsConnected()) {
-        await connectToLiveKit(sessionData.liveKitUrl, sessionData.liveKitToken);
-        updateConnectionStatus('aiWebSocket', 'connected');
-      } else {
-        updateConnectionStatus('aiWebSocket', 'connected');
-      }
-    } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const axiosErr = err as any;
-      console.error('[VideoInterview] LiveKit connection failed:', axiosErr?.message ?? err);
-      updateConnectionStatus('aiWebSocket', 'error');
-      setIsConnecting(false);
-      return;
-    }
-
-    // STEP 3: Countdown 3 → 2 → 1
-    setShowCountdown(true);
-    for (let i = 3; i > 0; i--) {
-      setCountdown(i);
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-    }
-    setShowCountdown(false);
-
-    // STEP 4: Start interview
-    setInterviewStarted(true);
-    startAudioLevelDetection(localStreamRef.current);
-    if (sessionData.maxInterviewDuration) {
-      startInterviewTimer(sessionData.maxInterviewDuration * 60);
-    }
-    setIsConnecting(false);
-  };
-
-  // ── Demo script cycle (only when NOT in live mode and no real interviewId) ──
-  useEffect(() => {
-    if (isLiveMode) return;
-    if (interviewId || sessionCredentials) return; // real interview — no demo
-    if (scriptIdx >= DEMO_SCRIPT.length) return;
-    const step = DEMO_SCRIPT[scriptIdx];
-    setAiState(step.state);
-    setShowHint(false);
-    setHintRevealed(false);
-
-    if (step.role === 'ai' && step.text) {
-      setCurrentSpeakingText(step.text);
-    } else if (step.state === 'thinking') {
-      setCurrentSpeakingText('');
-    }
-
-    if (step.text && step.role) {
-      setTranscript((prev) => [
-        ...prev,
-        { id: Date.now(), role: step.role!, text: step.text!, timestamp: formatTime(elapsed) },
-      ]);
-    }
-
-    if (step.role === 'ai') {
-      setQuestionNum((prev) => {
-        if (scriptIdx === 0) return 1;
-        if (step.text && step.text.toLowerCase().includes('tell me')) return prev + 1;
-        return prev;
-      });
-    }
-
-    const timer = setTimeout(() => setScriptIdx((i) => i + 1), step.duration);
-    return () => clearTimeout(timer);
-  }, [scriptIdx, isLiveMode]);
 
   // ── Hint after long pause ──
   useEffect(() => {
@@ -542,25 +237,453 @@ export function VideoInterview({
       setShowHint(false);
       setHintRevealed(false);
     }
-    return () => {
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-    };
-  }, [aiState, scriptIdx]);
+    return () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); };
+  }, [aiState]);
 
-  // ── Auto-scroll transcript ──
+  // ── Scroll transcript to bottom ──
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript, transcriptOpen]);
+  }, [transcript]);
 
-  // ── Demo mode only: restart script when done ──
+ // Local state
+  const [openEndDialog, setOpenEndDialog] = useState(false);
+  const [interviewStarted, setInterviewStarted] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [aiProfile] = useState(generateRandomAI());
+  
+  // Audio level detection state
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioLevelRef = useRef(0);
+  const audioAnalyserRef = useRef(null);
+  const audioLevelIntervalRef = useRef(null);
+  
+  // Countdown state
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [countdown, setCountdown] = useState(3);
+
+  // Interview timer state
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [totalDuration, setTotalDuration] = useState(null);
+  const timerIntervalRef = useRef(null);
+
+  // Connection monitoring state
+  const [connectionStatus, setConnectionStatus] = useState({
+    aiWebSocket: 'disconnected',
+    mediaStream: 'disconnected'
+  });
+
+  // Connection monitoring refs
+  const connectionMonitorRef = useRef(null);
+
+  // Video ref for local preview
+  const localVideoRef = useRef(null);
+
+  // Set up video preview when component mounts or video stream changes
   useEffect(() => {
-    if (isLiveMode) return;
-    if (interviewId || sessionCredentials) return;
-    if (scriptIdx >= DEMO_SCRIPT.length) {
-      const t = setTimeout(() => setScriptIdx(0), 2000);
-      return () => clearTimeout(t);
+    if (localVideoRef.current && mediaState.videoTestStream && mediaState.cameraEnabled) {
+      const videoEl = localVideoRef.current;
+      videoEl.srcObject = mediaState.videoTestStream;
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      videoEl.play().catch(err => {
+        console.warn("Video preview autoplay prevented:", err);
+      });
+      console.log('✅ Video preview updated from mediaState');
     }
-  }, [scriptIdx, isLiveMode]);
+  }, [mediaState.videoTestStream, mediaState.cameraEnabled]);
+
+  // Component unmount cleanup
+  useEffect(() => {
+    return () => {
+      stopAudioLevelDetection();
+      stopConnectionMonitoring();
+      stopInterviewTimer();
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+    };
+  }, []);
+  
+  useEffect(() => {
+    if (interviewEnded) {
+      console.log('🧹 InterviewStep: interviewEnded detected, cleaning up...');
+
+      stopAudioLevelDetection();
+      stopConnectionMonitoring();
+      stopInterviewTimer();
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+
+      setInterviewStarted(false);
+      setConnectionStatus({
+        aiWebSocket: 'disconnected',
+        mediaStream: 'disconnected'
+      });
+    }
+  }, [interviewEnded]);
+
+  // Audio level detection functions
+  const startAudioLevelDetection = (audioStream) => {
+    if (!audioStream || audioLevelIntervalRef.current) return;
+
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(audioStream);
+      const analyser = audioContext.createAnalyser();
+      
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+      
+      audioAnalyserRef.current = analyser;
+      
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      const updateAudioLevel = () => {
+        if (!audioAnalyserRef.current) return;
+        
+        analyser.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const normalizedLevel = Math.min(100, (rms / 255) * 100);
+        
+        audioLevelRef.current = normalizedLevel;
+        setAudioLevel(normalizedLevel);
+      };
+      
+      audioLevelIntervalRef.current = setInterval(updateAudioLevel, 50);
+      
+    } catch (error) {
+      console.error('Audio level detection setup failed:', error);
+    }
+  };
+
+  const stopAudioLevelDetection = () => {
+    if (audioLevelIntervalRef.current) {
+      clearInterval(audioLevelIntervalRef.current);
+      audioLevelIntervalRef.current = null;
+    }
+    
+    if (audioAnalyserRef.current) {
+      audioAnalyserRef.current = null;
+    }
+    
+    setAudioLevel(0);
+  };
+
+  // Connection monitoring functions
+  // Note: Per Pipecat design, any disconnect = session ends
+  // So we don't show "connection lost" errors - the session just ends gracefully
+  const updateConnectionStatus = (component, status) => {
+    setTimeout(() => {
+      setConnectionStatus(prev => {
+        const newStatus = { ...prev, [component]: status };
+        
+        if (prev[component] !== status) {
+          console.log(`🔄 Connection Status Changed: ${component} -> ${status}`);
+
+          // Only show error for media stream issues (user can fix these)
+          // Don't show error for AI WebSocket disconnect - session will end gracefully
+          if (component === 'mediaStream' && (status === 'error' || status === 'disconnected')) {
+            setError(`Media stream lost! Please check your microphone/camera.`);
+            setOpenSnackbar(true);
+          }
+        }
+        
+        return newStatus;
+      });
+    }, 0);
+  };
+
+  const startConnectionMonitoring = () => {
+    if (connectionMonitorRef.current) {
+      clearInterval(connectionMonitorRef.current);
+    }
+
+    connectionMonitorRef.current = setInterval(() => {
+      if (!interviewStarted) return;
+
+      // Check LiveKit connection status
+      if (LiveKitService.getIsConnected()) {
+        updateConnectionStatus('aiWebSocket', 'connected');
+      } else {
+        updateConnectionStatus('aiWebSocket', 'disconnected');
+      }
+
+      // Check media stream
+      if (mediaState?.audioTestStream) {
+        const audioTracks = mediaState.audioTestStream.getAudioTracks();
+        const hasActiveAudio = audioTracks.some(track => track.readyState === 'live');
+        
+        if (hasActiveAudio) {
+          updateConnectionStatus('mediaStream', 'connected');
+        } else {
+          updateConnectionStatus('mediaStream', 'error');
+        }
+      } else {
+        updateConnectionStatus('mediaStream', 'disconnected');
+      }
+
+    }, 2000);
+  };
+
+  const stopConnectionMonitoring = () => {
+    if (connectionMonitorRef.current) {
+      clearInterval(connectionMonitorRef.current);
+      connectionMonitorRef.current = null;
+    }
+  };
+
+  // Interview timer functions
+  const startInterviewTimer = (durationInSeconds) => {
+    if (!durationInSeconds || timerIntervalRef.current) return;
+
+    console.log(`⏱️ Starting interview timer: ${durationInSeconds} seconds`);
+    setRemainingTime(durationInSeconds);
+    setTotalDuration(durationInSeconds);
+
+    timerIntervalRef.current = setInterval(() => {
+      setRemainingTime(prev => {
+        if (prev === null || prev <= 0) {
+          stopInterviewTimer();
+          // Auto-end interview when time runs out
+          if (prev === 0) {
+            console.log('⏱️ Interview time expired, auto-ending...');
+            setTimeout(() => {
+              setError('Interview time has expired');
+              setOpenSnackbar(true);
+              endInterview();
+            }, 0);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const stopInterviewTimer = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    setRemainingTime(null);
+    setTotalDuration(null);
+  };
+
+  // Format time as MM:SS
+  const formatTime = (seconds) => {
+    if (seconds === null) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate progress percentage for circular timer
+  const getProgressPercentage = () => {
+    if (!totalDuration || remainingTime === null) return 100;
+    return (remainingTime / totalDuration) * 100;
+  };
+
+  useEffect(() => {
+    if (interviewStarted) {
+      startConnectionMonitoring();
+    } else {
+      stopConnectionMonitoring();
+    }
+
+    return () => {
+      stopConnectionMonitoring();
+    };
+  }, [interviewStarted]);
+
+  // Creates session ONLY when user clicks "Start Interview"
+  const startInterview = async () => {
+    try {
+      if (!mediaState.mediaReady) {
+        setTimeout(() => {
+          setError("Media not ready. Please go back and set up your audio.");
+          setOpenSnackbar(true);
+        }, 0);
+        return;
+      }
+
+      if (!mediaState.audioTestStream) {
+        setTimeout(() => {
+          setError("Audio stream not available");
+          setOpenSnackbar(true);
+        }, 0);
+        return;
+      }
+
+      setIsConnecting(true);
+
+      // Ensure video preview is set up
+      if (localVideoRef.current && mediaState.videoTestStream && !localVideoRef.current.srcObject) {
+        const videoEl = localVideoRef.current;
+        videoEl.srcObject = mediaState.videoTestStream;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        videoEl.play().catch(err => {
+          console.warn("Video autoplay prevented:", err);
+        });
+      }
+
+      // STEP 1: CREATE SESSION (gets LiveKit credentials)
+      setIsCreatingSession(true);
+      updateConnectionStatus('aiWebSocket', 'connecting');
+      
+      let session;
+      try {
+        console.log('📝 Creating interview session...');
+        const res = await createInterviewSession(interviewId);
+        const d = res.data?.data ?? res.data;
+        const url = d?.liveKitUrl ?? d?.url;
+        const token = d?.liveKitToken ?? d?.token;
+        if (!url || !token) throw new Error('Missing LiveKit credentials in response');
+        session = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
+        console.log('✅ Session created, url:', url?.slice(0, 40));
+        setIsCreatingSession(false);
+      } catch (sessionError) {
+        console.error("❌ Session creation failed:", sessionError);
+        setIsCreatingSession(false);
+        updateConnectionStatus('aiWebSocket', 'error');
+        setIsConnecting(false);
+        setSessionStartError("This session has already been initialized. Please go back and select a different module, or contact support.");
+        return;
+      }
+
+      // STEP 2: Connect to LiveKit
+      if (!LiveKitService.getIsConnected()) {
+        try {
+          console.log('🔌 Connecting to LiveKit...');
+          await connectToInterview(session);
+          updateConnectionStatus('aiWebSocket', 'connected');
+        } catch (connectError) {
+          console.error("❌ LiveKit connection failed:", connectError);
+          setTimeout(() => {
+            updateConnectionStatus('aiWebSocket', 'error');
+            setError("Failed to connect to AI interview system. Please try again.");
+            setOpenSnackbar(true);
+            setIsConnecting(false);
+          }, 0);
+          return;
+        }
+      } else {
+        updateConnectionStatus('aiWebSocket', 'connected');
+      }
+      // STEP 4: Countdown
+      setShowCountdown(true);
+      setCountdown(3);
+      for (let i = 3; i > 0; i--) {
+        setCountdown(i);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      setShowCountdown(false);
+      // STEP 3: Publish local media tracks to LiveKit
+      try {
+        console.log('📤 Publishing media tracks to LiveKit...');
+        
+        // Publish audio (required)
+        await LiveKitService.setMicrophoneEnabled(true);
+        
+        // Publish video (optional)
+        if (mediaState.cameraEnabled && mediaState.videoTestStream) {
+          await LiveKitService.setCameraEnabled(true);
+        }
+        
+        console.log('✅ Media tracks published');
+      } catch (mediaError) {
+        console.warn('⚠️ Failed to publish some media tracks:', mediaError);
+        // Continue anyway - audio might still work
+      }
+      
+      // STEP 5: Start the interview
+      setInterviewStarted(true);
+
+      // Start audio level detection for UI feedback
+      startAudioLevelDetection(mediaState.audioTestStream);
+
+      // Start interview timer if duration is available
+      if (session?.maxInterviewDuration) {
+        startInterviewTimer(session.maxInterviewDuration * 60);
+      }
+
+      setSuccess('Interview started!');
+      setOpenSnackbar(true);
+      setIsConnecting(false);
+
+    } catch (error) {
+      console.error('Interview startup error:', error);
+      setTimeout(() => {
+        setError('Cannot start interview: ' + error.message);
+        setOpenSnackbar(true);
+        setInterviewStarted(false);
+        setIsConnecting(false);
+        setIsCreatingSession(false);
+        updateConnectionStatus('aiWebSocket', 'error');
+      }, 0);
+    }
+  };
+
+  const endInterview = async () => {
+    console.log('🔴 Ending interview...');
+
+    stopConnectionMonitoring();
+    stopAudioLevelDetection();
+    stopInterviewTimer();
+
+    setInterviewStarted(false);
+
+    setConnectionStatus({
+      aiWebSocket: 'disconnected',
+      mediaStream: 'disconnected'
+    });
+
+    // Clear video element
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
+    console.log('✅ Interview ended');
+
+    endMeeting();
+  };
+
+  const handleEndDialogOpen = () => setOpenEndDialog(true);
+  const handleEndDialogClose = () => setOpenEndDialog(false);
+
+  const getAIStatus = () => {
+    if (interviewEnded) return 'ended';
+    if (aiSpeaking) return 'speaking';
+    return 'listening';
+  };
+
+  // Get button text based on current state
+  const getStartButtonText = () => {
+    if (isCreatingSession) return 'Creating Session...';
+    if (isConnecting) return 'Connecting...';
+    if (interviewStarted) return 'Interview Active';
+    return 'Start Interview';
+  };
+
+  // Timer color based on remaining time
+  const getTimerColor = () => {
+    if (remainingTime === null) return '#5341f4';
+    if (remainingTime < 60) return '#ef4444';
+    if (remainingTime < 300) return '#f59e0b';
+    return '#5341f4';
+  };
+
+  // JSX calls handleStartInterview; maps to startInterview from pasted ai-interview logic
+  const handleStartInterview = startInterview;
 
   return (
     <div className={`h-screen flex flex-col relative overflow-hidden select-none transition-colors duration-500 ${
@@ -711,6 +834,22 @@ export function VideoInterview({
                   <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>
                     Connecting to AI interviewer…
                   </p>
+                </>
+              ) : sessionStartError ? (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                    <span className="text-red-600 text-2xl font-bold">!</span>
+                  </div>
+                  <p className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Session Unavailable</p>
+                  <p className={`text-sm text-center max-w-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {sessionStartError}
+                  </p>
+                  <button
+                    onClick={() => window.history.back()}
+                    className="px-8 py-3 rounded-xl bg-slate-600 hover:bg-slate-700 text-white font-semibold text-base transition-colors"
+                  >
+                    Go Back
+                  </button>
                 </>
               ) : (
                 <>

@@ -125,18 +125,18 @@ function mapPlansToRecentSessions(plans: any[]): RecentSession[] {
 
 const quickActions = [
   {
-    icon: Mic,
-    title: 'Start Mock Interview',
-    desc: 'Practice with AI in real-time',
-    href: '/dashboard/mock-interview',
-    gradient: 'from-[hsl(221,91%,60%)] to-[hsl(200,80%,55%)]',
-  },
-  {
     icon: BookOpen,
     title: 'Browse Questions',
     desc: 'Explore curated question bank',
-    href: '/question-bank',
+    href: '/interview-insights',
     gradient: 'from-[hsl(190,90%,50%)] to-[hsl(210,80%,55%)]',
+  },
+  {
+    icon: Mic,
+    title: 'Start Mock Interview',
+    desc: 'Practice with AI in real-time',
+    href: '/personalized-practice',
+    gradient: 'from-[hsl(221,91%,60%)] to-[hsl(200,80%,55%)]',
   },
 ];
 

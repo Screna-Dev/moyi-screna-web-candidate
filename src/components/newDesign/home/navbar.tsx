@@ -118,7 +118,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
               {/* Interview Dropdown */}
               {link.name === 'Interview' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-                  <Link 
+                  {/* <Link 
                     to="/mock-interview" 
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
                   >
@@ -129,7 +129,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
                       <div className="text-sm font-semibold text-slate-900">Trendings</div>
                       <div className="text-xs text-slate-500">Trending mock interviews</div>
                     </div>
-                  </Link>
+                  </Link> */}
                   <Link 
                     to="/personalized-practice" 
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
@@ -216,14 +216,14 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         <LayoutDashboard className="w-4 h-4 opacity-50" />
                         Personal Center
                       </Link>
-                      <Link
+                      {/* <Link
                         to="/messages"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <MessageSquare className="w-4 h-4 opacity-50" />
                         Messages
-                      </Link>
+                      </Link> */}
                       {/* <Link
                         to="/refer"
                         onClick={() => setAvatarOpen(false)}

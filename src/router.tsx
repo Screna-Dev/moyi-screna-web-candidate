@@ -30,7 +30,6 @@ import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
-import InterviewPrep from './pages/InterviewPrep';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
 import { HomePage } from './pages/newDesign/home/home';

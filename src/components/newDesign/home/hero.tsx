@@ -4,14 +4,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, Lock, PlayCircle, Shield, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
-// PNG Logos for Social Proof
-import googleLogo from '../../../assets/Logo-group/Google.png';
-import metaLogo from '../../../assets/Logo-group/Meta.png';
-import amazonLogo from '../../../assets/Logo-group/Amazon.png';
-import microsoftLogo from '../../../assets/Logo-group/Microsoft.png';
-import appleLogo from '../../../assets/Logo-group/Apple.png';
-import adobeLogo from '../../../assets/Logo-group/adobe.png';
-import stripeLogo from '../../../assets/Logo-group/stripe.png';
+// svg Logos for Social Proof
+import googleLogo from '../../../assets/Logo-group/Google.svg';
+import metaLogo from '../../../assets/Logo-group/Meta.svg';
+import amazonLogo from '../../../assets/Logo-group/Amazon.svg';
+import microsoftLogo from '../../../assets/Logo-group/Microsoft.svg';
+import appleLogo from '../../../assets/Logo-group/Apple.svg';
+import adobeLogo from '../../../assets/Logo-group/adobe.svg';
+import stripeLogo from '../../../assets/Logo-group/stripe.svg';
 import { ShinyButton } from '@/components/newDesign/ui/shiny-button';
 
 const companyLogos = [

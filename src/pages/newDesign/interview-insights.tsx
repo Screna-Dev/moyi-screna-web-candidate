@@ -12,11 +12,16 @@ import {
   ListFilter,
   Loader2,
   MessageSquare,
+  ThumbsUp,
+  Bookmark,
+  Share2,
+  Eye,
+  ArrowUp,
 } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { searchQuestions } from '../../services/QuestionBankService';
+import { getPosts } from '../../services/CommunityService';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -26,15 +31,28 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   Staff: 'bg-red-50 text-red-700 border-red-200',
 };
 
-// ─── Question Interface ─────────────────────────────────
-interface Question {
+// ─── Post Interface ─────────────────────────────────────
+interface PostQuestion {
   id: string;
-  question: string;
+  seq: number;
+  label: string;
+  title: string;
+  categories: string[];
+  notes: string;
+}
+
+interface Post {
+  id: string;
   company: string;
   role: string;
   level: string;
   round: string;
-  category: string;
+  date: string;
+  outcome: string;
+  location: string;
+  questions: PostQuestion[];
+  summary: string;
+  status: string;
   createdAt: string;
 }
 
@@ -134,6 +152,32 @@ const FILTER_OPTIONS: Record<string, string[]> = {
   Company: ALL_COMPANIES,
 };
 
+const OUTCOME_COLORS: Record<string, string> = {
+  Offer: 'bg-emerald-50 text-emerald-700',
+  Rejected: 'bg-red-50 text-red-600',
+  'No response': 'bg-slate-50 text-slate-500',
+  Pending: 'bg-blue-50 text-blue-600',
+};
+
+const ROUND_GROUPS = [
+  {
+    label: 'Early Stage',
+    options: ['Resume Screen', 'Recruiter Call', 'Phone Screen'],
+  },
+  {
+    label: 'Technical',
+    options: ['Technical Phone Screen', 'Take-Home Assignment', 'Coding Challenge'],
+  },
+  {
+    label: 'Onsite / Final',
+    options: ['Onsite - Coding', 'Onsite - System Design', 'Onsite - Behavioral', 'Onsite - Mixed', 'Final Round'],
+  },
+  {
+    label: 'Other',
+    options: ['Bar Raiser', 'Culture Fit', 'Executive Round', 'Reference Check'],
+  },
+] as const;
+
 export function InterviewInsightsPage() {
   const [activeSort, setActiveSort] = useState<string>('Newest');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -146,24 +190,55 @@ export function InterviewInsightsPage() {
   const [roleCategoryChip, setRoleCategoryChip] = useState<RoleCategoryChip | null>(null);
 
   // API state
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
-  const fetchQuestions = useCallback(async (pageNum: number, reset: boolean) => {
+  // Interaction state
+  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
+
+  const toggleLike = (postId: string) => {
+    setLikedPosts(prev => {
+      const next = new Set(prev);
+      next.has(postId) ? next.delete(postId) : next.add(postId);
+      return next;
+    });
+  };
+
+  const toggleSave = (postId: string) => {
+    setSavedPosts(prev => {
+      const next = new Set(prev);
+      next.has(postId) ? next.delete(postId) : next.add(postId);
+      return next;
+    });
+  };
+
+  // Sidebar: use top 5 newest posts as "hot this week" fallback
+  const hotThisWeek = posts.slice(0, 5).map(p => ({
+    id: p.id,
+    title: `${p.company} · ${p.role}`,
+    author: 'Community',
+    views: 0,
+    trend: '+new',
+  }));
+
+  const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
     try {
-      const res = await searchQuestions({
+      const res = await getPosts({
         search: searchQuery || undefined,
         role: appliedFilters.Role?.[0] || undefined,
         company: appliedFilters.Company?.[0] || undefined,
+        round: appliedFilters.Round?.[0] || undefined,
+        level: appliedFilters.Level?.[0] || undefined,
         page: pageNum,
       });
       const data = res.data?.data ?? res.data;
-      const content: Question[] = data?.content ?? (Array.isArray(data) ? data : []);
+      const content: Post[] = data?.content ?? (Array.isArray(data) ? data : []);
       const pageMeta = data?.pageMeta;
-      setQuestions(prev => reset ? content : [...prev, ...content]);
+      setPosts(prev => reset ? content : [...prev, ...content]);
       setHasMore(pageMeta ? !pageMeta.last : false);
       setPage(pageNum);
     } catch {
@@ -174,11 +249,11 @@ export function InterviewInsightsPage() {
   }, [searchQuery, appliedFilters]);
 
   useEffect(() => {
-    fetchQuestions(1, true);
-  }, [fetchQuestions]);
+    fetchPosts(0, true);
+  }, [fetchPosts]);
 
   const handleLoadMore = () => {
-    fetchQuestions(page + 1, false);
+    fetchPosts(page + 1, false);
   };
 
   const toggleTempFilter = (filter: string, option: string) => {
@@ -218,7 +293,7 @@ export function InterviewInsightsPage() {
   };
 
   // Client-side sort
-  const sorted = [...questions].sort((a, b) => {
+  const sorted = [...posts].sort((a, b) => {
     if (activeSort === 'Oldest') return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // Newest
   });
@@ -260,7 +335,7 @@ export function InterviewInsightsPage() {
 
             {/* ─── Left: Post Feed ─── */}
             <div className="flex-1 space-y-5 min-w-0">
-              {/* Controls Bar */}
+              {/* Controls Bar — inside left column so sort aligns with cards */}
               <div className="flex flex-col md:flex-row md:items-center gap-4 mb-3">
                 {/* Sort Dropdown */}
                 <div className="relative md:order-last md:ml-auto">
@@ -285,6 +360,7 @@ export function InterviewInsightsPage() {
                                 : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
                             }`}
                           >
+                            {sort === 'Hot' && <span className="mr-1">🔥</span>}
                             {sort}
                           </button>
                         ))}
@@ -466,16 +542,14 @@ export function InterviewInsightsPage() {
                                       const aliasMatches = new Set<string>();
                                       const matchedAliasLookup = new Map<string, string>();
                                       Object.entries(ROLE_ALIASES).forEach(([alias, fullName]) => {
-                                        if (alias.toLowerCase().includes(q) && categoryPool.includes(fullName)) {
+                                        if (alias.toLowerCase().includes(q)) {
                                           aliasMatches.add(fullName);
-                                          matchedAliasLookup.set(fullName, alias);
+                                          if (!fullName.toLowerCase().includes(q)) {
+                                            matchedAliasLookup.set(fullName, alias);
+                                          }
                                         }
                                       });
-
-                                      const matched = categoryPool.filter(r =>
-                                        r.toLowerCase().includes(q) || aliasMatches.has(r)
-                                      ).sort();
-
+                                      const matched = categoryPool.filter(c => c.toLowerCase().includes(q) || aliasMatches.has(c)).sort();
                                       return matched.length === 0 ? (
                                         <p className="text-sm text-[hsl(222,12%,55%)] text-center py-4">No roles found</p>
                                       ) : (
@@ -483,19 +557,19 @@ export function InterviewInsightsPage() {
                                           {matched.map(option => (
                                             <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
                                               <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
-                                              <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
-                                              {matchedAliasLookup.has(option) && (
-                                                <span className="ml-auto text-[10px] text-[hsl(222,12%,55%)] bg-[hsl(220,20%,96%)] px-1.5 py-0.5 rounded">
-                                                  {matchedAliasLookup.get(option)}
-                                                </span>
-                                              )}
+                                              <span className="text-sm text-[hsl(222,22%,15%)]">
+                                                {option}
+                                                {matchedAliasLookup.has(option) && (
+                                                  <span className="ml-1.5 text-[11px] text-[hsl(222,12%,55%)]">({matchedAliasLookup.get(option)})</span>
+                                                )}
+                                              </span>
                                             </label>
                                           ))}
                                         </div>
                                       );
                                     }
 
-                                    const restList = [...categoryPool].filter(r => !topList.includes(r)).sort();
+                                    const restList = [...categoryPool].filter(c => !topList.includes(c)).sort();
                                     return (
                                       <>
                                         <div className="px-3 pt-2.5 pb-1">
@@ -506,7 +580,8 @@ export function InterviewInsightsPage() {
                                         <div className="px-2 pb-1 space-y-0.5">
                                           {topList.map(option => (
                                             <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
-                                              <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
+                                              <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)
+                                                || (ROLE_ALIASES[option] && (tempFilters['Role'] || []).includes(ROLE_ALIASES[option]))} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
                                               <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                             </label>
                                           ))}
@@ -516,10 +591,11 @@ export function InterviewInsightsPage() {
                                             <div className="px-3 pt-2 pb-1 border-t border-[hsl(220,16%,94%)]">
                                               <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">All roles</span>
                                             </div>
-                                            <div className="px-2 pb-2 space-y-0.5">
+                                            <div className="px-2 pb-1 space-y-0.5">
                                               {restList.map(option => (
                                                 <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
-                                                  <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
+                                                  <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)
+                                                    || (ROLE_ALIASES[option] && (tempFilters['Role'] || []).includes(ROLE_ALIASES[option]))} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
                                                   <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                                 </label>
                                               ))}
@@ -534,6 +610,48 @@ export function InterviewInsightsPage() {
                                 <div className="p-2 bg-[hsl(220,20%,98%)] border-t border-[hsl(220,16%,90%)] flex justify-between">
                                   <button onClick={() => { resetFilter('Role'); setRoleCategoryChip(null); setRoleSearch(''); }} className="text-xs text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] font-medium">Reset</button>
                                   <button onClick={() => applyFilter('Role')} className="px-3 py-1 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,55%)]">Apply</button>
+                                </div>
+                              </div>
+                            ) : filter === 'Round' ? (
+                              /* ─── Round Grouped Chip Selector (no search) ─── */
+                              <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
+                                {/* Helper note */}
+                                <div className="px-3 pt-2.5 pb-1.5">
+                                  <p className="text-[10px] text-[hsl(222,12%,60%)] italic leading-relaxed">Company naming varies — these are normalized stages.</p>
+                                </div>
+
+                                <div className="max-h-64 overflow-y-auto">
+                                  {ROUND_GROUPS.map((group, gi) => (
+                                    <div key={group.label}>
+                                      {gi > 0 && <div className="mx-3 border-t border-[hsl(220,16%,94%)]" />}
+                                      <div className="px-3 pt-2 pb-1.5">
+                                        <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">{group.label}</span>
+                                      </div>
+                                      <div className="px-2.5 pb-2 flex flex-wrap gap-1.5">
+                                        {group.options.map(option => {
+                                          const isSelected = (tempFilters['Round'] || []).includes(option);
+                                          return (
+                                            <button
+                                              key={option}
+                                              onClick={() => toggleTempFilter('Round', option)}
+                                              className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                                                isSelected
+                                                  ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)]'
+                                                  : 'border-[hsl(220,16%,90%)] text-[hsl(222,12%,50%)] hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,60%)]'
+                                              }`}
+                                            >
+                                              {option}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="p-2 bg-[hsl(220,20%,98%)] border-t border-[hsl(220,16%,90%)] flex justify-between">
+                                  <button onClick={() => resetFilter('Round')} className="text-xs text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] font-medium">Reset</button>
+                                  <button onClick={() => applyFilter('Round')} className="px-3 py-1 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,55%)]">Apply</button>
                                 </div>
                               </div>
                             ) : (
@@ -576,30 +694,16 @@ export function InterviewInsightsPage() {
                 </div>
               </div>
 
-              {/* Loading state */}
-              {loading && questions.length === 0 && (
-                <div className="flex items-center justify-center gap-3 py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
-                  <Loader2 className="w-5 h-5 animate-spin text-[hsl(221,91%,60%)]" />
-                  <span className="text-sm text-[hsl(222,12%,45%)]">Loading questions...</span>
+              {sorted.length === 0 && (
+                <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
+                  <p className="text-[hsl(222,12%,45%)] mb-2">No experiences match your filters.</p>
+                  <button onClick={clearAllFilters} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">Clear all filters</button>
                 </div>
               )}
 
-              {/* Empty state */}
-              {!loading && sorted.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                    <MessageSquare className="w-6 h-6 text-slate-400" />
-                  </div>
-                  <p className="text-[hsl(222,12%,45%)] font-medium mb-2">No questions found</p>
-                  {totalApplied > 0 && (
-                    <button onClick={clearAllFilters} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">Clear all filters</button>
-                  )}
-                </div>
-              )}
-
-              {sorted.map((q, i) => (
+              {sorted.map((post, i) => (
                 <motion.article
-                  key={q.id}
+                  key={post.id}
                   initial={{ opacity: 0, y: 12 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -610,93 +714,126 @@ export function InterviewInsightsPage() {
                     {/* ── Card Header ── */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* Company initial */}
                         <div className="w-8 h-8 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-sm font-bold text-[hsl(222,22%,15%)] shrink-0">
-                          {q.company?.[0] ?? '?'}
+                          {post.company[0]}
                         </div>
-                        <div className="flex items-center gap-1.5 text-sm flex-wrap">
-                          <span className="font-semibold text-[hsl(222,22%,15%)]">{q.company}</span>
-                          {q.role && (
-                            <>
-                              <span className="text-[hsl(222,12%,70%)]">·</span>
-                              <span className="text-[hsl(222,12%,45%)]">{q.role.replace(/_/g, ' ')}</span>
-                            </>
-                          )}
-                          {q.round && (
-                            <>
-                              <span className="text-[hsl(222,12%,70%)]">·</span>
-                              <span className="text-[hsl(222,12%,45%)]">{q.round}</span>
-                            </>
-                          )}
+                        <div className="flex items-center gap-1.5 text-sm">
+                          <span className="font-semibold text-[hsl(222,22%,15%)]">{post.company}</span>
+                          <span className="text-[hsl(222,12%,70%)]">·</span>
+                          <span className="text-[hsl(222,12%,45%)]">{post.role}</span>
+                          <span className="text-[hsl(222,12%,70%)]">·</span>
+                          <span className="text-[hsl(222,12%,45%)]">{post.round}</span>
                         </div>
                       </div>
-                      {q.level && (
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border shrink-0 ${DIFFICULTY_COLORS[q.level] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                          {q.level}
+                      {post.outcome && (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${OUTCOME_COLORS[post.outcome] || 'bg-slate-50 text-slate-500'}`}>
+                          {post.outcome}
                         </span>
                       )}
                     </div>
+
+                    {/* ── Tags Row ── */}
+                    
 
                     {/* ── Meta ── */}
                     <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {new Date(q.createdAt).toLocaleDateString()}
+                        {post.date ? new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''}
                       </span>
-                      {q.category && (
-                        <span className="px-2 py-0.5 rounded-full bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-[hsl(222,12%,45%)]">
-                          {q.category.replace(/_/g, ' ')}
+                    </div>
+
+                    {/* ── Summary ── */}
+                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                      {post.summary}
+                    </p>
+
+                    {/* ── Question Preview Chips ── */}
+                    <div className="flex flex-wrap items-center gap-2 mb-5">
+                      {post.questions.slice(0, 3).map((q, qi) => (
+                        <span
+                          key={qi}
+                          className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate"
+                        >
+                          <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
+                          {q.title}
+                        </span>
+                      ))}
+                      {post.questions.length > 3 && (
+                        <span className="px-2.5 py-1 rounded-lg bg-[hsl(221,91%,60%)]/8 text-[hsl(221,91%,60%)] text-xs font-medium">
+                          +{post.questions.length - 3} more
                         </span>
                       )}
                     </div>
 
-                    {/* ── Question text ── */}
-                    <p className="text-sm text-[hsl(222,12%,25%)] font-medium leading-relaxed line-clamp-2 mb-5">
-                      {q.question}
-                    </p>
-
                     {/* ── Actions ── */}
-                    <div className="flex items-center justify-end pt-4 border-t border-[hsl(220,16%,94%)]">
-                      <Link
-                        to={`/question-detail/${q.id}`}
-                        className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
-                      >
-                        View Question
-                      </Link>
+                    <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => toggleLike(post.id)}
+                          className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                            likedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                          }`}
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                          {likedPosts.has(post.id) ? 1 : 0}
+                        </button>
+                        <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          0
+                        </span>
+                        <button
+                          onClick={() => toggleSave(post.id)}
+                          className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                            savedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                          }`}
+                        >
+                          <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
+                          {savedPosts.has(post.id) ? 1 : 0}
+                        </button>
+                        <button className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] transition-colors">
+                          <Share2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        
+                        <Link
+                          to={`/experience/${post.id}`}
+                          className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
+                        >
+                          View Post
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </motion.article>
               ))}
 
-              {/* Load more */}
-              {!loading && hasMore && sorted.length > 0 && (
+              {sorted.length > 0 && (
                 <div className="text-center pt-4 pb-2">
-                  <Button
-                    onClick={handleLoadMore}
-                    className="bg-[hsl(222,22%,15%)] text-[hsl(221,91%,60%)] hover:bg-[hsl(222,22%,20%)] rounded-xl border-0"
-                  >
-                    Load more questions
+                  <Button variant="outline" className="text-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)]/20 hover:bg-[hsl(221,91%,60%)]/5 rounded-xl">
+                    Load more experiences
                   </Button>
-                </div>
-              )}
-
-              {/* Loading more spinner */}
-              {loading && questions.length > 0 && (
-                <div className="flex items-center justify-center gap-2 py-6">
-                  <Loader2 className="w-4 h-4 animate-spin text-[hsl(221,91%,60%)]" />
-                  <span className="text-sm text-[hsl(222,12%,45%)]">Loading more...</span>
                 </div>
               )}
             </div>
 
             {/* ─── Right Sidebar ─── */}
             <div className="lg:w-80 space-y-5 shrink-0">
+              {/* Add Experience CTA */}
+              <Link to="/add-experience" className="block">
+                
+              </Link>
+
               {/* Search */}
               <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] shadow-sm p-[16px]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
                   <input
                     type="text"
-                    placeholder="Search questions..."
+                    placeholder="Search experiences..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] text-sm focus:bg-white focus:border-[hsl(221,91%,60%)] transition-all outline-none"
@@ -704,51 +841,46 @@ export function InterviewInsightsPage() {
                 </div>
               </div>
 
-              {/* Recent Questions */}
+              {/* Hot This Week */}
               <div className="bg-white rounded-2xl p-5 border border-[hsl(220,16%,90%)] shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center">
                       <Flame className="w-4 h-4 text-orange-500" />
                     </div>
-                    <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)]">Recent questions</h4>
+                    <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)]">Hot this week</h4>
                   </div>
-                  <span className="text-[10px] text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full">Latest</span>
+                  <span className="text-[10px] text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full">Trending</span>
                 </div>
-
-                {loading && questions.length === 0 ? (
-                  <div className="flex items-center justify-center gap-2 py-6">
-                    <Loader2 className="w-4 h-4 animate-spin text-[hsl(221,91%,60%)]" />
-                    <span className="text-xs text-[hsl(222,12%,55%)]">Loading...</span>
-                  </div>
-                ) : questions.length === 0 ? (
-                  <p className="text-xs text-[hsl(222,12%,55%)] text-center py-4">No questions yet</p>
-                ) : (
-                  <div className="space-y-1">
-                    {questions.slice(0, 5).map((item, i) => (
-                      <Link key={item.id} to={`/question-detail/${item.id}`} className="block group/hot">
-                        <div className="flex items-start gap-2.5 p-2.5 rounded-xl hover:bg-[hsl(220,20%,98%)] transition-colors">
-                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${
-                            i < 3 ? 'bg-gradient-to-br from-[hsl(221,91%,55%)] to-[hsl(221,91%,45%)] text-white' : 'bg-[hsl(220,20%,96%)] text-[hsl(222,12%,50%)]'
-                          }`}>
-                            {i + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] text-[hsl(222,22%,15%)] line-clamp-2 group-hover/hot:text-[hsl(221,91%,60%)] transition-colors leading-snug">
-                              {item.question}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-[hsl(222,12%,55%)]">{item.company}</span>
-                              {item.level && (
-                                <span className="text-[10px] text-[hsl(222,12%,55%)]">· {item.level}</span>
-                              )}
+                <div className="space-y-1">
+                  {hotThisWeek.map((item, i) => (
+                    <Link key={item.id} to={`/experience/${item.id}`} className="block group/hot">
+                      <div className="flex items-start gap-2.5 p-2.5 rounded-xl hover:bg-[hsl(220,20%,98%)] transition-colors">
+                        <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${
+                          i < 3 ? 'bg-gradient-to-br from-[hsl(221,91%,55%)] to-[hsl(221,91%,45%)] text-white' : 'bg-[hsl(220,20%,96%)] text-[hsl(222,12%,50%)]'
+                        }`}>
+                          {i + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] text-[hsl(222,22%,15%)] truncate group-hover/hot:text-[hsl(221,91%,60%)] transition-colors leading-snug">
+                            {item.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-[hsl(222,12%,55%)]">{item.author}</span>
+                            <div className="flex items-center gap-0.5 text-[10px] text-[hsl(222,12%,55%)]">
+                              <Eye className="w-2.5 h-2.5" />
+                              {item.views >= 1000 ? `${(item.views / 1000).toFixed(1)}k` : item.views}
                             </div>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)] text-[9px] font-semibold">
+                              <ArrowUp className="w-2 h-2" />
+                              {item.trend}
+                            </span>
                           </div>
                         </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
 
               {/* Community Guidelines */}
