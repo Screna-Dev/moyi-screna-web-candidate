@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
 import {
   Table,
   TableBody,
@@ -8,7 +8,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/components/newDesign/ui/table';
 import type { AdminUser } from '@/data/adminMockData';
 import {
   Calendar,

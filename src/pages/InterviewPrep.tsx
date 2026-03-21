@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/newDesign/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/newDesign/ui/card";
+import { Progress } from "@/components/newDesign/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/newDesign/ui/tabs";
+import { Badge } from "@/components/newDesign/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/newDesign/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/newDesign/ui/alert-dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/newDesign/ui/sheet";
+import { ScrollArea } from "@/components/newDesign/ui/scroll-area";
+import { Label } from "@/components/newDesign/ui/label";
+import { Input } from "@/components/newDesign/ui/input";
+import { Textarea } from "@/components/newDesign/ui/textarea";
+import { Separator } from "@/components/newDesign/ui/separator";
+import { useToast } from "@/components/newDesign/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
@@ -417,7 +417,9 @@ const InterviewPrep = () => {
       });
       
       // Normal start for pending sessions
-      navigate(`/interview/${selectedSessionPreview.id}`);
+      // navigate(`/interview/${selectedSessionPreview.id}`);
+      navigate(`/ai-mock?interviewId=${selectedSessionPreview.id}`);
+
     }
   };
 
@@ -1760,7 +1762,8 @@ const InterviewPrep = () => {
                                   <Button 
                                     variant="outline" 
                                     size="sm"
-                                    onClick={() => handleOpenReport(session)}
+                                    // onClick={() => handleOpenReport(session)}
+                                    onClick={() => navigate('/evaluation')}
                                   >
                                     Report & Video
                                   </Button>

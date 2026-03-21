@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/newDesign/ui/button';
+import { Input } from '@/components/newDesign/ui/input';
+import { Label } from '@/components/newDesign/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
+import { Checkbox } from '@/components/newDesign/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
 import { Sparkles, Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Logo from "@/assets/logo.png"

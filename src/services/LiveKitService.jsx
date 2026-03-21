@@ -183,6 +183,11 @@ class LiveKitService {
     });
   }
 
+  // Update callbacks after connecting (e.g. when VideoInterview takes over from warmup)
+  updateCallbacks(callbacks) {
+    this.callbacks = callbacks;
+  }
+
   // Enable/disable microphone
   async setMicrophoneEnabled(enabled) {
     if (!this.room) {

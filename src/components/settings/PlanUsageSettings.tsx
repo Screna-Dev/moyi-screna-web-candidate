@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/newDesign/ui/card";
+import { Button } from "@/components/newDesign/ui/button";
+import { Badge } from "@/components/newDesign/ui/badge";
+import { Progress } from "@/components/newDesign/ui/progress";
+import { Slider } from "@/components/newDesign/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/newDesign/ui/tabs";
+import { Input } from "@/components/newDesign/ui/input";
+import { Label } from "@/components/newDesign/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/newDesign/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/newDesign/ui/dialog";
 import { 
   Zap, 
   TrendingUp, 

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Input } from '@/components/newDesign/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/newDesign/ui/select';
 import { 
   Library, 
   Search, 
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { experienceLibrary, type ExperienceCard as ExperienceCardType } from '@/data/experienceMockData';
 import { AppSidebar } from '@/components/AppSidebar';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/newDesign/ui/sidebar';
 
 const difficultyColors = {
   Easy: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',

@@ -2,18 +2,18 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/newDesign/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/newDesign/ui/card";
+import { Badge } from "@/components/newDesign/ui/badge";
+import { Progress } from "@/components/newDesign/ui/progress";
+import { Avatar, AvatarFallback } from "@/components/newDesign/ui/avatar";
+import { Switch } from "@/components/newDesign/ui/switch";
+import { Separator } from "@/components/newDesign/ui/separator";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from "@/components/newDesign/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@/components/newDesign/ui/dialog";
 import {
   Edit,
   FileText,
@@ -52,8 +52,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ProfileService } from "../services";
 import type { ProfileData } from "@/types/profile";
 import { calculateProfileCompleteness, VISA_STATUS_OPTIONS } from "@/types/profile";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/newDesign/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/newDesign/ui/select";
 import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
 const ProfileCompleted = () => {

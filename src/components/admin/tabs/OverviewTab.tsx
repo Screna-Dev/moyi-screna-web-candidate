@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
 import type { AdminUser } from '@/data/adminMockData';
 import { User, Briefcase, Building2, MapPin, Clock, Mail, Calendar, Tag, FileText, Download } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
+import { Button } from '@/components/newDesign/ui/button';
 import { adminService } from '@/services';
 import { format } from 'date-fns';
 

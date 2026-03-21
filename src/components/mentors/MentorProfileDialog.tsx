@@ -1,10 +1,10 @@
 import { Star, MapPin, Globe, Briefcase, Clock, DollarSign, GraduationCap, Building2, ExternalLink } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/newDesign/ui/dialog';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/newDesign/ui/avatar';
+import { Separator } from '@/components/newDesign/ui/separator';
+import { ScrollArea } from '@/components/newDesign/ui/scroll-area';
 import { type MentorApplication } from '@/data/mentorMockData';
 
 interface MentorProfileDialogProps {

@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from '@/components/newDesign/ui/button';
+import { Card } from '@/components/newDesign/ui/card';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Input } from '@/components/newDesign/ui/input';
+import { Checkbox } from '@/components/newDesign/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/newDesign/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/newDesign/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/newDesign/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/newDesign/ui/sheet';
+import { ScrollArea } from '@/components/newDesign/ui/scroll-area';
+import { Separator } from '@/components/newDesign/ui/separator';
+import { Label } from "@/components/newDesign/ui/label";
+import { Textarea } from "@/components/newDesign/ui/textarea";
 import { 
   Search, MapPin, Briefcase, Lock, Send, FileText,
   Plus, CheckCircle2, Clock, Tag, Sparkles, Target, Loader2, Crown

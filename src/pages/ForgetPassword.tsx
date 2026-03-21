@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/newDesign/ui/button';
+import { Input } from '@/components/newDesign/ui/input';
+import { Label } from '@/components/newDesign/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
+import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
 import { Sparkles, Loader2, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import API from '@/services/api';

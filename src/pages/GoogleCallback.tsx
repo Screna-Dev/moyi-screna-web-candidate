@@ -4,7 +4,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -97,8 +97,8 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
         
-        // Redirect to profile
-        navigate('/profile');
+        // Redirect to dashboard
+        navigate('/dashboard');
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);

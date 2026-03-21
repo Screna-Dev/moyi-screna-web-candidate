@@ -1,9 +1,9 @@
 import { format } from 'date-fns';
 import { Calendar, Clock, User, MessageSquare, DollarSign } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/newDesign/ui/card';
+import { Button } from '@/components/newDesign/ui/button';
+import { Badge } from '@/components/newDesign/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/newDesign/ui/table';
 import { useBooking } from '@/contexts/BookingContext';
 
 interface MentorBookedSessionsProps {
