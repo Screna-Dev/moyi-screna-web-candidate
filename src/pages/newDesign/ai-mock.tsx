@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams, useParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -28,6 +28,8 @@ import { Label } from '@/components/newDesign/ui/label';
 import { VideoInterview } from '@/components/newDesign/video-interview';
 import { CooldownScreen } from '@/components/newDesign/cooldown-screen';
 import { endTrainingModule } from '@/services/InterviewServices';
+import * as InterviewSessionService from '@/services/IntervewSesstionServices';
+import LiveKitService from '@/services/LiveKitService';
 
 // ─── Session credentials from API ──────────────────────
 export interface SessionCredentials {
@@ -137,39 +139,506 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════
 export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode }) {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  // If mode is already provided via URL params, skip mode selection and go straight to warmup
-  const initialStage: Stage = searchParams.get('mode') ? 'warmup' : 'modeSelect';
-  const [stage, setStage] = useState<Stage>(initialStage);
-  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
-  const interviewId = searchParams.get('interviewId') ?? undefined;
+  const [searchParams] = useSearchParams();
+  const params = useParams();
+  const interviewId = params.interviewId ?? searchParams.get('interviewId') ?? undefined;
 
-  const [config, setConfig] = useState<SetupConfig>(() => {
-    // Pre-fill from URL params when navigating from InterviewPrep or dashboard
-    const typeParam = (searchParams.get('type') as InterviewType) || 'behavioral';
-    const difficultyParam = (searchParams.get('difficulty') as Difficulty) || 'intermediate';
-    const durationParam = searchParams.get('duration') || '20';
-    const modeParam = (searchParams.get('mode') as Mode) || 'voice';
-    const companyParam = searchParams.get('company') || '';
-    console.log('[AIMock] Init — interviewId:', interviewId, 'type:', typeParam);
-    return {
-      type: typeParam,
-      difficulty: difficultyParam,
-      duration: durationParam,
-      mode: modeParam,
-      company: companyParam,
-    };
+  // Step state
+  const [activeStep, setActiveStep] = useState(0);
+  const steps = ['Media Setup', 'Interview'];
+
+  // Validation state - simplified, just check if interviewId exists
+  const [isValidating, setIsValidating] = useState(true);
+  const [interviewStatus, setInterviewStatus] = useState(null);
+  const [validationError, setValidationError] = useState('');
+
+  // Core interview state
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [interviewEnded, setInterviewEnded] = useState(false);
+  const [aiSpeaking, setAISpeaking] = useState(false);
+
+  const isConnectedRef = useRef(false);
+  const currentSessionRef = useRef(null);
+
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+  useEffect(() => { currentSessionRef.current = currentSession; }, [currentSession]);
+
+  // Theme state
+  const [theme, setTheme] = useState<ThemeMode>(defaultTheme);
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
+  // Stage state — if mode is in URL params, skip modeSelect
+  const [stage, setStage] = useState<Stage>(() => {
+    const modeParam = searchParams.get('mode') as Mode | null;
+    return modeParam ? 'warmup' : 'modeSelect';
   });
 
-  const toggleTheme = () => {
-    setTheme(t => {
-      const next = t === 'dark' ? 'light' : 'dark';
-      // Update URL to match theme without remounting
-      window.history.replaceState(null, '', next === 'dark' ? '/ai-mock' : '/ai-mockwhite');
-      return next;
-    });
+  // Config state — initialise from URL params
+  const [config, setConfig] = useState<SetupConfig>({
+    type: (searchParams.get('type') as InterviewType) || 'behavioral',
+    difficulty: (searchParams.get('difficulty') as Difficulty) || 'junior',
+    duration: searchParams.get('duration') || '20',
+    mode: (searchParams.get('mode') as Mode) || 'video',
+    company: '',
+  });
+
+  // Initial mediaState (for reset)
+  const initialMediaState = {
+    audioReady: false,
+    videoReady: false,
+    audioEnabled: false,
+    cameraEnabled: false,
+    audioTestStream: null,
+    videoTestStream: null,
+    mediaReady: false
   };
+
+  // Media state - shared between steps
+  const [mediaState, setMediaState] = useState(initialMediaState);
+
+  // Simple check on mount - just verify interviewId exists (NO API CALL)
+  useEffect(() => {
+    checkInterviewId();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interviewId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAllResources();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SIMPLIFIED: Just check if interviewId is present (no API call)
+  const checkInterviewId = () => {
+    if (!interviewId) {
+      setInterviewStatus('invalid');
+      setValidationError('Missing interview parameters. Please check the URL.');
+      setIsValidating(false);
+      return;
+    }
+
+    // Basic format validation (optional - adjust as needed)
+    const isValidFormat = interviewId.length > 0;
+    
+    if (!isValidFormat) {
+      setInterviewStatus('invalid');
+      setValidationError('Invalid interview ID format.');
+      setIsValidating(false);
+      return;
+    }
+
+    console.log('✅ Interview ID present:', interviewId);
+    console.log('📝 Session will be created when user clicks "Start Interview"');
+    
+    // Mark as valid - actual validation happens when creating session
+    setInterviewStatus('valid');
+    setIsValidating(false);
+  };
+
+  // Create interview session (called when starting interview)
+  const createInterviewSession = async () => {
+    if (currentSession) {
+      console.log('✅ Session already exists:', currentSession.sessionId);
+      return currentSession;
+    }
+
+    console.log('🔄 Creating interview session...');
+    
+    try {
+      // Step 1: Create session (Mainframe API)
+      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
+      
+      if (!sessionResponse.data || !sessionResponse.data.data) {
+        throw new Error('Failed to create interview session.');
+      }
+      
+      const sessionData = sessionResponse.data.data;
+      console.log('✅ Session created:', interviewId);
+
+      // Step 2: Join session to get LiveKit credentials (Pipecat API)
+      console.log('🔄 Joining session to get LiveKit credentials...');
+      
+      // const liveKitCredentials = joinResponse.data;
+      console.log('✅ LiveKit credentials received:', {
+        url: sessionData.url,
+        room_name: sessionData.room_name,
+        hasToken: !!sessionData.token
+      });
+
+      const session = {
+        sessionId: sessionData.session_id,
+        liveKitUrl: sessionData.url,
+        liveKitToken: sessionData.token,
+        roomName: sessionData.room_name,
+        status: sessionData.status,
+        createdAt: sessionData.created_at,
+        maxInterviewDuration: sessionData.max_interview_duration
+      };
+      
+      setCurrentSession(session);
+      currentSessionRef.current = session;
+      return session;
+      
+    } catch (error) {
+      console.error("Session creation error:", error);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create session';
+      const errorCode = error.response?.data?.errorCode;
+      
+      setTimeout(() => {
+        if (errorMessage.toLowerCase().includes('used') || 
+            errorMessage.toLowerCase().includes('already')) {
+          setInterviewStatus('used');
+          setValidationError('This interview session has already been used.');
+        } else if (errorMessage.toLowerCase().includes('expired')) {
+          setInterviewStatus('expired');
+          setValidationError('This interview session has expired.');
+        } else if (errorMessage.toLowerCase().includes('not found') ||
+                  errorCode === 'NOT_FOUND' ||
+                  error.response?.status === 404) {
+          setInterviewStatus('invalid');
+          setValidationError('Interview not found. Please check the URL.');
+        }
+      }, 0);
+      
+      throw error;
+    }
+  };
+
+  // Ref to track interview ended state for callbacks
+  const interviewEndedRef = useRef(false);
+  
+  // Sync interviewEnded to ref
+  useEffect(() => {
+    interviewEndedRef.current = interviewEnded;
+  }, [interviewEnded]);
+
+  //Connect to livekit
+  const connectToInterview = async (session = null) => {
+    if (interviewEndedRef.current) return;
+    
+    const sessionToUse = session || currentSession;
+    
+    if (LiveKitService.getIsConnected() || !sessionToUse) {
+      console.log('Cannot connect: already connected or no session', {
+        isConnected: LiveKitService.getIsConnected(),
+        hasSession: !!sessionToUse
+      });
+      return;
+    }
+
+    setIsConnecting(true);
+    
+    try {
+      await LiveKitService.connect(
+        {
+          url: sessionToUse.liveKitUrl,
+          token: sessionToUse.liveKitToken,
+        },
+        {
+          onConnected: () => {
+            console.log('✅ LiveKit connected callback');
+          },
+          onDisconnected: (info) => {
+            setTimeout(() => {
+              console.log("Disconnected info:", info);
+              setIsConnected(false);
+              
+              // Per design: any disconnect = session ends
+              if (!interviewEndedRef.current) {
+                console.log("🔴 LiveKit disconnected - ending session");
+                endMeeting();
+              }
+            }, 0);
+          },
+          onInterviewEnded: () => {
+            // AI interviewer left the room
+            setTimeout(() => {
+              if (!interviewEndedRef.current) {
+                console.log("🔴 AI Interviewer left - ending interview");
+                endMeeting();
+              }
+            }, 0);
+          },
+          onActiveSpeakersChanged: ({ isUserSpeaking, isAISpeaking }) => {
+            setAISpeaking(isAISpeaking);
+          },
+          onError: (err) => {
+            setTimeout(() => {
+              if (interviewEndedRef.current) return;
+              console.error("LiveKit error:", err);
+              setError(`AI connection error: ${err.message || 'Unknown'}`);
+              setOpenSnackbar(true);
+            }, 0);
+          },
+        }
+      );
+      
+      setIsConnected(true);
+      return true;
+    } catch (error) {
+      console.error('LiveKit connection failed:', error);
+      throw error;
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+
+  const handleNextStep = async () => {
+    if (activeStep === 0 && mediaState.mediaReady && interviewStatus === 'valid') {
+      try {
+        setActiveStep(1);
+        setSuccess("Ready for interview! Click 'Start Interview' when you're ready to begin.");
+        setOpenSnackbar(true);
+      } catch (error) {
+        console.error("Setup failed:", error);
+        setError("Failed to initialize interview system. Please try again.");
+        setOpenSnackbar(true);
+      }
+    }
+  };
+
+  const handlePreviousStep = () => {
+    if (activeStep === 1) {
+      cleanupConnectionResources();
+      setActiveStep(0);
+    }
+  };
+
+  const cleanupConnectionResources = async () => {
+    console.log('🧹 Cleaning up connection resources...');
+    
+    // Disconnect LiveKit
+    await LiveKitService.disconnect();
+    
+    setIsConnected(false);
+  };
+
+  const cleanupMediaStreams = () => {
+    console.log('🧹 Cleaning up media streams...');
+    
+    if (mediaState.audioTestStream) {
+      console.log('🔇 Stopping audio stream tracks');
+      mediaState.audioTestStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped audio track:', track.label);
+      });
+    }
+    
+    if (mediaState.videoTestStream) {
+      console.log('📹 Stopping video stream tracks');
+      mediaState.videoTestStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('✅ Stopped video track:', track.label);
+      });
+    }
+    
+    setMediaState(initialMediaState);
+    console.log('✅ Media state reset to initial values');
+  };
+
+  const cleanupAllResources = async () => {
+    console.log('🧹 Cleaning up all resources...');
+    
+    await cleanupConnectionResources();
+    cleanupMediaStreams();
+    
+    setCurrentSession(null);
+    currentSessionRef.current = null;
+    
+    console.log('✅ All resources cleaned up');
+  };
+
+  const endMeeting = async () => {
+    if (interviewEndedRef.current) {
+      console.log('⚠️ endMeeting already called, skipping...');
+      return;
+    }
+
+    console.log('🔴 Ending meeting...');
+
+    setInterviewEnded(true);
+    interviewEndedRef.current = true;
+
+    const session = currentSessionRef.current;
+    
+    if (!session?.sessionId) {
+      console.log('No active session - showing completion');
+      setSuccess("Interview session ended.");
+      setOpenSnackbar(true);
+      cleanupMediaStreams();
+      return;
+    }
+
+    console.log('📝 Ending session:', session.sessionId);
+    setIsLoading(true);
+
+    try {
+      // Disconnect LiveKit
+      await LiveKitService.disconnect({ intentional: true });
+
+      // End module
+      await endTrainingModule(interviewId);
+      
+      // Stop media
+      cleanupMediaStreams();
+
+      setSuccess("Interview ended. Thank you for your participation!");
+      setOpenSnackbar(true);
+    } catch (e) {
+      console.error("Error ending interview:", e);
+      setSuccess("Interview ended. Thank you for your participation!");
+      setOpenSnackbar(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setOpenSnackbar(false);
+    setError("");
+    setSuccess("");
+  };
+
+  const getStatusMessage = () => {
+    switch (interviewStatus) {
+      case 'expired':
+        return {
+          title: 'Interview Session Expired',
+          message: 'This interview session has expired and is no longer available.',
+          severity: 'error'
+        };
+      case 'used':
+        return {
+          title: 'Interview Already Completed',
+          message: 'This interview session has already been used and cannot be accessed again.',
+          severity: 'warning'
+        };
+      case 'invalid':
+        return {
+          title: 'Invalid Interview Session',
+          message: validationError || 'This interview session is invalid or does not exist.',
+          severity: 'error'
+        };
+      case 'error':
+        return {
+          title: 'Unable to Access Interview',
+          message: validationError || 'There was an error accessing this interview session.',
+          severity: 'error'
+        };
+      default:
+        return null;
+    }
+  };
+
+  const getConnectionStatus = () => {
+    return {
+      aiService: isConnected ? 'connected' : 'disconnected',
+      audioStream: mediaState.audioReady ? 'connected' : 'disconnected',
+      videoStream: mediaState.videoReady ? 'connected' : 'disconnected'
+    };
+  };
+
+  const sharedProps = {
+    mediaState,
+    setMediaState,
+    isConnected,
+    currentSession,
+    interviewEnded,
+    error,
+    setError,
+    success,
+    setSuccess,
+    openSnackbar,
+    setOpenSnackbar,
+    endMeeting,
+    connectToInterview,
+    createInterviewSession,
+    setInterviewStatus,      // Pass so InterviewStep can update status on error
+    setValidationError,      // Pass so InterviewStep can set error message
+    isLoading: isLoading || isConnecting
+  };
+
+  // ========== RENDER ==========
+
+  // Show loading during initial check (very brief, no API call)
+  if (isValidating) {
+    return (
+      <Box 
+        sx={{
+          minHeight: '100vh',
+          backgroundColor: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
+          <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
+            Loading Interview
+          </Typography>
+          <Typography variant="body1" color="#64748b">
+            Please wait...
+          </Typography>
+        </Card>
+      </Box>
+    );
+  }
+
+  // Show error state if interview is not valid
+  if (interviewStatus !== 'valid') {
+    const statusInfo = getStatusMessage();
+    
+    if (statusInfo) {
+      return (
+        <Box 
+          sx={{
+            minHeight: '100vh',
+            backgroundColor: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Card sx={{ p: 6, maxWidth: 600, border: '1px solid #e2e8f0' }}>
+            <Alert 
+              severity={statusInfo.severity} 
+              sx={{ 
+                mb: 3,
+                '& .MuiAlert-message': {
+                  width: '100%'
+                }
+              }}
+            >
+              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                {statusInfo.title}
+              </Typography>
+              <Typography variant="body1">
+                {statusInfo.message}
+              </Typography>
+            </Alert>
+            <Typography variant="body2" color="#64748b" textAlign="center">
+              Please contact the administrator if you believe this is an error.
+            </Typography>
+          </Card>
+        </Box>
+      );
+    }
+  }
+
+  const connectionStatus = getConnectionStatus();
+
 
   return (
     <div className="min-h-screen relative overflow-hidden">

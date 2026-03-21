@@ -34,7 +34,7 @@ import { Input } from '../../components/newDesign/ui/input';
 import { Textarea } from '../../components/newDesign/ui/textarea';
 import { Label } from '../../components/newDesign/ui/label';
 import logoImg from '../../assets/Navbar.png';
-import { createBulkQuestions } from '../../services/QuestionBankService';
+import { createPost } from '../../services/CommunityService';
 
 // ─── Step definitions ──────────────────────────────────
 const STEPS = [
@@ -986,16 +986,21 @@ export function AddExperiencePage() {
       const questionItems = questions
         .filter(q => q.title.trim().length > 0)
         .map(q => ({
-          question: q.title.trim(),
-          category: toCategoryEnum(q.tags[0] ?? ''),
-          ...(q.notes.trim() ? { answer: q.notes.trim() } : {}),
+          title: q.title.trim(),
+          categories: q.tags.map(toCategoryEnum),
+          notes: q.notes.trim(),
         }));
-      await createBulkQuestions({
+      await createPost({
         company,
         role: toRoleEnum(role),
         level,
         round: toRoundEnum(round),
+        date: date ? new Date(date).toISOString() : new Date().toISOString(),
+        outcome,
+        location,
         questions: questionItems,
+        summary: overallSummary,
+        isAnonymous: anonymity === 'anonymous',
       });
       setPublished(true);
     } catch (err: unknown) {

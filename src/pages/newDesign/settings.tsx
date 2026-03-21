@@ -19,6 +19,7 @@ import { Button } from '../../components/newDesign/ui/button';
 import { Input } from '../../components/newDesign/ui/input';
 import { Label } from '../../components/newDesign/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { getPersonalInfo, savePersonalInfo } from '@/services/ProfileServices';
 
 // Settings Tabs
 const SETTINGS_TABS = [
@@ -35,31 +36,58 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Profile Form State — seeded from auth user
+  // Profile Form State
   const [profileData, setProfileData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     timezone: 'Pacific Time (US & Canada)',
+    avatarUrl: '',
+    country: '',
   });
 
   useEffect(() => {
-    if (user) {
-      const parts = (user.name || '').trim().split(' ');
-      setProfileData((prev) => ({
-        ...prev,
-        firstName: parts[0] || '',
-        lastName: parts.slice(1).join(' ') || '',
-        email: user.email || '',
-      }));
-    }
-  }, [user]);
+    getPersonalInfo()
+      .then((res) => {
+        const info = res.data?.data ?? res.data;
+        if (!info) return;
+        const [first, ...rest] = (info.name || '').trim().split(' ');
+        setProfileData((prev) => ({
+          ...prev,
+          firstName: first || '',
+          lastName: rest.join(' ') || '',
+          email: info.email || '',
+          timezone: info.timezone || prev.timezone,
+          avatarUrl: info.avatarUrl || '',
+          country: info.country || prev.country,
+        }));
+      })
+      .catch(() => {
+        // fall back to auth token values
+        if (user) {
+          const parts = (user.name || '').trim().split(' ');
+          setProfileData((prev) => ({
+            ...prev,
+            firstName: parts[0] || '',
+            lastName: parts.slice(1).join(' ') || '',
+            email: user.email || '',
+            avatarUrl: user.avatar || '',
+          }));
+        }
+      });
+  }, []);
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => setIsLoading(false), 1000);
+    try {
+      const name = [profileData.firstName, profileData.lastName].filter(Boolean).join(' ');
+      await savePersonalInfo({ name, timezone: profileData.timezone, country: profileData.country });
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -112,15 +140,29 @@ export function SettingsPage() {
               className="space-y-6"
             >
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">Profile Information</h2>
-                    <p className="text-sm text-slate-500">Update your account's profile information and email address.</p>
-                  </div>
-                  <div className="hidden sm:block">
-                     <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-2xl font-bold text-slate-400 border border-slate-200">
-                        {profileData.firstName[0]}
-                     </div>
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-slate-900 mb-1">Profile Information</h2>
+                  <p className="text-sm text-slate-500">Update your account's profile information and email address.</p>
+                </div>
+
+                {/* Profile header — avatar + name + email */}
+                <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 mb-6">
+                  {profileData.avatarUrl ? (
+                    <img
+                      src={profileData.avatarUrl}
+                      alt={[profileData.firstName, profileData.lastName].filter(Boolean).join(' ')}
+                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600 border-2 border-white shadow-sm shrink-0">
+                      {(profileData.firstName[0] || profileData.email[0] || '?').toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold text-slate-900 truncate">
+                      {[profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || 'No name set'}
+                    </p>
+                    <p className="text-sm text-slate-500 truncate">{profileData.email || '—'}</p>
                   </div>
                 </div>
 
@@ -156,6 +198,15 @@ export function SettingsPage() {
                         onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      value={profileData.country}
+                      onChange={(e) => setProfileData({ ...profileData, country: e.target.value })}
+                    />
                   </div>
 
                   <div className="space-y-2">

@@ -60,7 +60,7 @@ function AnswerReplySection({ answerId }: { answerId: string }) {
   const [repliesLoaded, setRepliesLoaded] = useState(false);
   const [replies, setReplies] = useState<Reply[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +87,7 @@ function AnswerReplySection({ answerId }: { answerId: string }) {
     const next = !showReplies;
     setShowReplies(next);
     if (next && !repliesLoaded) {
-      loadReplies(1, true);
+      loadReplies(0, true);
     }
   };
 

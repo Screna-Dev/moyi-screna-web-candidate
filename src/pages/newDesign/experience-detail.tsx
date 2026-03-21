@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams } from 'react-router';
 import {
@@ -33,6 +33,8 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
+import { getPost, getComments, createComment, deleteComment } from '../../services/CommunityService';
+import { useAuth } from '../../contexts/AuthContext';
 
 // ─── Color Mappings ────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
@@ -87,23 +89,18 @@ const STEP_GRADIENTS = [
   { from: 'from-amber-50', border: 'border-amber-100', badge: 'bg-amber-500' },
 ];
 
-// ─── Mock Post Data ────────────────────────────────────
+// ─── API Data Interfaces ────────────────────────────────
 interface PostQuestion {
-  id: number;
+  id: string;
+  seq: number;
+  label: string;
   title: string;
-  tags: string[];
-  hintStatus: HintStatus;
-  authorNotes: string | null;
-  hints: {
-    approach: string;
-    proTip: string;
-    steps: { title: string; content: string }[];
-    keyPoints: string[];
-  } | null;
+  categories: string[];
+  notes: string;
 }
 
 interface ExperiencePost {
-  id: number;
+  id: string;
   company: string;
   role: string;
   round: string;
@@ -111,17 +108,36 @@ interface ExperiencePost {
   outcome: string;
   date: string;
   location: string;
-  author: string;
-  anonymous: boolean;
   summary: string;
-  likes: number;
-  comments: number;
-  saves: number;
-  views: number;
+  status: string;
+  createdAt: string;
   questions: PostQuestion[];
 }
 
-const POST_DATA: Record<number, ExperiencePost> = {
+// ─── Comment interface matching API ─────────────────────
+interface Comment {
+  id: string;
+  user: { id: string; name: string };
+  questionSeq: number | null;
+  content: string;
+  status: string;
+  createdAt: string;
+}
+
+// Helper: format relative time
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+// ─── Unused legacy block placeholder ────────────────────
+const _LEGACY_POST_DATA_REMOVED = {
   1: {
     id: 1,
     company: 'Google',
@@ -133,7 +149,7 @@ const POST_DATA: Record<number, ExperiencePost> = {
     location: 'Mountain View, CA',
     author: 'Sarah M.',
     anonymous: false,
-    summary: 'Went through 5 rounds over 2 days. The system design round was the hardest — they asked me to design a real-time collaborative editor similar to Google Docs. Overall the interviewers were friendly and gave clear expectations upfront. I recommend practicing distributed systems concepts and being prepared to discuss trade-offs at every level of the stack.',
+    summary: 'placeholder',
     likes: 142,
     comments: 38,
     saves: 89,
@@ -216,116 +232,63 @@ const POST_DATA: Record<number, ExperiencePost> = {
           ],
         },
       },
-      {
-        id: 5,
-        title: 'How would you ensure consistency when a WebSocket node crashes mid-operation?',
-        tags: ['System Design', 'Distributed Systems'],
-        hintStatus: 'failed',
-        authorNotes: 'This was a rapid-fire follow-up. They wanted me to think about exactly what happens to in-flight operations during a failover. I talked about write-ahead logs and durable queues.',
-        hints: null,
-      },
+      // end legacy placeholder
     ],
   },
 };
-
-// Fallback post for any ID
-const DEFAULT_POST: ExperiencePost = POST_DATA[1];
-
-// ─── Mock Comments Data ────────────────────────────────
-interface Comment {
-  id: number;
-  author: string;
-  avatar: string;
-  time: string;
-  content: string;
-  likes: number;
-  referencedQuestion: { index: number; title: string } | null;
-  replies: {
-    id: number;
-    author: string;
-    avatar: string;
-    time: string;
-    content: string;
-    likes: number;
-  }[];
-}
-
-const MOCK_COMMENTS: Comment[] = [
-  {
-    id: 1,
-    author: 'Kevin L.',
-    avatar: 'KL',
-    time: '2 hours ago',
-    content: 'Thanks for sharing this! The system design round is exactly what I\'m prepping for. Quick question — did they expect you to write pseudocode for the OT algorithm, or was the discussion-level sufficient?',
-    likes: 24,
-    referencedQuestion: { index: 1, title: 'Design a real-time collaborative document editor' },
-    replies: [
-      {
-        id: 11,
-        author: 'Sarah M.',
-        avatar: 'SM',
-        time: '1 hour ago',
-        content: 'No pseudocode needed! They cared more about the architecture and trade-off analysis. I did sketch a quick sequence diagram though which helped a lot.',
-        likes: 18,
-      },
-    ],
-  },
-  {
-    id: 2,
-    author: 'Ananya D.',
-    avatar: 'AD',
-    time: '5 hours ago',
-    content: 'Super detailed writeup. I had a similar experience with the CRDT question — they really push you on the garbage collection aspect. For anyone prepping: make sure you can explain tombstones clearly.',
-    likes: 31,
-    referencedQuestion: { index: 2, title: 'How would you handle conflict resolution in CRDTs?' },
-    replies: [],
-  },
-  {
-    id: 3,
-    author: 'Marcus T.',
-    avatar: 'MT',
-    time: '1 day ago',
-    content: 'Really helpful. I\'m interviewing at Google next month for a similar role. Did you use any specific resources to prep for the system design rounds?',
-    likes: 12,
-    referencedQuestion: null,
-    replies: [
-      {
-        id: 31,
-        author: 'Sarah M.',
-        avatar: 'SM',
-        time: '22 hours ago',
-        content: 'I used "Designing Data-Intensive Applications" by Martin Kleppmann (the CRDT/OT chapters are gold), plus Screna\'s mock interviews for timed practice. The AI feedback on structuring answers was genuinely useful.',
-        likes: 42,
-      },
-      {
-        id: 32,
-        author: 'Kevin L.',
-        avatar: 'KL',
-        time: '20 hours ago',
-        content: 'Seconding DDIA — it\'s the best book for system design interviews, period.',
-        likes: 8,
-      },
-    ],
-  },
-];
-
-// ─── Related Posts ──────────────────────────────────────
-const RELATED_POSTS = [
-  { id: 101, company: 'Google', role: 'Software Engineer', round: 'Onsite - Coding', level: 'Senior', date: 'Jan 2026', author: 'Anonymous', questions: 5, likes: 98 },
-  { id: 102, company: 'Google', role: 'Software Engineer', round: 'Technical Phone Screen', level: 'Intermediate', date: 'Mar 2026', author: 'Raj P.', questions: 3, likes: 67 },
-  { id: 103, company: 'Meta', role: 'Software Engineer', round: 'Onsite - System Design', level: 'Senior', date: 'Feb 2026', author: 'Anonymous', questions: 4, likes: 112 },
-];
+void _LEGACY_POST_DATA_REMOVED;
 
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════
 export function ExperienceDetailPage() {
   const { id } = useParams();
-  const postId = id ? parseInt(id, 10) : 1;
-  const post = POST_DATA[postId] || DEFAULT_POST;
+  const { user: currentUser } = useAuth();
 
-  // Simulate whether the current viewer is the post author
-  const [isAuthor] = useState(true);
+  // ── Post data ──
+  const [post, setPost] = useState<ExperiencePost | null>(null);
+  const [postLoading, setPostLoading] = useState(true);
+
+  // ── Comments ──
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+
+  const fetchPost = useCallback(async () => {
+    if (!id) return;
+    setPostLoading(true);
+    try {
+      const res = await getPost(id);
+      const data = res.data?.data ?? res.data;
+      setPost(data);
+    } catch {
+      // silent
+    } finally {
+      setPostLoading(false);
+    }
+  }, [id]);
+
+  const fetchComments = useCallback(async () => {
+    if (!id) return;
+    setCommentsLoading(true);
+    try {
+      const res = await getComments(id, { page: 0 });
+      const data = res.data?.data ?? res.data;
+      setComments(data?.content ?? []);
+    } catch {
+      // silent
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchPost();
+    fetchComments();
+  }, [fetchPost, fetchComments]);
+
+  const [isAuthor] = useState(false);
 
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -340,25 +303,17 @@ export function ExperienceDetailPage() {
   const [newCollectionName, setNewCollectionName] = useState('');
   const savePopoverRef = useRef<HTMLDivElement>(null);
   const [shareCopied, setShareCopied] = useState(false);
-  // Auto-expand generating & failed questions so all hint states are visible
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(() => {
-    const auto = new Set<number>();
-    const p = POST_DATA[postId] || DEFAULT_POST;
-    p.questions.forEach(q => {
-      if (q.hintStatus === 'generating' || q.hintStatus === 'failed') auto.add(q.id);
-    });
-    return auto;
-  });
-  const [expandedHints, setExpandedHints] = useState<Set<number>>(new Set());
-  const [selectedQuestions, setSelectedQuestions] = useState<Set<number>>(new Set());
-  const [retryingHints, setRetryingHints] = useState<Set<number>>(new Set());
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
+  const [retryingHints, setRetryingHints] = useState<Set<string>>(new Set());
   const [commentSort, setCommentSort] = useState<'top' | 'new'>('top');
   const [commentText, setCommentText] = useState('');
   const [commentAnonymous, setCommentAnonymous] = useState(false);
-  const [referencedQ, setReferencedQ] = useState<{ index: number; title: string } | null>(null);
+  const [referencedQ, setReferencedQ] = useState<{ seq: number; title: string } | null>(null);
   const [showRefPicker, setShowRefPicker] = useState(false);
-  const [showReplyId, setShowReplyId] = useState<number | null>(null);
-  const [replyTexts, setReplyTexts] = useState<Record<number, string>>({});
+  const [showReplyId, setShowReplyId] = useState<string | null>(null);
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const refPickerRef = useRef<HTMLDivElement>(null);
 
@@ -397,7 +352,7 @@ export function ExperienceDetailPage() {
     setSaved(true);
   };
 
-  const toggleQuestion = (qId: number) => {
+  const toggleQuestion = (qId: string) => {
     setExpandedQuestions(prev => {
       const next = new Set(prev);
       next.has(qId) ? next.delete(qId) : next.add(qId);
@@ -405,7 +360,7 @@ export function ExperienceDetailPage() {
     });
   };
 
-  const toggleHint = (qId: number) => {
+  const toggleHint = (qId: string) => {
     setExpandedHints(prev => {
       const next = new Set(prev);
       next.has(qId) ? next.delete(qId) : next.add(qId);
@@ -413,7 +368,7 @@ export function ExperienceDetailPage() {
     });
   };
 
-  const toggleSelect = (qId: number) => {
+  const toggleSelect = (qId: string) => {
     setSelectedQuestions(prev => {
       const next = new Set(prev);
       next.has(qId) ? next.delete(qId) : next.add(qId);
@@ -438,18 +393,54 @@ export function ExperienceDetailPage() {
     }
   };
 
-  const selectReference = (index: number, title: string) => {
-    setReferencedQ({ index, title });
+  const selectReference = (seq: number, title: string) => {
+    setReferencedQ({ seq, title });
     setShowRefPicker(false);
-    // Remove the # from text if it was just typed
     setCommentText(prev => prev.replace(/#$/, ''));
     composerRef.current?.focus();
   };
 
-  const outcomeStyle = OUTCOME_STYLES[post.outcome] || OUTCOME_STYLES['Pending'];
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || !id) return;
+    setSubmittingComment(true);
+    try {
+      const body: { content: string; isAnonymous: boolean; questionSeq?: number } = {
+        content: commentText.trim(),
+        isAnonymous: commentAnonymous,
+      };
+      if (referencedQ) body.questionSeq = referencedQ.seq;
+      await createComment(id, body);
+      setCommentText('');
+      setReferencedQ(null);
+      setCommentAnonymous(false);
+      await fetchComments();
+    } catch {
+      // silent
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
 
-  const sortedComments = [...MOCK_COMMENTS].sort((a, b) =>
-    commentSort === 'top' ? b.likes - a.likes : 0
+  const handleDeleteComment = async (commentId: string) => {
+    setDeletingCommentId(commentId);
+    try {
+      await deleteComment(commentId);
+      setComments(prev => prev.filter(c => c.id !== commentId));
+    } catch {
+      // silent
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  const outcomeStyle = post
+    ? (OUTCOME_STYLES[post.outcome] || OUTCOME_STYLES['Pending'])
+    : OUTCOME_STYLES['Pending'];
+
+  const sortedComments = [...comments].sort((a, b) =>
+    commentSort === 'new'
+      ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
   return (
@@ -468,6 +459,17 @@ export function ExperienceDetailPage() {
             Interview Insights
           </Link>
 
+          {postLoading && (
+            <div className="flex items-center justify-center py-32">
+              <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)]" />
+            </div>
+          )}
+
+          {!postLoading && !post && (
+            <div className="text-center py-32 text-[hsl(222,12%,45%)]">Post not found.</div>
+          )}
+
+          {!postLoading && post && (
           <div className="flex flex-col lg:flex-row gap-8">
 
             {/* ═══ LEFT: Main Content ═══ */}
@@ -506,12 +508,8 @@ export function ExperienceDetailPage() {
                 {/* Meta */}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-[hsl(222,12%,50%)] mb-5">
                   <span className="flex items-center gap-1">
-                    <User className="w-3 h-3" />
-                    {post.anonymous ? 'Anonymous' : post.author}
-                  </span>
-                  <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {post.date}
+                    {post.date ? new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''}
                   </span>
                   {post.location && (
                     <span className="flex items-center gap-1">
@@ -519,10 +517,6 @@ export function ExperienceDetailPage() {
                       {post.location}
                     </span>
                   )}
-                  <span className="flex items-center gap-1">
-                    <Eye className="w-3 h-3" />
-                    {post.views.toLocaleString()} views
-                  </span>
                 </div>
 
                 {/* Stats + Actions */}
@@ -533,11 +527,11 @@ export function ExperienceDetailPage() {
                       className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
                     >
                       <ThumbsUp className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
-                      {post.likes + (liked ? 1 : 0)}
+                      {liked ? 1 : 0}
                     </button>
                     <a href="#discussion" className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors">
                       <MessageSquare className="w-4 h-4" />
-                      {post.comments}
+                      {comments.length}
                     </a>
                     <div className="relative" ref={savePopoverRef}>
                       <button
@@ -545,7 +539,7 @@ export function ExperienceDetailPage() {
                         className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
                       >
                         <Bookmark className={`w-4 h-4 ${saved ? 'fill-current' : ''}`} />
-                        {post.saves + (saved ? 1 : 0)}
+                        {saved ? 1 : 0}
                       </button>
                       <AnimatePresence>
                         {showSavePopover && (
@@ -680,7 +674,7 @@ export function ExperienceDetailPage() {
                     const isExpanded = expandedQuestions.has(q.id);
                     const isHintExpanded = expandedHints.has(q.id);
                     const isSelected = selectedQuestions.has(q.id);
-                    const hintInfo = HINT_STATUS_MAP[q.hintStatus];
+                    const hintInfo = HINT_STATUS_MAP['failed'];
 
                     return (
                       <div
@@ -730,7 +724,7 @@ export function ExperienceDetailPage() {
                                   </h3>
                                 </button>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                  {q.tags.map(tag => (
+                                  {q.categories.map(tag => (
                                     <span key={tag} className="px-2 py-0.5 rounded-full bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-[10px] text-[hsl(222,12%,45%)]">
                                       {tag}
                                     </span>
@@ -766,22 +760,22 @@ export function ExperienceDetailPage() {
                               <div className="px-5 md:px-6 pb-5 md:pb-6 ml-8">
 
                                 {/* Author Notes */}
-                                {q.authorNotes && (
+                                {q.notes && (
                                   <div className="mb-4 bg-[hsl(220,20%,98%)] rounded-xl p-4 border border-[hsl(220,16%,92%)]">
                                     <div className="flex items-center gap-2 mb-2">
                                       <div className="w-5 h-5 rounded-full bg-[hsl(222,12%,85%)] flex items-center justify-center text-[8px] font-bold text-[hsl(222,22%,15%)]">
-                                        {post.anonymous ? '?' : post.author[0]}
+                                        A
                                       </div>
                                       <span className="text-xs font-medium text-[hsl(222,12%,45%)]">Author's notes</span>
                                     </div>
-                                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed">{q.authorNotes}</p>
+                                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed">{q.notes}</p>
                                   </div>
                                 )}
 
                                 {/* ━━━ AI Hints Module ━━━ */}
 
                                 {/* ── STATE: Ready ── */}
-                                {q.hintStatus === 'ready' && q.hints && (
+                                {false && (
                                   <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
                                     {/* Toggle header */}
                                     <button
@@ -884,7 +878,7 @@ export function ExperienceDetailPage() {
                                 )}
 
                                 {/* ── STATE: Generating (skeleton) ── */}
-                                {q.hintStatus === 'generating' && (
+                                {false && (
                                   <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
                                     {/* Locked header — matches Ready header structure */}
                                     <div className="flex items-center justify-between px-5 py-4">
@@ -971,7 +965,7 @@ export function ExperienceDetailPage() {
                                 )}
 
                                 {/* ── STATE: Failed ── */}
-                                {q.hintStatus === 'failed' && !retryingHints.has(q.id) && (
+                                {!retryingHints.has(q.id) && (
                                   <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                                     {/* Header — calm, not alarming */}
                                     <div className="flex items-center justify-between px-5 py-4">
@@ -1102,7 +1096,7 @@ export function ExperienceDetailPage() {
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
                     Discussion
-                    <span className="ml-2 text-sm font-normal text-[hsl(222,12%,55%)]">({MOCK_COMMENTS.length})</span>
+                    <span className="ml-2 text-sm font-normal text-[hsl(222,12%,55%)]">({comments.length})</span>
                   </h2>
                   <div className="flex items-center gap-1 bg-[hsl(220,20%,98%)] rounded-lg p-0.5">
                     {(['top', 'new'] as const).map(s => (
@@ -1127,7 +1121,7 @@ export function ExperienceDetailPage() {
                   {referencedQ && (
                     <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-[hsl(221,91%,60%)]/8 rounded-lg border border-[hsl(221,91%,60%)]/15">
                       <Hash className="w-3 h-3 text-[hsl(221,91%,60%)]" />
-                      <span className="text-xs text-[hsl(221,91%,60%)] font-medium">Q{referencedQ.index}</span>
+                      <span className="text-xs text-[hsl(221,91%,60%)] font-medium">Q{referencedQ.seq}</span>
                       <span className="text-xs text-[hsl(222,12%,40%)] truncate flex-1">{referencedQ.title}</span>
                       <button onClick={() => setReferencedQ(null)} className="text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]">
                         <X className="w-3 h-3" />
@@ -1162,7 +1156,7 @@ export function ExperienceDetailPage() {
                             {post.questions.map((pq, pqi) => (
                               <button
                                 key={pq.id}
-                                onClick={() => selectReference(pqi + 1, pq.title)}
+                                onClick={() => selectReference(pq.seq, pq.title)}
                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] transition-colors flex items-start gap-2"
                               >
                                 <span className="text-[10px] font-bold text-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/10 px-1.5 py-0.5 rounded shrink-0">Q{pqi + 1}</span>
@@ -1194,11 +1188,12 @@ export function ExperienceDetailPage() {
                             Post anonymously
                           </label>
                           <Button
-                            disabled={!commentText.trim()}
+                            disabled={!commentText.trim() || submittingComment}
                             size="sm"
+                            onClick={handleSubmitComment}
                             className="bg-[hsl(222,22%,15%)] hover:bg-[hsl(222,22%,20%)] text-white rounded-lg h-8 text-xs px-4 disabled:opacity-40"
                           >
-                            Post comment
+                            {submittingComment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Post comment'}
                           </Button>
                         </div>
                       </div>
@@ -1207,25 +1202,42 @@ export function ExperienceDetailPage() {
                 </div>
 
                 {/* Comments list */}
+                {commentsLoading && (
+                  <div className="flex justify-center py-6">
+                    <Loader2 className="w-5 h-5 animate-spin text-[hsl(222,12%,60%)]" />
+                  </div>
+                )}
+                {!commentsLoading && sortedComments.length === 0 && (
+                  <p className="text-sm text-[hsl(222,12%,55%)] text-center py-6">No comments yet. Be the first!</p>
+                )}
                 <div className="space-y-5">
-                  {sortedComments.map(comment => (
+                  {sortedComments.map(comment => {
+                    const authorInitials = comment.user.name
+                      ? comment.user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+                      : '?';
+                    const refQuestion = comment.questionSeq
+                      ? post.questions.find(q => q.seq === comment.questionSeq)
+                      : null;
+                    const isOwn = currentUser?.id === comment.user.id;
+
+                    return (
                     <div key={comment.id} className="group">
                       <div className="flex gap-3">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[hsl(221,91%,90%)] to-[hsl(221,91%,80%)] flex items-center justify-center text-[hsl(221,91%,50%)] text-[11px] font-bold shrink-0">
-                          {comment.avatar}
+                          {authorInitials}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{comment.author}</span>
-                            <span className="text-xs text-[hsl(222,12%,55%)]">· {comment.time}</span>
+                            <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{comment.user.name || 'Anonymous'}</span>
+                            <span className="text-xs text-[hsl(222,12%,55%)]">· {formatRelativeTime(comment.createdAt)}</span>
                           </div>
 
                           {/* Referenced question block */}
-                          {comment.referencedQuestion && (
+                          {refQuestion && (
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-[hsl(221,91%,60%)]/6 rounded-lg border border-[hsl(221,91%,60%)]/10 mb-2 max-w-md">
                               <Hash className="w-3 h-3 text-[hsl(221,91%,60%)]" />
-                              <span className="text-[10px] font-bold text-[hsl(221,91%,60%)]">Q{comment.referencedQuestion.index}</span>
-                              <span className="text-[11px] text-[hsl(222,12%,40%)] truncate">{comment.referencedQuestion.title}</span>
+                              <span className="text-[10px] font-bold text-[hsl(221,91%,60%)]">Q{comment.questionSeq}</span>
+                              <span className="text-[11px] text-[hsl(222,12%,40%)] truncate">{refQuestion.title}</span>
                             </div>
                           )}
 
@@ -1233,10 +1245,6 @@ export function ExperienceDetailPage() {
 
                           {/* Comment actions */}
                           <div className="flex items-center gap-4 text-[hsl(222,12%,55%)]">
-                            <button className="flex items-center gap-1 text-xs hover:text-[hsl(221,91%,60%)] transition-colors">
-                              <ThumbsUp className="w-3 h-3" />
-                              {comment.likes}
-                            </button>
                             <button
                               onClick={() => setShowReplyId(showReplyId === comment.id ? null : comment.id)}
                               className="flex items-center gap-1 text-xs hover:text-[hsl(221,91%,60%)] transition-colors"
@@ -1244,41 +1252,25 @@ export function ExperienceDetailPage() {
                               <MessageSquare className="w-3 h-3" />
                               Reply
                             </button>
-                            <button className="flex items-center gap-1 text-xs hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                              <Flag className="w-3 h-3" />
-                              Report
-                            </button>
+                            {isOwn && (
+                              <button
+                                onClick={() => handleDeleteComment(comment.id)}
+                                disabled={deletingCommentId === comment.id}
+                                className="flex items-center gap-1 text-xs hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                {deletingCommentId === comment.id
+                                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                                  : <X className="w-3 h-3" />}
+                                Delete
+                              </button>
+                            )}
+                            {!isOwn && (
+                              <button className="flex items-center gap-1 text-xs hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <Flag className="w-3 h-3" />
+                                Report
+                              </button>
+                            )}
                           </div>
-
-                          {/* Replies */}
-                          {comment.replies.length > 0 && (
-                            <div className="mt-3 space-y-3 pl-1 border-l-2 border-[hsl(220,16%,92%)] ml-1">
-                              {comment.replies.map(reply => (
-                                <div key={reply.id} className="flex gap-2.5 pl-3 group/reply">
-                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[hsl(221,91%,92%)] to-[hsl(221,91%,85%)] flex items-center justify-center text-[hsl(221,91%,50%)] text-[9px] font-bold shrink-0">
-                                    {reply.avatar}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                      <span className="text-[13px] font-semibold text-[hsl(222,22%,15%)]">{reply.author}</span>
-                                      <span className="text-[11px] text-[hsl(222,12%,55%)]">· {reply.time}</span>
-                                    </div>
-                                    <p className="text-[13px] text-[hsl(222,12%,30%)] leading-relaxed mb-1.5">{reply.content}</p>
-                                    <div className="flex items-center gap-3 text-[hsl(222,12%,55%)]">
-                                      <button className="flex items-center gap-1 text-[11px] hover:text-[hsl(221,91%,60%)] transition-colors">
-                                        <ThumbsUp className="w-2.5 h-2.5" />
-                                        {reply.likes}
-                                      </button>
-                                      <button className="flex items-center gap-1 text-[11px] hover:text-red-500 transition-colors opacity-0 group-hover/reply:opacity-100">
-                                        <Flag className="w-2.5 h-2.5" />
-                                        Report
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
 
                           {/* Reply composer */}
                           <AnimatePresence>
@@ -1314,40 +1306,13 @@ export function ExperienceDetailPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* ── Section 5: Related Posts ── */}
-              <div>
-                <h2 className="text-lg font-semibold text-[hsl(222,22%,15%)] mb-4 px-1">Related Experiences</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {RELATED_POSTS.map(rp => (
-                    <Link
-                      key={rp.id}
-                      to={`/experience/${rp.id}`}
-                      className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-4 hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 group"
-                    >
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
-                          {rp.company[0]}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors">{rp.company}</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-[hsl(222,12%,40%)] mb-2">{rp.role} · {rp.round}</p>
-                      <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${DIFFICULTY_COLORS[rp.level] || ''}`}>{rp.level}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[10px] text-[hsl(222,12%,55%)]">
-                        <span>{rp.questions} questions</span>
-                        <span className="flex items-center gap-1"><ThumbsUp className="w-2.5 h-2.5" />{rp.likes}</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              {/* ── Section 5: Related Posts placeholder ── */}
+              <div />
             </div>
 
             {/* ═══ RIGHT SIDEBAR ═══ */}
@@ -1367,7 +1332,7 @@ export function ExperienceDetailPage() {
                       { label: 'Round', value: post.round },
                       { label: 'Level', value: post.level },
                       { label: 'Outcome', value: post.outcome },
-                      { label: 'Date', value: post.date },
+                      { label: 'Date', value: post.date ? new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '' },
                       { label: 'Location', value: post.location },
                     ].filter(item => item.value).map(item => (
                       <div key={item.label} className="flex items-center justify-between">
@@ -1383,7 +1348,7 @@ export function ExperienceDetailPage() {
                   <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-3">Questions in this post</h4>
                   <div className="space-y-1.5">
                     {post.questions.map((q, qi) => {
-                      const hintInfo = HINT_STATUS_MAP[q.hintStatus];
+                      const hintInfo = HINT_STATUS_MAP['failed'];
                       return (
                         <button
                           key={q.id}
@@ -1407,7 +1372,7 @@ export function ExperienceDetailPage() {
                                   Retrying…
                                 </span>
                               ) : (
-                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-medium ${q.hintStatus === 'ready' ? 'text-emerald-600' : q.hintStatus === 'generating' ? 'text-amber-600' : 'text-slate-500'}`}>
+                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-medium text-slate-500`}>
                                   {hintInfo.icon}
                                   {hintInfo.label}
                                 </span>
@@ -1435,6 +1400,7 @@ export function ExperienceDetailPage() {
             </div>
 
           </div>
+          )}
         </div>
       </main>
 
