@@ -177,7 +177,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   // Stage state — if mode is in URL params, skip modeSelect
   const [stage, setStage] = useState<Stage>(() => {
     const modeParam = searchParams.get('mode') as Mode | null;
-    return modeParam ? 'warmup' : 'modeSelect';
+    return modeParam ? 'live' : 'modeSelect';
   });
 
   // Config state — initialise from URL params
@@ -574,65 +574,33 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   // Show loading during initial check (very brief, no API call)
   if (isValidating) {
     return (
-      <Box 
-        sx={{
-          minHeight: '100vh',
-          backgroundColor: '#f8fafc',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Card sx={{ p: 6, maxWidth: 500, textAlign: 'center', border: '1px solid #e2e8f0'}}>
-          <CircularProgress size={48} sx={{ mb: 3, color: '#3b82f6' }} />
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: '#1e293b' }}>
-            Loading Interview
-          </Typography>
-          <Typography variant="body1" color="#64748b">
-            Please wait...
-          </Typography>
-        </Card>
-      </Box>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="p-10 max-w-md w-full text-center border border-slate-200 rounded-xl bg-white shadow-sm">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">Loading Interview</h2>
+          <p className="text-slate-500">Please wait...</p>
+        </div>
+      </div>
     );
   }
 
   // Show error state if interview is not valid
   if (interviewStatus !== 'valid') {
     const statusInfo = getStatusMessage();
-    
+
     if (statusInfo) {
       return (
-        <Box 
-          sx={{
-            minHeight: '100vh',
-            backgroundColor: '#f8fafc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <Card sx={{ p: 6, maxWidth: 600, border: '1px solid #e2e8f0' }}>
-            <Alert 
-              severity={statusInfo.severity} 
-              sx={{ 
-                mb: 3,
-                '& .MuiAlert-message': {
-                  width: '100%'
-                }
-              }}
-            >
-              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-                {statusInfo.title}
-              </Typography>
-              <Typography variant="body1">
-                {statusInfo.message}
-              </Typography>
-            </Alert>
-            <Typography variant="body2" color="#64748b" textAlign="center">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="p-10 max-w-lg w-full border border-slate-200 rounded-xl bg-white shadow-sm">
+            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
+              <h3 className="text-base font-semibold text-red-800 mb-1">{statusInfo.title}</h3>
+              <p className="text-sm text-red-700">{statusInfo.message}</p>
+            </div>
+            <p className="text-xs text-slate-500 text-center">
               Please contact the administrator if you believe this is an error.
-            </Typography>
-          </Card>
-        </Box>
+            </p>
+          </div>
+        </div>
       );
     }
   }

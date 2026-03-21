@@ -100,7 +100,7 @@ export function HistoryPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4 flex-wrap">
             <h2 className="text-lg font-semibold text-[hsl(222,22%,15%)]">Recent Sessions</h2>
-            <div className="flex items-center gap-2 text-sm text-[hsl(222,12%,50%)]">
+            {/* <div className="flex items-center gap-2 text-sm text-[hsl(222,12%,50%)]">
               {TYPE_FILTERS.map((f) => (
                 <span
                   key={f}
@@ -114,12 +114,12 @@ export function HistoryPage() {
                   {f}
                 </span>
               ))}
-            </div>
+            </div> */}
           </div>
-          <Button variant="outline" className="gap-2">
+          {/* <Button variant="outline" className="gap-2">
             <Calendar className="w-4 h-4" />
             Filter by Date
-          </Button>
+          </Button> */}
         </div>
 
         {/* Loading state */}
@@ -240,9 +240,9 @@ export function HistoryPage() {
                     >
                       View Report
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-gray-400">
+                    {/* <Button variant="ghost" size="icon" className="text-gray-400">
                       <MoreVertical className="w-4 h-4" />
-                    </Button>
+                    </Button> */}
                   </div>
                 </div>
               </motion.div>

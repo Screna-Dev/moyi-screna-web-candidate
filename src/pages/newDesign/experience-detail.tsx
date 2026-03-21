@@ -34,6 +34,7 @@ import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPost, getComments, createComment, deleteComment } from '../../services/CommunityService';
+import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 
 // ─── Color Mappings ────────────────────────────────────
@@ -307,6 +308,9 @@ export function ExperienceDetailPage() {
   const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [retryingHints, setRetryingHints] = useState<Set<string>>(new Set());
+  const [hintsData, setHintsData] = useState<Record<string, { suggested_approach: string; pro_tip: string; framework: { step: number; title: string; description: string }[]; key_points_to_mention: string[] }>>({});
+  const [hintsLoadingSet, setHintsLoadingSet] = useState<Set<string>>(new Set());
+  const [hintsFailedSet, setHintsFailedSet] = useState<Set<string>>(new Set());
   const [commentSort, setCommentSort] = useState<'top' | 'new'>('top');
   const [commentText, setCommentText] = useState('');
   const [commentAnonymous, setCommentAnonymous] = useState(false);
@@ -352,12 +356,30 @@ export function ExperienceDetailPage() {
     setSaved(true);
   };
 
+  const fetchHints = (qId: string) => {
+    if (hintsData[qId] || hintsLoadingSet.has(qId)) return;
+    setHintsFailedSet(prev => { const s = new Set(prev); s.delete(qId); return s; });
+    setHintsLoadingSet(prev => { const s = new Set(prev); s.add(qId); return s; });
+    getQuestionAiHints(qId)
+      .then((res: { data: { data?: unknown } | unknown }) => {
+        const data = (res as { data: { data?: unknown } }).data?.data ?? (res as { data: unknown }).data;
+        setHintsData(prev => ({ ...prev, [qId]: data as { suggested_approach: string; pro_tip: string; framework: { step: number; title: string; description: string }[]; key_points_to_mention: string[] } }));
+      })
+      .catch(() => {
+        setHintsFailedSet(prev => { const s = new Set(prev); s.add(qId); return s; });
+      })
+      .finally(() => {
+        setHintsLoadingSet(prev => { const s = new Set(prev); s.delete(qId); return s; });
+      });
+  };
+
   const toggleQuestion = (qId: string) => {
     setExpandedQuestions(prev => {
       const next = new Set(prev);
       next.has(qId) ? next.delete(qId) : next.add(qId);
       return next;
     });
+    if (!expandedQuestions.has(qId)) fetchHints(qId);
   };
 
   const toggleHint = (qId: string) => {
@@ -775,7 +797,7 @@ export function ExperienceDetailPage() {
                                 {/* ━━━ AI Hints Module ━━━ */}
 
                                 {/* ── STATE: Ready ── */}
-                                {false && (
+                                {hintsData[q.id] && (
                                   <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
                                     {/* Toggle header */}
                                     <button
@@ -828,26 +850,28 @@ export function ExperienceDetailPage() {
                                                 </span>
                                                 <h4 className="text-[15px] font-bold text-slate-800">Suggested Approach</h4>
                                               </div>
-                                              <p className="text-[13px] text-slate-600 leading-[1.7] mb-3">{q.hints.approach}</p>
+                                              <p className="text-[13px] text-slate-600 leading-[1.7] mb-3">{hintsData[q.id]?.suggested_approach}</p>
+                                              {hintsData[q.id]?.pro_tip && (
                                               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[13px]">
                                                 <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
-                                                <span className="text-amber-800"><strong>Pro tip:</strong> {q.hints.proTip}</span>
+                                                <span className="text-amber-800"><strong>Pro tip:</strong> {hintsData[q.id]?.pro_tip}</span>
                                               </div>
+                                              )}
                                             </div>
 
                                             {/* Steps */}
                                             <div className="space-y-2.5 mb-4">
-                                              {q.hints.steps.map((step, si) => {
+                                              {(hintsData[q.id]?.framework ?? []).map((step, si) => {
                                                 const g = STEP_GRADIENTS[si % STEP_GRADIENTS.length];
                                                 return (
-                                                  <div key={si} className={`bg-gradient-to-br ${g.from} to-white p-4 rounded-xl border ${g.border}`}>
+                                                  <div key={step.step} className={`bg-gradient-to-br ${g.from} to-white p-4 rounded-xl border ${g.border}`}>
                                                     <div className="flex items-start gap-3">
                                                       <span className={`w-7 h-7 rounded-full ${g.badge} text-white flex items-center justify-center text-[12px] font-bold shrink-0 mt-0.5`}>
-                                                        {si + 1}
+                                                        {step.step}
                                                       </span>
                                                       <div>
                                                         <h4 className="text-[14px] font-bold text-slate-800 mb-1">{step.title}</h4>
-                                                        <p className="text-[13px] text-slate-600 leading-[1.65]">{step.content}</p>
+                                                        <p className="text-[13px] text-slate-600 leading-[1.65]">{step.description}</p>
                                                       </div>
                                                     </div>
                                                   </div>
@@ -862,7 +886,7 @@ export function ExperienceDetailPage() {
                                                 Key Points to Mention
                                               </h4>
                                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {q.hints.keyPoints.map((point, pi) => (
+                                                {(hintsData[q.id]?.key_points_to_mention ?? []).map((point, pi) => (
                                                   <div key={pi} className="flex items-start gap-2 px-3 py-2 bg-white rounded-lg border border-slate-100 text-[12px]">
                                                     <Check className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
                                                     <span className="text-slate-600">{point}</span>
@@ -878,7 +902,7 @@ export function ExperienceDetailPage() {
                                 )}
 
                                 {/* ── STATE: Generating (skeleton) ── */}
-                                {false && (
+                                {hintsLoadingSet.has(q.id) && (
                                   <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
                                     {/* Locked header — matches Ready header structure */}
                                     <div className="flex items-center justify-between px-5 py-4">
@@ -965,7 +989,7 @@ export function ExperienceDetailPage() {
                                 )}
 
                                 {/* ── STATE: Failed ── */}
-                                {!retryingHints.has(q.id) && (
+                                {!hintsData[q.id] && !hintsLoadingSet.has(q.id) && hintsFailedSet.has(q.id) && !retryingHints.has(q.id) && (
                                   <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                                     {/* Header — calm, not alarming */}
                                     <div className="flex items-center justify-between px-5 py-4">

@@ -10,15 +10,9 @@ import {
   Check,
   Plus,
   Trash2,
-  Search,
-  Sparkles,
-  Link2,
   FileText,
   Eye,
   ChevronDown,
-  Share2,
-  Bot,
-  PartyPopper,
   X,
   Info,
   User,
@@ -228,29 +222,12 @@ const toRoleEnum = (v: string) => ROLE_TO_ENUM[v] ?? v.toUpperCase().replace(/\s
 const toRoundEnum = (v: string) => ROUND_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 const toCategoryEnum = (v: string) => CATEGORY_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 
-// ─── Canonical question bank (mock) ────────────────────
-const CANONICAL_QUESTIONS = [
-  { id: 'c1', title: 'Design a URL shortener', tags: ['System Design'], hintsAvailable: true },
-  { id: 'c2', title: 'Implement an LRU cache', tags: ['Algorithms & Data Structures'], hintsAvailable: true },
-  { id: 'c3', title: 'Design a real-time collaborative editor', tags: ['System Design', 'Distributed Systems'], hintsAvailable: true },
-  { id: 'c4', title: 'How would you improve Instagram Stories?', tags: ['Product Sense & Ideation'], hintsAvailable: true },
-  { id: 'c5', title: 'Find the minimum window substring', tags: ['Algorithms & Data Structures'], hintsAvailable: true },
-  { id: 'c6', title: 'Design a notification delivery system', tags: ['System Design'], hintsAvailable: true },
-  { id: 'c7', title: 'How would you measure success for a new feature?', tags: ['Product Analytics & Metrics'], hintsAvailable: false },
-  { id: 'c8', title: 'Tell me about a time you handled conflict', tags: ['Behavioral', 'Conflict Resolution'], hintsAvailable: true },
-  { id: 'c9', title: 'Design an A/B testing framework', tags: ['A/B Testing & Experimentation', 'System Design'], hintsAvailable: true },
-  { id: 'c10', title: 'How would you prioritize tech debt vs features?', tags: ['Roadmap Prioritization'], hintsAvailable: false },
-  { id: 'c11', title: 'Explain the CAP theorem with a real example', tags: ['System Design', 'Technical Trade-offs'], hintsAvailable: true },
-  { id: 'c12', title: 'Design a rate limiter', tags: ['System Design', 'API & Integrations'], hintsAvailable: true },
-];
 
 interface QuestionEntry {
   id: string;
   title: string;
   tags: string[];
   notes: string;
-  linkedCanonicalId: string | null;
-  isNew: boolean;
 }
 
 // ─── Dropdown select component ─────────────────────────
@@ -262,6 +239,7 @@ function DropdownSelect({
   value,
   onChange,
   optional = false,
+  hasError = false,
 }: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -270,6 +248,7 @@ function DropdownSelect({
   value: string;
   onChange: (v: string) => void;
   optional?: boolean;
+  hasError?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -327,12 +306,13 @@ function DropdownSelect({
     <div className="space-y-1.5" ref={ref}>
       <Label className="text-[hsl(222,12%,45%)] text-sm flex items-center gap-1">
         {label}
+        {!optional && <span className="text-red-400">*</span>}
         {optional && <span className="text-[hsl(222,12%,70%)] text-xs ml-1">(optional)</span>}
       </Label>
       <div className="relative">
         <div
           className={`w-full h-11 px-3 rounded-xl border bg-[hsl(220,20%,99%)] flex items-center gap-2.5 transition-all ${
-            open ? 'border-[hsl(221,91%,60%)] ring-2 ring-[hsl(221,91%,60%)]/20' : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
+            open ? 'border-[hsl(221,91%,60%)] ring-2 ring-[hsl(221,91%,60%)]/20' : hasError && !value ? 'border-red-400 ring-2 ring-red-400/20' : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
           }`}
         >
           <Icon className="w-4 h-4 text-[hsl(222,12%,55%)] shrink-0" />
@@ -415,9 +395,11 @@ function DropdownSelect({
 function RoleSelect({
   value,
   onChange,
+  hasError = false,
 }: {
   value: string;
   onChange: (v: string) => void;
+  hasError?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
@@ -539,11 +521,11 @@ function RoleSelect({
 
   return (
     <div className="space-y-1.5" ref={ref}>
-      <Label className="text-[hsl(222,12%,45%)] text-sm flex items-center gap-1">Role</Label>
+      <Label className="text-[hsl(222,12%,45%)] text-sm flex items-center gap-1">Role <span className="text-red-400">*</span></Label>
       <div className="relative">
         <div
           className={`w-full h-11 px-3 rounded-xl border bg-[hsl(220,20%,99%)] flex items-center gap-2.5 transition-all ${
-            open ? 'border-[hsl(221,91%,60%)] ring-2 ring-[hsl(221,91%,60%)]/20' : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
+            open ? 'border-[hsl(221,91%,60%)] ring-2 ring-[hsl(221,91%,60%)]/20' : hasError && !value ? 'border-red-400 ring-2 ring-red-400/20' : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
           }`}
         >
           <Briefcase className="w-4 h-4 text-[hsl(222,12%,55%)] shrink-0" />
@@ -610,117 +592,27 @@ function RoleSelect({
   );
 }
 
-// ─── Question auto-suggest ─────────────────────────────
-function QuestionAutoSuggest({
+// ─── Question title input ───────────────────────────────
+function QuestionTitleInput({
   value,
   onChange,
-  onLink,
-  onCreateNew,
+  hasError = false,
 }: {
   value: string;
   onChange: (v: string) => void;
-  onLink: (q: typeof CANONICAL_QUESTIONS[0]) => void;
-  onCreateNew: () => void;
+  hasError?: boolean;
 }) {
-  const [focused, setFocused] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setFocused(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const suggestions = value.length >= 2
-    ? CANONICAL_QUESTIONS.filter(q => q.title.toLowerCase().includes(value.toLowerCase())).slice(0, 5)
-    : [];
-
-  const showDropdown = focused && value.length >= 2;
-
   return (
-    <div className="relative" ref={ref}>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
-        <input
-          type="text"
-          placeholder="Search existing questions or type a new one..."
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,99%)] text-sm outline-none focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 transition-all"
-        />
-      </div>
-
-      <AnimatePresence>
-        {showDropdown && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 overflow-hidden"
-          >
-            {suggestions.length > 0 && (
-              <div className="p-1.5">
-                <p className="px-2.5 py-1.5 text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">Existing questions</p>
-                {suggestions.map(s => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => onLink(s)}
-                    className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-[hsl(220,20%,98%)] transition-colors group/sug"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-[hsl(222,22%,15%)] group-hover/sug:text-[hsl(221,91%,60%)] transition-colors">{s.title}</p>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          {s.tags.slice(0, 2).map(t => (
-                            <span key={t} className="px-1.5 py-0.5 rounded-md bg-[hsl(220,20%,97%)] text-[hsl(222,12%,55%)] text-[10px]">{t}</span>
-                          ))}
-                          {s.hintsAvailable && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-medium flex items-center gap-0.5">
-                              <Sparkles className="w-2.5 h-2.5" />
-                              Hints available
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <span className="shrink-0 text-[10px] font-medium text-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/10 px-2 py-0.5 rounded-full flex items-center gap-1 mt-0.5">
-                        <Link2 className="w-2.5 h-2.5" />
-                        Link
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {value.length >= 2 && (
-              <div className="border-t border-[hsl(220,16%,94%)] p-1.5">
-                <button
-                  type="button"
-                  onClick={onCreateNew}
-                  className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-[hsl(220,20%,98%)] transition-colors flex items-center gap-2"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-[hsl(221,91%,60%)]/10 flex items-center justify-center shrink-0">
-                    <Plus className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[hsl(222,22%,15%)]">Create new: "{value}"</p>
-                    <p className="text-[10px] text-[hsl(222,12%,55%)]">AI Hints will be generated after publishing</p>
-                  </div>
-                </button>
-              </div>
-            )}
-            {suggestions.length === 0 && value.length >= 2 && (
-              <div className="px-3 py-3 text-xs text-[hsl(222,12%,55%)] text-center border-b border-[hsl(220,16%,94%)]">
-                No matching questions found
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="relative">
+      <input
+        type="text"
+        placeholder="Type your interview question..."
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={`w-full px-4 py-2.5 rounded-xl border bg-[hsl(220,20%,99%)] text-sm outline-none focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 transition-all ${
+          hasError && !value.trim() ? 'border-red-400 ring-2 ring-red-400/20' : 'border-[hsl(220,16%,90%)]'
+        }`}
+      />
     </div>
   );
 }
@@ -728,15 +620,25 @@ function QuestionAutoSuggest({
 // ─── Month / Year Picker ───────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CURRENT_YEAR = new Date().getFullYear();
-const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 4 + i);
+const YEARS = Array.from({ length: CURRENT_YEAR - 2009 }, (_, i) => CURRENT_YEAR - i);
 
-function MonthYearPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function MonthYearPicker({ value, onChange, hasError = false }: { value: string; onChange: (v: string) => void; hasError?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [pendingMonth, setPendingMonth] = useState('');
+  const [pendingYear, setPendingYear] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   const parts = value.split(' ');
   const selectedMonth = parts[0] || '';
   const selectedYear = parts[1] || '';
+
+  // Sync pending state when picker opens
+  useEffect(() => {
+    if (open) {
+      setPendingMonth(selectedMonth);
+      setPendingYear(selectedYear);
+    }
+  }, [open]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -746,25 +648,19 @@ function MonthYearPicker({ value, onChange }: { value: string; onChange: (v: str
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const pick = (month: string, year: string) => {
-    const m = month || selectedMonth;
-    const y = year || selectedYear;
-    if (m && y) {
-      onChange(`${m} ${y}`);
+  const confirm = (month: string, year: string) => {
+    if (month && year) {
+      onChange(`${month} ${year}`);
       setOpen(false);
-    } else {
-      onChange(`${m} ${y}`.trim());
     }
   };
 
   return (
     <div className="space-y-1.5" ref={ref}>
       <label className="text-[hsl(222,12%,45%)] text-sm flex items-center gap-1">
-        Date
-        <span className="text-[hsl(222,12%,70%)] text-xs ml-1">(optional)</span>
+        Date <span className="text-red-400">*</span>
       </label>
       <div className="relative">
-        {/* Using div instead of button to avoid nested-button hydration error */}
         <div
           role="button"
           tabIndex={0}
@@ -773,7 +669,9 @@ function MonthYearPicker({ value, onChange }: { value: string; onChange: (v: str
           className={`w-full h-11 px-3 rounded-xl border bg-[hsl(220,20%,99%)] flex items-center gap-2.5 cursor-pointer transition-all ${
             open
               ? 'border-[hsl(221,91%,60%)] ring-2 ring-[hsl(221,91%,60%)]/20'
-              : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
+              : hasError && !value
+                ? 'border-red-400 ring-2 ring-red-400/20'
+                : 'border-[hsl(220,16%,90%)] hover:border-[hsl(220,16%,82%)]'
           }`}
         >
           <Calendar className="w-4 h-4 text-[hsl(222,12%,55%)] shrink-0" />
@@ -802,40 +700,40 @@ function MonthYearPicker({ value, onChange }: { value: string; onChange: (v: str
               transition={{ duration: 0.15 }}
               className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 p-3"
             >
-              {/* Year */}
-              <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-2">Year</p>
-              <div className="flex gap-1.5 mb-4 flex-wrap">
-                {YEARS.map(y => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => pick(selectedMonth, String(y))}
-                    className={`flex-1 min-w-[3.5rem] py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      selectedYear === String(y)
-                        ? 'bg-[hsl(221,91%,60%)] text-white'
-                        : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-
               {/* Month */}
               <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-2">Month</p>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5 mb-4">
                 {MONTHS.map(m => (
                   <button
                     key={m}
                     type="button"
-                    onClick={() => pick(m, selectedYear)}
+                    onClick={() => { setPendingMonth(m); confirm(m, pendingYear); }}
                     className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMonth === m
+                      pendingMonth === m
                         ? 'bg-[hsl(221,91%,60%)] text-white'
                         : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
                     }`}
                   >
                     {m}
+                  </button>
+                ))}
+              </div>
+
+              {/* Year */}
+              <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-2">Year</p>
+              <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
+                {YEARS.map(y => (
+                  <button
+                    key={y}
+                    type="button"
+                    onClick={() => { setPendingYear(String(y)); confirm(pendingMonth, String(y)); }}
+                    className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      pendingYear === String(y)
+                        ? 'bg-[hsl(221,91%,60%)] text-white'
+                        : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
+                    }`}
+                  >
+                    {y}
                   </button>
                 ))}
               </div>
@@ -848,7 +746,9 @@ function MonthYearPicker({ value, onChange }: { value: string; onChange: (v: str
 }
 
 // ─── Tag selector ──────────────────────────────────────
-function TagSelector({ selected, onChange }: { selected: string[]; onChange: (tags: string[]) => void }) {
+const MAX_TAGS = 3;
+
+function TagSelector({ selected, onChange, hasError = false }: { selected: string[]; onChange: (tags: string[]) => void; hasError?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -861,31 +761,44 @@ function TagSelector({ selected, onChange }: { selected: string[]; onChange: (ta
   }, []);
 
   const toggle = (tag: string) => {
-    onChange(selected.includes(tag) ? selected.filter(t => t !== tag) : [...selected, tag]);
+    if (selected.includes(tag)) {
+      onChange(selected.filter(t => t !== tag));
+    } else if (selected.length < MAX_TAGS) {
+      onChange([...selected, tag]);
+    }
   };
+
+  const atMax = selected.length >= MAX_TAGS;
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-[hsl(220,16%,85%)] text-xs text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)] transition-colors"
-      >
-        <Plus className="w-3 h-3" />
-        {selected.length > 0 ? `${selected.length} tag${selected.length > 1 ? 's' : ''}` : 'Add tags'}
-      </button>
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {selected.map(t => (
-            <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-medium">
-              {t}
-              <button type="button" onClick={() => toggle(t)} className="hover:text-red-500 transition-colors">
-                <X className="w-2.5 h-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed text-xs transition-colors ${
+            hasError && selected.length === 0
+              ? 'border-red-400 text-red-500 hover:border-red-500'
+              : selected.length === 0
+                ? 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)]'
+                : atMax
+                  ? 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] opacity-50 cursor-not-allowed'
+                  : 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)]'
+          }`}
+          disabled={atMax}
+        >
+          <Plus className="w-3 h-3" />
+          {selected.length === 0 ? 'Add category (required)' : `${selected.length}/${MAX_TAGS} categories`}
+        </button>
+        {selected.map(t => (
+          <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-medium">
+            {t}
+            <button type="button" onClick={() => toggle(t)} className="hover:text-red-500 transition-colors">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
+      </div>
       <AnimatePresence>
         {open && (
           <motion.div
@@ -895,18 +808,34 @@ function TagSelector({ selected, onChange }: { selected: string[]; onChange: (ta
             transition={{ duration: 0.12 }}
             className="absolute top-full left-0 mt-1 w-72 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 max-h-64 overflow-y-auto"
           >
+            <div className="px-3 pt-2.5 pb-1.5 sticky top-0 bg-white border-b border-[hsl(220,16%,94%)]">
+              <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">
+                Select 1–{MAX_TAGS} categories
+                {atMax && <span className="ml-1 text-amber-500">(max reached)</span>}
+              </p>
+            </div>
             {TAG_CATEGORIES.map(category => (
               <div key={category.label}>
-                <div className="px-3 pt-2.5 pb-1 sticky top-0 bg-white">
+                <div className="px-3 pt-2.5 pb-1">
                   <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">{category.label}</span>
                 </div>
                 <div className="px-1.5 pb-1 space-y-0.5">
-                  {category.tags.map(tag => (
-                    <label key={tag} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer">
-                      <input type="checkbox" checked={selected.includes(tag)} onChange={() => toggle(tag)} className="w-3.5 h-3.5 accent-[hsl(221,91%,60%)]" />
-                      <span className="text-xs text-[hsl(222,22%,15%)]">{tag}</span>
-                    </label>
-                  ))}
+                  {category.tags.map(tag => {
+                    const isSelected = selected.includes(tag);
+                    const disabled = !isSelected && atMax;
+                    return (
+                      <label key={tag} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[hsl(220,20%,98%)]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggle(tag)}
+                          disabled={disabled}
+                          className="w-3.5 h-3.5 accent-[hsl(221,91%,60%)]"
+                        />
+                        <span className="text-xs text-[hsl(222,22%,15%)]">{tag}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -934,21 +863,22 @@ export function AddExperiencePage() {
 
   // Step 2: Questions
   const [questions, setQuestions] = useState<QuestionEntry[]>([
-    { id: '1', title: '', tags: [], notes: '', linkedCanonicalId: null, isNew: true },
+    { id: '1', title: '', tags: [], notes: '' },
   ]);
 
   // Step 3: Summary & Privacy
   const [overallSummary, setOverallSummary] = useState('');
-  const [anonymity, setAnonymity] = useState<'full' | 'partial' | 'anonymous'>('partial');
+  const [isAnonymous, setIsAnonymous] = useState(true);
   const [safetyChecked, setSafetyChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   const addQuestion = () => {
     if (questions.length >= 10) return;
     setQuestions([...questions, {
       id: Math.random().toString(36).substring(7),
-      title: '', tags: [], notes: '', linkedCanonicalId: null, isNew: true,
+      title: '', tags: [], notes: '',
     }]);
   };
 
@@ -962,18 +892,12 @@ export function AddExperiencePage() {
     setQuestions(questions.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
-  const linkQuestion = (qId: string, canonical: typeof CANONICAL_QUESTIONS[0]) => {
-    updateQuestion(qId, {
-      title: canonical.title,
-      tags: canonical.tags,
-      linkedCanonicalId: canonical.id,
-      isNew: false,
-    });
-  };
-
   const canNext = () => {
-    if (step === 0) return company && role && level && round;
-    if (step === 1) return questions.some(q => q.title.trim().length > 0);
+    if (step === 0) return company && role && level && round && date;
+    if (step === 1) {
+      const filled = questions.filter(q => q.title.trim().length > 0);
+      return filled.length > 0 && filled.every(q => q.tags.length >= 1 && q.tags.length <= 3);
+    }
     if (step === 2) return safetyChecked;
     return false;
   };
@@ -1000,7 +924,7 @@ export function AddExperiencePage() {
         location,
         questions: questionItems,
         summary: overallSummary,
-        isAnonymous: anonymity === 'anonymous',
+        isAnonymous,
       });
       setPublished(true);
     } catch (err: unknown) {
@@ -1195,11 +1119,11 @@ export function AddExperiencePage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <DropdownSelect label="Company" icon={Building2} placeholder="Select company" options={COMPANIES} value={company} onChange={setCompany} />
-                    <RoleSelect value={role} onChange={setRole} />
-                    <DropdownSelect label="Level" icon={BarChart} placeholder="Select level" options={LEVELS} value={level} onChange={setLevel} />
-                    <DropdownSelect label="Round type" icon={FileText} placeholder="Select round" options={ROUNDS} value={round} onChange={setRound} />
-                    <MonthYearPicker value={date} onChange={setDate} />
+                    <DropdownSelect label="Company" icon={Building2} placeholder="Select company" options={COMPANIES} value={company} onChange={setCompany} hasError={showErrors && !company} />
+                    <RoleSelect value={role} onChange={setRole} hasError={showErrors && !role} />
+                    <DropdownSelect label="Level" icon={BarChart} placeholder="Select level" options={LEVELS} value={level} onChange={setLevel} hasError={showErrors && !level} />
+                    <DropdownSelect label="Round type" icon={FileText} placeholder="Select round" options={ROUNDS} value={round} onChange={setRound} hasError={showErrors && !round} />
+                    <MonthYearPicker value={date} onChange={setDate} hasError={showErrors && !date} />
                     <DropdownSelect label="Outcome" icon={Check} placeholder="Select outcome" options={OUTCOMES} value={outcome} onChange={setOutcome} optional />
                   </div>
 
@@ -1234,11 +1158,15 @@ export function AddExperiencePage() {
                 >
                   <div>
                     <h2 className="text-2xl font-semibold text-[hsl(222,22%,15%)] mb-1">Interview Questions</h2>
-                    <p className="text-sm text-[hsl(222,12%,55%)]">Add 1–10 questions from this round. Link to existing questions for instant hints.</p>
+                    <p className="text-sm text-[hsl(222,12%,55%)]">Add 1–10 questions from this round. At least one question is required.</p>
                   </div>
 
                   <div className="space-y-4">
-                    {questions.map((q, qi) => (
+                    {questions.map((q, qi) => {
+                      const noFilledQuestions = questions.every(qq => !qq.title.trim());
+                      const titleError = showErrors && !q.title.trim() && noFilledQuestions;
+                      const tagsError = showErrors && q.title.trim().length > 0 && q.tags.length === 0;
+                      return (
                       <motion.div
                         key={q.id}
                         initial={{ opacity: 0, y: 8 }}
@@ -1254,12 +1182,7 @@ export function AddExperiencePage() {
                             </span>
                             <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Question {qi + 1}</span>
                             {/* Status */}
-                            {q.linkedCanonicalId ? (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-medium flex items-center gap-1">
-                                <Sparkles className="w-2.5 h-2.5" />
-                                Hints ready
-                              </span>
-                            ) : q.title.trim() ? (
+                            {q.title.trim() ? (
                               <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-medium">
                                 AI Hints after publish
                               </span>
@@ -1275,21 +1198,22 @@ export function AddExperiencePage() {
                           )}
                         </div>
 
-                        {/* Title with auto-suggest */}
+                        {/* Title */}
                         <div className="mb-4">
-                          <Label className="text-xs text-[hsl(222,12%,55%)] mb-1.5 block">Question title</Label>
-                          <QuestionAutoSuggest
+                          <Label className="text-xs text-[hsl(222,12%,55%)] mb-1.5 block">
+                            Question title <span className="text-red-400">*</span>
+                          </Label>
+                          <QuestionTitleInput
                             value={q.title}
-                            onChange={v => updateQuestion(q.id, { title: v, linkedCanonicalId: null, isNew: true })}
-                            onLink={canonical => linkQuestion(q.id, canonical)}
-                            onCreateNew={() => updateQuestion(q.id, { isNew: true, linkedCanonicalId: null })}
+                            onChange={v => updateQuestion(q.id, { title: v })}
+                            hasError={titleError}
                           />
                         </div>
 
                         {/* Tags */}
                         <div className="mb-4">
-                          <Label className="text-xs text-[hsl(222,12%,55%)] mb-1.5 block">Tags</Label>
-                          <TagSelector selected={q.tags} onChange={tags => updateQuestion(q.id, { tags })} />
+                          <Label className={`text-xs mb-1.5 block ${tagsError ? 'text-red-500' : 'text-[hsl(222,12%,55%)]'}`}>Category <span className="text-red-400">*</span> <span className="text-[hsl(222,12%,70%)]">(1–3)</span></Label>
+                          <TagSelector selected={q.tags} onChange={tags => updateQuestion(q.id, { tags })} hasError={tagsError} />
                         </div>
 
                         {/* Notes */}
@@ -1306,7 +1230,8 @@ export function AddExperiencePage() {
                           />
                         </div>
                       </motion.div>
-                    ))}
+                    );
+                    })}
 
                     {questions.length < 10 && (
                       <button
@@ -1350,24 +1275,23 @@ export function AddExperiencePage() {
                     />
                   </div>
 
-                  {/* Anonymity Options */}
+                  {/* Anonymity */}
                   <div>
                     <Label className="text-[hsl(222,12%,45%)] text-sm mb-3 flex items-center gap-2">
                       <User className="w-4 h-4" />
-                      How should your name appear?
+                      How your name appears
                     </Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       {[
-                        { value: 'full' as const, label: 'Full name', desc: 'e.g. Sarah Miller', icon: '👤' },
-                        { value: 'partial' as const, label: 'First + initial', desc: 'e.g. Sarah M.', icon: '🙂' },
-                        { value: 'anonymous' as const, label: 'Anonymous', desc: 'Completely hidden', icon: '🕶️' },
+                        { value: true, label: 'Anonymous', desc: 'Identity completely hidden', icon: '🕶️' },
+                        { value: false, label: 'Public', desc: 'Show your display name', icon: '👤' },
                       ].map(opt => (
                         <button
-                          key={opt.value}
+                          key={String(opt.value)}
                           type="button"
-                          onClick={() => setAnonymity(opt.value)}
+                          onClick={() => setIsAnonymous(opt.value)}
                           className={`text-left p-4 rounded-xl border-2 transition-all ${
-                            anonymity === opt.value
+                            isAnonymous === opt.value
                               ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/5'
                               : 'border-[hsl(220,16%,92%)] hover:border-[hsl(220,16%,82%)]'
                           }`}
@@ -1419,7 +1343,7 @@ export function AddExperiencePage() {
                       <span className="text-sm text-[hsl(222,12%,45%)]">{round || '—'}</span>
                     </div>
                     <p className="text-xs text-[hsl(222,12%,55%)]">
-                      by {anonymity === 'anonymous' ? 'Anonymous' : anonymity === 'partial' ? 'User N.' : 'User Name'} · {date || 'Date'} · {level || 'Level'}
+                      by {isAnonymous ? 'Anonymous' : 'You'} · {date || 'Date'} · {level || 'Level'}
                     </p>
                     {overallSummary && <p className="text-sm text-[hsl(222,12%,35%)] mt-3 line-clamp-2">{overallSummary}</p>}
                     <div className="flex flex-wrap gap-1.5 mt-3">
@@ -1446,7 +1370,7 @@ export function AddExperiencePage() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[hsl(220,16%,92%)] z-30 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
         <div className="max-w-2xl mx-auto md:ml-[calc(18rem+((100%-18rem)/2)-16rem)] px-6 py-3 flex items-center justify-between">
           <button
-            onClick={() => setStep(Math.max(0, step - 1))}
+            onClick={() => { setStep(Math.max(0, step - 1)); setShowErrors(false); }}
             disabled={step === 0}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
               step === 0 ? 'text-[hsl(222,12%,70%)] cursor-not-allowed' : 'text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
@@ -1467,9 +1391,15 @@ export function AddExperiencePage() {
               <span className="text-xs text-[hsl(222,12%,65%)] hidden sm:block">Step {step + 1} of {STEPS.length}</span>
               {step < STEPS.length - 1 ? (
                 <Button
-                  onClick={() => setStep(step + 1)}
-                  disabled={!canNext()}
-                  className="bg-[hsl(222,22%,15%)] hover:bg-[hsl(222,22%,20%)] text-white rounded-xl px-6 h-10 text-sm gap-2 disabled:opacity-40"
+                  onClick={() => {
+                    if (canNext()) {
+                      setShowErrors(false);
+                      setStep(step + 1);
+                    } else {
+                      setShowErrors(true);
+                    }
+                  }}
+                  className="bg-[hsl(222,22%,15%)] hover:bg-[hsl(222,22%,20%)] text-white rounded-xl px-6 h-10 text-sm gap-2"
                 >
                   Next
                   <ArrowRight className="w-4 h-4" />
