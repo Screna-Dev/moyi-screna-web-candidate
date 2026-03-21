@@ -68,12 +68,14 @@ export function VideoInterview({
   onEnd,
   theme = 'dark',
   sessionCredentials = null,
+  prefetchedSession = null,
 }: {
   config: VideoInterviewConfig;
   interviewId?: string;
   onEnd: () => void;
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
+  prefetchedSession?: { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | null;
 }) {
   const isDark = theme === 'dark';
 
@@ -546,27 +548,33 @@ export function VideoInterview({
       }
 
       // STEP 1: CREATE SESSION (gets LiveKit credentials)
-      setIsCreatingSession(true);
+      // Use pre-fetched session from warmup if available, otherwise fetch now
       updateConnectionStatus('aiWebSocket', 'connecting');
-      
+
       let session;
-      try {
-        console.log('📝 Creating interview session...');
-        const res = await createInterviewSession(interviewId);
-        const d = res.data?.data ?? res.data;
-        const url = d?.liveKitUrl ?? d?.url;
-        const token = d?.liveKitToken ?? d?.token;
-        if (!url || !token) throw new Error('Missing LiveKit credentials in response');
-        session = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
-        console.log('✅ Session created, url:', url?.slice(0, 40));
-        setIsCreatingSession(false);
-      } catch (sessionError) {
-        console.error("❌ Session creation failed:", sessionError);
-        setIsCreatingSession(false);
-        updateConnectionStatus('aiWebSocket', 'error');
-        setIsConnecting(false);
-        setSessionStartError("This session has already been initialized. Please go back and select a different module, or contact support.");
-        return;
+      if (prefetchedSession?.liveKitUrl && prefetchedSession?.liveKitToken) {
+        console.log('✅ Using pre-fetched session credentials');
+        session = prefetchedSession;
+      } else {
+        setIsCreatingSession(true);
+        try {
+          console.log('📝 Creating interview session...');
+          const res = await createInterviewSession(interviewId);
+          const d = res.data?.data ?? res.data;
+          const url = d?.liveKitUrl ?? d?.url;
+          const token = d?.liveKitToken ?? d?.token;
+          if (!url || !token) throw new Error('Missing LiveKit credentials in response');
+          session = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
+          console.log('✅ Session created, url:', url?.slice(0, 40));
+          setIsCreatingSession(false);
+        } catch (sessionError) {
+          console.error("❌ Session creation failed:", sessionError);
+          setIsCreatingSession(false);
+          updateConnectionStatus('aiWebSocket', 'error');
+          setIsConnecting(false);
+          setSessionStartError("This session has already been initialized. Please go back and select a different module, or contact support.");
+          return;
+        }
       }
 
       // STEP 2: Connect to LiveKit
@@ -812,9 +820,9 @@ export function VideoInterview({
         )}
       </AnimatePresence>
 
-      {/* ════ Start Interview Overlay (real interview, not yet started) ════ */}
+      {/* ════ Start Interview Overlay (loading/error states only) ════ */}
       <AnimatePresence>
-        {(interviewId || sessionCredentials) && !interviewStarted && !showCountdown && (
+        {(interviewId || sessionCredentials) && !interviewStarted && (isCreatingSession || isConnecting || sessionStartError) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -852,41 +860,7 @@ export function VideoInterview({
                     Go Back
                   </button>
                 </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center">
-                    <User className="text-white" size={32} />
-                  </div>
-                  <p className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Ready to begin?</p>
-                  <p className={`text-sm text-center max-w-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Click below to start your AI interview session.
-                  </p>
-                  <button
-                    onClick={handleStartInterview}
-                    className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base transition-colors"
-                  >
-                    Start Interview
-                  </button>
-                  {/* Audio level preview while waiting */}
-                  {audioLevel > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Mic</span>
-                      <div className="flex gap-0.5 items-end h-4">
-                        {[...Array(4)].map((_, i) => (
-                          <div
-                            key={i}
-                            className="w-1 rounded-sm transition-all duration-100"
-                            style={{
-                              height: i < Math.floor(audioLevel / 25) ? 16 : 8,
-                              backgroundColor: i < Math.floor(audioLevel / 25) ? '#1de9b6' : (isDark ? '#334155' : '#cbd5e1'),
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+              ) : null}
             </div>
           </motion.div>
         )}

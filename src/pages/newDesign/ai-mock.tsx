@@ -177,8 +177,30 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   // Stage state — if mode is in URL params, skip modeSelect
   const [stage, setStage] = useState<Stage>(() => {
     const modeParam = searchParams.get('mode') as Mode | null;
-    return modeParam ? 'live' : 'modeSelect';
+    return modeParam ? 'warmup' : 'modeSelect';
   });
+
+  // Pre-fetched session credentials (created during warmup so live stage starts instantly)
+  const [prefetchedSession, setPrefetchedSession] = useState<{ liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | null>(null);
+
+  // Kick off session creation as soon as warmup begins
+  useEffect(() => {
+    if (stage !== 'warmup' || !interviewId) return;
+    InterviewSessionService.createInterviewSession(interviewId)
+      .then((res) => {
+        const d = res.data?.data ?? res.data;
+        const url = d?.liveKitUrl ?? d?.url;
+        const token = d?.liveKitToken ?? d?.token;
+        if (url && token) {
+          setPrefetchedSession({ liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null });
+          console.log('✅ Session pre-created during warmup');
+        }
+      })
+      .catch((err) => {
+        console.warn('⚠️ Pre-create session failed, will retry on start:', err);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   // Config state — initialise from URL params
   const [config, setConfig] = useState<SetupConfig>({
@@ -663,6 +685,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
               interviewId={interviewId}
               onEnd={() => setStage('cooldown')}
               theme={theme}
+              prefetchedSession={prefetchedSession}
             />
           </motion.div>
         )}
