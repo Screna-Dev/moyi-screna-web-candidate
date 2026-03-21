@@ -29,14 +29,14 @@ const FAQS = [
     q: 'Do credits expire?',
     a: 'Credits never expire. Once purchased, they stay in your account until you use them — no rush, no pressure.',
   },
-  {
-    q: 'Why does Video cost 2 credits/min?',
-    a: 'Video sessions require real-time video processing and facial expression analysis on top of voice recognition, which doubles the compute cost. Text and Voice sessions use 1 credit/min.',
-  },
-  {
-    q: 'What happens if I end a session early?',
-    a: 'You only pay for the minutes you actually used. If a 20-minute session ends after 12 minutes, the remaining 8 minutes of credits are automatically refunded to your balance — no action needed.',
-  },
+  // {
+  //   q: 'Why does Video cost 2 credits/min?',
+  //   a: 'Video sessions require real-time video processing and facial expression analysis on top of voice recognition, which doubles the compute cost. Text and Voice sessions use 1 credit/min.',
+  // },
+  // {
+  //   q: 'What happens if I end a session early?',
+  //   a: 'You only pay for the minutes you actually used. If a 20-minute session ends after 12 minutes, the remaining 8 minutes of credits are automatically refunded to your balance — no action needed.',
+  // },
 ];
 
 // ─── Animate wrapper ────────────────────────────────────
@@ -155,7 +155,7 @@ export function PricingPage() {
                     {[
                       { icon: CreditCard, text: '1 credit = 1 minute of practice' },
                       { icon: RefreshCw, text: 'End early → unused credits auto-refund' },
-                      { icon: Video, text: 'Video sessions use 2 credits/min' },
+                      // { icon: Video, text: 'Video sessions use 2 credits/min' },
                     ].map((item, i) => (
                       <li key={i} className="flex items-start gap-3">
                         <div className="w-6 h-6 rounded-md bg-slate-50 flex items-center justify-center shrink-0 mt-0.5">
@@ -382,18 +382,21 @@ export function PricingPage() {
                       <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
                         <Info className="w-3.5 h-3.5 text-blue-400" />
                       </div>
-                      <p className="text-sm text-slate-500 leading-relaxed">
+                      {/* <p className="text-sm text-slate-500 leading-relaxed">
                         <span className="text-slate-700">Example:</span> A 20-min Voice session uses 20 credits.
+                      </p> */}
+                      <p className="text-sm text-slate-500 leading-relaxed">
+                        <span className="text-slate-700">Example:</span> A 20-min session uses 20 credits.
                       </p>
                     </div>
-                    <div className="flex items-start gap-3">
+                    {/* <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
                         <Info className="w-3.5 h-3.5 text-blue-400" />
                       </div>
                       <p className="text-sm text-slate-500 leading-relaxed">
                         <span className="text-slate-700">Example:</span> A 30-min Video session uses 60 credits.
                       </p>
-                    </div>
+                    </div> */}
                   </div>
                   <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 rounded-xl border border-emerald-100">
                     <RefreshCw className="w-4 h-4 text-emerald-500 shrink-0" />

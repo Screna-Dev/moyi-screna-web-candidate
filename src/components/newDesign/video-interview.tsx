@@ -69,6 +69,8 @@ export function VideoInterview({
   theme = 'dark',
   sessionCredentials = null,
   prefetchedSession = null,
+  prefetchedStream = null,
+  prefetchedConnected = false,
 }: {
   config: VideoInterviewConfig;
   interviewId?: string;
@@ -76,6 +78,8 @@ export function VideoInterview({
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
   prefetchedSession?: { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | null;
+  prefetchedStream?: MediaStream | null;
+  prefetchedConnected?: boolean;
 }) {
   const isDark = theme === 'dark';
 
@@ -139,65 +143,68 @@ export function VideoInterview({
   // generateRandomAI: ai-interview imports this from a module; stub it here
   const generateRandomAI = () => ({ name: 'Alex Chen', role: 'Interviewer' });
 
+  // Build the LiveKit callbacks object (used both when connecting fresh and when updating after warmup)
+  const buildLiveKitCallbacks = () => ({
+    onConnected: () => {
+      console.log('[VideoInterview] ✅ LiveKit connected');
+      setLiveConnected(true);
+    },
+    onDisconnected: ({ reason }) => {
+      console.log('[VideoInterview] LiveKit disconnected:', reason);
+      setLiveConnected(false);
+      if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
+    },
+    onInterviewEnded: () => {
+      if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
+    },
+    onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }) => {
+      if (userSpeaking) console.log('[VideoInterview] 🗣️ User speaking');
+      if (isAISpeaking) console.log('[VideoInterview] 🤖 AI is speaking');
+      setIsUserSpeaking(userSpeaking);
+    },
+    onDataReceived: (message) => {
+      console.log('[VideoInterview] 📨 Data received:', message);
+      if (message?.label === 'rtvi-ai') {
+        switch (message.type) {
+          case 'bot-started-speaking':
+            console.log('[VideoInterview] 🤖 RTVI: bot started speaking');
+            botHasSpokenRef.current = true;
+            if (aiSpeakingTimerRef.current) { clearTimeout(aiSpeakingTimerRef.current); aiSpeakingTimerRef.current = null; }
+            setAiState('speaking');
+            break;
+          case 'bot-stopped-speaking':
+            console.log('[VideoInterview] 🎧 RTVI: bot stopped speaking');
+            if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
+            break;
+          case 'transcript': {
+            const d = message.data;
+            const text = d?.text;
+            const isFinal = d?.final ?? true;
+            if (text && isFinal) {
+              const role = d?.role === 'bot' ? 'ai' : 'user';
+              if (role === 'ai') { setCurrentSpeakingText(text); setQuestionNum((q) => q + 1); }
+              setTranscript((prev) => [...prev, { id: Date.now(), role, text, timestamp: formatTime(elapsed) }]);
+            }
+            break;
+          }
+          default: break;
+        }
+        return;
+      }
+      if (message?.type === 'transcript' && message.text) {
+        const role = message.role === 'bot' ? 'ai' : 'user';
+        if (role === 'ai') { setCurrentSpeakingText(message.text); setQuestionNum((q) => q + 1); }
+        setTranscript((prev) => [...prev, { id: Date.now(), role, text: message.text, timestamp: formatTime(elapsed) }]);
+      }
+    },
+    onError: (err) => console.error('[VideoInterview] LiveKit error:', err),
+  });
+
   // connectToInterview: defined in ai-interview; we provide it here with LiveKit + RTVI callbacks
   const connectToInterview = async (session) => {
     await LiveKitService.connect(
       { url: session.liveKitUrl, token: session.liveKitToken },
-      {
-        onConnected: () => {
-          console.log('[VideoInterview] ✅ LiveKit connected');
-          setLiveConnected(true);
-        },
-        onDisconnected: ({ reason }) => {
-          console.log('[VideoInterview] LiveKit disconnected:', reason);
-          setLiveConnected(false);
-          if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
-        },
-        onInterviewEnded: () => {
-          if (botHasSpokenRef.current && !endCalledRef.current) endMeeting();
-        },
-        onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }) => {
-          if (userSpeaking) console.log('[VideoInterview] 🗣️ User speaking');
-          if (isAISpeaking) console.log('[VideoInterview] 🤖 AI is speaking');
-          setIsUserSpeaking(userSpeaking);
-        },
-        onDataReceived: (message) => {
-          console.log('[VideoInterview] 📨 Data received:', message);
-          if (message?.label === 'rtvi-ai') {
-            switch (message.type) {
-              case 'bot-started-speaking':
-                console.log('[VideoInterview] 🤖 RTVI: bot started speaking');
-                botHasSpokenRef.current = true;
-                if (aiSpeakingTimerRef.current) { clearTimeout(aiSpeakingTimerRef.current); aiSpeakingTimerRef.current = null; }
-                setAiState('speaking');
-                break;
-              case 'bot-stopped-speaking':
-                console.log('[VideoInterview] 🎧 RTVI: bot stopped speaking');
-                if (aiSpeakingTimerRef.current) clearTimeout(aiSpeakingTimerRef.current);
-                break;
-              case 'transcript': {
-                const d = message.data;
-                const text = d?.text;
-                const isFinal = d?.final ?? true;
-                if (text && isFinal) {
-                  const role = d?.role === 'bot' ? 'ai' : 'user';
-                  if (role === 'ai') { setCurrentSpeakingText(text); setQuestionNum((q) => q + 1); }
-                  setTranscript((prev) => [...prev, { id: Date.now(), role, text, timestamp: formatTime(elapsed) }]);
-                }
-                break;
-              }
-              default: break;
-            }
-            return;
-          }
-          if (message?.type === 'transcript' && message.text) {
-            const role = message.role === 'bot' ? 'ai' : 'user';
-            if (role === 'ai') { setCurrentSpeakingText(message.text); setQuestionNum((q) => q + 1); }
-            setTranscript((prev) => [...prev, { id: Date.now(), role, text: message.text, timestamp: formatTime(elapsed) }]);
-          }
-        },
-        onError: (err) => console.error('[VideoInterview] LiveKit error:', err),
-      }
+      buildLiveKitCallbacks()
     );
   };
 
@@ -207,9 +214,21 @@ export function VideoInterview({
     return () => clearInterval(t);
   }, []);
 
-  // ── Pre-capture camera & mic for video preview and mediaState ──
+  // ── Pre-capture camera & mic (or use stream pre-captured during warmup) ──
   useEffect(() => {
-    let stream = null;
+    if (prefetchedStream) {
+      // Stream was captured during warmup - use it directly
+      localStreamRef.current = prefetchedStream;
+      setLocalStream(prefetchedStream);
+      console.log('[VideoInterview] 📷 Using pre-captured media from warmup');
+      return () => {
+        prefetchedStream.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+      };
+    }
+
+    // No pre-captured stream - capture now
+    let stream: MediaStream | null = null;
     const capture = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -228,6 +247,7 @@ export function VideoInterview({
       if (stream) stream.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Auto-start interview once media is ready ──
@@ -577,7 +597,7 @@ export function VideoInterview({
         }
       }
 
-      // STEP 2: Connect to LiveKit
+      // STEP 2: Connect to LiveKit (or register callbacks if already connected during warmup)
       if (!LiveKitService.getIsConnected()) {
         try {
           console.log('🔌 Connecting to LiveKit...');
@@ -594,6 +614,10 @@ export function VideoInterview({
           return;
         }
       } else {
+        // Already connected during warmup - register real React callbacks now
+        console.log('✅ LiveKit already connected from warmup, registering callbacks');
+        LiveKitService.updateCallbacks(buildLiveKitCallbacks());
+        setLiveConnected(true);
         updateConnectionStatus('aiWebSocket', 'connected');
       }
       // STEP 3: Publish local media tracks to LiveKit

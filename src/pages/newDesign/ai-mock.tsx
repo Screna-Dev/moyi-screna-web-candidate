@@ -180,25 +180,70 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     return modeParam ? 'warmup' : 'modeSelect';
   });
 
-  // Pre-fetched session credentials (created during warmup so live stage starts instantly)
+  // Pre-fetched resources (created during warmup so live stage starts instantly)
   const [prefetchedSession, setPrefetchedSession] = useState<{ liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | null>(null);
+  const [prefetchedStream, setPrefetchedStream] = useState<MediaStream | null>(null);
+  const [prefetchedConnected, setPrefetchedConnected] = useState(false);
+  const prefetchedStreamRef = useRef<MediaStream | null>(null);
 
-  // Kick off session creation as soon as warmup begins
+  // During warmup: capture media + create session + connect LiveKit in parallel
   useEffect(() => {
     if (stage !== 'warmup' || !interviewId) return;
-    InterviewSessionService.createInterviewSession(interviewId)
-      .then((res) => {
+    let cancelled = false;
+
+    const setup = async () => {
+      // Run session creation and media capture in parallel
+      const [sessionResult, streamResult] = await Promise.allSettled([
+        InterviewSessionService.createInterviewSession(interviewId),
+        navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        }),
+      ]);
+
+      if (cancelled) return;
+
+      // Handle media stream
+      if (streamResult.status === 'fulfilled') {
+        prefetchedStreamRef.current = streamResult.value;
+        setPrefetchedStream(streamResult.value);
+        console.log('✅ Media pre-captured during warmup');
+      } else {
+        console.warn('⚠️ Media pre-capture failed:', streamResult.reason);
+      }
+
+      // Handle session + LiveKit connection
+      if (sessionResult.status === 'fulfilled') {
+        const res = sessionResult.value;
         const d = res.data?.data ?? res.data;
         const url = d?.liveKitUrl ?? d?.url;
         const token = d?.liveKitToken ?? d?.token;
-        if (url && token) {
-          setPrefetchedSession({ liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null });
+        if (url && token && !cancelled) {
+          const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
+          setPrefetchedSession(sessionData);
           console.log('✅ Session pre-created during warmup');
+
+          // Pre-connect to LiveKit with empty callbacks; VideoInterview will register real ones
+          try {
+            await LiveKitService.connect({ url, token }, {});
+            if (!cancelled) {
+              setPrefetchedConnected(true);
+              console.log('✅ LiveKit pre-connected during warmup');
+            }
+          } catch (err) {
+            console.warn('⚠️ LiveKit pre-connect failed, will retry on start:', err);
+          }
         }
-      })
-      .catch((err) => {
-        console.warn('⚠️ Pre-create session failed, will retry on start:', err);
-      });
+      } else {
+        console.warn('⚠️ Pre-create session failed, will retry on start:', sessionResult.reason);
+      }
+    };
+
+    setup();
+
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
@@ -686,6 +731,8 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
               onEnd={() => setStage('cooldown')}
               theme={theme}
               prefetchedSession={prefetchedSession}
+              prefetchedStream={prefetchedStream}
+              prefetchedConnected={prefetchedConnected}
             />
           </motion.div>
         )}
