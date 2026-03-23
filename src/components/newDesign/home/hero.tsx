@@ -20,8 +20,8 @@ const companyLogos = [
   { name: 'Amazon', src: amazonLogo },
   { name: 'Microsoft', src: microsoftLogo },
   { name: 'Apple', src: appleLogo },
-  { name: 'Adobe', src: adobeLogo },
-  { name: 'Stripe', src: stripeLogo },
+  // { name: 'Adobe', src: adobeLogo },
+  // { name: 'Stripe', src: stripeLogo },
 ];
 
 // Riso Texture Component to keep things clean
