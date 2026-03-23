@@ -369,18 +369,15 @@ function InterviewStep({
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       setShowCountdown(false);
-      // STEP 3: Publish local media tracks to LiveKit
+      // STEP 3: Publish existing media tracks to LiveKit (reuse streams from MediaSetupStep)
       try {
         console.log('📤 Publishing media tracks to LiveKit...');
-        
-        // Publish audio (required)
-        await LiveKitService.setMicrophoneEnabled(true);
-        
-        // Publish video (optional)
-        if (mediaState.cameraEnabled && mediaState.videoTestStream) {
-          await LiveKitService.setCameraEnabled(true);
-        }
-        
+
+        await LiveKitService.publishExistingTracks(
+          mediaState.audioTestStream,
+          mediaState.cameraEnabled ? mediaState.videoTestStream : null
+        );
+
         console.log('✅ Media tracks published');
       } catch (mediaError) {
         console.warn('⚠️ Failed to publish some media tracks:', mediaError);
