@@ -220,7 +220,7 @@ class LiveKitService {
     }
   }
 
-  // Publish existing media streams from MediaSetupStep directly to LiveKit.
+  // Publish existing media streams directly to LiveKit.
   // Uses publishTrack(MediaStreamTrack) to reuse the already-acquired streams,
   // avoiding a second getUserMedia() call that would conflict with the active capture.
   async publishExistingTracks(audioStream, videoStream) {

@@ -215,6 +215,9 @@ export function VideoInterview({
   }, []);
 
   // ── Pre-capture camera & mic (or use stream pre-captured during warmup) ──
+  // NOTE: cleanup must NOT stop tracks — React StrictMode runs effects twice
+  // (mount → cleanup → mount), which would kill the stream before publishing.
+  // Tracks are stopped when the interview ends (endMeeting / disconnect).
   useEffect(() => {
     if (prefetchedStream) {
       // Stream was captured during warmup - use it directly
@@ -222,19 +225,23 @@ export function VideoInterview({
       setLocalStream(prefetchedStream);
       console.log('[VideoInterview] 📷 Using pre-captured media from warmup');
       return () => {
-        prefetchedStream.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
       };
     }
 
     // No pre-captured stream - capture now
     let stream: MediaStream | null = null;
+    let isCancelled = false;
     const capture = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
         });
+        if (isCancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         localStreamRef.current = stream;
         setLocalStream(stream);
         console.log('[VideoInterview] 📷 Local media pre-captured');
@@ -244,7 +251,7 @@ export function VideoInterview({
     };
     capture();
     return () => {
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      isCancelled = true;
       localStreamRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
