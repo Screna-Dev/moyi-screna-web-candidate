@@ -3,8 +3,6 @@ import {
   RoomEvent,
   ConnectionState,
   Track,
-  createLocalVideoTrack,
-  createLocalAudioTrack,
 } from 'livekit-client';
 
 class LiveKitService {
@@ -222,7 +220,9 @@ class LiveKitService {
     }
   }
 
-  // Publish existing media stream (from MediaSetupStep)
+  // Publish existing media streams from MediaSetupStep directly to LiveKit.
+  // Uses publishTrack(MediaStreamTrack) to reuse the already-acquired streams,
+  // avoiding a second getUserMedia() call that would conflict with the active capture.
   async publishExistingTracks(audioStream, videoStream) {
     if (!this.room) {
       console.warn('Room not connected');
@@ -234,11 +234,10 @@ class LiveKitService {
       if (audioStream) {
         const audioTracks = audioStream.getAudioTracks();
         if (audioTracks.length > 0) {
-          const audioTrack = await createLocalAudioTrack({
-            track: audioTracks[0],
+          await this.room.localParticipant.publishTrack(audioTracks[0], {
+            source: Track.Source.Microphone,
           });
-          await this.room.localParticipant.publishTrack(audioTrack);
-          console.log('✅ Audio track published');
+          console.log('✅ Audio track published (reused existing stream)');
         }
       }
 
@@ -246,11 +245,10 @@ class LiveKitService {
       if (videoStream) {
         const videoTracks = videoStream.getVideoTracks();
         if (videoTracks.length > 0) {
-          const videoTrack = await createLocalVideoTrack({
-            track: videoTracks[0],
+          await this.room.localParticipant.publishTrack(videoTracks[0], {
+            source: Track.Source.Camera,
           });
-          await this.room.localParticipant.publishTrack(videoTrack);
-          console.log('✅ Video track published');
+          console.log('✅ Video track published (reused existing stream)');
         }
       }
 
