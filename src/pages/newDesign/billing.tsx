@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   CreditCard,
@@ -8,6 +8,9 @@ import {
   Gift,
   AlertCircle,
   Loader2,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
@@ -21,18 +24,45 @@ import {
 } from '../../components/newDesign/ui/dialog';
 import { Input } from '../../components/newDesign/ui/input';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { PaymentService } from '@/services';
 
-// Mock invoices — replace with real API data when available
-const INVOICES = [
-  { id: 'inv_1', date: 'Feb 18, 2026', amount: '$29.00', status: 'Paid' },
-  { id: 'inv_2', date: 'Jan 18, 2026', amount: '$29.00', status: 'Paid' },
-  { id: 'inv_3', date: 'Dec 18, 2025', amount: '$29.00', status: 'Paid' },
-];
+interface Invoice {
+  stripeInvoiceId: string;
+  amount: number; // in cents
+  currency: string;
+  description: string;
+  reason: string;
+  invoiceNumber: string;
+  invoiceUrl: string;
+  createdAt: string;
+}
 
-const CREDIT_PACKAGES = [
-  { credits: 100, price: 10, label: '100 credits', savings: null },
-  { credits: 300, price: 25, label: '300 credits', savings: 'Save 17%' },
-  { credits: 800, price: 60, label: '800 credits', savings: 'Save 25%' },
+interface PageMeta {
+  pageNumber: number;
+  pageSize: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+}
+
+const FIXED_PACKAGES = [
+  {
+    credits: 50,
+    price: 9.99,
+    name: 'Starter',
+    pricePerCredit: '~$0.20/credit',
+    description: 'Perfect for a few focused practice sessions.',
+    popular: false,
+  },
+  {
+    credits: 100,
+    price: 14.99,
+    name: 'Growth',
+    pricePerCredit: '~$0.15/credit',
+    description: 'Best value — enough for weekly practice across all modes.',
+    popular: true,
+  },
 ];
 
 export function BillingPage() {
@@ -40,21 +70,58 @@ export function BillingPage() {
 
   // Buy credits dialog
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
-  const [selectedCredits, setSelectedCredits] = useState(300);
-  const [customInput, setCustomInput] = useState('');
-  const isCustom = !CREDIT_PACKAGES.some((p) => p.credits === selectedCredits);
-  const effectiveCredits = isCustom
-    ? parseInt(customInput) || 0
-    : selectedCredits;
+  const [customCredits, setCustomCredits] = useState(200);
+  const customPricePerCredit = 0.12;
+  const customPrice = (customCredits * customPricePerCredit).toFixed(2);
 
-  const pricePerCredit = 0.1;
-  const estimatedPrice = (effectiveCredits * pricePerCredit).toFixed(2);
-
-  const handleBuyCredits = async () => {
-    if (effectiveCredits <= 0) return;
-    const url = await buyCredits(effectiveCredits);
+  const handleBuyCredits = async (credits: number) => {
+    const url = await buyCredits(credits);
     if (url) window.location.href = url;
     setBuyDialogOpen(false);
+  };
+
+  // Invoice state
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [pageMeta, setPageMeta] = useState<PageMeta | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isLoadingInvoices, setIsLoadingInvoices] = useState(true);
+
+  useEffect(() => {
+    const fetchInvoices = async () => {
+      try {
+        setIsLoadingInvoices(true);
+        const response = await PaymentService.getInvoices(currentPage);
+        if (response.data?.data) {
+          setInvoices(response.data.data.content || []);
+          setPageMeta(response.data.data.pageMeta || null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch invoices:', error);
+      } finally {
+        setIsLoadingInvoices(false);
+      }
+    };
+    fetchInvoices();
+  }, [currentPage]);
+
+  const formatAmount = (amountInCents: number, currency: string = 'usd') => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(amountInCents / 100);
+  };
+
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+  const handleDownloadInvoice = (invoice: Invoice) => {
+    if (invoice.invoiceUrl) {
+      window.open(invoice.invoiceUrl, '_blank');
+    }
   };
 
   // Redeem dialog
@@ -167,7 +234,7 @@ export function BillingPage() {
           transition={{ delay: 0.2 }}
           className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm"
         >
-          <h3 className="text-lg font-semibold text-slate-900 mb-6">Payment Method</h3>
+          {/* <h3 className="text-lg font-semibold text-slate-900 mb-6">Payment Method</h3>
 
           <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl mb-8">
             <div className="flex items-center gap-4">
@@ -182,7 +249,7 @@ export function BillingPage() {
             <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
               Edit
             </Button>
-          </div>
+          </div> */}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -191,35 +258,84 @@ export function BillingPage() {
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-200">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Date</th>
-                    <th className="px-4 py-3 font-medium">Amount</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Invoice</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {INVOICES.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 text-slate-900">{invoice.date}</td>
-                      <td className="px-4 py-3 text-slate-900">{invoice.amount}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button className="text-slate-400 hover:text-slate-600 transition-colors">
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </td>
+              {isLoadingInvoices ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                </div>
+              ) : invoices.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                  <CreditCard className="w-8 h-8 mb-2 opacity-40" />
+                  <p className="text-sm">No invoices found</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Invoice</th>
+                      <th className="px-4 py-3 font-medium">Date</th>
+                      <th className="px-4 py-3 font-medium">Description</th>
+                      <th className="px-4 py-3 font-medium">Amount</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {invoices.map((invoice) => (
+                      <tr key={invoice.stripeInvoiceId} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3 font-medium text-slate-900">{invoice.invoiceNumber}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatDate(invoice.createdAt)}</td>
+                        <td className="px-4 py-3 text-slate-500">{invoice.description || invoice.reason || '—'}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-900">
+                          {formatAmount(invoice.amount, invoice.currency)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            Paid
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleDownloadInvoice(invoice)}
+                            className="text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
+
+            {/* Pagination */}
+            {pageMeta && pageMeta.totalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-500">
+                  Page {pageMeta.pageNumber + 1} of {pageMeta.totalPages} ({pageMeta.totalElements} invoices)
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                    disabled={pageMeta.first}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => p + 1)}
+                    disabled={pageMeta.last}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.section>
       </div>
@@ -233,76 +349,97 @@ export function BillingPage() {
               Buy Extra Credits
             </DialogTitle>
             <DialogDescription>
-              Choose a credit package or enter a custom amount.
+              Credits never expire and stack with your plan balance.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Preset packages */}
-            <div className="grid grid-cols-3 gap-3">
-              {CREDIT_PACKAGES.map((pkg) => (
+          <div className="space-y-3 py-2">
+            {/* Starter + Growth */}
+            {FIXED_PACKAGES.map((pkg) => (
+              <div
+                key={pkg.credits}
+                className={`relative rounded-2xl border p-5 ${
+                  pkg.popular ? 'border-blue-400 bg-blue-50/30' : 'border-slate-200 bg-white'
+                }`}
+              >
+                {pkg.popular && (
+                  <span className="absolute top-4 right-4 bg-blue-600 text-white text-[11px] font-semibold px-3 py-1 rounded-full">
+                    Most popular
+                  </span>
+                )}
+                <div className="flex items-start justify-between mb-1">
+                  <span className="font-bold text-slate-900 text-base">{pkg.name}</span>
+                  {!pkg.popular && (
+                    <span className="text-xs text-slate-400">{pkg.pricePerCredit}</span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-3xl font-bold text-slate-900">${pkg.price}</span>
+                  <span className="text-sm text-slate-400">/ {pkg.credits} credits</span>
+                </div>
+                <p className="text-sm text-slate-500 mb-4">{pkg.description}</p>
                 <button
-                  key={pkg.credits}
-                  onClick={() => { setSelectedCredits(pkg.credits); setCustomInput(''); }}
-                  className={`relative flex flex-col items-center p-3 rounded-xl border-2 transition-all text-center ${
-                    selectedCredits === pkg.credits && !isCustom
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-slate-200 hover:border-slate-300'
+                  onClick={() => handleBuyCredits(pkg.credits)}
+                  disabled={isBuyingCredits}
+                  className={`w-full h-12 rounded-xl text-[14px] font-semibold transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                    pkg.popular
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-slate-900 text-white hover:bg-slate-800'
                   }`}
                 >
-                  <span className="text-lg font-bold text-slate-900">{pkg.credits}</span>
-                  <span className="text-xs text-slate-500">credits</span>
-                  <span className="text-sm font-semibold text-blue-600 mt-1">${pkg.price}</span>
-                  {pkg.savings && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] font-semibold bg-emerald-500 text-white px-2 py-0.5 rounded-full whitespace-nowrap">
-                      {pkg.savings}
-                    </span>
+                  {isBuyingCredits ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : pkg.popular ? (
+                    <>Buy {pkg.name} <ArrowRight className="w-4 h-4" /></>
+                  ) : (
+                    `Buy ${pkg.name}`
                   )}
                 </button>
-              ))}
-            </div>
-
-            {/* Custom amount */}
-            <div>
-              <p className="text-xs font-medium text-slate-600 mb-1.5">Or enter custom amount</p>
-              <Input
-                type="number"
-                min="1"
-                placeholder="e.g. 500"
-                value={customInput}
-                onChange={(e) => {
-                  setCustomInput(e.target.value);
-                  setSelectedCredits(-1); // deselect preset
-                }}
-                className="h-9"
-              />
-            </div>
-
-            {/* Price estimate */}
-            {effectiveCredits > 0 && (
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <span className="text-sm text-slate-600">Estimated total</span>
-                <span className="text-lg font-bold text-slate-900">${estimatedPrice}</span>
               </div>
-            )}
-          </div>
+            ))}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBuyDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={handleBuyCredits}
-              disabled={isBuyingCredits || effectiveCredits <= 0}
-            >
-              {isBuyingCredits ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
-              ) : (
-                'Proceed to checkout'
-              )}
-            </Button>
-          </DialogFooter>
+            {/* Customize card with slider */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex items-start justify-between mb-1">
+                <span className="font-bold text-slate-900 text-base">Customize</span>
+                <span className="text-xs text-slate-400">${customPricePerCredit}/credit</span>
+              </div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-3xl font-bold text-slate-900">${customPrice}</span>
+                <span className="text-sm text-slate-400">/ {customCredits} credits</span>
+              </div>
+              <input
+                type="range"
+                min={101}
+                max={1000}
+                step={1}
+                value={customCredits}
+                onChange={(e) => setCustomCredits(Number(e.target.value))}
+                className="w-full accent-blue-600 my-3"
+              />
+              <div className="flex justify-between text-xs text-slate-400 mb-4">
+                <span>101</span>
+                <span>1000</span>
+              </div>
+              <button
+                onClick={() => handleBuyCredits(customCredits)}
+                disabled={isBuyingCredits}
+                className="w-full h-12 rounded-xl bg-slate-900 text-white text-[14px] font-semibold hover:bg-slate-800 transition-all active:scale-[0.98] flex items-center justify-center"
+              >
+                {isBuyingCredits ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  `Buy ${customCredits} credits`
+                )}
+              </button>
+              <p className="text-center text-xs text-slate-400 mt-3">
+                Need 1,000+ credits?{' '}
+                <a href="mailto:support@screna.ai" className="text-blue-600 hover:underline">
+                  Contact sales
+                </a>
+              </p>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
