@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useSearchParams, useParams } from 'react-router';
+import { Link, useNavigate, useSearchParams, useParams, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -140,6 +140,7 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 // ════════════════════════════════════════════════════════
 export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const params = useParams();
   const interviewId = params.interviewId ?? searchParams.get('interviewId') ?? undefined;
@@ -191,51 +192,68 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     if (stage !== 'warmup' || !interviewId) return;
     let cancelled = false;
 
+    const stateSession = (location.state as any)?.prefetchedSession as { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | undefined;
+    const mode = searchParams.get('mode') ?? 'video';
+    const audioOnly = mode !== 'video';
+
     const setup = async () => {
-      // Run session creation and media capture in parallel
-      const [sessionResult, streamResult] = await Promise.allSettled([
-        InterviewSessionService.createInterviewSession(interviewId),
-        navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        }),
+      // Capture media — voice-only sessions only request audio (no camera)
+      const mediaConstraints: MediaStreamConstraints = audioOnly
+        ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+        : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+
+      const streamResult = await Promise.allSettled([
+        navigator.mediaDevices.getUserMedia(mediaConstraints),
       ]);
 
       if (cancelled) return;
 
-      // Handle media stream
-      if (streamResult.status === 'fulfilled') {
-        prefetchedStreamRef.current = streamResult.value;
-        setPrefetchedStream(streamResult.value);
+      if (streamResult[0].status === 'fulfilled') {
+        prefetchedStreamRef.current = streamResult[0].value;
+        setPrefetchedStream(streamResult[0].value);
         console.log('✅ Media pre-captured during warmup');
       } else {
-        console.warn('⚠️ Media pre-capture failed:', streamResult.reason);
+        console.warn('⚠️ Media pre-capture failed:', streamResult[0].reason);
       }
 
-      // Handle session + LiveKit connection
-      if (sessionResult.status === 'fulfilled') {
-        const res = sessionResult.value;
-        const d = res.data?.data ?? res.data;
-        const url = d?.liveKitUrl ?? d?.url;
-        const token = d?.liveKitToken ?? d?.token;
-        if (url && token && !cancelled) {
-          const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
-          setPrefetchedSession(sessionData);
-          console.log('✅ Session pre-created during warmup');
+      // Use pre-created session from navigation state if available (avoids duplicate creation)
+      let url: string | undefined;
+      let token: string | undefined;
+      let maxDuration: number | null = null;
 
-          // Pre-connect to LiveKit with empty callbacks; VideoInterview will register real ones
-          try {
-            await LiveKitService.connect({ url, token }, {});
-            if (!cancelled) {
-              setPrefetchedConnected(true);
-              console.log('✅ LiveKit pre-connected during warmup');
-            }
-          } catch (err) {
-            console.warn('⚠️ LiveKit pre-connect failed, will retry on start:', err);
-          }
-        }
+      if (stateSession?.liveKitUrl && stateSession?.liveKitToken) {
+        url = stateSession.liveKitUrl;
+        token = stateSession.liveKitToken;
+        maxDuration = stateSession.maxInterviewDuration;
+        console.log('✅ Using pre-created session from navigation state');
       } else {
-        console.warn('⚠️ Pre-create session failed, will retry on start:', sessionResult.reason);
+        try {
+          const res = await InterviewSessionService.createInterviewSession(interviewId, audioOnly);
+          if (cancelled) return;
+          const d = res.data?.data ?? res.data;
+          url = d?.liveKitUrl ?? d?.url;
+          token = d?.liveKitToken ?? d?.token;
+          maxDuration = d?.max_interview_duration ?? null;
+          console.log('✅ Session pre-created during warmup');
+        } catch (err) {
+          console.warn('⚠️ Pre-create session failed, will retry on start:', err);
+        }
+      }
+
+      if (url && token && !cancelled) {
+        const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: maxDuration };
+        setPrefetchedSession(sessionData);
+
+        // Pre-connect to LiveKit with empty callbacks; VideoInterview will register real ones
+        try {
+          await LiveKitService.connect({ url, token }, {});
+          if (!cancelled) {
+            setPrefetchedConnected(true);
+            console.log('✅ LiveKit pre-connected during warmup');
+          }
+        } catch (err) {
+          console.warn('⚠️ LiveKit pre-connect failed, will retry on start:', err);
+        }
       }
     };
 
@@ -311,7 +329,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     setIsValidating(false);
   };
 
-  // Create interview session (called when starting interview)
+  // Create interview session (fallback if warmup pre-creation failed)
   const createInterviewSession = async () => {
     if (currentSession) {
       console.log('✅ Session already exists:', currentSession.sessionId);
@@ -319,10 +337,11 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     }
 
     console.log('🔄 Creating interview session...');
-    
+    const audioOnly = config.mode !== 'video';
+
     try {
       // Step 1: Create session (Mainframe API)
-      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
+      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId, audioOnly);
       
       if (!sessionResponse.data || !sessionResponse.data.data) {
         throw new Error('Failed to create interview session.');

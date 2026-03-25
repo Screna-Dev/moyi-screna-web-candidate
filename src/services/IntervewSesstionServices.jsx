@@ -4,8 +4,9 @@ import API from "./api";
 const BASE_URL = '/training-plans/interviews';
 
 // POST /training-plans/interviews/{interviewId} - Create interview session
-export const createInterviewSession = (interviewId, signal) => {
-    return API.post(`${BASE_URL}/${interviewId}`, {}, { signal });
+// audioOnly: true = voice (1 credit/min), false = video (2 credits/min)
+export const createInterviewSession = (interviewId, audioOnly = false, signal) => {
+    return API.post(`${BASE_URL}/${interviewId}`, { audioOnly }, { signal });
 };
 
 export const getInterviewSession = (interviewId) => {

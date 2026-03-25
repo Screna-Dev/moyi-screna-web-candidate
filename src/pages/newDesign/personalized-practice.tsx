@@ -44,6 +44,7 @@ import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
 import { getJobTitleRecommendations, getProfile } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
+import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Auth helper (same as navbar) ──────────────────────
@@ -87,6 +88,7 @@ function useAuthState() {
 interface PracticeSet {
   id: number;
   module_id: string;
+  training_plan_id?: number;
   title: string;
   role: string;
   focus: string;
@@ -102,7 +104,7 @@ interface PracticeSet {
   whatToExpect?: string[];
 }
 
-function mapModuleToPracticeSet(module: any, index: number, planTitle?: string, planCompany?: string): PracticeSet {
+function mapModuleToPracticeSet(module: any, index: number, planTitle?: string, planCompany?: string, planId?: number): PracticeSet {
   const difficultyMap: Record<string, PracticeSet['difficulty']> = {
     easy: 'Junior',
     medium: 'Intermediate',
@@ -127,6 +129,7 @@ function mapModuleToPracticeSet(module: any, index: number, planTitle?: string, 
   return {
     id: index,
     module_id: module.module_id || String(module.id || index),
+    training_plan_id: planId,
     title: module.title || 'Practice Session',
     role: categoryRoleMap[cat] || 'General',
     focus: module.topic || module.category || 'General',
@@ -288,15 +291,14 @@ const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
 // ════════════════════════════════════════════════════════
 // PRACTICE SET CARD (reused from mock-interview)
 // ════════════════════════════════════════════════════════
-function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boolean }) {
+function PracticeSetCard({ set, showMatch, onClick, isLoading }: { set: PracticeSet; showMatch?: boolean; onClick?: () => void; isLoading?: boolean }) {
   const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
   const visibleAvatars = 3;
 
-  return (
-    <Link
-      to={`/session-confirm?session=${set.module_id}&title=${encodeURIComponent(set.title)}&category=${encodeURIComponent(set.category)}&focus=${encodeURIComponent(set.focus)}&time=${encodeURIComponent(set.time)}&difficulty=${set.difficulty}${set.topics?.length ? `&topics=${encodeURIComponent(JSON.stringify(set.topics))}` : ''}${set.whatToExpect?.length ? `&whatToExpect=${encodeURIComponent(JSON.stringify(set.whatToExpect))}` : ''}`}
-      className="group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col"
-    >
+  const cardClass = `group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''}`;
+
+  const inner = (
+    <>
       {/* Top: Role + Popular/Match badge */}
       <div className="px-5 pt-5 pb-0">
         <div className="flex items-start justify-between gap-3">
@@ -330,7 +332,6 @@ function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boo
 
         {/* Metadata chips row */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          
           <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
             <Zap className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
             <span>{set.focus}</span>
@@ -367,13 +368,30 @@ function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boo
             ))}
           </div>
           <span className="text-xs font-medium text-slate-400">
-            +{set.practiced.toLocaleString()} practiced
+            {isLoading ? 'Starting…' : `+${set.practiced.toLocaleString()} practiced`}
           </span>
         </div>
         <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-          <ArrowRight className="w-3.5 h-3.5" />
+          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
         </div>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button onClick={onClick} className={`text-left w-full ${cardClass}`}>
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      to={`/session-confirm?session=${set.module_id}&title=${encodeURIComponent(set.title)}&category=${encodeURIComponent(set.category)}&focus=${encodeURIComponent(set.focus)}&time=${encodeURIComponent(set.time)}&difficulty=${set.difficulty}${set.topics?.length ? `&topics=${encodeURIComponent(JSON.stringify(set.topics))}` : ''}${set.whatToExpect?.length ? `&whatToExpect=${encodeURIComponent(JSON.stringify(set.whatToExpect))}` : ''}`}
+      className={cardClass}
+    >
+      {inner}
     </Link>
   );
 }
@@ -829,18 +847,19 @@ export function PersonalizedPracticePage() {
       .then((response) => {
         let plansData = response.data?.data ?? response.data ?? [];
         if (!Array.isArray(plansData)) plansData = [];
-        const pendingModules: { module: any; planTitle: string }[] = [];
+        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
         for (const plan of plansData) {
           const planTitle = plan.target_job_title || 'Your Training Plan';
+          const planId = plan.id;
           const modules: any[] = plan.modules || [];
           for (const m of modules) {
             if (m.status === 'pending') {
-              pendingModules.push({ module: m, planTitle });
+              pendingModules.push({ module: m, planTitle, planId });
             }
           }
         }
         const first8 = pendingModules.slice(0, 8);
-        setPlanSets(first8.map(({ module, planTitle }, i) => mapModuleToPracticeSet(module, i, planTitle)));
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
       })
       .catch(() => setPlanSets([]))
       .finally(() => setIsLoadingPlan(false));
@@ -883,6 +902,51 @@ export function PersonalizedPracticePage() {
       return true;
     }
     return false;
+  };
+
+  // ─── Plan card click: create session or delete plan ───
+  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
+
+  const TYPE_MAP: Record<string, string> = {
+    product: 'product',
+    'product sense': 'product',
+    behavioral: 'behavioral',
+    'system-design': 'system-design',
+    resume: 'resume',
+  };
+
+  const handlePlanCardClick = async (set: PracticeSet) => {
+    if (loadingCardId) return;
+    setLoadingCardId(set.module_id);
+    try {
+      // audioOnly=true → voice interview (1 credit/min, no camera)
+      const res = await createInterviewSession(set.module_id, true);
+      const d = res.data?.data ?? res.data;
+      const sessionData = {
+        liveKitUrl: d?.liveKitUrl ?? d?.url,
+        liveKitToken: d?.liveKitToken ?? d?.token,
+        maxInterviewDuration: d?.max_interview_duration ?? null,
+      };
+      const type = TYPE_MAP[set.category.toLowerCase()] || 'behavioral';
+      const difficulty = set.difficulty.toLowerCase();
+      navigate(
+        `/ai-mock?interviewId=${set.module_id}&type=${type}&difficulty=${difficulty}&mode=voice`,
+        { state: { prefetchedSession: sessionData } }
+      );
+    } catch {
+      // Session creation failed — this module was already used, delete the training plan
+      if (set.training_plan_id) {
+        try {
+          await InterviewService.deleteTrainingPlan(set.training_plan_id);
+        } catch {
+          // ignore delete errors
+        }
+      }
+      setPlanSets((prev) => prev.filter((s) => s.module_id !== set.module_id));
+      showToast('This session is no longer available and has been removed.');
+    } finally {
+      setLoadingCardId(null);
+    }
   };
 
   // ─── Filtered sets (Popular tab) ──────────────
@@ -1095,7 +1159,12 @@ export function PersonalizedPracticePage() {
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {popularSets.map((set) => (
-                        <PracticeSetCard key={set.id} set={set} />
+                        <PracticeSetCard
+                          key={set.id}
+                          set={set}
+                          onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
+                          isLoading={loadingCardId === set.module_id}
+                        />
                       ))}
                     </div>
                     {popularSets.length === 0 && (
@@ -1172,7 +1241,13 @@ export function PersonalizedPracticePage() {
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {personalizedSets.map((set) => (
-                        <PracticeSetCard key={set.id} set={set} showMatch />
+                        <PracticeSetCard
+                          key={set.id}
+                          set={set}
+                          showMatch
+                          onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
+                          isLoading={loadingCardId === set.module_id}
+                        />
                       ))}
                     </div>
                   </>
@@ -1207,18 +1282,19 @@ export function PersonalizedPracticePage() {
             .then((response) => {
               let plansData = response.data?.data ?? response.data ?? [];
               if (!Array.isArray(plansData)) plansData = [];
-              const pendingModules: { module: any; planTitle: string }[] = [];
+              const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
               for (const plan of plansData) {
                 const planTitle = plan.target_job_title || 'Your Training Plan';
+                const planId = plan.id;
                 const modules: any[] = plan.modules || [];
                 for (const m of modules) {
                   if (m.status === 'pending') {
-                    pendingModules.push({ module: m, planTitle });
+                    pendingModules.push({ module: m, planTitle, planId });
                   }
                 }
               }
               const first8 = pendingModules.slice(0, 8);
-              setPlanSets(first8.map(({ module, planTitle }, i) => mapModuleToPracticeSet(module, i, planTitle)));
+              setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
             })
             .catch(() => setPlanSets([]))
             .finally(() => setIsLoadingPlan(false));
