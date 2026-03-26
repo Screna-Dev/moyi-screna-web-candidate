@@ -97,7 +97,8 @@ export function VideoInterview({
 
   // ── UI state ──
   const [muted, setMuted] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true);
+  // Voice-only mode starts with camera off
+  const [cameraOn, setCameraOn] = useState(config.mode === 'video');
   const [elapsed, setElapsed] = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -215,6 +216,9 @@ export function VideoInterview({
   }, []);
 
   // ── Pre-capture camera & mic (or use stream pre-captured during warmup) ──
+  // NOTE: cleanup must NOT stop tracks — React StrictMode runs effects twice
+  // (mount → cleanup → mount), which would kill the stream before publishing.
+  // Tracks are stopped when the interview ends (endMeeting / disconnect).
   useEffect(() => {
     if (prefetchedStream) {
       // Stream was captured during warmup - use it directly
@@ -222,19 +226,23 @@ export function VideoInterview({
       setLocalStream(prefetchedStream);
       console.log('[VideoInterview] 📷 Using pre-captured media from warmup');
       return () => {
-        prefetchedStream.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
       };
     }
 
-    // No pre-captured stream - capture now
+    // No pre-captured stream - capture now (voice-only for non-video modes)
     let stream: MediaStream | null = null;
+    let isCancelled = false;
     const capture = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        });
+        const constraints: MediaStreamConstraints = config.mode !== 'video'
+          ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+          : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (isCancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         localStreamRef.current = stream;
         setLocalStream(stream);
         console.log('[VideoInterview] 📷 Local media pre-captured');
@@ -244,7 +252,7 @@ export function VideoInterview({
     };
     capture();
     return () => {
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      isCancelled = true;
       localStreamRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -579,7 +587,7 @@ export function VideoInterview({
         setIsCreatingSession(true);
         try {
           console.log('📝 Creating interview session...');
-          const res = await createInterviewSession(interviewId);
+          const res = await createInterviewSession(interviewId, config.mode !== 'video');
           const d = res.data?.data ?? res.data;
           const url = d?.liveKitUrl ?? d?.url;
           const token = d?.liveKitToken ?? d?.token;
@@ -620,18 +628,15 @@ export function VideoInterview({
         setLiveConnected(true);
         updateConnectionStatus('aiWebSocket', 'connected');
       }
-      // STEP 3: Publish local media tracks to LiveKit
+      // STEP 3: Publish existing media tracks to LiveKit (reuse streams from warmup/capture)
       try {
         console.log('📤 Publishing media tracks to LiveKit...');
-        
-        // Publish audio (required)
-        await LiveKitService.setMicrophoneEnabled(true);
-        
-        // Publish video (optional)
-        if (mediaState.cameraEnabled && mediaState.videoTestStream) {
-          await LiveKitService.setCameraEnabled(true);
-        }
-        
+
+        await LiveKitService.publishExistingTracks(
+          mediaState.audioTestStream,
+          mediaState.cameraEnabled ? mediaState.videoTestStream : null
+        );
+
         console.log('✅ Media tracks published');
       } catch (mediaError) {
         console.warn('⚠️ Failed to publish some media tracks:', mediaError);

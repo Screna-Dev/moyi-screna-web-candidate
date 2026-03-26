@@ -45,13 +45,22 @@ class LiveKitService {
 
     this._setupEventListeners();
 
+    const localRoom = this.room;
+
     try {
       // Connect to LiveKit room
-      await this.room.connect(url, token);
-      console.log('✅ Connected to LiveKit room:', this.room.name);
-      
+      await localRoom.connect(url, token);
+
+      // Guard: a concurrent disconnect may have nulled this.room while we were awaiting
+      if (this.room !== localRoom) {
+        console.log('[LiveKitService] Room replaced during connect — aborting stale connection');
+        return false;
+      }
+
+      console.log('✅ Connected to LiveKit room:', localRoom.name);
+
       this.isConnected = true;
-      
+
       if (this.callbacks.onConnected) {
         this.callbacks.onConnected();
       }
@@ -60,11 +69,11 @@ class LiveKitService {
     } catch (error) {
       console.error('❌ LiveKit connection failed:', error);
       this.isConnected = false;
-      
+
       if (this.callbacks.onError) {
         this.callbacks.onError(error);
       }
-      
+
       throw error;
     }
   }
@@ -220,7 +229,7 @@ class LiveKitService {
     }
   }
 
-  // Publish existing media streams from MediaSetupStep directly to LiveKit.
+  // Publish existing media streams directly to LiveKit.
   // Uses publishTrack(MediaStreamTrack) to reuse the already-acquired streams,
   // avoiding a second getUserMedia() call that would conflict with the active capture.
   async publishExistingTracks(audioStream, videoStream) {

@@ -117,6 +117,8 @@ export function LiveInterview({
   const [liveConnected, setLiveConnected] = useState(false); // kept for potential future use
   // Guard: prevent calling onEnd() more than once
   const endCalledRef = useRef(false);
+  // Guard: prevent StrictMode double-invocation from connecting twice
+  const connectAttemptedRef = useRef(false);
   const safeEnd = useCallback(() => {
     if (!endCalledRef.current) {
       endCalledRef.current = true;
@@ -138,6 +140,8 @@ export function LiveInterview({
   // ── LiveKit connection: use pre-fetched credentials OR create session ──
   useEffect(() => {
     if (!interviewId && !sessionCredentials) return; // demo mode — skip LiveKit entirely
+    if (connectAttemptedRef.current) return; // prevent StrictMode double-invocation
+    connectAttemptedRef.current = true;
 
     let cancelled = false;
 
@@ -166,10 +170,12 @@ export function LiveInterview({
             }, 1500);
           },
           onDisconnected: ({ reason }: { reason?: string }) => {
+            if (cancelled) return;
             console.log('[LiveInterview] LiveKit disconnected:', reason);
             setTimeout(() => { safeEnd(); }, 0);
           },
           onInterviewEnded: () => {
+            if (cancelled) return;
             console.log('[LiveInterview] Bot participant disconnected');
             setTimeout(() => { safeEnd(); }, 0);
           },
@@ -204,7 +210,7 @@ export function LiveInterview({
       (async () => {
         console.log('[LiveInterview] Creating interview session for:', interviewId);
         try {
-          const res = await createInterviewSession(interviewId!);
+          const res = await createInterviewSession(interviewId!, true);
           if (cancelled) return;
           const data = res.data?.data ?? res.data;
           const url = data.liveKitUrl ?? data.url;
@@ -220,6 +226,9 @@ export function LiveInterview({
 
     return () => {
       cancelled = true;
+      // Clear callbacks before disconnecting so the Disconnected room event
+      // doesn't fire onDisconnected → safeEnd() during cleanup / StrictMode remount
+      LiveKitService.updateCallbacks({});
       LiveKitService.disconnect({ intentional: true }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

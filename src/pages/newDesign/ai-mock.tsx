@@ -26,6 +26,7 @@ import {
 } from '@/components/newDesign/ui/select';
 import { Label } from '@/components/newDesign/ui/label';
 import { VideoInterview } from '@/components/newDesign/video-interview';
+import { LiveInterview } from '@/components/newDesign/live-interview';
 import { CooldownScreen } from '@/components/newDesign/cooldown-screen';
 import { endTrainingModule } from '@/services/InterviewServices';
 import * as InterviewSessionService from '@/services/IntervewSesstionServices';
@@ -186,82 +187,72 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   const [prefetchedStream, setPrefetchedStream] = useState<MediaStream | null>(null);
   const [prefetchedConnected, setPrefetchedConnected] = useState(false);
   const prefetchedStreamRef = useRef<MediaStream | null>(null);
+  const warmupStartedRef = useRef(false);
 
-  // During warmup: capture media + create session + connect LiveKit in parallel
+  // During warmup: capture media + create session in parallel.
+  // NOTE: warmupStartedRef prevents duplicate API calls in React StrictMode
+  // (which runs effects twice: mount → cleanup → mount). Since the ref guard
+  // ensures setup() only fires once, we do NOT discard results via a cancelled
+  // flag — the single in-flight request must always be processed.
   useEffect(() => {
     if (stage !== 'warmup' || !interviewId) return;
-    let cancelled = false;
+    if (warmupStartedRef.current) return;
+    warmupStartedRef.current = true;
 
     const stateSession = (location.state as any)?.prefetchedSession as { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | undefined;
     const mode = searchParams.get('mode') ?? 'video';
     const audioOnly = mode !== 'video';
 
     const setup = async () => {
-      // Capture media — voice-only sessions only request audio (no camera)
+      // Voice-only sessions skip video capture to avoid unnecessary camera permission prompts
       const mediaConstraints: MediaStreamConstraints = audioOnly
         ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
         : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
 
-      const streamResult = await Promise.allSettled([
+      // Run media capture and (if needed) session creation in parallel.
+      // If a session was already created by personalized-practice, skip the API call.
+      const [sessionResult, streamResult] = await Promise.allSettled([
+        stateSession?.liveKitUrl
+          ? Promise.resolve(null)
+          : InterviewSessionService.createInterviewSession(interviewId, audioOnly),
         navigator.mediaDevices.getUserMedia(mediaConstraints),
       ]);
 
-      if (cancelled) return;
-
-      if (streamResult[0].status === 'fulfilled') {
-        prefetchedStreamRef.current = streamResult[0].value;
-        setPrefetchedStream(streamResult[0].value);
+      // Handle media stream
+      if (streamResult.status === 'fulfilled' && streamResult.value) {
+        prefetchedStreamRef.current = streamResult.value;
+        setPrefetchedStream(streamResult.value);
         console.log('✅ Media pre-captured during warmup');
       } else {
-        console.warn('⚠️ Media pre-capture failed:', streamResult[0].reason);
+        console.warn('⚠️ Media pre-capture failed:', streamResult.reason);
       }
 
-      // Use pre-created session from navigation state if available (avoids duplicate creation)
-      let url: string | undefined;
-      let token: string | undefined;
-      let maxDuration: number | null = null;
-
+      // Handle session credentials
       if (stateSession?.liveKitUrl && stateSession?.liveKitToken) {
-        url = stateSession.liveKitUrl;
-        token = stateSession.liveKitToken;
-        maxDuration = stateSession.maxInterviewDuration;
+        // Session was pre-created during navigation (e.g. personalized practice)
+        setPrefetchedSession(stateSession);
         console.log('✅ Using pre-created session from navigation state');
-      } else {
-        try {
-          const res = await InterviewSessionService.createInterviewSession(interviewId, audioOnly);
-          if (cancelled) return;
-          const d = res.data?.data ?? res.data;
-          url = d?.liveKitUrl ?? d?.url;
-          token = d?.liveKitToken ?? d?.token;
-          maxDuration = d?.max_interview_duration ?? null;
+      } else if (sessionResult.status === 'fulfilled' && sessionResult.value) {
+        const d = sessionResult.value.data?.data ?? sessionResult.value.data;
+        const url = d?.liveKitUrl ?? d?.url;
+        const token = d?.liveKitToken ?? d?.token;
+        if (url && token) {
+          setPrefetchedSession({ liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null });
           console.log('✅ Session pre-created during warmup');
-        } catch (err) {
-          console.warn('⚠️ Pre-create session failed, will retry on start:', err);
         }
+      } else if (sessionResult.status === 'rejected') {
+        console.warn('⚠️ Pre-create session failed, will retry on start:', sessionResult.reason);
       }
-
-      if (url && token && !cancelled) {
-        const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: maxDuration };
-        setPrefetchedSession(sessionData);
-
-        // Pre-connect to LiveKit with empty callbacks; VideoInterview will register real ones
-        try {
-          await LiveKitService.connect({ url, token }, {});
-          if (!cancelled) {
-            setPrefetchedConnected(true);
-            console.log('✅ LiveKit pre-connected during warmup');
-          }
-        } catch (err) {
-          console.warn('⚠️ LiveKit pre-connect failed, will retry on start:', err);
-        }
-      }
+      // NOTE: Do NOT pre-connect to LiveKit here. Connecting too early causes
+      // the agent to start its 5s video-track detection timer before the
+      // candidate has published tracks (which only happens in VideoInterview).
+      // By deferring the connection, participant join + track publish happen
+      // together, within the agent's detection window.
     };
 
     setup();
 
-    return () => {
-      cancelled = true;
-    };
+    // No cleanup needed — warmupStartedRef prevents duplicate execution
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
@@ -744,15 +735,34 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            <VideoInterview
-              config={config}
-              interviewId={interviewId}
-              onEnd={() => setStage('cooldown')}
-              theme={theme}
-              prefetchedSession={prefetchedSession}
-              prefetchedStream={prefetchedStream}
-              prefetchedConnected={prefetchedConnected}
-            />
+            {config.mode === 'video' ? (
+              <VideoInterview
+                config={config}
+                interviewId={interviewId}
+                onEnd={() => setStage('cooldown')}
+                theme={theme}
+                prefetchedSession={prefetchedSession}
+                prefetchedStream={prefetchedStream}
+                prefetchedConnected={prefetchedConnected}
+              />
+            ) : (
+              <LiveInterview
+                config={config}
+                interviewId={interviewId}
+                onEnd={() => setStage('cooldown')}
+                theme={theme}
+                sessionCredentials={
+                  prefetchedSession
+                    ? {
+                        sessionId: interviewId ?? '',
+                        url: prefetchedSession.liveKitUrl,
+                        token: prefetchedSession.liveKitToken,
+                        maxDuration: prefetchedSession.maxInterviewDuration ?? undefined,
+                      }
+                    : null
+                }
+              />
+            )}
           </motion.div>
         )}
         {stage === 'cooldown' && (

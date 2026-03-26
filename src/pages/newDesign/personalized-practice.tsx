@@ -22,6 +22,8 @@ import {
   Calendar,
   Crosshair,
   Loader2,
+  AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Badge } from '../../components/newDesign/ui/badge';
@@ -43,9 +45,9 @@ import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
 import { getJobTitleRecommendations, getProfile } from '@/services/ProfileServices';
-import { createTrainingPlan } from '@/services/InterviewServices';
-import { createInterviewSession } from '@/services/IntervewSesstionServices';
+import { createTrainingPlan, deleteTrainingPlan } from '@/services/InterviewServices';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 // ─── Auth helper (same as navbar) ──────────────────────
 function useAuthState() {
@@ -291,11 +293,13 @@ const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
 // ════════════════════════════════════════════════════════
 // PRACTICE SET CARD (reused from mock-interview)
 // ════════════════════════════════════════════════════════
-function PracticeSetCard({ set, showMatch, onClick, isLoading }: { set: PracticeSet; showMatch?: boolean; onClick?: () => void; isLoading?: boolean }) {
+function PracticeSetCard({ set, showMatch, onClick, isLoading, userBalance }: { set: PracticeSet; showMatch?: boolean; onClick?: () => void; isLoading?: boolean; userBalance?: number }) {
+  const navigate = useNavigate();
   const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
   const visibleAvatars = 3;
+  const hasInsufficientBalance = userBalance !== undefined && userBalance < set.credits;
 
-  const cardClass = `group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''}`;
+  const cardClass = `group bg-white rounded-2xl border transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''} ${hasInsufficientBalance ? 'border-orange-200 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-900/[0.04]' : 'border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06]'}`;
 
   const inner = (
     <>
@@ -355,28 +359,53 @@ function PracticeSetCard({ set, showMatch, onClick, isLoading }: { set: Practice
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex -space-x-1.5">
-            {colorSet.slice(0, visibleAvatars).map((color, i) => (
-              <div
-                key={i}
-                className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
-              >
-                {INITIALS[(set.id + i) % INITIALS.length]}
-              </div>
-            ))}
+      {hasInsufficientBalance ? (
+        <div className="px-5 py-3 mt-3 border-t border-orange-100 bg-orange-50/50 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+            <span className="text-xs text-orange-700 truncate">
+              Need {set.credits} credits (you have {userBalance})
+            </span>
           </div>
-          <span className="text-xs font-medium text-slate-400">
-            {isLoading ? 'Starting…' : `+${set.practiced.toLocaleString()} practiced`}
-          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); navigate('/billing'); }}
+            className="shrink-0 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-full transition-colors"
+          >
+            Buy tokens
+          </button>
         </div>
-        <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+      ) : (
+        <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex -space-x-1.5">
+              {colorSet.slice(0, visibleAvatars).map((color, i) => (
+                <div
+                  key={i}
+                  className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
+                >
+                  {INITIALS[(set.id + i) % INITIALS.length]}
+                </div>
+              ))}
+            </div>
+            <span className="text-xs font-medium text-slate-400">
+              {isLoading ? 'Starting…' : `+${set.practiced.toLocaleString()} practiced`}
+            </span>
+          </div>
+          <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
+            {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
+
+  if (hasInsufficientBalance) {
+    return (
+      <button onClick={() => navigate('/billing')} className={`text-left w-full ${cardClass}`}>
+        {inner}
+      </button>
+    );
+  }
 
   if (onClick) {
     return (
@@ -814,6 +843,8 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 export function PersonalizedPracticePage() {
   const navigate = useNavigate();
   const { isAuthenticated: isLoggedIn, user } = useAuth();
+  const { planData } = useUserPlan();
+  const userBalance = planData.permanentCreditBalance;
   const userData = user ? { role: user.role } : null;
   const hasProfile = !!userData?.role;
 
@@ -833,13 +864,29 @@ export function PersonalizedPracticePage() {
       .catch(() => setHasResume(false));
   }, [isLoggedIn]);
 
-  // Training plan modules (real data)
+  // ── All state declarations ──
   const [planSets, setPlanSets] = useState<PracticeSet[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [existingPlans, setExistingPlans] = useState<any[]>([]);
+  const [existingPlanId, setExistingPlanId] = useState<number | null>(null);
+  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
+  const [activeTab, setActiveTab] = useState<'popular' | 'foryou'>('popular');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [targetJob, setTargetJob] = useState<string | null>(null);
+  const [showTargetJobModal, setShowTargetJobModal] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [signInMessage, setSignInMessage] = useState('');
+  const [toast, setToast] = useState({ visible: false, message: '' });
+  const [personalizeWith, setPersonalizeWith] = useState<'profile' | 'targetjob' | null>(null);
 
+  // ── Effects ──
   useEffect(() => {
     if (!isLoggedIn) {
       setPlanSets([]);
+      setExistingPlans([]);
+      setExistingPlanId(null);
+      setTargetJob(null);
       return;
     }
     setIsLoadingPlan(true);
@@ -847,6 +894,7 @@ export function PersonalizedPracticePage() {
       .then((response) => {
         let plansData = response.data?.data ?? response.data ?? [];
         if (!Array.isArray(plansData)) plansData = [];
+        setExistingPlans(plansData);
         const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
         for (const plan of plansData) {
           const planTitle = plan.target_job_title || 'Your Training Plan';
@@ -858,43 +906,24 @@ export function PersonalizedPracticePage() {
             }
           }
         }
+        if (plansData.length > 0) {
+          const firstPlan = plansData[0];
+          setExistingPlanId(firstPlan.id);
+          setTargetJob(firstPlan.target_job_title || 'Your Training Plan');
+        }
         const first8 = pendingModules.slice(0, 8);
         setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
       })
-      .catch(() => setPlanSets([]))
+      .catch(() => { setPlanSets([]); setExistingPlans([]); })
       .finally(() => setIsLoadingPlan(false));
   }, [isLoggedIn]);
 
-  // Use real plan data when available, otherwise fall back to static sets (only after loading)
-  const activeSets = planSets.length > 0 ? planSets : (isLoadingPlan ? [] : PRACTICE_SETS);
-
-  // Tabs
-  const [activeTab, setActiveTab] = useState<'popular' | 'foryou'>('popular');
-
-  // Filters (apply to Popular tab)
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Target Job
-  const [targetJob, setTargetJob] = useState<string | null>(null);
-  const [showTargetJobModal, setShowTargetJobModal] = useState(false);
-
-  // Sign-in modal
-  const [showSignIn, setShowSignIn] = useState(false);
-  const [signInMessage, setSignInMessage] = useState('');
-
-  // Toast
-  const [toast, setToast] = useState({ visible: false, message: '' });
-
+  // ── Helper functions ──
   const showToast = (message: string) => {
     setToast({ visible: true, message });
     setTimeout(() => setToast({ visible: false, message: '' }), 2500);
   };
 
-  // Quick Start personalization
-  const [personalizeWith, setPersonalizeWith] = useState<'profile' | 'targetjob' | null>(null);
-
-  // Gate check helper
   const requireAuth = (msg?: string) => {
     if (!isLoggedIn) {
       setSignInMessage(msg || 'Sign in to personalize your mock and save progress.');
@@ -904,50 +933,54 @@ export function PersonalizedPracticePage() {
     return false;
   };
 
-  // ─── Plan card click: create session or delete plan ───
-  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
-
-  const TYPE_MAP: Record<string, string> = {
-    product: 'product',
-    'product sense': 'product',
-    behavioral: 'behavioral',
-    'system-design': 'system-design',
-    resume: 'resume',
+  const refetchPlans = () => {
+    setIsLoadingPlan(true);
+    InterviewService.getTrainingPlans()
+      .then((response) => {
+        let plansData = response.data?.data ?? response.data ?? [];
+        if (!Array.isArray(plansData)) plansData = [];
+        setExistingPlans(plansData);
+        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
+        for (const plan of plansData) {
+          const planTitle = plan.target_job_title || 'Your Training Plan';
+          const planId = plan.id;
+          const modules: any[] = plan.modules || [];
+          for (const m of modules) {
+            if (m.status === 'pending') {
+              pendingModules.push({ module: m, planTitle, planId });
+            }
+          }
+        }
+        if (plansData.length > 0) {
+          const firstPlan = plansData[0];
+          setExistingPlanId(firstPlan.id);
+        }
+        const first8 = pendingModules.slice(0, 8);
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
+      })
+      .catch(() => { setPlanSets([]); setExistingPlans([]); })
+      .finally(() => setIsLoadingPlan(false));
   };
 
-  const handlePlanCardClick = async (set: PracticeSet) => {
-    if (loadingCardId) return;
-    setLoadingCardId(set.module_id);
+  const handleDeletePlan = async () => {
+    if (!existingPlanId) return;
+    setIsDeletingPlan(true);
     try {
-      // audioOnly=true → voice interview (1 credit/min, no camera)
-      const res = await createInterviewSession(set.module_id, true);
-      const d = res.data?.data ?? res.data;
-      const sessionData = {
-        liveKitUrl: d?.liveKitUrl ?? d?.url,
-        liveKitToken: d?.liveKitToken ?? d?.token,
-        maxInterviewDuration: d?.max_interview_duration ?? null,
-      };
-      const type = TYPE_MAP[set.category.toLowerCase()] || 'behavioral';
-      const difficulty = set.difficulty.toLowerCase();
-      navigate(
-        `/ai-mock?interviewId=${set.module_id}&type=${type}&difficulty=${difficulty}&mode=voice`,
-        { state: { prefetchedSession: sessionData } }
-      );
+      await deleteTrainingPlan(existingPlanId);
+      setTargetJob(null);
+      setPlanSets([]);
+      setExistingPlans([]);
+      setExistingPlanId(null);
+      showToast('Training plan deleted');
     } catch {
-      // Session creation failed — this module was already used, delete the training plan
-      if (set.training_plan_id) {
-        try {
-          await InterviewService.deleteTrainingPlan(set.training_plan_id);
-        } catch {
-          // ignore delete errors
-        }
-      }
-      setPlanSets((prev) => prev.filter((s) => s.module_id !== set.module_id));
-      showToast('This session is no longer available and has been removed.');
+      showToast('Failed to delete plan. Please try again.');
     } finally {
-      setLoadingCardId(null);
+      setIsDeletingPlan(false);
     }
   };
+
+  // ── Computed ──
+  const activeSets = planSets;
 
   // ─── Filtered sets (Popular tab) ──────────────
   const popularSets = activeSets.filter((set) => {
@@ -1076,22 +1109,13 @@ export function PersonalizedPracticePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none text-xs h-9 px-4"
-                    onClick={() => setShowTargetJobModal(true)}
-                  >
-                    Change
-                  </Button>
                   <button
-                    onClick={() => {
-                      setTargetJob(null);
-                      showToast('Target Job cleared');
-                    }}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                    onClick={handleDeletePlan}
+                    disabled={isDeletingPlan}
+                    title="Delete training plan"
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
                   >
-                    <X className="w-4 h-4" />
+                    {isDeletingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -1155,19 +1179,32 @@ export function PersonalizedPracticePage() {
                       </div>
                     ))}
                   </div>
+                ) : planSets.length === 0 ? (
+                  /* No training plan yet */
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
+                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+                      <Target className="w-6 h-6 text-blue-500" />
+                    </div>
+                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">Add a target job to start</h3>
+                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
+                      Set your target role to get a personalized training plan with practice sessions tailored to your goal.
+                    </p>
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none gap-1.5"
+                      onClick={() => setShowTargetJobModal(true)}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add target job
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {popularSets.map((set) => (
-                        <PracticeSetCard
-                          key={set.id}
-                          set={set}
-                          onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
-                          isLoading={loadingCardId === set.module_id}
-                        />
+                        <PracticeSetCard key={set.id} set={set} userBalance={userBalance} />
                       ))}
                     </div>
-                    {popularSets.length === 0 && (
+                    {popularSets.length === 0 && planSets.length > 0 && (
                       <div className="text-center py-16">
                         <p className="text-sm text-slate-500 mb-3">No practice sets match your search.</p>
                         <Button
@@ -1241,13 +1278,7 @@ export function PersonalizedPracticePage() {
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {personalizedSets.map((set) => (
-                        <PracticeSetCard
-                          key={set.id}
-                          set={set}
-                          showMatch
-                          onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
-                          isLoading={loadingCardId === set.module_id}
-                        />
+                        <PracticeSetCard key={set.id} set={set} showMatch />
                       ))}
                     </div>
                   </>
@@ -1276,29 +1307,7 @@ export function PersonalizedPracticePage() {
           setTargetJob(job);
           showToast(`Target Job set: ${job}`);
         }}
-        onPlanCreated={() => {
-          setIsLoadingPlan(true);
-          InterviewService.getTrainingPlans()
-            .then((response) => {
-              let plansData = response.data?.data ?? response.data ?? [];
-              if (!Array.isArray(plansData)) plansData = [];
-              const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
-              for (const plan of plansData) {
-                const planTitle = plan.target_job_title || 'Your Training Plan';
-                const planId = plan.id;
-                const modules: any[] = plan.modules || [];
-                for (const m of modules) {
-                  if (m.status === 'pending') {
-                    pendingModules.push({ module: m, planTitle, planId });
-                  }
-                }
-              }
-              const first8 = pendingModules.slice(0, 8);
-              setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
-            })
-            .catch(() => setPlanSets([]))
-            .finally(() => setIsLoadingPlan(false));
-        }}
+        onPlanCreated={refetchPlans}
       />
       <Toast message={toast.message} visible={toast.visible} />
     </div>
