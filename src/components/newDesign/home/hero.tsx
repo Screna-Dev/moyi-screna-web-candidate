@@ -213,7 +213,7 @@ export function Hero() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-24"
         >
           {/* Primary CTA */}
-          <ShinyButton>
+          <ShinyButton onClick={() => navigate('/auth')}>
             Start Practicing Free
           </ShinyButton>
 

@@ -91,12 +91,14 @@ export function LiveInterview({
   onEnd,
   theme = 'dark',
   sessionCredentials = null,
+  prefetchedStream = null,
 }: {
   config: LiveConfig;
   interviewId?: string;
   onEnd: () => void;
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
+  prefetchedStream?: MediaStream | null;
 }) {
   const isDark = theme === 'dark';
   // Demo runs ONLY when no interviewId provided.
@@ -114,11 +116,15 @@ export function LiveInterview({
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [liveConnected, setLiveConnected] = useState(false); // kept for potential future use
+  const [liveConnected, setLiveConnected] = useState(false);
   // Guard: prevent calling onEnd() more than once
   const endCalledRef = useRef(false);
-  // Guard: prevent StrictMode double-invocation from connecting twice
-  const connectAttemptedRef = useRef(false);
+  // Guard: prevent auto-start from firing more than once
+  const autoStartedRef = useRef(false);
+  // Guard: only end interview after bot has spoken (prevents StrictMode premature end)
+  const botHasSpokenRef = useRef(false);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const safeEnd = useCallback(() => {
     if (!endCalledRef.current) {
       endCalledRef.current = true;
@@ -137,102 +143,146 @@ export function LiveInterview({
     return () => clearInterval(t);
   }, []);
 
-  // ── LiveKit connection: use pre-fetched credentials OR create session ──
+  // ── Capture audio (or reuse prefetched stream from warmup) ──
   useEffect(() => {
-    if (!interviewId && !sessionCredentials) return; // demo mode — skip LiveKit entirely
-    if (connectAttemptedRef.current) return; // prevent StrictMode double-invocation
-    connectAttemptedRef.current = true;
+    if (!interviewId && !sessionCredentials) return; // demo mode — skip
+    if (prefetchedStream) {
+      audioStreamRef.current = prefetchedStream;
+      setLocalStream(prefetchedStream);
+      console.log('[LiveInterview] 🎤 Using pre-captured audio from warmup');
+      return () => { audioStreamRef.current = null; };
+    }
+    let stream: MediaStream | null = null;
+    let isCancelled = false;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        if (isCancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        audioStreamRef.current = stream;
+        setLocalStream(stream);
+        console.log('[LiveInterview] 🎤 Audio captured');
+      } catch (err) {
+        console.warn('[LiveInterview] Could not capture audio:', err);
+      }
+    })();
+    return () => {
+      isCancelled = true;
+      audioStreamRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    let cancelled = false;
-
-    const doConnect = (url: string, token: string) => {
-      if (cancelled) return;
-      // Guard: don't connect if already connected (mirrors old ai-interview pattern)
-      if (LiveKitService.getIsConnected()) {
-        console.log('[LiveInterview] Already connected, skipping duplicate connect');
+  // ── Build LiveKit callbacks (plain function, re-created fresh on each call) ──
+  const buildLiveKitCallbacks = () => ({
+    onConnected: () => {
+      console.log('[LiveInterview] ✅ LiveKit connected');
+      setLiveConnected(true);
+      setAiState('listening');
+      LiveKitService.publishExistingTracks(audioStreamRef.current, null)
+        .then(() => console.log('[LiveInterview] 🎤 Audio track published'))
+        .catch((err: unknown) => console.error('[LiveInterview] Failed to publish audio:', err));
+    },
+    onDisconnected: ({ reason }: { reason?: string }) => {
+      console.log('[LiveInterview] LiveKit disconnected:', reason);
+      setLiveConnected(false);
+      // Only end interview if bot has spoken — prevents StrictMode/cleanup from ending prematurely
+      if (botHasSpokenRef.current && !endCalledRef.current) {
+        setTimeout(() => safeEnd(), 0);
+      }
+    },
+    onInterviewEnded: () => {
+      console.log('[LiveInterview] Bot participant disconnected');
+      if (botHasSpokenRef.current && !endCalledRef.current) {
+        setTimeout(() => safeEnd(), 0);
+      }
+    },
+    onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
+      if (isAISpeaking) botHasSpokenRef.current = true;
+      setIsUserSpeaking(userSpeaking);
+      setAiState(isAISpeaking ? 'speaking' : 'listening');
+    },
+    onDataReceived: (message: { type?: string; text?: string; role?: string; label?: string }) => {
+      if (message?.label === 'rtvi-ai') {
+        if (message.type === 'bot-started-speaking') {
+          botHasSpokenRef.current = true;
+          setAiState('speaking');
+        } else if (message.type === 'bot-stopped-speaking') {
+          setAiState('listening');
+        }
         return;
       }
-      console.log('[LiveInterview] Connecting to LiveKit…');
-      LiveKitService.connect(
-        { url, token },
-        {
-          onConnected: () => {
-            if (cancelled) return;
-            console.log('[LiveInterview] ✅ LiveKit connected');
-            setLiveConnected(true);
-            setAiState('listening');
-            // Delay mic enabling to let the AI bot finish initializing before receiving audio
-            setTimeout(() => {
-              if (cancelled) return;
-              LiveKitService.setMicrophoneEnabled(true)
-                .then(() => console.log('[LiveInterview] 🎤 Microphone enabled'))
-                .catch((err: unknown) => console.error('[LiveInterview] Failed to enable microphone:', err));
-            }, 1500);
-          },
-          onDisconnected: ({ reason }: { reason?: string }) => {
-            if (cancelled) return;
-            console.log('[LiveInterview] LiveKit disconnected:', reason);
-            setTimeout(() => { safeEnd(); }, 0);
-          },
-          onInterviewEnded: () => {
-            if (cancelled) return;
-            console.log('[LiveInterview] Bot participant disconnected');
-            setTimeout(() => { safeEnd(); }, 0);
-          },
-          onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
-            setIsUserSpeaking(userSpeaking);
-            setAiState(isAISpeaking ? 'speaking' : 'listening');
-          },
-          onDataReceived: (message: { type?: string; text?: string; role?: string }) => {
-            if (message?.type === 'transcript' && message.text) {
-              const role = message.role === 'bot' ? 'ai' : 'user';
-              setTranscript((prev) => [
-                ...prev,
-                { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
-              ]);
-              if (role === 'ai') setQuestionNum((q) => q + 1);
-            }
-          },
-          onError: (err: unknown) => {
-            console.error('[LiveInterview] LiveKit error:', err);
-          },
-        }
-      ).catch((err: unknown) => {
-        console.error('[LiveInterview] LiveKit connect failed:', err);
-      });
-    };
+      if (message?.type === 'transcript' && message.text) {
+        const role = message.role === 'bot' ? 'ai' : 'user';
+        setTranscript((prev) => [
+          ...prev,
+          { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
+        ]);
+        if (role === 'ai') setQuestionNum((q) => q + 1);
+      }
+    },
+    onError: (err: unknown) => {
+      console.error('[LiveInterview] LiveKit error:', err);
+    },
+  });
+
+  // ── Start interview: connect to LiveKit using pre-fetched or fresh credentials ──
+  const startInterview = async () => {
+    let session: { liveKitUrl: string; liveKitToken: string } | null = null;
 
     if (sessionCredentials) {
-      // Credentials pre-fetched during warmup — connect immediately
-      doConnect(sessionCredentials.url, sessionCredentials.token);
+      session = { liveKitUrl: sessionCredentials.url, liveKitToken: sessionCredentials.token };
     } else {
-      // No pre-fetched credentials — create session now
-      (async () => {
-        console.log('[LiveInterview] Creating interview session for:', interviewId);
-        try {
-          const res = await createInterviewSession(interviewId!, true);
-          if (cancelled) return;
-          const data = res.data?.data ?? res.data;
-          const url = data.liveKitUrl ?? data.url;
-          const token = data.liveKitToken ?? data.token;
-          if (!url || !token) throw new Error('Missing LiveKit credentials in response');
-          doConnect(url, token);
-        } catch (err) {
-          if (cancelled) return;
-          console.error('[LiveInterview] Failed to create session:', err);
-        }
-      })();
+      console.log('[LiveInterview] Creating interview session for:', interviewId);
+      try {
+        const res = await createInterviewSession(interviewId!, true);
+        const data = res.data?.data ?? res.data;
+        const url = data.liveKitUrl ?? data.url;
+        const token = data.liveKitToken ?? data.token;
+        if (!url || !token) throw new Error('Missing LiveKit credentials in response');
+        session = { liveKitUrl: url, liveKitToken: token };
+      } catch (err) {
+        console.error('[LiveInterview] Failed to create session:', err);
+        return;
+      }
     }
 
+    if (LiveKitService.getIsConnected()) {
+      console.log('[LiveInterview] Already connected, registering callbacks and publishing tracks');
+      LiveKitService.updateCallbacks(buildLiveKitCallbacks());
+      setLiveConnected(true);
+      setAiState('listening');
+      await LiveKitService.publishExistingTracks(audioStreamRef.current, null)
+        .catch((err: unknown) => console.error('[LiveInterview] Failed to publish audio:', err));
+    } else {
+      console.log('[LiveInterview] Connecting to LiveKit…');
+      try {
+        await LiveKitService.connect(
+          { url: session.liveKitUrl, token: session.liveKitToken },
+          buildLiveKitCallbacks()
+        );
+      } catch (err: unknown) {
+        console.error('[LiveInterview] LiveKit connect failed:', err);
+      }
+    }
+  };
+
+  // ── Auto-start once audio stream is ready ──
+  useEffect(() => {
+    if (!localStream || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startInterview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStream]);
+
+  // ── Disconnect on unmount ──
+  useEffect(() => {
     return () => {
-      cancelled = true;
-      // Clear callbacks before disconnecting so the Disconnected room event
-      // doesn't fire onDisconnected → safeEnd() during cleanup / StrictMode remount
       LiveKitService.updateCallbacks({});
       LiveKitService.disconnect({ intentional: true }).catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interviewId, sessionCredentials]);
+  }, []);
 
   // ── Demo script cycle (only when NOT in live mode) ──
   useEffect(() => {

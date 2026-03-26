@@ -494,10 +494,12 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
 
   const cleanupConnectionResources = async () => {
     console.log('🧹 Cleaning up connection resources...');
-    
-    // Disconnect LiveKit
+
+    // Clear callbacks before disconnecting so RoomEvent.Disconnected doesn't
+    // trigger onDisconnected → safeEnd() → premature stage transition
+    LiveKitService.updateCallbacks({});
     await LiveKitService.disconnect();
-    
+
     setIsConnected(false);
   };
 
@@ -751,6 +753,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
                 interviewId={interviewId}
                 onEnd={() => setStage('cooldown')}
                 theme={theme}
+                prefetchedStream={prefetchedStream}
                 sessionCredentials={
                   prefetchedSession
                     ? {

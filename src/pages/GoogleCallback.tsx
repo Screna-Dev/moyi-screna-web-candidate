@@ -90,13 +90,13 @@ export default function GoogleCallback() {
         console.log('Tokens stored in localStorage');
 
         // Set user from token
-        setUserFromToken(accessToken);
+        await setUserFromToken(accessToken);
 
         toast({
           title: 'Success!',
           description: 'You have successfully signed in with Google.',
         });
-        
+
         // Redirect to dashboard
         navigate('/dashboard');
         

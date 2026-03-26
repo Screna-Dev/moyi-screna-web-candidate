@@ -82,7 +82,7 @@ function useAuthState() {
     return () => window.removeEventListener('screna-auth-change', handler);
   }, []);
 
-  const hasProfile = !!(userData?.role && userData?.experienceLevel);
+const hasProfile = !!(userData?.role && userData?.experienceLevel);
   return { isLoggedIn, userData, hasProfile };
 }
 
@@ -867,6 +867,7 @@ export function PersonalizedPracticePage() {
   // ── All state declarations ──
   const [planSets, setPlanSets] = useState<PracticeSet[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [isModulesGenerating, setIsModulesGenerating] = useState(false);
   const [existingPlans, setExistingPlans] = useState<any[]>([]);
   const [existingPlanId, setExistingPlanId] = useState<number | null>(null);
   const [isDeletingPlan, setIsDeletingPlan] = useState(false);
@@ -910,13 +911,28 @@ export function PersonalizedPracticePage() {
           const firstPlan = plansData[0];
           setExistingPlanId(firstPlan.id);
           setTargetJob(firstPlan.target_job_title || 'Your Training Plan');
+          // Plan exists but modules not ready yet — still generating
+          const allModulesEmpty = plansData.every((p: any) => (p.modules || []).length === 0);
+          setIsModulesGenerating(allModulesEmpty);
+        } else {
+          setIsModulesGenerating(false);
         }
         const first8 = pendingModules.slice(0, 8);
         setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
       })
-      .catch(() => { setPlanSets([]); setExistingPlans([]); })
+      .catch(() => { setPlanSets([]); setExistingPlans([]); setIsModulesGenerating(false); })
       .finally(() => setIsLoadingPlan(false));
   }, [isLoggedIn]);
+
+  // ── Poll while modules are still generating ──
+  useEffect(() => {
+    if (!isModulesGenerating) return;
+    const interval = setInterval(() => {
+      refetchPlans();
+    }, 5000);
+    return () => clearInterval(interval);
+   
+  }, [isModulesGenerating]);
 
   // ── Helper functions ──
   const showToast = (message: string) => {
@@ -954,11 +970,15 @@ export function PersonalizedPracticePage() {
         if (plansData.length > 0) {
           const firstPlan = plansData[0];
           setExistingPlanId(firstPlan.id);
+          const allModulesEmpty = plansData.every((p: any) => (p.modules || []).length === 0);
+          setIsModulesGenerating(allModulesEmpty);
+        } else {
+          setIsModulesGenerating(false);
         }
         const first8 = pendingModules.slice(0, 8);
         setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
       })
-      .catch(() => { setPlanSets([]); setExistingPlans([]); })
+      .catch(() => { setPlanSets([]); setExistingPlans([]); setIsModulesGenerating(false); })
       .finally(() => setIsLoadingPlan(false));
   };
 
@@ -971,6 +991,7 @@ export function PersonalizedPracticePage() {
       setPlanSets([]);
       setExistingPlans([]);
       setExistingPlanId(null);
+      setIsModulesGenerating(false);
       showToast('Training plan deleted');
     } catch {
       showToast('Failed to delete plan. Please try again.');
@@ -1179,6 +1200,17 @@ export function PersonalizedPracticePage() {
                       </div>
                     ))}
                   </div>
+                ) : isModulesGenerating ? (
+                  /* Plan exists but modules still generating */
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
+                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+                      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">Building your training plan…</h3>
+                    <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                      We're generating personalized practice modules for your target role. This usually takes a moment.
+                    </p>
+                  </div>
                 ) : planSets.length === 0 ? (
                   /* No training plan yet */
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
@@ -1189,13 +1221,6 @@ export function PersonalizedPracticePage() {
                     <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
                       Set your target role to get a personalized training plan with practice sessions tailored to your goal.
                     </p>
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none gap-1.5"
-                      onClick={() => setShowTargetJobModal(true)}
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add target job
-                    </Button>
                   </div>
                 ) : (
                   <>

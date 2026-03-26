@@ -694,35 +694,7 @@ export function VideoInterview({
 
     endMeeting();
   };
-
-  const handleEndDialogOpen = () => setOpenEndDialog(true);
-  const handleEndDialogClose = () => setOpenEndDialog(false);
-
-  const getAIStatus = () => {
-    if (interviewEnded) return 'ended';
-    if (aiSpeaking) return 'speaking';
-    return 'listening';
-  };
-
-  // Get button text based on current state
-  const getStartButtonText = () => {
-    if (isCreatingSession) return 'Creating Session...';
-    if (isConnecting) return 'Connecting...';
-    if (interviewStarted) return 'Interview Active';
-    return 'Start Interview';
-  };
-
-  // Timer color based on remaining time
-  const getTimerColor = () => {
-    if (remainingTime === null) return '#5341f4';
-    if (remainingTime < 60) return '#ef4444';
-    if (remainingTime < 300) return '#f59e0b';
-    return '#5341f4';
-  };
-
-  // JSX calls handleStartInterview; maps to startInterview from pasted ai-interview logic
-  const handleStartInterview = startInterview;
-
+  
   return (
     <div className={`h-screen flex flex-col relative overflow-hidden select-none transition-colors duration-500 ${
       isDark ? 'bg-[#0a0f1c]' : 'bg-slate-100'

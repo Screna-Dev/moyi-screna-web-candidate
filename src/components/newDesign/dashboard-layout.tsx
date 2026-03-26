@@ -135,6 +135,7 @@ function GlobalTopHeader({
     : userData?.firstName
     ? userData.firstName[0].toUpperCase()
     : 'U';
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -150,6 +151,7 @@ function GlobalTopHeader({
     localStorage.removeItem('screnaIsLoggedIn');
     window.dispatchEvent(new Event('screna-auth-change'));
     setAvatarOpen(false);
+    logout();
     navigate('/');
   };
 
@@ -455,7 +457,6 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
   const [userData, setUserData] = useState<UserData | null>(null);
   const { planData, isLoading: isPlanLoading } = useUserPlan();
   const creditBalance = planData.permanentCreditBalance;
-
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
