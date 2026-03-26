@@ -644,7 +644,7 @@ export function DashboardPage() {
   return (
     <DashboardLayout headerTitle={`${greeting}, ${firstName} 👋`}>
       <div className="space-y-8">
-        <ProfileHeader userData={userData} onUpdateProfile={handleUpdateProfile} />
+        <ProfileHeader userData={userData} onUpdateProfile={handleUpdateProfile} onUploadResume={handleUploadResume} />
 
 
         {/* Quick actions */}
