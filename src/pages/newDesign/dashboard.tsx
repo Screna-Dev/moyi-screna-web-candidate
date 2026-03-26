@@ -183,6 +183,7 @@ function ProfileHeader({
   onUploadResume: (file: File) => Promise<void>
 }) {
   const completion = 85; // TODO: replace with userData?.profileCompletionPct once backend returns it
+  const { toast } = useToast();
   const [editOpen, setEditOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -485,7 +486,7 @@ export function DashboardPage() {
     // Sync name to API
     try {
       const name = [newData.firstName, newData.lastName].filter(Boolean).join(' ');
-      if (name) await savePersonalInfo({ name });
+      if (name) await savePersonalInfo({ name, country: merged.country ?? '', timezone: '' });
     } catch { /* silent — data already saved to localStorage */ }
   };
 
@@ -644,7 +645,7 @@ export function DashboardPage() {
   return (
     <DashboardLayout headerTitle={`${greeting}, ${firstName} 👋`}>
       <div className="space-y-8">
-        <ProfileHeader userData={userData} onUpdateProfile={handleUpdateProfile} />
+        <ProfileHeader userData={userData} onUpdateProfile={handleUpdateProfile} onUploadResume={handleUploadResume} />
 
 
         {/* Quick actions */}

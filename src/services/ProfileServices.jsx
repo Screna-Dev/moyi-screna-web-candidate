@@ -29,11 +29,7 @@ export const uploadResume = (file) => {
   const formData = new FormData();
   formData.append('file', file);
        
-  return API.post(`${BASE_URL}/upload-resume`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  return API.post(`${BASE_URL}/upload-resume`, formData);
 };
 
 /**
@@ -78,11 +74,7 @@ export const uploadAvatar = (file) => {
   const formData = new FormData();
   formData.append('file', file);
        
-  return API.post(`${BASE_URL}/upload-avatar`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  return API.post(`${BASE_URL}/upload-avatar`, formData);
 };
 
 /**

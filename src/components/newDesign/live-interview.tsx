@@ -204,7 +204,7 @@ export function LiveInterview({
       (async () => {
         console.log('[LiveInterview] Creating interview session for:', interviewId);
         try {
-          const res = await createInterviewSession(interviewId!);
+          const res = await createInterviewSession(interviewId!, { audioOnly: true });
           if (cancelled) return;
           const data = res.data?.data ?? res.data;
           const url = data.liveKitUrl ?? data.url;

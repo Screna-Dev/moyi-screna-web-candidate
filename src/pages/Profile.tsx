@@ -489,7 +489,7 @@ const Profile = () => {
                     <Upload className="w-12 h-12 mx-auto mb-4 text-primary" />
                     <p className="text-lg font-medium mb-2">Drop your resume here or click to browse</p>
                     <p className="text-sm text-muted-foreground">
-                      PDF, DOC, DOCX • Max 5MB • English or bilingual supported
+                      PDF, DOC, DOCX • Max 1MB • English or bilingual supported
                     </p>
                   </>
                 )}

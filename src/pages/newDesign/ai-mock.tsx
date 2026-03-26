@@ -185,23 +185,27 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   const [prefetchedStream, setPrefetchedStream] = useState<MediaStream | null>(null);
   const [prefetchedConnected, setPrefetchedConnected] = useState(false);
   const prefetchedStreamRef = useRef<MediaStream | null>(null);
+  const warmupStartedRef = useRef(false);
 
   // During warmup: capture media + create session + connect LiveKit in parallel
+  // NOTE: warmupStartedRef prevents duplicate API calls in React StrictMode
+  // (which runs effects twice: mount → cleanup → mount). Since the ref guard
+  // ensures setup() only fires once, we do NOT discard results via a cancelled
+  // flag — the single in-flight request must always be processed.
   useEffect(() => {
     if (stage !== 'warmup' || !interviewId) return;
-    let cancelled = false;
+    if (warmupStartedRef.current) return;
+    warmupStartedRef.current = true;
 
     const setup = async () => {
       // Run session creation and media capture in parallel
       const [sessionResult, streamResult] = await Promise.allSettled([
-        InterviewSessionService.createInterviewSession(interviewId),
+        InterviewSessionService.createInterviewSession(interviewId, { audioOnly: config.mode !== 'video' }),
         navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
         }),
       ]);
-
-      if (cancelled) return;
 
       // Handle media stream
       if (streamResult.status === 'fulfilled') {
@@ -218,21 +222,15 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
         const d = res.data?.data ?? res.data;
         const url = d?.liveKitUrl ?? d?.url;
         const token = d?.liveKitToken ?? d?.token;
-        if (url && token && !cancelled) {
+        if (url && token) {
           const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
           setPrefetchedSession(sessionData);
           console.log('✅ Session pre-created during warmup');
-
-          // Pre-connect to LiveKit with empty callbacks; VideoInterview will register real ones
-          try {
-            await LiveKitService.connect({ url, token }, {});
-            if (!cancelled) {
-              setPrefetchedConnected(true);
-              console.log('✅ LiveKit pre-connected during warmup');
-            }
-          } catch (err) {
-            console.warn('⚠️ LiveKit pre-connect failed, will retry on start:', err);
-          }
+          // NOTE: Do NOT pre-connect to LiveKit here. Connecting too early causes
+          // the agent to start its 5s video-track detection timer before the
+          // candidate has published tracks (which only happens in VideoInterview).
+          // By deferring the connection, participant join + track publish happen
+          // together, within the agent's detection window.
         }
       } else {
         console.warn('⚠️ Pre-create session failed, will retry on start:', sessionResult.reason);
@@ -241,9 +239,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
 
     setup();
 
-    return () => {
-      cancelled = true;
-    };
+    // No cleanup needed — warmupStartedRef prevents duplicate execution
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
