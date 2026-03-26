@@ -5,9 +5,6 @@ import axios from 'axios';
 // This avoids CORS issues by routing requests through the same origin
 const API = axios.create({
   baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
   withCredentials: true,
 });
 
