@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom'; // Changed to react-router-dom
+import { Link } from 'react-router-dom';
 import {
   Search,
   ChevronDown,
@@ -57,6 +57,7 @@ interface Post {
 }
 
 const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
+type SortOption = typeof SORT_OPTIONS[number];
 
 const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'Stripe', 'Uber', 'Airbnb', 'Salesforce', 'Adobe', 'LinkedIn'];
 
@@ -184,11 +185,12 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 export function InterviewInsightsPage() {
-  const [activeSort, setActiveSort] = useState<string>('Newest');
+  const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string[]>>({});
   const [tempFilters, setTempFilters] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [companySizeChip, setCompanySizeChip] = useState<CompanySizeChip | null>(null);
   const [roleSearch, setRoleSearch] = useState('');
@@ -200,6 +202,14 @@ export function InterviewInsightsPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Interaction state
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
@@ -222,29 +232,46 @@ export function InterviewInsightsPage() {
   };
 
   // Sidebar: use top 5 newest posts as "hot this week"
-  const hotThisWeek = posts.slice(0, 5).map(p => ({
-    id: p.id,
-    title: `${p.company} · ${p.role}`,
-    author: 'Community',
-    views: 0,
-    trend: '+new',
-  }));
+  const hotThisWeek = useMemo(() => {
+    return [...posts]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .map(p => ({
+        id: p.id,
+        title: `${p.company} · ${p.role}`,
+        author: 'Community',
+        views: 0,
+        trend: '+new',
+      }));
+  }, [posts]);
 
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getPosts({
-        search: searchQuery || undefined,
-        role: appliedFilters.Role?.[0] || undefined,
-        company: appliedFilters.Company?.[0] || undefined,
-        round: appliedFilters.Round?.[0] || undefined,
-        level: appliedFilters.Level?.[0] || undefined,
+      // Build API params based on active sort
+      const params: any = {
         page: pageNum,
-      });
+      };
+      
+      if (debouncedSearchQuery) params.search = debouncedSearchQuery;
+      if (appliedFilters.Role?.[0]) params.role = appliedFilters.Role[0];
+      if (appliedFilters.Company?.[0]) params.company = appliedFilters.Company[0];
+      if (appliedFilters.Round?.[0]) params.round = appliedFilters.Round[0];
+      if (appliedFilters.Level?.[0]) params.level = appliedFilters.Level[0];
+      
+      // Add sort parameter based on activeSort
+      if (activeSort === 'Newest') {
+        params.sort = 'createdAt,desc';
+      } else if (activeSort === 'Oldest') {
+        params.sort = 'createdAt,asc';
+      }
+
+      const res = await getPosts(params);
       const data = res.data?.data ?? res.data;
       const content: Post[] = data?.content ?? (Array.isArray(data) ? data : []);
       const pageMeta = data?.pageMeta;
+      
       setPosts(prev => reset ? content : [...prev, ...content]);
       setHasMore(pageMeta ? !pageMeta.last : false);
       setPage(pageNum);
@@ -257,8 +284,9 @@ export function InterviewInsightsPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, appliedFilters]);
+  }, [debouncedSearchQuery, appliedFilters, activeSort]);
 
+  // Refetch when filters, search, or sort changes
   useEffect(() => {
     fetchPosts(0, true);
   }, [fetchPosts]);
@@ -305,18 +333,6 @@ export function InterviewInsightsPage() {
     setTempFilters({});
   };
 
-  // Client-side sort
-  const sorted = [...posts].sort((a, b) => {
-    try {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (activeSort === 'Oldest') return dateA - dateB;
-      return dateB - dateA;
-    } catch {
-      return 0;
-    }
-  });
-
   // Safe date formatter
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '';
@@ -332,12 +348,14 @@ export function InterviewInsightsPage() {
     return post.questions || [];
   };
 
+  // Loading state for initial load
+  const isInitialLoading = loading && posts.length === 0;
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       <main className="pt-24 pb-20 bg-[#f9fafb]">
         {/* ─── Hero Header ─── */}
-        {/* FIXED: Removed duplicate mx-[386px] */}
         <div className="max-w-7xl mx-auto px-6 my-[40px]">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
@@ -464,7 +482,6 @@ export function InterviewInsightsPage() {
                                   </div>
                                 </div>
                                 <div className="max-h-56 overflow-y-auto">
-                                  {/* Company list rendering */}
                                   <div className="p-2 space-y-0.5">
                                     {ALL_COMPANIES.filter(c => 
                                       companySearch ? c.toLowerCase().includes(companySearch.toLowerCase()) : true
@@ -611,8 +628,8 @@ export function InterviewInsightsPage() {
                 </div>
               </div>
                   
-              {/* Loading State */}
-              {loading && posts.length === 0 && (
+              {/* Initial Loading State */}
+              {isInitialLoading && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                   <p className="mt-2 text-[hsl(222,12%,45%)]">Loading experiences...</p>
@@ -633,7 +650,7 @@ export function InterviewInsightsPage() {
               )}
 
               {/* Empty State */}
-              {!loading && !error && sorted.length === 0 && (
+              {!loading && !error && !isInitialLoading && posts.length === 0 && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <p className="text-[hsl(222,12%,45%)] mb-2">No experiences match your filters.</p>
                   <button onClick={clearAllFilters} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">Clear all filters</button>
@@ -641,13 +658,13 @@ export function InterviewInsightsPage() {
               )}
 
               {/* Posts List */}
-              {sorted.map((post, i) => (
+              {posts.map((post, i) => (
                 <motion.article
                   key={post.id}
                   initial={{ opacity: 0, y: 12 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.3, delay: i * 0.04 }}
+                  transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
                   className="group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300"
                 >
                   <div className="p-6">
@@ -753,7 +770,7 @@ export function InterviewInsightsPage() {
               ))}
 
               {/* Load More Button */}
-              {sorted.length > 0 && hasMore && !loading && (
+              {posts.length > 0 && hasMore && !loading && (
                 <div className="text-center pt-4 pb-2">
                   <Button 
                     variant="outline" 
@@ -786,6 +803,14 @@ export function InterviewInsightsPage() {
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] text-sm focus:bg-white focus:border-[hsl(221,91%,60%)] transition-all outline-none"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                    >
+                      <X className="w-4 h-4 text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]" />
+                    </button>
+                  )}
                 </div>
               </div>
 
