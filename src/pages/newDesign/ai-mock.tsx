@@ -1623,4 +1623,3 @@ function WaveformRing({ active }: { active: boolean }) {
     </div>
   );
 }
-
