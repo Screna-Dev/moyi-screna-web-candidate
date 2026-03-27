@@ -1297,13 +1297,13 @@ export function ExperienceDetailPage() {
                 )}
                 <div className="space-y-5">
                   {sortedComments.map(comment => {
-                    const authorInitials = comment.user.name
+                    const authorInitials = comment.user?.name
                       ? comment.user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
                       : '?';
                     const refQuestion = comment.questionSeq
                       ? post.questions.find(q => q.seq === comment.questionSeq)
                       : null;
-                    const isOwn = currentUser?.id === comment.user.id;
+                    const isOwn = currentUser?.id === comment.user?.id;
 
                     return (
                     <div key={comment.id} className="group">
@@ -1313,7 +1313,7 @@ export function ExperienceDetailPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{comment.user.name || 'Anonymous'}</span>
+                            <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{comment.user?.name || 'Anonymous'}</span>
                             <span className="text-xs text-[hsl(222,12%,55%)]">· {formatRelativeTime(comment.createdAt)}</span>
                           </div>
 
@@ -1376,10 +1376,10 @@ export function ExperienceDetailPage() {
                                 {!repliesLoadingSet.has(comment.id) && (replies[comment.id] ?? []).length > 0 && (
                                   <div className="mt-3 space-y-3 pl-5 border-l-2 border-[hsl(220,16%,92%)] ml-1">
                                     {(replies[comment.id] ?? []).map(reply => {
-                                      const replyInitials = reply.user.name
+                                      const replyInitials = reply.user?.name
                                         ? reply.user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
                                         : '?';
-                                      const isOwnReply = currentUser?.id === reply.user.id;
+                                      const isOwnReply = currentUser?.id === reply.user?.id;
                                       return (
                                         <div key={reply.id} className="group/reply flex gap-2">
                                           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[hsl(221,91%,90%)] to-[hsl(221,91%,80%)] flex items-center justify-center text-[hsl(221,91%,50%)] text-[9px] font-bold shrink-0">
@@ -1387,7 +1387,7 @@ export function ExperienceDetailPage() {
                                           </div>
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5 mb-0.5">
-                                              <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user.name || 'Anonymous'}</span>
+                                              <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user?.name || 'Anonymous'}</span>
                                               <span className="text-[10px] text-[hsl(222,12%,55%)]">· {formatRelativeTime(reply.createdAt)}</span>
                                             </div>
                                             <p className="text-xs text-[hsl(222,12%,30%)] leading-relaxed">{reply.content}</p>

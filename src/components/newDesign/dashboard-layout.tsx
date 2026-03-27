@@ -14,7 +14,7 @@ import {
   MessageSquare,
   ChevronDown,
   Bot,
-  FileText,
+  History,
   Target,
   ShieldCheck,
 } from 'lucide-react';
@@ -38,6 +38,7 @@ const sidebarLinks = [
   // { icon: Briefcase, label: 'Jobs', path: '/jobs' },
   // { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
   // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
+  { icon: History, label: 'Interview History', path: '/history' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
@@ -509,11 +510,11 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
                 </SheetContent>
               </Sheet>
 
-              {location.pathname === '/history' && (
+              {/* {location.pathname === '/history' && (
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]" onClick={() => navigate(-1)}>
                   <ArrowLeft className="w-4 h-4" />
                 </Button>
-              )}
+              )} */}
 
               <div>
                 <p className="text-[11px] text-[hsl(222,12%,55%)] uppercase tracking-wider mb-0.5">

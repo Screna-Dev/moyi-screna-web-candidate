@@ -16,7 +16,6 @@ export function Navbar({ transparent = false }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
   const { planData, isLoading: isPlanLoading } = useUserPlan();

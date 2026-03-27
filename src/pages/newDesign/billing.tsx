@@ -25,6 +25,7 @@ import {
 import { Input } from '../../components/newDesign/ui/input';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { PaymentService } from '@/services';
+import { useToast } from '../../components/newDesign/ui/use-toast';
 
 interface Invoice {
   stripeInvoiceId: string;
@@ -66,7 +67,8 @@ const FIXED_PACKAGES = [
 ];
 
 export function BillingPage() {
-  const { planData, isLoading: isPlanLoading, buyCredits, isBuyingCredits } = useUserPlan();
+  const { planData, isLoading: isPlanLoading, buyCredits, isBuyingCredits, refreshPlan } = useUserPlan();
+  const { toast } = useToast();
 
   // Buy credits dialog
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
@@ -127,6 +129,44 @@ export function BillingPage() {
   // Redeem dialog
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
+  const [isRedeeming, setIsRedeeming] = useState(false);
+
+  const handleRedeemCode = async () => {
+    if (!redeemCode.trim()) {
+      toast({
+        title: 'Invalid Code',
+        description: 'Please enter a promotional code.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRedeeming(true);
+    try {
+      const response = await PaymentService.redeemCode(redeemCode.trim());
+      if (response.data?.status === 'success' || response.status === 200) {
+        toast({
+          title: 'Code Redeemed!',
+          description: response.data?.message || `Successfully redeemed ${redeemCode}. Credits have been added to your account.`,
+        });
+        await refreshPlan();
+        setRedeemCode('');
+        setRedeemDialogOpen(false);
+      } else {
+        throw new Error(response.data?.message || 'Failed to redeem code');
+      }
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to redeem code. Please try again.';
+      toast({
+        title: 'Redemption Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
 
   const permanentBalance = planData?.permanentCreditBalance ?? 0;
   const recurringBalance = planData?.recurringCreditBalance ?? 0;
@@ -462,10 +502,10 @@ export function BillingPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRedeemDialogOpen(false)}>Cancel</Button>
             <Button
-              onClick={() => { setRedeemCode(''); setRedeemDialogOpen(false); }}
-              disabled={!redeemCode.trim()}
+              onClick={handleRedeemCode}
+              disabled={!redeemCode.trim() || isRedeeming}
             >
-              Redeem
+              {isRedeeming ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Redeeming...</> : 'Redeem'}
             </Button>
           </DialogFooter>
         </DialogContent>

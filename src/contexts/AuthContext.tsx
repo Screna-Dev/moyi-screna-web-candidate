@@ -127,21 +127,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const setUserFromToken = async (token: string) => {
-    setIsLoading(true);
-    try {
-      const tokenData = decodeToken(token);
-      if (tokenData) {
-        const personalInfo = await fetchPersonalInfo();
-        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
-        setUser(userData);
-        safeIdentify(posthog, userData.id, {
-          email: userData.email,
-          name: userData.name,
-          role: userData.role,
-        });
-      }
-    } finally {
-      setIsLoading(false);
+    const tokenData = decodeToken(token);
+    if (tokenData) {
+      const personalInfo = await fetchPersonalInfo();
+      const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+      setUser(userData);
+      safeIdentify(posthog, userData.id, {
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+      });
     }
   };
 
