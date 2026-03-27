@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture, safeIdentify } from '@/utils/posthog';
 import API from '@/services/api';
+import { getPersonalInfo } from '@/services/ProfileServices';
 
 interface User {
   id: string;
@@ -10,6 +11,8 @@ interface User {
   name: string;
   avatar?: string;
   role?: string;
+  country?: string;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -22,7 +25,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
-  setUserFromToken: (token: string) => void;
+  setUserFromToken: (token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,7 +43,7 @@ interface AuthProviderProps {
 }
 
 // Helper function to decode JWT and extract user info
-const decodeToken = (token: string): User | null => {
+const decodeToken = (token: string): Pick<User, 'id' | 'role'> | null => {
   try {
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -50,22 +53,36 @@ const decodeToken = (token: string): User | null => {
         .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     );
-    
+
     const payload = JSON.parse(jsonPayload);
-    // Extract role - check common JWT field names for admin status
     const role = payload.roles[0];
 
-    
     return {
       id: payload.sub || payload.userId || payload.id || '',
-      email: payload.email || '',
-      name: payload.name || payload.username || '',
-      avatar: payload.avatar || payload.picture || undefined,
-      role: role,
+      role,
     };
   } catch (error) {
     console.error('Failed to decode token:', error);
     return null;
+  }
+};
+
+// Fetch personal info (name, email, avatar, country, timezone) from API
+const fetchPersonalInfo = async (): Promise<Partial<User>> => {
+  try {
+    const response = await getPersonalInfo();
+    const data = response.data?.data;
+    if (!data) return {};
+    return {
+      name: data.name || '',
+      email: data.email || '',
+      avatar: data.avatarUrl || '',
+      country: data.country || '',
+      timezone: data.timezone || '',
+    };
+  } catch (error) {
+    console.error('Failed to fetch personal info:', error);
+    return {};
   }
 };
 
@@ -83,18 +100,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
       if (token) {
-        // Since /auth/me doesn't exist, decode the token to get user info
-        const userData = decodeToken(token);
-        if (userData) {
+        const tokenData = decodeToken(token);
+        if (tokenData) {
+          const personalInfo = await fetchPersonalInfo();
+          const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
           setUser(userData);
-          // Identify user in PostHog if already logged in
           safeIdentify(posthog, userData.id, {
             email: userData.email,
             name: userData.name,
             role: userData.role,
           });
         } else {
-          // If token is invalid, clear it
           localStorage.removeItem('authToken');
           sessionStorage.removeItem('authToken');
         }
@@ -110,20 +126,27 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  const setUserFromToken = (token: string) => {
-    const userData = decodeToken(token);
-    if (userData) {
-      setUser(userData);
-      // Identify user in PostHog
-      safeIdentify(posthog, userData.id, {
-        email: userData.email,
-        name: userData.name,
-        role: userData.role,
-      });
+  const setUserFromToken = async (token: string) => {
+    setIsLoading(true);
+    try {
+      const tokenData = decodeToken(token);
+      if (tokenData) {
+        const personalInfo = await fetchPersonalInfo();
+        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+        setUser(userData);
+        safeIdentify(posthog, userData.id, {
+          email: userData.email,
+          name: userData.name,
+          role: userData.role,
+        });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const login = async (email: string, password: string, rememberMe: boolean = false) => {
+    setIsLoading(true);
     const response = await API.post('/auth/signin', { email, password });
     
     const accessToken = response.data.data.accessToken;
@@ -141,21 +164,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     }
 
-    // Decode token to get user data
-    const userData = decodeToken(accessToken);
-    if (userData) {
-      setUser(userData);
-      // Identify user in PostHog after successful login
-      safeIdentify(posthog, userData.id, {
-        email: userData.email,
-        name: userData.name,
-        role: userData.role,
-      });
-    } else {
-      // Fallback if token decode fails
-      setUser({ id: '', email, name: '', avatar: '' });
+    try {
+      const tokenData = decodeToken(accessToken);
+      if (tokenData) {
+        const personalInfo = await fetchPersonalInfo();
+        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+        setUser(userData);
+        safeIdentify(posthog, userData.id, {
+          email: userData.email,
+          name: userData.name,
+          role: userData.role,
+        });
+        return userData;
+      } else {
+        const fallback: User = { id: '', email, name: '', avatar: '' };
+        setUser(fallback);
+        return fallback;
+      }
+    } finally {
+      setIsLoading(false);
     }
-    return userData;
   };
 
   const signup = async (email: string, password: string, name: string) => {
@@ -203,17 +231,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = async () => {
+    try {
+      await API.post('/auth/signout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
     setUser(null);
     navigate('/auth');
-    try {
-      await API.post('/auth/signout');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
   };
 
   const value = {

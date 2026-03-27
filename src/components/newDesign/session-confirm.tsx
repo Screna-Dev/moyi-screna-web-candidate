@@ -17,6 +17,7 @@ import {
   Sparkles,
   BookOpen,
   AlertCircle,
+  Check,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -261,6 +262,20 @@ export function SessionConfirmPage() {
   const sessionId = Number(sessionParam);
   const isDashboard = searchParams.get('source') === 'dashboard';
 
+  const [selectedMode, setSelectedMode] = useState<'Voice' | 'Video'>('Voice');
+  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setModeDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
   // Build a session from URL params when the ID isn't in the static map
   const categoryDomainMap: Record<string, string> = {
     product: 'Product Sense',
@@ -282,7 +297,6 @@ export function SessionConfirmPage() {
     try { return JSON.parse(searchParams.get('whatToExpect') || '[]'); } catch { return []; }
   })();
   const dynamicTimeStr = searchParams.get('time') || '30 min';
-  const dynamicCredits = parseInt(dynamicTimeStr) || 30;
   const dynamicSession: SessionDetail | null = titleParam
     ? {
         id: 0,
@@ -292,8 +306,8 @@ export function SessionConfirmPage() {
         focus: searchParams.get('focus') || searchParams.get('category') || 'General',
         time: dynamicTimeStr,
         difficulty: (searchParams.get('difficulty') as SessionDetail['difficulty']) || 'Intermediate',
-        mode: 'Video',
-        credits: dynamicCredits,
+        mode: 'Voice',
+        credits: 0, // computed dynamically from mode below
         practiced: 0,
         questions: parsedTopics.length || 5,
         topics: parsedTopics,
@@ -304,9 +318,14 @@ export function SessionConfirmPage() {
   const session: SessionDetail | undefined = SESSION_MAP[sessionId] ?? dynamicSession ?? undefined;
 
   const [expectOpen, setExpectOpen] = useState(false);
-  const selectedMode = 'Video' as const;
   const { planData, isLoading: isPlanLoading } = useUserPlan();
-  const hasEnoughCredits = isPlanLoading || (planData.permanentCreditBalance >= (session?.credits ?? 0));
+
+  // Credits = duration (min) × rate (1/min voice, 2/min video)
+  const durationMins = parseInt(session?.time ?? dynamicTimeStr) || 30;
+  const creditsPerMin = selectedMode === 'Video' ? 2 : 1;
+  const creditCost = durationMins * creditsPerMin;
+
+  const hasEnoughCredits = isPlanLoading || (planData.permanentCreditBalance >= creditCost);
   // If session not found
   if (!session) {
     const notFound = (
@@ -397,15 +416,73 @@ export function SessionConfirmPage() {
                   </div>
                 </div>
 
-                {/* Mode — Video only */}
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
-                    <Video className="w-4 h-4 text-rose-500" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Mode</p>
-                    <p className="text-sm text-slate-900">Video</p>
-                  </div>
+                {/* Mode */}
+                <div className="relative" ref={modeDropdownRef}>
+                  <button
+                    onClick={() => setModeDropdownOpen(!modeDropdownOpen)}
+                    className="flex items-center gap-2.5 cursor-pointer group"
+                  >
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                      selectedMode === 'Video' ? 'bg-rose-50' : 'bg-indigo-50'
+                    }`}>
+                      {selectedMode === 'Video' ? (
+                        <Video className="w-4 h-4 text-rose-500" />
+                      ) : (
+                        <Mic className="w-4 h-4 text-indigo-500" />
+                      )}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">Mode</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-sm text-slate-900">{selectedMode}</p>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${modeDropdownOpen ? 'rotate-180' : ''}`} />
+                      </div>
+                    </div>
+                  </button>
+
+                  <AnimatePresence>
+                    {modeDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute top-full left-0 mt-2 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden"
+                      >
+                        {(['Voice', 'Video'] as const).map((mode) => {
+                          const isSelected = selectedMode === mode;
+                          const MIcon = MODE_ICON[mode];
+                          const isVideo = mode === 'Video';
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => {
+                                setSelectedMode(mode);
+                                setModeDropdownOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors ${
+                                isSelected
+                                  ? 'bg-slate-50 text-slate-900'
+                                  : 'text-slate-600 hover:bg-slate-50/60'
+                              }`}
+                            >
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                                isVideo ? 'bg-rose-50' : 'bg-indigo-50'
+                              }`}>
+                                <MIcon className={`w-3.5 h-3.5 ${
+                                  isVideo ? 'text-rose-500' : 'text-indigo-500'
+                                }`} />
+                              </div>
+                              <span>{mode}</span>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-blue-500 ml-auto" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Questions */}
@@ -521,7 +598,7 @@ export function SessionConfirmPage() {
                     <p className="text-sm text-red-700">
                       <span className="font-medium">Insufficient credits.</span>{' '}
                       You have <span className="font-medium">{planData.permanentCreditBalance}</span> credit{planData.permanentCreditBalance !== 1 ? 's' : ''}, but this session requires{' '}
-                      <span className="font-medium">{session.credits}</span>.
+                      <span className="font-medium">{creditCost}</span>.
                     </p>
                   </div>
                   <Link
@@ -538,7 +615,8 @@ export function SessionConfirmPage() {
                   <div className="flex items-center gap-1.5">
                     <Coins className="w-4 h-4 text-amber-500" />
                     <span>
-                      This session will use <span className="text-slate-700 font-medium">{session.credits}</span> credits
+                      <span className="text-slate-700 font-medium">{creditCost}</span> credits
+                      <span className="text-slate-400 text-xs ml-1">({creditsPerMin}/min · {durationMins} min)</span>
                     </span>
                   </div>
                   {!isPlanLoading && (

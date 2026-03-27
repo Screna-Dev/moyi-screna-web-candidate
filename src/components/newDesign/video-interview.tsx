@@ -97,7 +97,8 @@ export function VideoInterview({
 
   // ── UI state ──
   const [muted, setMuted] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true);
+  // Voice-only mode starts with camera off
+  const [cameraOn, setCameraOn] = useState(config.mode === 'video');
   const [elapsed, setElapsed] = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -229,15 +230,15 @@ export function VideoInterview({
       };
     }
 
-    // No pre-captured stream - capture now
+    // No pre-captured stream - capture now (voice-only for non-video modes)
     let stream: MediaStream | null = null;
     let isCancelled = false;
     const capture = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        });
+        const constraints: MediaStreamConstraints = config.mode !== 'video'
+          ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+          : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -586,7 +587,7 @@ export function VideoInterview({
         setIsCreatingSession(true);
         try {
           console.log('📝 Creating interview session...');
-          const res = await createInterviewSession(interviewId);
+          const res = await createInterviewSession(interviewId, config.mode !== 'video');
           const d = res.data?.data ?? res.data;
           const url = d?.liveKitUrl ?? d?.url;
           const token = d?.liveKitToken ?? d?.token;
@@ -693,35 +694,7 @@ export function VideoInterview({
 
     endMeeting();
   };
-
-  const handleEndDialogOpen = () => setOpenEndDialog(true);
-  const handleEndDialogClose = () => setOpenEndDialog(false);
-
-  const getAIStatus = () => {
-    if (interviewEnded) return 'ended';
-    if (aiSpeaking) return 'speaking';
-    return 'listening';
-  };
-
-  // Get button text based on current state
-  const getStartButtonText = () => {
-    if (isCreatingSession) return 'Creating Session...';
-    if (isConnecting) return 'Connecting...';
-    if (interviewStarted) return 'Interview Active';
-    return 'Start Interview';
-  };
-
-  // Timer color based on remaining time
-  const getTimerColor = () => {
-    if (remainingTime === null) return '#5341f4';
-    if (remainingTime < 60) return '#ef4444';
-    if (remainingTime < 300) return '#f59e0b';
-    return '#5341f4';
-  };
-
-  // JSX calls handleStartInterview; maps to startInterview from pasted ai-interview logic
-  const handleStartInterview = startInterview;
-
+  
   return (
     <div className={`h-screen flex flex-col relative overflow-hidden select-none transition-colors duration-500 ${
       isDark ? 'bg-[#0a0f1c]' : 'bg-slate-100'

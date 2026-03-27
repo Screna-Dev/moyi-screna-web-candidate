@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useSearchParams, useParams } from 'react-router';
+import { Link, useNavigate, useSearchParams, useParams, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -26,6 +26,7 @@ import {
 } from '@/components/newDesign/ui/select';
 import { Label } from '@/components/newDesign/ui/label';
 import { VideoInterview } from '@/components/newDesign/video-interview';
+import { LiveInterview } from '@/components/newDesign/live-interview';
 import { CooldownScreen } from '@/components/newDesign/cooldown-screen';
 import { endTrainingModule } from '@/services/InterviewServices';
 import * as InterviewSessionService from '@/services/IntervewSesstionServices';
@@ -140,6 +141,7 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 // ════════════════════════════════════════════════════════
 export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const params = useParams();
   const interviewId = params.interviewId ?? searchParams.get('interviewId') ?? undefined;
@@ -187,7 +189,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
   const prefetchedStreamRef = useRef<MediaStream | null>(null);
   const warmupStartedRef = useRef(false);
 
-  // During warmup: capture media + create session + connect LiveKit in parallel
+  // During warmup: capture media + create session in parallel.
   // NOTE: warmupStartedRef prevents duplicate API calls in React StrictMode
   // (which runs effects twice: mount → cleanup → mount). Since the ref guard
   // ensures setup() only fires once, we do NOT discard results via a cancelled
@@ -197,18 +199,27 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     if (warmupStartedRef.current) return;
     warmupStartedRef.current = true;
 
+    const stateSession = (location.state as any)?.prefetchedSession as { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | undefined;
+    const mode = searchParams.get('mode') ?? 'video';
+    const audioOnly = mode !== 'video';
+
     const setup = async () => {
-      // Run session creation and media capture in parallel
+      // Voice-only sessions skip video capture to avoid unnecessary camera permission prompts
+      const mediaConstraints: MediaStreamConstraints = audioOnly
+        ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
+        : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+
+      // Run media capture and (if needed) session creation in parallel.
+      // If a session was already created by personalized-practice, skip the API call.
       const [sessionResult, streamResult] = await Promise.allSettled([
-        InterviewSessionService.createInterviewSession(interviewId, { audioOnly: config.mode !== 'video' }),
-        navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        }),
+        stateSession?.liveKitUrl
+          ? Promise.resolve(null)
+          : InterviewSessionService.createInterviewSession(interviewId, audioOnly),
+        navigator.mediaDevices.getUserMedia(mediaConstraints),
       ]);
 
       // Handle media stream
-      if (streamResult.status === 'fulfilled') {
+      if (streamResult.status === 'fulfilled' && streamResult.value) {
         prefetchedStreamRef.current = streamResult.value;
         setPrefetchedStream(streamResult.value);
         console.log('✅ Media pre-captured during warmup');
@@ -216,25 +227,27 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
         console.warn('⚠️ Media pre-capture failed:', streamResult.reason);
       }
 
-      // Handle session + LiveKit connection
-      if (sessionResult.status === 'fulfilled') {
-        const res = sessionResult.value;
-        const d = res.data?.data ?? res.data;
+      // Handle session credentials
+      if (stateSession?.liveKitUrl && stateSession?.liveKitToken) {
+        // Session was pre-created during navigation (e.g. personalized practice)
+        setPrefetchedSession(stateSession);
+        console.log('✅ Using pre-created session from navigation state');
+      } else if (sessionResult.status === 'fulfilled' && sessionResult.value) {
+        const d = sessionResult.value.data?.data ?? sessionResult.value.data;
         const url = d?.liveKitUrl ?? d?.url;
         const token = d?.liveKitToken ?? d?.token;
         if (url && token) {
-          const sessionData = { liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null };
-          setPrefetchedSession(sessionData);
+          setPrefetchedSession({ liveKitUrl: url, liveKitToken: token, maxInterviewDuration: d?.max_interview_duration ?? null });
           console.log('✅ Session pre-created during warmup');
-          // NOTE: Do NOT pre-connect to LiveKit here. Connecting too early causes
-          // the agent to start its 5s video-track detection timer before the
-          // candidate has published tracks (which only happens in VideoInterview).
-          // By deferring the connection, participant join + track publish happen
-          // together, within the agent's detection window.
         }
-      } else {
+      } else if (sessionResult.status === 'rejected') {
         console.warn('⚠️ Pre-create session failed, will retry on start:', sessionResult.reason);
       }
+      // NOTE: Do NOT pre-connect to LiveKit here. Connecting too early causes
+      // the agent to start its 5s video-track detection timer before the
+      // candidate has published tracks (which only happens in VideoInterview).
+      // By deferring the connection, participant join + track publish happen
+      // together, within the agent's detection window.
     };
 
     setup();
@@ -307,7 +320,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     setIsValidating(false);
   };
 
-  // Create interview session (called when starting interview)
+  // Create interview session (fallback if warmup pre-creation failed)
   const createInterviewSession = async () => {
     if (currentSession) {
       console.log('✅ Session already exists:', currentSession.sessionId);
@@ -315,10 +328,11 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
     }
 
     console.log('🔄 Creating interview session...');
-    
+    const audioOnly = config.mode !== 'video';
+
     try {
       // Step 1: Create session (Mainframe API)
-      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId);
+      const sessionResponse = await InterviewSessionService.createInterviewSession(interviewId, audioOnly);
       
       if (!sessionResponse.data || !sessionResponse.data.data) {
         throw new Error('Failed to create interview session.');
@@ -480,10 +494,12 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
 
   const cleanupConnectionResources = async () => {
     console.log('🧹 Cleaning up connection resources...');
-    
-    // Disconnect LiveKit
+
+    // Clear callbacks before disconnecting so RoomEvent.Disconnected doesn't
+    // trigger onDisconnected → safeEnd() → premature stage transition
+    LiveKitService.updateCallbacks({});
     await LiveKitService.disconnect();
-    
+
     setIsConnected(false);
   };
 
@@ -721,15 +737,35 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            <VideoInterview
-              config={config}
-              interviewId={interviewId}
-              onEnd={() => setStage('cooldown')}
-              theme={theme}
-              prefetchedSession={prefetchedSession}
-              prefetchedStream={prefetchedStream}
-              prefetchedConnected={prefetchedConnected}
-            />
+            {config.mode === 'video' ? (
+              <VideoInterview
+                config={config}
+                interviewId={interviewId}
+                onEnd={() => setStage('cooldown')}
+                theme={theme}
+                prefetchedSession={prefetchedSession}
+                prefetchedStream={prefetchedStream}
+                prefetchedConnected={prefetchedConnected}
+              />
+            ) : (
+              <LiveInterview
+                config={config}
+                interviewId={interviewId}
+                onEnd={() => setStage('cooldown')}
+                theme={theme}
+                prefetchedStream={prefetchedStream}
+                sessionCredentials={
+                  prefetchedSession
+                    ? {
+                        sessionId: interviewId ?? '',
+                        url: prefetchedSession.liveKitUrl,
+                        token: prefetchedSession.liveKitToken,
+                        maxDuration: prefetchedSession.maxInterviewDuration ?? undefined,
+                      }
+                    : null
+                }
+              />
+            )}
           </motion.div>
         )}
         {stage === 'cooldown' && (

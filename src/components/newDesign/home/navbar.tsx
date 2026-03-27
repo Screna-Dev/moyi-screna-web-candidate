@@ -185,9 +185,17 @@ export function Navbar({ transparent = false }: NavbarProps) {
               <div className="relative" ref={avatarRef}>
                 <button
                   onClick={() => setAvatarOpen((v) => !v)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-[13px] transition-all duration-200 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80"
+                  className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
+                    user?.role === 'ADMIN'
+                      ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
+                      : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
+                  }`}
                 >
-                  {initials}
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
                 </button>
 
                 {/* User Dropdown */}

@@ -173,12 +173,12 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function ProfileHeader({ 
-  userData, 
+function ProfileHeader({
+  userData,
   onUpdateProfile,
-  onUploadResume 
-}: { 
-  userData: UserData | null, 
+  onUploadResume
+}: {
+  userData: UserData | null,
   onUpdateProfile: (data: UserData) => void,
   onUploadResume: (file: File) => Promise<void>
 }) {
@@ -186,7 +186,20 @@ function ProfileHeader({
   const { toast } = useToast();
   const [editOpen, setEditOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadResume = () => {
+    if (!userData?.resume_path) return;
+    const a = document.createElement('a');
+    a.href = userData.resume_path;
+    a.download = userData.resumeFileName || 'Resume.pdf';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const handleSaveProfile = (data: EditProfileData) => {
     onUpdateProfile({
@@ -297,7 +310,7 @@ function ProfileHeader({
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <h1 className="text-2xl font-bold text-[hsl(222,22%,15%)]">
-                  {userData?.firstName || 'Alex'} {userData?.lastName || 'Chen'}
+                  {userData?.firstName} {userData?.lastName}
                 </h1>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full ml-2 hover:bg-[hsl(220,16%,90%)]" onClick={() => setEditOpen(true)}>
                   <Pencil className="w-4 h-4 text-[hsl(222,12%,50%)]" />
@@ -317,25 +330,28 @@ function ProfileHeader({
                   onSave={handleSaveProfile}
                 />
               </div>
-              <p className="text-sm text-[hsl(222,12%,50%)]">{userData?.role || 'Senior Software Engineer'}</p>
+              {userData?.role && <p className="text-sm text-[hsl(222,12%,50%)]">{userData.role}</p>}
             </div>
             
             <div className="flex flex-wrap justify-center md:justify-start gap-3">
-              
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-[hsl(220,20%,97%)] rounded-full border border-[hsl(220,16%,90%)] text-xs font-medium text-[hsl(222,12%,45%)]">
-                <TrendingUp className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
-                <span>{userData?.experienceLevel || 'Intermediate'}</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-[hsl(220,20%,97%)] rounded-full border border-[hsl(220,16%,90%)] text-xs font-medium text-[hsl(222,12%,45%)]">
-                <Target className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
-                <span>{userData?.jobStatus || 'Actively job hunting'}</span>
-              </div>
-              {userData?.country && (
+              {userData?.structuredResume?.profile?.total_years_experience ? (
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-[hsl(220,20%,97%)] rounded-full border border-[hsl(220,16%,90%)] text-xs font-medium text-[hsl(222,12%,45%)]">
+                  <TrendingUp className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
+                  <span>{userData.structuredResume.profile.total_years_experience} yrs exp</span>
+                </div>
+              ) : null}
+              {userData?.structuredResume?.profile?.location ? (
                 <div className="flex items-center gap-1.5 px-3 py-1 bg-[hsl(220,20%,97%)] rounded-full border border-[hsl(220,16%,90%)] text-xs font-medium text-[hsl(222,12%,45%)]">
                   <MapPin className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
-                  <span>{userData.country}</span>
+                  <span>{userData.structuredResume.profile.location}</span>
                 </div>
-              )}
+              ) : null}
+              {userData?.structuredResume?.profile?.visa_status ? (
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-[hsl(220,20%,97%)] rounded-full border border-[hsl(220,16%,90%)] text-xs font-medium text-[hsl(222,12%,45%)]">
+                  <Target className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
+                  <span>{userData.structuredResume.profile.visa_status}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -346,15 +362,13 @@ function ProfileHeader({
               <div className="text-right hidden sm:block">
                  <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
                    {userData?.resume_path ? (
-                     <a
-                       href={userData.resume_path}
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       download
-                       className="text-[hsl(221,91%,60%)] hover:underline"
+                     <button
+                       onClick={handleDownloadResume}
+                       className="flex items-center gap-1.5 text-[hsl(221,91%,60%)] hover:underline"
                      >
+                       <Download className="w-3.5 h-3.5" />
                        {userData.resumeFileName || 'Resume.pdf'}
-                     </a>
+                     </button>
                    ) : (
                      'No resume yet'
                    )}
@@ -452,8 +466,14 @@ export function DashboardPage() {
             const resume = resumeRes.value.data?.data ?? resumeRes.value.data;
             if (resume?.resumeFileName)   merged.resumeFileName   = resume.resumeFileName;
             if (resume?.resumeUploadedAt) merged.resumeUploadedAt = resume.resumeUploadedAt;
-            if (resume?.resume_path) merged.resume_path = resume.resume_path
-            if (resume?.structured_resume) merged.structuredResume = resume.structured_resume;
+            if (resume?.resume_path) merged.resume_path = resume.resume_path;
+            if (resume?.structured_resume) {
+              merged.structuredResume = resume.structured_resume;
+              const p = resume.structured_resume.profile;
+              if (p?.headline) merged.role = p.headline;
+              if (p?.total_years_experience) merged.experienceLevel = `${p.total_years_experience} years`;
+              if (p?.location) merged.country = p.location;
+            }
           }
 
           return merged;
@@ -502,8 +522,10 @@ export function DashboardPage() {
 
       // Upload resume
       const response = await uploadResume(file);
-      const structuredResume = response.data?.data?.structured_resume || response.data?.structured_resume;
-      const fileName = response.data?.data?.resumeFileName || file.name;
+      const responseData = response.data?.data ?? response.data;
+      const structuredResume = responseData?.structured_resume;
+      const fileName = responseData?.resumeFileName || file.name;
+      const resumePath = responseData?.resume_path;
 
       // Track resume upload event
       safeCapture(posthog, 'resume_uploaded', {
@@ -514,17 +536,23 @@ export function DashboardPage() {
       });
 
       if (structuredResume) {
-        // Update user data with new resume info
-        setUserData(prev => ({
-          ...prev,
+        // Build updated userData and persist it atomically
+        const newUserData: UserData = {
+          ...userData,
           resumeFileName: fileName,
           resumeUploadedAt: new Date().toISOString(),
           structuredResume,
-          firstName: structuredResume.profile?.full_name?.split(' ')[0] || prev?.firstName,
-          lastName: structuredResume.profile?.full_name?.split(' ').slice(1).join(' ') || prev?.lastName,
-          role: structuredResume.profile?.headline || prev?.role,
-          country: structuredResume.profile?.location || prev?.country,
-        }));
+          ...(resumePath ? { resume_path: resumePath } : {}),
+          firstName: userData?.firstName,
+          lastName: userData?.lastName,
+          role: structuredResume.profile?.headline || userData?.role,
+          country: structuredResume.profile?.location || userData?.country,
+          experienceLevel: structuredResume.profile?.total_years_experience
+            ? `${structuredResume.profile.total_years_experience} yrs`
+            : userData?.experienceLevel,
+        };
+        setUserData(newUserData);
+        localStorage.setItem('screnaUserData', JSON.stringify(newUserData));
 
         // Check if visa status is missing and prompt user
         if (!structuredResume.profile?.visa_status) {
@@ -552,13 +580,7 @@ export function DashboardPage() {
           }
         }
 
-        // Show resume analysis dialog
-        setUploadedFileName(file.name);
-        setShowResumeAnalysis(true);
-      }
-
-      // Save to localStorage
-      localStorage.setItem('screnaUserData', JSON.stringify(userData));
+        }
 
     } catch (error) {
       console.error("Error uploading resume:", error);
@@ -603,17 +625,40 @@ export function DashboardPage() {
         ...userData.structuredResume,
         profile: { ...userData.structuredResume.profile, visa_status: tempVisaStatus }
       };
-      
+
       await updateProfile(updatedProfile);
       setUserData(prev => ({
         ...prev!,
         structuredResume: updatedProfile
       }));
       setShowVisaStatusDialog(false);
-      
+
       toast({
         title: "Profile updated successfully!",
         description: "Your work authorization has been saved.",
+      });
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast({
+        title: "Error saving profile",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingVisa(false);
+    }
+  };
+
+  const handleSkipVisaStatus = async () => {
+    if (!userData?.structuredResume) return;
+
+    try {
+      setIsSavingVisa(true);
+      await updateProfile(userData.structuredResume);
+      setShowVisaStatusDialog(false);
+      toast({
+        title: "Profile saved!",
+        description: "You can add work authorization later in settings.",
       });
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -841,6 +886,70 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Resume Replace Confirmation Dialog */}
+      <Dialog open={showReplaceConfirmDialog} onOpenChange={setShowReplaceConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Replace Current Resume?</DialogTitle>
+            <DialogDescription>
+              This will replace your existing resume and re-parse your profile. Are you sure?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowReplaceConfirmDialog(false); setPendingFile(null); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmedUpload} disabled={isUploading}>
+              {isUploading ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Uploading...</> : 'Replace'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visa Status Dialog */}
+      <Dialog open={showVisaStatusDialog} onOpenChange={setShowVisaStatusDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Your Work Authorization</DialogTitle>
+            <DialogDescription>
+              Please select your current work authorization status to help employers understand your eligibility.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Work Authorization Status</Label>
+              <Select value={tempVisaStatus} onValueChange={setTempVisaStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISA_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleSkipVisaStatus} disabled={isSavingVisa}>
+              Skip for Now
+            </Button>
+            <Button onClick={handleVisaStatusSave} disabled={isSavingVisa}>
+              {isSavingVisa ? <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Saving...</> : 'Save & Continue'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resume Analysis Dialog */}
+      <ResumeAnalysisDialog
+        open={showResumeAnalysis}
+        onOpenChange={setShowResumeAnalysis}
+        fileName={uploadedFileName}
+      />
     </DashboardLayout>
   );
 }

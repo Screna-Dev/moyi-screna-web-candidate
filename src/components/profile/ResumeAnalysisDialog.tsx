@@ -136,7 +136,7 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName, skipAnalyzing, onP
         onPlanCreated();
       } else {
         setTimeout(() => {
-          navigate("/interview-prep");
+          navigate("/dashboard");
         }, 500);
       }
     } catch (err: any) {
