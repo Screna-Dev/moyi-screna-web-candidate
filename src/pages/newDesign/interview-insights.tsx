@@ -197,11 +197,12 @@ export function InterviewInsightsPage() {
   const [roleCategoryChip, setRoleCategoryChip] = useState<RoleCategoryChip | null>(null);
 
   // API state
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Debounce search
   useEffect(() => {
@@ -231,10 +232,122 @@ export function InterviewInsightsPage() {
     });
   };
 
-  // Sidebar: use top 5 newest posts as "hot this week"
+  // Filter posts based on applied filters and search
+  const filteredPosts = useMemo(() => {
+    let result = [...allPosts];
+    
+    // Apply search filter - FIXED: Handle empty/undefined values
+    if (debouncedSearchQuery) {
+      const query = debouncedSearchQuery.toLowerCase();
+      result = result.filter(post => {
+      const company = (post.company || '').toLowerCase();
+      const role = (post.role || '').toLowerCase();
+      const summary = (post.summary || '').toLowerCase();
+      const questions = post.questions || [];
+      const hasMatchingQuestion = questions.some(q => 
+        (q.title || '').toLowerCase().includes(query)
+      );
+        
+        return company.includes(query) || 
+              role.includes(query) || 
+              summary.includes(query) || 
+              hasMatchingQuestion;
+      });
+    }
+    
+    // Apply role filter - FIXED: Handle undefined role
+    if (appliedFilters.Role?.length) {
+      result = result.filter(post => {
+        const postRole = post.role || '';
+        return appliedFilters.Role.some(filterRole => 
+          postRole.toLowerCase() === filterRole.toLowerCase()
+        );
+      });
+    }
+    
+    // Apply company filter - FIXED: Handle undefined company
+    if (appliedFilters.Company?.length) {
+      result = result.filter(post => {
+        const postCompany = post.company || '';
+        return appliedFilters.Company.some(filterCompany => 
+          postCompany.toLowerCase() === filterCompany.toLowerCase()
+        );
+      });
+    }
+    
+    // Apply round filter - FIXED: Handle undefined round
+    if (appliedFilters.Round?.length) {
+      result = result.filter(post => {
+        const postRound = post.round || '';
+        return appliedFilters.Round.some(filterRound => 
+          postRound.toLowerCase() === filterRound.toLowerCase()
+        );
+      });
+    }
+    
+    // Apply level filter - FIXED: Handle undefined level
+    if (appliedFilters.Level?.length) {
+      result = result.filter(post => {
+        const postLevel = post.level || '';
+        return appliedFilters.Level.some(filterLevel => 
+          postLevel.toLowerCase() === filterLevel.toLowerCase()
+        );
+      });
+    }
+    
+    console.log('Filtered posts count:', result.length);
+    return result;
+  }, [allPosts, debouncedSearchQuery, appliedFilters.Role, appliedFilters.Company, appliedFilters.Round, appliedFilters.Level]);
+
+  // Sort posts locally - FIXED: Sort with proper date handling
+  const sortedPosts = useMemo(() => {
+    const sorted = [...filteredPosts];
+    
+    if (activeSort === 'Newest') {
+      sorted.sort((a, b) => {
+        // Handle missing or invalid dates
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        
+        // If dates are invalid, keep original order
+        if (isNaN(dateA) && isNaN(dateB)) return 0;
+        if (isNaN(dateA)) return 1;
+        if (isNaN(dateB)) return -1;
+        
+        return dateB - dateA;
+      });
+    } else if (activeSort === 'Oldest') {
+      sorted.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        
+        if (isNaN(dateA) && isNaN(dateB)) return 0;
+        if (isNaN(dateA)) return 1;
+        if (isNaN(dateB)) return -1;
+        
+        return dateA - dateB;
+      });
+    }
+    
+    // Log sorted order to debug
+    if (sorted.length > 0) {
+      console.log('Sorted posts by', activeSort);
+      sorted.forEach((post, idx) => {
+        console.log(`${idx + 1}. ${post.company} - ${post.role} - ${post.createdAt}`);
+      });
+    }
+    
+    return sorted;
+  }, [filteredPosts, activeSort]);
+
+  // Sidebar: top 5 newest posts as "hot this week"
   const hotThisWeek = useMemo(() => {
-    return [...posts]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return [...allPosts]
+      .sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      })
       .slice(0, 5)
       .map(p => ({
         id: p.id,
@@ -243,50 +356,45 @@ export function InterviewInsightsPage() {
         views: 0,
         trend: '+new',
       }));
-  }, [posts]);
+  }, [allPosts]);
 
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      // Build API params based on active sort
+      // Build API params - only filters that the API supports
       const params: any = {
         page: pageNum,
       };
       
+      // Only send filters that the API actually supports
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (appliedFilters.Role?.[0]) params.role = appliedFilters.Role[0];
       if (appliedFilters.Company?.[0]) params.company = appliedFilters.Company[0];
       if (appliedFilters.Round?.[0]) params.round = appliedFilters.Round[0];
       if (appliedFilters.Level?.[0]) params.level = appliedFilters.Level[0];
-      
-      // Add sort parameter based on activeSort
-      if (activeSort === 'Newest') {
-        params.sort = 'createdAt,desc';
-      } else if (activeSort === 'Oldest') {
-        params.sort = 'createdAt,asc';
-      }
 
       const res = await getPosts(params);
       const data = res.data?.data ?? res.data;
       const content: Post[] = data?.content ?? (Array.isArray(data) ? data : []);
       const pageMeta = data?.pageMeta;
       
-      setPosts(prev => reset ? content : [...prev, ...content]);
+      setAllPosts(prev => reset ? content : [...prev, ...content]);
       setHasMore(pageMeta ? !pageMeta.last : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch posts:', err);
       setError('Failed to load experiences. Please try again.');
       if (reset) {
-        setPosts([]);
+        setAllPosts([]);
       }
     } finally {
       setLoading(false);
+      setIsInitialLoading(false);
     }
-  }, [debouncedSearchQuery, appliedFilters, activeSort]);
+  }, [debouncedSearchQuery, appliedFilters]);
 
-  // Refetch when filters, search, or sort changes
+  // Refetch when filters or search changes (reset to first page)
   useEffect(() => {
     fetchPosts(0, true);
   }, [fetchPosts]);
@@ -331,6 +439,8 @@ export function InterviewInsightsPage() {
   const clearAllFilters = () => {
     setAppliedFilters({});
     setTempFilters({});
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
   };
 
   // Safe date formatter
@@ -347,9 +457,6 @@ export function InterviewInsightsPage() {
   const getQuestions = (post: Post) => {
     return post.questions || [];
   };
-
-  // Loading state for initial load
-  const isInitialLoading = loading && posts.length === 0;
 
   return (
     <div className="min-h-screen bg-white">
@@ -390,8 +497,8 @@ export function InterviewInsightsPage() {
             <div className="flex-1 space-y-5 min-w-0">
               {/* Controls Bar */}
               <div className="flex flex-col md:flex-row md:items-center gap-4 mb-3">
-                {/* Sort Dropdown */}
-                <div className="relative md:order-last md:ml-auto">
+                {/* Sort Dropdown - Now just local sort, no API call */}
+                {/* <div className="relative md:order-last md:ml-auto">
                   <button
                     onClick={() => setOpenFilter(openFilter === '__sort__' ? null : '__sort__')}
                     className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors"
@@ -419,9 +526,9 @@ export function InterviewInsightsPage() {
                       </div>
                     </>
                   )}
-                </div>
+                </div> */}
 
-                {/* Filters */}
+                {/* Filters - Same as before */}
                 <div className="flex flex-wrap items-center gap-2 relative z-20">
                   {Object.keys(FILTER_OPTIONS).map(filter => {
                     const isOpen = openFilter === filter;
@@ -637,7 +744,7 @@ export function InterviewInsightsPage() {
               )}
 
               {/* Error State */}
-              {error && !loading && (
+              {error && !loading && !isInitialLoading && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-red-200">
                   <p className="text-red-600 mb-2">{error}</p>
                   <button 
@@ -650,15 +757,15 @@ export function InterviewInsightsPage() {
               )}
 
               {/* Empty State */}
-              {!loading && !error && !isInitialLoading && posts.length === 0 && (
+              {!loading && !error && !isInitialLoading && sortedPosts.length === 0 && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <p className="text-[hsl(222,12%,45%)] mb-2">No experiences match your filters.</p>
                   <button onClick={clearAllFilters} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">Clear all filters</button>
                 </div>
               )}
 
-              {/* Posts List */}
-              {posts.map((post, i) => (
+              {/* Posts List - Using sortedPosts from local sort */}
+              {sortedPosts.map((post, i) => (
                 <motion.article
                   key={post.id}
                   initial={{ opacity: 0, y: 12 }}
@@ -770,7 +877,7 @@ export function InterviewInsightsPage() {
               ))}
 
               {/* Load More Button */}
-              {posts.length > 0 && hasMore && !loading && (
+              {sortedPosts.length > 0 && hasMore && !loading && (
                 <div className="text-center pt-4 pb-2">
                   <Button 
                     variant="outline" 
@@ -783,7 +890,7 @@ export function InterviewInsightsPage() {
               )}
 
               {/* Loading More Indicator */}
-              {loading && posts.length > 0 && (
+              {loading && sortedPosts.length > 0 && (
                 <div className="text-center py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                 </div>
