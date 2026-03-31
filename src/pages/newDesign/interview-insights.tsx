@@ -59,91 +59,73 @@ interface Post {
 const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
 type SortOption = typeof SORT_OPTIONS[number];
 
-const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'Stripe', 'Uber', 'Airbnb', 'Salesforce', 'Adobe', 'LinkedIn'];
+const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA'];
 
-const COMPANY_SIZE_CHIPS = ['FAANG / Big Tech', 'Large Enterprises', 'Mid-sized', 'Small'] as const;
+const COMPANY_SIZE_CHIPS = ['FAANG / Big Tech', 'Large Enterprises', 'Mid-sized', 'Startups / Small'] as const;
 type CompanySizeChip = typeof COMPANY_SIZE_CHIPS[number];
 
 const COMPANY_BY_SIZE: Record<CompanySizeChip, string[]> = {
-  'FAANG / Big Tech': ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'Nvidia', 'ByteDance'],
-  'Large Enterprises': ['Oracle', 'SAP', 'IBM', 'Cisco', 'Intel', 'Qualcomm', 'AMD', 'VMware', 'Salesforce', 'Adobe', 'ServiceNow', 'Workday', 'Splunk', 'LinkedIn'],
-  'Mid-sized': ['Stripe', 'Uber', 'Airbnb', 'Spotify', 'Snap', 'Pinterest', 'DoorDash', 'Instacart', 'Lyft', 'Shopify', 'Atlassian', 'Twilio', 'Datadog', 'Snowflake', 'Palantir', 'Databricks', 'Cloudflare', 'CrowdStrike', 'Palo Alto Networks', 'HubSpot', 'Okta', 'Zoom', 'Slack', 'Block (Square)', 'Roblox', 'Epic Games', 'Unity', 'Coinbase', 'Robinhood', 'MongoDB', 'Canva'],
-  'Small': ['Dropbox', 'Twitter / X', 'Figma', 'Notion', 'HashiCorp'],
+  'FAANG / Big Tech': ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA'],
+  'Large Enterprises': ['Oracle', 'SAP', 'IBM', 'Cisco', 'Adobe', 'Intel', 'HP', 'Dell', 'VMware', 'ServiceNow', 'Salesforce', 'Workday'],
+  'Mid-sized': ['HubSpot', 'Asana', 'Atlassian', 'Dropbox', 'Twilio', 'Zillow', 'Robinhood', 'Expedia', 'Square / Block', 'DocuSign', 'Cloudflare', 'Reddit'],
+  'Startups / Small': ['Early-stage Startup', 'Series A Startup', 'Series B+ Startup'],
 };
 
 const TOP_BY_SIZE: Record<CompanySizeChip, string[]> = {
-  'FAANG / Big Tech': ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'Nvidia', 'ByteDance'],
+  'FAANG / Big Tech': ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'OpenAI'],
   'Large Enterprises': ['Oracle', 'Salesforce', 'Adobe', 'IBM', 'Cisco', 'Intel', 'SAP', 'ServiceNow'],
-  'Mid-sized': ['Stripe', 'Uber', 'Airbnb', 'Spotify', 'Shopify', 'Snowflake', 'Databricks', 'DoorDash', 'Cloudflare', 'Coinbase'],
-  'Small': ['Figma', 'Notion', 'Dropbox', 'HashiCorp', 'Twitter / X'],
+  'Mid-sized': ['HubSpot', 'Atlassian', 'Cloudflare', 'Dropbox', 'Robinhood', 'Asana'],
+  'Startups / Small': ['Early-stage Startup', 'Series A Startup', 'Series B+ Startup'],
 };
 
-const ALL_COMPANIES = [
-  ...TOP_COMPANIES,
-  'Spotify', 'Snap', 'Pinterest', 'Twitter / X', 'Dropbox', 'Coinbase', 'Robinhood', 'Databricks',
-  'Snowflake', 'Palantir', 'DoorDash', 'Instacart', 'Lyft', 'Block (Square)', 'Figma', 'Notion',
-  'Canva', 'Shopify', 'Atlassian', 'Twilio', 'Datadog', 'HashiCorp', 'MongoDB', 'Cloudflare',
-  'Roblox', 'Epic Games', 'Unity', 'ByteDance', 'Nvidia', 'AMD', 'Intel', 'Qualcomm',
-  'Oracle', 'SAP', 'IBM', 'Cisco', 'VMware', 'ServiceNow', 'Workday', 'Splunk',
-  'Zoom', 'Slack', 'HubSpot', 'Okta', 'CrowdStrike', 'Palo Alto Networks',
-].filter((v, i, a) => a.indexOf(v) === i).sort();
+const ALL_COMPANIES = Object.values(COMPANY_BY_SIZE).flat().filter((v, i, a) => a.indexOf(v) === i).sort();
 
 // ─── Role Data ─────────────────────────────────────────
-const ROLE_CATEGORY_CHIPS = ['Engineering', 'Data / AI', 'Product', 'Design', 'Business / Other'] as const;
+const ROLE_CATEGORY_CHIPS = ['Product', 'Engineering', 'Data & AI', 'Design & Research', 'Business / Consulting'] as const;
 type RoleCategoryChip = typeof ROLE_CATEGORY_CHIPS[number];
 
 const TOP_ROLES = [
-  'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Data Scientist',
-  'ML Engineer', 'Product Manager', 'Product Designer', 'Engineering Manager',
-  'TPM', 'DevOps Engineer',
+  'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',
+  'Product Manager', 'Data Scientist', 'Machine Learning Engineer', 'Product Designer',
+  'DevOps Engineer', 'Business Analyst',
 ];
 
 const ROLE_ALIASES: Record<string, string> = {
   SWE: 'Software Engineer',
   PM: 'Product Manager',
+  APM: 'Associate Product Manager',
   FE: 'Frontend Engineer',
   BE: 'Backend Engineer',
-  EM: 'Engineering Manager',
   DS: 'Data Scientist',
-  MLE: 'ML Engineer',
-  SRE: 'Site Reliability Engineer',
-  QA: 'QA Engineer',
+  MLE: 'Machine Learning Engineer',
+  QA: 'QA / Test Engineer',
 };
 
 const ROLE_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
-  Engineering: [
-    'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full-Stack Engineer',
-    'Mobile Engineer (iOS)', 'Mobile Engineer (Android)', 'Embedded Engineer',
-    'DevOps Engineer', 'Site Reliability Engineer', 'Platform Engineer',
-    'Security Engineer', 'QA Engineer', 'Engineering Manager',
-    'Infrastructure Engineer', 'TPM',
-  ],
-  'Data / AI': [
-    'Data Scientist', 'ML Engineer', 'Data Engineer', 'Data Analyst',
-    'AI Research Scientist', 'Applied Scientist', 'NLP Engineer',
-    'Computer Vision Engineer', 'Analytics Engineer', 'MLOps Engineer',
-  ],
   Product: [
-    'Product Manager', 'Senior Product Manager', 'Group PM',
-    'Product Analyst', 'Growth PM', 'Technical Product Manager',
+    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager',
   ],
-  Design: [
-    'Product Designer', 'UX Designer', 'UI Designer', 'UX Researcher',
-    'Design Manager', 'Interaction Designer', 'Visual Designer',
+  Engineering: [
+    'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',
+    'Mobile Engineer', 'DevOps Engineer', 'QA / Test Engineer',
   ],
-  'Business / Other': [
-    'Solutions Architect', 'Technical Writer', 'Developer Advocate',
-    'Sales Engineer', 'Customer Success Engineer', 'Business Analyst',
-    'Consultant', 'IT Manager',
+  'Data & AI': [
+    'Data Scientist', 'Data Analyst', 'Machine Learning Engineer', 'AI Engineer',
+  ],
+  'Design & Research': [
+    'Product Designer', 'UX Designer', 'UX Researcher',
+  ],
+  'Business / Consulting': [
+    'Business Analyst', 'Consultant',
   ],
 };
 
 const TOP_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
-  Engineering: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'DevOps Engineer', 'Engineering Manager', 'Full-Stack Engineer', 'Platform Engineer', 'TPM'],
-  'Data / AI': ['Data Scientist', 'ML Engineer', 'Data Engineer', 'Data Analyst', 'AI Research Scientist', 'Applied Scientist'],
-  Product: ['Product Manager', 'Senior Product Manager', 'Growth PM', 'Technical Product Manager'],
-  Design: ['Product Designer', 'UX Designer', 'UX Researcher', 'Design Manager'],
-  'Business / Other': ['Solutions Architect', 'Sales Engineer', 'Developer Advocate', 'Technical Writer'],
+  Product: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager'],
+  Engineering: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer', 'DevOps Engineer'],
+  'Data & AI': ['Data Scientist', 'Machine Learning Engineer', 'Data Analyst', 'AI Engineer'],
+  'Design & Research': ['Product Designer', 'UX Designer', 'UX Researcher'],
+  'Business / Consulting': ['Business Analyst', 'Consultant'],
 };
 
 const ALL_ROLES = Object.values(ROLE_BY_CATEGORY).flat().filter((v, i, a) => a.indexOf(v) === i).sort();
@@ -170,11 +152,38 @@ const ROUND_GROUPS = [
 
 const ALL_ROUNDS = ROUND_GROUPS.flatMap(g => g.options);
 
+// ─── Tag / Category Data ───────────────────────────────
+const TAG_GROUPS: { label: string; tags: string[] }[] = [
+  {
+    label: 'Core Interview Types',
+    tags: ['Behavioral', 'Technical', 'Situational / Judgment'],
+  },
+  {
+    label: 'Product / Business',
+    tags: ['Product Sense', 'Execution', 'Strategy', 'Analytical / Metrics', 'Case Study'],
+  },
+  {
+    label: 'Engineering',
+    tags: ['Coding', 'System Design', 'Debugging / Troubleshooting'],
+  },
+  {
+    label: 'Leadership & Communication',
+    tags: ['Leadership', 'Communication', 'Stakeholder Management', 'Collaboration / Conflict'],
+  },
+  {
+    label: 'Career / Background',
+    tags: ['Resume / Background', 'Experience Deep Dive', 'Career Motivation', 'Company-specific Questions'],
+  },
+];
+
+const ALL_TAGS = TAG_GROUPS.flatMap(g => g.tags);
+
 const FILTER_OPTIONS: Record<string, string[]> = {
   Role: ALL_ROLES,
   Company: ALL_COMPANIES,
   Round: ALL_ROUNDS,
   Level: ['Junior', 'Intermediate', 'Senior', 'Staff'],
+  Category: ALL_TAGS,
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -289,15 +298,26 @@ export function InterviewInsightsPage() {
     if (appliedFilters.Level?.length) {
       result = result.filter(post => {
         const postLevel = post.level || '';
-        return appliedFilters.Level.some(filterLevel => 
+        return appliedFilters.Level.some(filterLevel =>
           postLevel.toLowerCase() === filterLevel.toLowerCase()
         );
       });
     }
-    
+
+    // Apply category/tag filter
+    if (appliedFilters.Category?.length) {
+      result = result.filter(post =>
+        post.questions?.some(q =>
+          q.categories?.some(cat =>
+            appliedFilters.Category.some(fc => cat.toLowerCase() === fc.toLowerCase())
+          )
+        )
+      );
+    }
+
     console.log('Filtered posts count:', result.length);
     return result;
-  }, [allPosts, debouncedSearchQuery, appliedFilters.Role, appliedFilters.Company, appliedFilters.Round, appliedFilters.Level]);
+  }, [allPosts, debouncedSearchQuery, appliedFilters.Role, appliedFilters.Company, appliedFilters.Round, appliedFilters.Level, appliedFilters.Category]);
 
   // Sort posts locally - FIXED: Sort with proper date handling
   const sortedPosts = useMemo(() => {
@@ -714,6 +734,44 @@ export function InterviewInsightsPage() {
                                 <div className="p-2 bg-[hsl(220,20%,98%)] border-t border-[hsl(220,16%,90%)] flex justify-between">
                                   <button onClick={() => resetFilter('Level')} className="text-xs text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] font-medium">Reset</button>
                                   <button onClick={() => applyFilter('Level')} className="px-3 py-1 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,55%)]">Apply</button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Category Filter Dropdown */}
+                            {filter === 'Category' && (
+                              <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
+                                <div className="max-h-72 overflow-y-auto">
+                                  {TAG_GROUPS.map((group, gi) => (
+                                    <div key={group.label}>
+                                      {gi > 0 && <div className="mx-3 border-t border-[hsl(220,16%,94%)]" />}
+                                      <div className="px-3 pt-2 pb-1.5">
+                                        <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">{group.label}</span>
+                                      </div>
+                                      <div className="px-2.5 pb-2 flex flex-wrap gap-1.5">
+                                        {group.tags.map(tag => {
+                                          const isSelected = (tempFilters['Category'] || []).includes(tag);
+                                          return (
+                                            <button
+                                              key={tag}
+                                              onClick={() => toggleTempFilter('Category', tag)}
+                                              className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                                                isSelected
+                                                  ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)]'
+                                                  : 'border-[hsl(220,16%,90%)] text-[hsl(222,12%,50%)] hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,60%)]'
+                                              }`}
+                                            >
+                                              {tag}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="p-2 bg-[hsl(220,20%,98%)] border-t border-[hsl(220,16%,90%)] flex justify-between">
+                                  <button onClick={() => resetFilter('Category')} className="text-xs text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] font-medium">Reset</button>
+                                  <button onClick={() => applyFilter('Category')} className="px-3 py-1 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,55%)]">Apply</button>
                                 </div>
                               </div>
                             )}

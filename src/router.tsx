@@ -39,6 +39,10 @@ import { ContactPage } from './pages/newDesign/contact';
 import Admin from './pages/Admin';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
+import { HelpCenterPage } from './pages/newDesign/help-center';
+import { CookieBanner } from './components/newDesign/cookie-banner';
+import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
+import { CookiePolicy } from './pages/newDesign/cookie-policy';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -46,6 +50,7 @@ function RootLayout() {
     <AuthProvider>
       <UserPlanProvider>
         <Outlet />
+        <CookieBanner />
       </UserPlanProvider>
     </AuthProvider>
   );
@@ -104,7 +109,10 @@ export const router = createBrowserRouter([
       { path: '/messages', element: <MessageCenterPage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
-      {path: '/contact',element: <ContactPage />},
+      { path: '/contact',element: <ContactPage />},
+      { path: '/help',element: <HelpCenterPage />},
+      { path: '/privacy',element: <PrivacyPolicy/>},
+      { path: '/cookies',element: <CookiePolicy/>},
       { path: '*', element: <ErrorBoundary /> },
 
       // admin

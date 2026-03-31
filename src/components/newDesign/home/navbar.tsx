@@ -175,7 +175,14 @@ export function Navbar({ transparent = false }: NavbarProps) {
               )}
             </div>
           ))}
+        <Link
+            to="/pricing"
+            className="text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
+          >
+            Pricing
+        </Link>
         </div>
+
 
         {/* ── Right: Auth Area ── */}
         <div className="hidden md:flex items-center gap-4 shrink-0">

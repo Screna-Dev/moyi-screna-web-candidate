@@ -22,6 +22,7 @@ import {
   Clock,
   Loader2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Input } from '../../components/newDesign/ui/input';
@@ -38,64 +39,64 @@ const STEPS = [
 ];
 
 // ─── Options ───────────────────────────────────────────
-const COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Microsoft', 'Netflix', 'Stripe', 'Airbnb', 'Uber', 'Spotify', 'Prefer not to say'];
+const COMPANIES = [
+  // FAANG / Big Tech
+  'Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA',
+  // Large Enterprises
+  'Oracle', 'SAP', 'IBM', 'Cisco', 'Adobe', 'Intel', 'HP', 'Dell', 'VMware', 'ServiceNow', 'Salesforce', 'Workday',
+  // Mid-sized
+  'HubSpot', 'Asana', 'Atlassian', 'Dropbox', 'Twilio', 'Zillow', 'Robinhood', 'Expedia', 'Square / Block', 'DocuSign', 'Cloudflare', 'Reddit',
+  // Startups / Small
+  'Early-stage Startup', 'Series A Startup', 'Series B+ Startup',
+  'Prefer not to say',
+];
 
 // ─── Role Data (matching Interview Insights) ───────────
-const ROLE_CATEGORY_CHIPS = ['Engineering', 'Data / AI', 'Product', 'Design', 'Business / Other'] as const;
+const ROLE_CATEGORY_CHIPS = ['Product', 'Engineering', 'Data & AI', 'Design & Research', 'Business / Consulting'] as const;
 type RoleCategoryChip = typeof ROLE_CATEGORY_CHIPS[number];
 
 const ROLE_TOP_LIST = [
-  'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Data Scientist',
-  'ML Engineer', 'Product Manager', 'Product Designer', 'Engineering Manager',
-  'TPM', 'DevOps Engineer',
+  'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',
+  'Product Manager', 'Data Scientist', 'Machine Learning Engineer', 'Product Designer',
+  'DevOps Engineer', 'Business Analyst',
 ];
 
 const ROLE_ALIASES: Record<string, string> = {
   SWE: 'Software Engineer',
   PM: 'Product Manager',
+  APM: 'Associate Product Manager',
   FE: 'Frontend Engineer',
   BE: 'Backend Engineer',
-  EM: 'Engineering Manager',
   DS: 'Data Scientist',
-  MLE: 'ML Engineer',
-  SRE: 'Site Reliability Engineer',
-  QA: 'QA Engineer',
+  MLE: 'Machine Learning Engineer',
+  QA: 'QA / Test Engineer',
 };
 
 const ROLE_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
-  Engineering: [
-    'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full-Stack Engineer',
-    'Mobile Engineer (iOS)', 'Mobile Engineer (Android)', 'Embedded Engineer',
-    'DevOps Engineer', 'Site Reliability Engineer', 'Platform Engineer',
-    'Security Engineer', 'QA Engineer', 'Engineering Manager',
-    'Infrastructure Engineer', 'TPM',
-  ],
-  'Data / AI': [
-    'Data Scientist', 'ML Engineer', 'Data Engineer', 'Data Analyst',
-    'AI Research Scientist', 'Applied Scientist', 'NLP Engineer',
-    'Computer Vision Engineer', 'Analytics Engineer', 'MLOps Engineer',
-  ],
   Product: [
-    'Product Manager', 'Senior Product Manager', 'Group PM',
-    'Product Analyst', 'Growth PM', 'Technical Product Manager',
+    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager',
   ],
-  Design: [
-    'Product Designer', 'UX Designer', 'UI Designer', 'UX Researcher',
-    'Design Manager', 'Interaction Designer', 'Visual Designer',
+  Engineering: [
+    'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',
+    'Mobile Engineer', 'DevOps Engineer', 'QA / Test Engineer',
   ],
-  'Business / Other': [
-    'Solutions Architect', 'Technical Writer', 'Developer Advocate',
-    'Sales Engineer', 'Customer Success Engineer', 'Business Analyst',
-    'Consultant', 'IT Manager',
+  'Data & AI': [
+    'Data Scientist', 'Data Analyst', 'Machine Learning Engineer', 'AI Engineer',
+  ],
+  'Design & Research': [
+    'Product Designer', 'UX Designer', 'UX Researcher',
+  ],
+  'Business / Consulting': [
+    'Business Analyst', 'Consultant',
   ],
 };
 
 const TOP_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
-  Engineering: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'DevOps Engineer', 'Engineering Manager', 'Full-Stack Engineer', 'Platform Engineer', 'TPM'],
-  'Data / AI': ['Data Scientist', 'ML Engineer', 'Data Engineer', 'Data Analyst', 'AI Research Scientist', 'Applied Scientist'],
-  Product: ['Product Manager', 'Senior Product Manager', 'Growth PM', 'Technical Product Manager'],
-  Design: ['Product Designer', 'UX Designer', 'UX Researcher', 'Design Manager'],
-  'Business / Other': ['Solutions Architect', 'Sales Engineer', 'Developer Advocate', 'Technical Writer'],
+  Product: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager'],
+  Engineering: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer', 'DevOps Engineer'],
+  'Data & AI': ['Data Scientist', 'Machine Learning Engineer', 'Data Analyst', 'AI Engineer'],
+  'Design & Research': ['Product Designer', 'UX Designer', 'UX Researcher'],
+  'Business / Consulting': ['Business Analyst', 'Consultant'],
 };
 
 const ALL_ROLES = Object.values(ROLE_BY_CATEGORY).flat().filter((v, i, a) => a.indexOf(v) === i).sort();
@@ -108,79 +109,53 @@ const ROUNDS = [
   'Onsite - Behavioral / Leadership', 'Onsite - Product Sense / Strategy',
   'Onsite - Cross-functional / Panel', 'Executive / Final Round',
 ];
-const OUTCOMES = ['Offer', 'Rejected', 'No response', 'Pending', 'Prefer not to say'];
+const OUTCOMES = ['Offer', 'Rejected', 'Pass', 'No response', 'Pending', 'Prefer not to say'];
 const TAG_CATEGORIES: { label: string; tags: string[] }[] = [
   {
-    label: 'Product & Business Strategy',
-    tags: ['Product Strategy', 'Product Sense & Ideation', 'Go-to-Market (GTM)', 'Pricing & Monetization'],
+    label: 'Core Interview Types',
+    tags: ['Behavioral', 'Technical', 'Situational / Judgment'],
   },
   {
-    label: 'Data & Analytics',
-    tags: ['Data Modeling', 'Product Analytics & Metrics', 'Root Cause Analysis', 'A/B Testing & Experimentation'],
+    label: 'Product / Business',
+    tags: ['Product Sense', 'Execution', 'Strategy', 'Analytical / Metrics', 'Case Study'],
   },
   {
-    label: 'Technical & Architecture',
-    tags: ['System Design', 'API & Integrations', 'Technical Trade-offs', 'Algorithms & Data Structures'],
+    label: 'Engineering',
+    tags: ['Coding', 'System Design', 'Debugging / Troubleshooting'],
   },
   {
-    label: 'Execution & Delivery',
-    tags: ['Roadmap Prioritization', 'Cross-functional Alignment', 'Agile / Sprint Management'],
+    label: 'Leadership & Communication',
+    tags: ['Leadership', 'Communication', 'Stakeholder Management', 'Collaboration / Conflict'],
   },
   {
-    label: 'Behavioral & Leadership',
-    tags: ['Stakeholder Management', 'Conflict Resolution', 'Adaptability & Ambiguity'],
+    label: 'Career / Background',
+    tags: ['Resume / Background', 'Experience Deep Dive', 'Career Motivation', 'Company-specific Questions'],
   },
 ];
 const QUESTION_TAGS = TAG_CATEGORIES.flatMap(c => c.tags);
 
 // ─── API Enum Maps ──────────────────────────────────────
 const ROLE_TO_ENUM: Record<string, string> = {
+  'Product Manager': 'PRODUCT_MANAGER',
+  'Associate Product Manager': 'ASSOCIATE_PRODUCT_MANAGER',
+  'Growth Product Manager': 'GROWTH_PRODUCT_MANAGER',
+  'Technical Product Manager': 'TECHNICAL_PRODUCT_MANAGER',
   'Software Engineer': 'SOFTWARE_ENGINEER',
   'Frontend Engineer': 'FRONTEND_ENGINEER',
-  'Backend Engineer': 'BACKEND_DEVELOPER',
-  'Full-Stack Engineer': 'FULL_STACK_ENGINEER',
-  'Mobile Engineer (iOS)': 'MOBILE_ENGINEER_IOS',
-  'Mobile Engineer (Android)': 'MOBILE_ENGINEER_ANDROID',
-  'Embedded Engineer': 'EMBEDDED_ENGINEER',
+  'Backend Engineer': 'BACKEND_ENGINEER',
+  'Full Stack Engineer': 'FULL_STACK_ENGINEER',
+  'Mobile Engineer': 'MOBILE_ENGINEER',
   'DevOps Engineer': 'DEVOPS_ENGINEER',
-  'Site Reliability Engineer': 'SITE_RELIABILITY_ENGINEER',
-  'Platform Engineer': 'PLATFORM_ENGINEER',
-  'Security Engineer': 'SECURITY_ENGINEER',
-  'QA Engineer': 'QA_ENGINEER',
-  'Engineering Manager': 'ENGINEERING_MANAGER',
-  'Infrastructure Engineer': 'INFRASTRUCTURE_ENGINEER',
-  'TPM': 'TPM',
+  'QA / Test Engineer': 'QA_TEST_ENGINEER',
   'Data Scientist': 'DATA_SCIENTIST',
-  'ML Engineer': 'ML_ENGINEER',
-  'Data Engineer': 'DATA_ENGINEER',
   'Data Analyst': 'DATA_ANALYST',
-  'AI Research Scientist': 'AI_RESEARCH_SCIENTIST',
-  'Applied Scientist': 'APPLIED_SCIENTIST',
-  'NLP Engineer': 'NLP_ENGINEER',
-  'Computer Vision Engineer': 'COMPUTER_VISION_ENGINEER',
-  'Analytics Engineer': 'ANALYTICS_ENGINEER',
-  'MLOps Engineer': 'MLOPS_ENGINEER',
-  'Product Manager': 'PRODUCT_MANAGER',
-  'Senior Product Manager': 'SENIOR_PRODUCT_MANAGER',
-  'Group PM': 'GROUP_PM',
-  'Product Analyst': 'PRODUCT_ANALYST',
-  'Growth PM': 'GROWTH_PM',
-  'Technical Product Manager': 'TECHNICAL_PRODUCT_MANAGER',
+  'Machine Learning Engineer': 'ML_ENGINEER',
+  'AI Engineer': 'AI_ENGINEER',
   'Product Designer': 'PRODUCT_DESIGNER',
   'UX Designer': 'UX_DESIGNER',
-  'UI Designer': 'UI_DESIGNER',
   'UX Researcher': 'UX_RESEARCHER',
-  'Design Manager': 'DESIGN_MANAGER',
-  'Interaction Designer': 'INTERACTION_DESIGNER',
-  'Visual Designer': 'VISUAL_DESIGNER',
-  'Solutions Architect': 'SOLUTIONS_ARCHITECT',
-  'Technical Writer': 'TECHNICAL_WRITER',
-  'Developer Advocate': 'DEVELOPER_ADVOCATE',
-  'Sales Engineer': 'SALES_ENGINEER',
-  'Customer Success Engineer': 'CUSTOMER_SUCCESS_ENGINEER',
   'Business Analyst': 'BUSINESS_ANALYST',
   'Consultant': 'CONSULTANT',
-  'IT Manager': 'IT_MANAGER',
 };
 
 const ROUND_TO_ENUM: Record<string, string> = {
@@ -198,24 +173,25 @@ const ROUND_TO_ENUM: Record<string, string> = {
 };
 
 const CATEGORY_TO_ENUM: Record<string, string> = {
-  'Product Strategy': 'PRODUCT_STRATEGY',
-  'Product Sense & Ideation': 'PRODUCT_SENSE',
-  'Go-to-Market (GTM)': 'GO_TO_MARKET',
-  'Pricing & Monetization': 'PRICING_MONETIZATION',
-  'Data Modeling': 'DATA_MODELING',
-  'Product Analytics & Metrics': 'PRODUCT_ANALYTICS',
-  'Root Cause Analysis': 'ROOT_CAUSE_ANALYSIS',
-  'A/B Testing & Experimentation': 'AB_TESTING',
+  'Behavioral': 'BEHAVIORAL',
+  'Technical': 'TECHNICAL',
+  'Situational / Judgment': 'SITUATIONAL_JUDGMENT',
+  'Product Sense': 'PRODUCT_SENSE',
+  'Execution': 'EXECUTION',
+  'Strategy': 'STRATEGY',
+  'Analytical / Metrics': 'ANALYTICAL_METRICS',
+  'Case Study': 'CASE_STUDY',
+  'Coding': 'CODING',
   'System Design': 'SYSTEM_DESIGN',
-  'API & Integrations': 'API_INTEGRATIONS',
-  'Technical Trade-offs': 'TECHNICAL_TRADEOFFS',
-  'Algorithms & Data Structures': 'ALGORITHMS',
-  'Roadmap Prioritization': 'ROADMAP_PRIORITIZATION',
-  'Cross-functional Alignment': 'CROSS_FUNCTIONAL',
-  'Agile / Sprint Management': 'AGILE',
+  'Debugging / Troubleshooting': 'DEBUGGING_TROUBLESHOOTING',
+  'Leadership': 'LEADERSHIP',
+  'Communication': 'COMMUNICATION',
   'Stakeholder Management': 'STAKEHOLDER_MANAGEMENT',
-  'Conflict Resolution': 'CONFLICT_RESOLUTION',
-  'Adaptability & Ambiguity': 'ADAPTABILITY',
+  'Collaboration / Conflict': 'COLLABORATION_CONFLICT',
+  'Resume / Background': 'RESUME_BACKGROUND',
+  'Experience Deep Dive': 'EXPERIENCE_DEEP_DIVE',
+  'Career Motivation': 'CAREER_MOTIVATION',
+  'Company-specific Questions': 'COMPANY_SPECIFIC',
 };
 
 const toRoleEnum = (v: string) => ROLE_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
@@ -746,11 +722,14 @@ function MonthYearPicker({ value, onChange, hasError = false }: { value: string;
 }
 
 // ─── Tag selector ──────────────────────────────────────
-const MAX_TAGS = 3;
-
-function TagSelector({ selected, onChange, hasError = false }: { selected: string[]; onChange: (tags: string[]) => void; hasError?: boolean }) {
+function TagSelector({ selected, onChange, hasError }: { selected: string[]; onChange: (tags: string[]) => void; hasError?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [tagSearch, setTagSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) setTagSearch('');
+  }, [open]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -763,42 +742,33 @@ function TagSelector({ selected, onChange, hasError = false }: { selected: strin
   const toggle = (tag: string) => {
     if (selected.includes(tag)) {
       onChange(selected.filter(t => t !== tag));
-    } else if (selected.length < MAX_TAGS) {
+    } else if (selected.length < 3) {
       onChange([...selected, tag]);
     }
   };
 
-  const atMax = selected.length >= MAX_TAGS;
-
   return (
     <div className="relative" ref={ref}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed text-xs transition-colors ${
-            hasError && selected.length === 0
-              ? 'border-red-400 text-red-500 hover:border-red-500'
-              : selected.length === 0
-                ? 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)]'
-                : atMax
-                  ? 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] opacity-50 cursor-not-allowed'
-                  : 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)]'
-          }`}
-          disabled={atMax}
-        >
-          <Plus className="w-3 h-3" />
-          {selected.length === 0 ? 'Add category (required)' : `${selected.length}/${MAX_TAGS} categories`}
-        </button>
-        {selected.map(t => (
-          <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-medium">
-            {t}
-            <button type="button" onClick={() => toggle(t)} className="hover:text-red-500 transition-colors">
-              <X className="w-2.5 h-2.5" />
-            </button>
-          </span>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed text-xs transition-colors ${hasError ? 'border-red-400 text-red-400 hover:border-red-500 hover:text-red-500' : 'border-[hsl(220,16%,85%)] text-[hsl(222,12%,55%)] hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)]'}`}
+      >
+        <Plus className="w-3 h-3" />
+        {selected.length > 0 ? `${selected.length} tag${selected.length > 1 ? 's' : ''}` : 'Add tags'}
+      </button>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {selected.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-medium">
+              {t}
+              <button type="button" onClick={() => toggle(t)} className="hover:text-red-500 transition-colors">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -806,39 +776,93 @@ function TagSelector({ selected, onChange, hasError = false }: { selected: strin
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute top-full left-0 mt-1 w-72 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 max-h-64 overflow-y-auto"
+            className="absolute top-full left-0 mt-1 w-72 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 flex flex-col max-h-72"
           >
-            <div className="px-3 pt-2.5 pb-1.5 sticky top-0 bg-white border-b border-[hsl(220,16%,94%)]">
-              <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">
-                Select 1–{MAX_TAGS} categories
-                {atMax && <span className="ml-1 text-amber-500">(max reached)</span>}
-              </p>
-            </div>
-            {TAG_CATEGORIES.map(category => (
-              <div key={category.label}>
-                <div className="px-3 pt-2.5 pb-1">
-                  <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">{category.label}</span>
-                </div>
-                <div className="px-1.5 pb-1 space-y-0.5">
-                  {category.tags.map(tag => {
-                    const isSelected = selected.includes(tag);
-                    const disabled = !isSelected && atMax;
-                    return (
-                      <label key={tag} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[hsl(220,20%,98%)]'}`}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggle(tag)}
-                          disabled={disabled}
-                          className="w-3.5 h-3.5 accent-[hsl(221,91%,60%)]"
-                        />
-                        <span className="text-xs text-[hsl(222,22%,15%)]">{tag}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+            {/* Search input */}
+            <div className="px-2.5 pt-2.5 pb-1.5 border-b border-[hsl(220,16%,92%)] shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
+                <input
+                  type="text"
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  placeholder="Search or add custom tag..."
+                  autoFocus
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] text-[hsl(222,22%,15%)] placeholder:text-[hsl(222,12%,65%)] focus:outline-none focus:border-[hsl(221,91%,60%)] focus:ring-1 focus:ring-[hsl(221,91%,60%)]/20 transition-colors"
+                />
               </div>
-            ))}
+            </div>
+
+            {/* Filtered results */}
+            <div className="overflow-y-auto flex-1">
+              {(() => {
+                const q = tagSearch.trim().toLowerCase();
+                const filteredCategories = TAG_CATEGORIES.map(category => ({
+                  ...category,
+                  tags: category.tags.filter(tag => !q || tag.toLowerCase().includes(q)),
+                })).filter(category => category.tags.length > 0);
+
+                const exactMatch = TAG_CATEGORIES.some(c => c.tags.some(t => t.toLowerCase() === q));
+                const alreadySelected = selected.some(t => t.toLowerCase() === q);
+                const showCustom = q.length > 0 && !exactMatch && !alreadySelected;
+
+                return (
+                  <>
+                    {filteredCategories.length > 0 ? (
+                      filteredCategories.map(category => (
+                        <div key={category.label}>
+                          <div className="px-3 pt-2.5 pb-1 sticky top-0 bg-white">
+                            <span className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider">{category.label}</span>
+                          </div>
+                          <div className="px-1.5 pb-1 space-y-0.5">
+                            {category.tags.map(tag => (
+                              <label key={tag} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer">
+                                <input type="checkbox" checked={selected.includes(tag)} onChange={() => toggle(tag)} className="w-3.5 h-3.5 accent-[hsl(221,91%,60%)]" />
+                                <span className="text-xs text-[hsl(222,22%,15%)]">
+                                  {q ? (() => {
+                                    const idx = tag.toLowerCase().indexOf(q);
+                                    if (idx === -1) return tag;
+                                    return <>{tag.slice(0, idx)}<span className="text-[hsl(221,91%,60%)] font-medium">{tag.slice(idx, idx + q.length)}</span>{tag.slice(idx + q.length)}</>;
+                                  })() : tag}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    ) : !showCustom ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-xs text-[hsl(222,12%,55%)]">No matching tags found</p>
+                      </div>
+                    ) : null}
+
+                    {/* Custom tag option */}
+                    {showCustom && (
+                      <div className="px-1.5 pb-1.5 pt-1 border-t border-[hsl(220,16%,92%)]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const customTag = tagSearch.trim();
+                            if (customTag && !selected.includes(customTag) && selected.length < 3) {
+                              onChange([...selected, customTag]);
+                              setTagSearch('');
+                            }
+                          }}
+                          className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg hover:bg-[hsl(221,91%,60%)]/5 transition-colors text-left group"
+                        >
+                          <div className="w-5 h-5 rounded-md bg-[hsl(221,91%,60%)]/10 flex items-center justify-center shrink-0">
+                            <Plus className="w-3 h-3 text-[hsl(221,91%,60%)]" />
+                          </div>
+                          <span className="text-xs text-[hsl(222,22%,15%)]">
+                            Add <span className="font-medium text-[hsl(221,91%,60%)]">"{tagSearch.trim()}"</span> as custom tag
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

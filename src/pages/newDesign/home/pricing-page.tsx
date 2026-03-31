@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router';
 import {
   Zap,
   Check,
-
   Mic,
   Video,
   ChevronDown,
@@ -29,14 +28,14 @@ const FAQS = [
     q: 'Do credits expire?',
     a: 'Credits never expire. Once purchased, they stay in your account until you use them — no rush, no pressure.',
   },
-  // {
-  //   q: 'Why does Video cost 2 credits/min?',
-  //   a: 'Video sessions require real-time video processing and facial expression analysis on top of voice recognition, which doubles the compute cost. Text and Voice sessions use 1 credit/min.',
-  // },
-  // {
-  //   q: 'What happens if I end a session early?',
-  //   a: 'You only pay for the minutes you actually used. If a 20-minute session ends after 12 minutes, the remaining 8 minutes of credits are automatically refunded to your balance — no action needed.',
-  // },
+  {
+    q: 'Why does Video cost 1.5 credits/min?',
+    a: 'Video sessions require real-time video processing and facial expression analysis on top of voice recognition, which increases the compute cost. Voice sessions use 1 credit/min.',
+  },
+  {
+    q: 'What happens if I end a session early?',
+    a: 'You only pay for the minutes you actually used. If a 20-minute session ends after 12 minutes, the remaining 8 minutes of credits are automatically refunded to your balance — no action needed.',
+  },
 ];
 
 // ─── Animate wrapper ────────────────────────────────────
@@ -98,18 +97,62 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export function PricingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [customCredits, setCustomCredits] = useState(200);
-  const customTotal = (customCredits * 0.12).toFixed(2);
+  const [customCredits, setCustomCredits] = useState(150);
+  const customTotal = (() => {
+    const q = customCredits;
+    const p100 = 0.1499;
+    const p1000 = 0.12;
+    const theoryPrice = p100 - (p100 - p1000) * Math.log10(q / 100);
+    const total = q * theoryPrice;
+    const step = 0.5;
+    const rounded = Math.ceil(total / step) * step - 0.01;
+    return Math.max(rounded, 19.99).toFixed(2);
+  })();
+  const customUnitPrice = (parseFloat(customTotal) / customCredits).toFixed(2);
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
 
-  const handleBuy = async (packId: string, numberOfCredits: number) => {
+  const handleBuyStarter = async () => {
     if (!user) {
       navigate('/auth');
       return;
     }
-    setLoadingPack(packId);
+    setLoadingPack('starter');
     try {
-      const response = await PaymentService.createOneTimeSession(numberOfCredits);
+      const response = await PaymentService.purchaseStarterPack();
+      const url = response.data?.data?.url;
+      if (url) window.location.href = url;
+    } catch (err) {
+      console.error('Payment error:', err);
+    } finally {
+      setLoadingPack(null);
+    }
+  };
+
+  const handleBuyGrowth = async () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    setLoadingPack('growth');
+    try {
+      const response = await PaymentService.purchaseGrowthPack();
+      const url = response.data?.data?.url;
+      if (url) window.location.href = url;
+    } catch (err) {
+      console.error('Payment error:', err);
+    } finally {
+      setLoadingPack(null);
+    }
+  };
+
+  const handleBuyCustom = async () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    setLoadingPack('custom');
+    try {
+      const response = await PaymentService.purchaseCustomPack(customCredits);
       const url = response.data?.data?.url;
       if (url) window.location.href = url;
     } catch (err) {
@@ -155,7 +198,7 @@ export function PricingPage() {
                     {[
                       { icon: CreditCard, text: '1 credit = 1 minute of practice' },
                       { icon: RefreshCw, text: 'End early → unused credits auto-refund' },
-                      // { icon: Video, text: 'Video sessions use 2 credits/min' },
+                      { icon: Video, text: 'Video sessions use 1.5 credits/min' },
                     ].map((item, i) => (
                       <li key={i} className="flex items-start gap-3">
                         <div className="w-6 h-6 rounded-md bg-slate-50 flex items-center justify-center shrink-0 mt-0.5">
@@ -232,7 +275,7 @@ export function PricingPage() {
                     <Button
                       className="w-full h-10 rounded-xl text-sm bg-slate-900 hover:bg-slate-800 text-white"
                       disabled={loadingPack === 'starter'}
-                      onClick={() => handleBuy('starter', 50)}
+                      onClick={handleBuyStarter}
                     >
                       {loadingPack === 'starter' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Buy Starter'}
                     </Button>
@@ -257,7 +300,7 @@ export function PricingPage() {
                     <Button
                       className="w-full h-10 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white"
                       disabled={loadingPack === 'growth'}
-                      onClick={() => handleBuy('growth', 100)}
+                      onClick={handleBuyGrowth}
                     >
                       {loadingPack === 'growth' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Buy Growth</span><ArrowRight className="w-4 h-4" /></>}
                     </Button>
@@ -267,7 +310,7 @@ export function PricingPage() {
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex-1">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-lg text-slate-900">Customize</h3>
-                      <span className="text-xs text-slate-400">$0.12/credit</span>
+                      <span className="text-xs text-slate-400">~${customUnitPrice}/credit</span>
                     </div>
                     <div className="flex items-baseline gap-1 mb-4">
                       <span className="text-3xl text-slate-900 tracking-tight">
@@ -281,24 +324,24 @@ export function PricingPage() {
                     <div className="mb-4">
                       <input
                         type="range"
-                        min={101}
+                        min={150}
                         max={1000}
-                        step={1}
+                        step={50}
                         value={customCredits}
                         onChange={(e) => setCustomCredits(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-slate-900 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-slate-900 [&::-webkit-slider-thumb]:shadow-sm"
                       />
                       <div className="flex justify-between text-[11px] text-slate-400 mt-1">
-                        <span>101</span>
+                        <span>150</span>
                         <span>1000</span>
                       </div>
                     </div>
                     <Button
                       className="w-full h-10 rounded-xl text-sm bg-slate-900 hover:bg-slate-800 text-white"
                       disabled={loadingPack === 'custom'}
-                      onClick={() => handleBuy('custom', customCredits)}
+                      onClick={handleBuyCustom}
                     >
-                      {loadingPack === 'custom' ? <Loader2 className="w-4 h-4 animate-spin" /> : `Buy ${customCredits} credits`}
+                      {loadingPack === 'custom' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Customize'}
                     </Button>
                     <p className="text-center text-xs text-slate-400 mt-3">
                       Need 1,000+ credits?{' '}
@@ -339,8 +382,8 @@ export function PricingPage() {
                     {
                       mode: 'Video',
                       icon: Video,
-                      rate: '2 credits/min',
-                      multiplier: '2×',
+                      rate: '1.5 credits/min',
+                      multiplier: '1.5×',
                       color: 'bg-violet-50 text-violet-500',
                       iconColor: 'text-violet-400',
                     },
@@ -382,21 +425,18 @@ export function PricingPage() {
                       <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
                         <Info className="w-3.5 h-3.5 text-blue-400" />
                       </div>
-                      {/* <p className="text-sm text-slate-500 leading-relaxed">
-                        <span className="text-slate-700">Example:</span> A 20-min Voice session uses 20 credits.
-                      </p> */}
                       <p className="text-sm text-slate-500 leading-relaxed">
-                        <span className="text-slate-700">Example:</span> A 20-min session uses 20 credits.
+                        <span className="text-slate-700">Example:</span> A 20-min Voice session uses 20 credits.
                       </p>
                     </div>
-                    {/* <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
                         <Info className="w-3.5 h-3.5 text-blue-400" />
                       </div>
                       <p className="text-sm text-slate-500 leading-relaxed">
-                        <span className="text-slate-700">Example:</span> A 30-min Video session uses 60 credits.
+                        <span className="text-slate-700">Example:</span> A 30-min Video session uses 45 credits.
                       </p>
-                    </div> */}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 rounded-xl border border-emerald-100">
                     <RefreshCw className="w-4 h-4 text-emerald-500 shrink-0" />

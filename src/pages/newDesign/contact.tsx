@@ -57,7 +57,7 @@ export function ContactPage() {
                   <div>
                     <h3 className="text-sm text-[hsl(222,22%,15%)] mb-1">Email us</h3>
                     <a
-                      href="mailto:support@screna.ai"
+                      href="mailto:operations@screna.ai"
                       className="text-[hsl(221,91%,60%)] text-sm hover:underline"
                     >
                       support@screna.ai
