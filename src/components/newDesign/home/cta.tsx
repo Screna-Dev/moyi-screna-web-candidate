@@ -2,14 +2,15 @@ import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { ArrowRight, Mail } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function CTA() {
   const [email, setEmail] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle email submission logic here
-    console.log('Submitted email:', email);
+    navigate(`/auth?email=${encodeURIComponent(email)}`);
   };
 
   return (

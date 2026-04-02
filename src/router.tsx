@@ -43,6 +43,7 @@ import { HelpCenterPage } from './pages/newDesign/help-center';
 import { CookieBanner } from './components/newDesign/cookie-banner';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
 import { CookiePolicy } from './pages/newDesign/cookie-policy';
+import { DataProtectionPolicy } from './pages/newDesign/data-protection-policy';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
       { path: '/help',element: <HelpCenterPage />},
       { path: '/privacy',element: <PrivacyPolicy/>},
       { path: '/cookies',element: <CookiePolicy/>},
+      { path: '/data-protection',element: <DataProtectionPolicy/>},
       { path: '*', element: <ErrorBoundary /> },
 
       // admin

@@ -177,7 +177,7 @@ export function PricingPage() {
                   <Zap className="w-3 h-3 mr-1" />
                   Credit-based pricing
                 </Badge>
-                <h1 className="text-4xl sm:text-5xl text-slate-900 tracking-tight mb-4">
+                <h1 className="text-4xl sm:text-5xl text-slate-900 tracking-tight mb-4 font-[family-name:var(--font-serif)]">
                   Choose how you practice
                 </h1>
                 <p className="text-slate-500 text-lg leading-relaxed">

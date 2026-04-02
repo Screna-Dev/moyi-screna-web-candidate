@@ -19,6 +19,11 @@ export function ContactPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const subject = encodeURIComponent(`Contact from ${form.firstName} ${form.lastName}`);
+    const body = encodeURIComponent(
+      `From: ${form.firstName} ${form.lastName}\nEmail: ${form.email}\n\n${form.message}`
+    );
+    window.location.href = `mailto:operations@screna.ai?subject=${subject}&body=${body}`;
     setSubmitted(true);
   };
 

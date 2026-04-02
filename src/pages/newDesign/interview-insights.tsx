@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
   ChevronDown,
@@ -17,11 +17,15 @@ import {
   Share2,
   Eye,
   ArrowUp,
+  Lock,
 } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts } from '../../services/CommunityService';
+import { getPosts, getPublicPosts } from '../../services/CommunityService';
+import { useAuth } from '../../contexts/AuthContext';
+import { ShareExperienceModal } from '../../components/newDesign/share-experience-modal';
+import { SharePopover } from '@/components/newDesign/share-popover';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -54,6 +58,8 @@ interface Post {
   summary: string;
   status: string;
   createdAt: string;
+  commentCount?: number;
+  tags?: string[];
 }
 
 const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
@@ -194,6 +200,8 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 export function InterviewInsightsPage() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string[]>>({});
@@ -245,17 +253,17 @@ export function InterviewInsightsPage() {
   const filteredPosts = useMemo(() => {
     let result = [...allPosts];
     
-    // Apply search filter - FIXED: Handle empty/undefined values
+    // Apply search filter
     if (debouncedSearchQuery) {
       const query = debouncedSearchQuery.toLowerCase();
       result = result.filter(post => {
-      const company = (post.company || '').toLowerCase();
-      const role = (post.role || '').toLowerCase();
-      const summary = (post.summary || '').toLowerCase();
-      const questions = post.questions || [];
-      const hasMatchingQuestion = questions.some(q => 
-        (q.title || '').toLowerCase().includes(query)
-      );
+        const company = (post.company || '').toLowerCase();
+        const role = (post.role || '').toLowerCase();
+        const summary = (post.summary || '').toLowerCase();
+        const questions = post.questions || [];
+        const hasMatchingQuestion = questions.some(q => 
+          (q.title || '').toLowerCase().includes(query)
+        );
         
         return company.includes(query) || 
               role.includes(query) || 
@@ -264,7 +272,7 @@ export function InterviewInsightsPage() {
       });
     }
     
-    // Apply role filter - FIXED: Handle undefined role
+    // Apply role filter
     if (appliedFilters.Role?.length) {
       result = result.filter(post => {
         const postRole = post.role || '';
@@ -274,7 +282,7 @@ export function InterviewInsightsPage() {
       });
     }
     
-    // Apply company filter - FIXED: Handle undefined company
+    // Apply company filter
     if (appliedFilters.Company?.length) {
       result = result.filter(post => {
         const postCompany = post.company || '';
@@ -284,7 +292,7 @@ export function InterviewInsightsPage() {
       });
     }
     
-    // Apply round filter - FIXED: Handle undefined round
+    // Apply round filter
     if (appliedFilters.Round?.length) {
       result = result.filter(post => {
         const postRound = post.round || '';
@@ -294,7 +302,7 @@ export function InterviewInsightsPage() {
       });
     }
     
-    // Apply level filter - FIXED: Handle undefined level
+    // Apply level filter
     if (appliedFilters.Level?.length) {
       result = result.filter(post => {
         const postLevel = post.level || '';
@@ -315,21 +323,18 @@ export function InterviewInsightsPage() {
       );
     }
 
-    console.log('Filtered posts count:', result.length);
     return result;
-  }, [allPosts, debouncedSearchQuery, appliedFilters.Role, appliedFilters.Company, appliedFilters.Round, appliedFilters.Level, appliedFilters.Category]);
+  }, [allPosts, debouncedSearchQuery, appliedFilters]);
 
-  // Sort posts locally - FIXED: Sort with proper date handling
+  // Sort posts locally
   const sortedPosts = useMemo(() => {
     const sorted = [...filteredPosts];
     
     if (activeSort === 'Newest') {
       sorted.sort((a, b) => {
-        // Handle missing or invalid dates
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         
-        // If dates are invalid, keep original order
         if (isNaN(dateA) && isNaN(dateB)) return 0;
         if (isNaN(dateA)) return 1;
         if (isNaN(dateB)) return -1;
@@ -346,14 +351,6 @@ export function InterviewInsightsPage() {
         if (isNaN(dateB)) return -1;
         
         return dateA - dateB;
-      });
-    }
-    
-    // Log sorted order to debug
-    if (sorted.length > 0) {
-      console.log('Sorted posts by', activeSort);
-      sorted.forEach((post, idx) => {
-        console.log(`${idx + 1}. ${post.company} - ${post.role} - ${post.createdAt}`);
       });
     }
     
@@ -386,7 +383,7 @@ export function InterviewInsightsPage() {
       const params: any = {
         page: pageNum,
       };
-      
+
       // Only send filters that the API actually supports
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (appliedFilters.Role?.[0]) params.role = appliedFilters.Role[0];
@@ -394,13 +391,15 @@ export function InterviewInsightsPage() {
       if (appliedFilters.Round?.[0]) params.round = appliedFilters.Round[0];
       if (appliedFilters.Level?.[0]) params.level = appliedFilters.Level[0];
 
-      const res = await getPosts(params);
+      // Use public API for non-authenticated users, only fetch first page
+      const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
+      const res = await fetchFn(isAuthenticated ? params : { page: 0 });
       const data = res.data?.data ?? res.data;
       const content: Post[] = data?.content ?? (Array.isArray(data) ? data : []);
       const pageMeta = data?.pageMeta;
-      
+
       setAllPosts(prev => reset ? content : [...prev, ...content]);
-      setHasMore(pageMeta ? !pageMeta.last : false);
+      setHasMore(isAuthenticated ? (pageMeta ? !pageMeta.last : false) : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch posts:', err);
@@ -412,7 +411,7 @@ export function InterviewInsightsPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [debouncedSearchQuery, appliedFilters]);
+  }, [debouncedSearchQuery, appliedFilters, isAuthenticated]);
 
   // Refetch when filters or search changes (reset to first page)
   useEffect(() => {
@@ -481,6 +480,7 @@ export function InterviewInsightsPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
+      <ShareExperienceModal delayMs={5000} />
       <main className="pt-24 pb-20 bg-[#f9fafb]">
         {/* ─── Hero Header ─── */}
         <div className="max-w-7xl mx-auto px-6 my-[40px]">
@@ -493,14 +493,14 @@ export function InterviewInsightsPage() {
                 </span>
                 Community-sourced
               </div>
-              <h1 className="text-3xl md:text-4xl font-semibold text-[hsl(222,22%,15%)] tracking-tight mb-2">
+              <h1 className="text-3xl md:text-4xl font-semibold text-[hsl(222,22%,15%)] tracking-tight mb-2 font-[family-name:var(--font-serif)]">
                 Interview Insights
               </h1>
               <p className="text-lg text-[hsl(222,12%,45%)] max-w-xl">
                 Real interview experiences shared by the community. Learn what to expect before you walk in.
               </p>
             </div>
-            <Link to="/add-experience">
+            <Link to={isAuthenticated ? '/add-experience' : '/auth'} state={!isAuthenticated ? { from: { pathname: '/interview-insights' } } : undefined}>
               <Button className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
                 <Plus className="w-4 h-4" />
                 Share Your Experience
@@ -517,38 +517,7 @@ export function InterviewInsightsPage() {
             <div className="flex-1 space-y-5 min-w-0">
               {/* Controls Bar */}
               <div className="flex flex-col md:flex-row md:items-center gap-4 mb-3">
-                {/* Sort Dropdown - Now just local sort, no API call */}
-                {/* <div className="relative md:order-last md:ml-auto">
-                  <button
-                    onClick={() => setOpenFilter(openFilter === '__sort__' ? null : '__sort__')}
-                    className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors"
-                  >
-                    <ListFilter className="w-4 h-4" />
-                    Sort: {activeSort}
-                  </button>
-                  {openFilter === '__sort__' && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setOpenFilter(null)} />
-                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden p-1">
-                        {SORT_OPTIONS.map(sort => (
-                          <button
-                            key={sort}
-                            onClick={() => { setActiveSort(sort); setOpenFilter(null); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                              activeSort === sort
-                                ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] font-medium'
-                                : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
-                            }`}
-                          >
-                            {sort}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div> */}
-
-                {/* Filters - Same as before */}
+                {/* Filters */}
                 <div className="flex flex-wrap items-center gap-2 relative z-20">
                   {Object.keys(FILTER_OPTIONS).map(filter => {
                     const isOpen = openFilter === filter;
@@ -822,7 +791,7 @@ export function InterviewInsightsPage() {
                 </div>
               )}
 
-              {/* Posts List - Using sortedPosts from local sort */}
+              {/* Posts List */}
               {sortedPosts.map((post, i) => (
                 <motion.article
                   key={post.id}
@@ -830,10 +799,11 @@ export function InterviewInsightsPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
-                  className="group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300"
+                  className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${!isAuthenticated ? 'cursor-pointer' : ''}`}
+                  onClick={!isAuthenticated ? () => navigate('/auth', { state: { from: { pathname: '/interview-insights' } } }) : undefined}
                 >
                   <div className="p-6">
-                    {/* ── Card Header ── */}
+                    {/* ── Card Header (always visible) ── */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="w-8 h-8 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-sm font-bold text-[hsl(222,22%,15%)] shrink-0">
@@ -854,82 +824,140 @@ export function InterviewInsightsPage() {
                       )}
                     </div>
 
-                    {/* ── Meta ── */}
-                    <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDate(post.date)}
-                      </span>
-                    </div>
-
-                    {/* ── Summary ── */}
-                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                      {post.summary || 'No summary available'}
-                    </p>
-
-                    {/* ── Question Preview Chips ── */}
-                    <div className="flex flex-wrap items-center gap-2 mb-5">
-                      {getQuestions(post).length > 0 ? (
-                        <>
-                          {getQuestions(post).slice(0, 3).map((q, qi) => (
-                            <span
-                              key={q.id || qi}
-                              className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate"
-                            >
-                              <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
-                              {q.title || 'Question'}
+                    {/* ── Blurred content for non-authenticated users ── */}
+                    {!isAuthenticated ? (
+                      <div className="relative">
+                        <div className="blur-sm select-none pointer-events-none">
+                          <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDate(post.date)}
                             </span>
-                          ))}
-                          {getQuestions(post).length > 3 && (
-                            <span className="px-2.5 py-1 rounded-lg bg-[hsl(221,91%,60%)]/8 text-[hsl(221,91%,60%)] text-xs font-medium">
-                              +{getQuestions(post).length - 3} more
-                            </span>
+                          </div>
+                          <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                            {post.summary || 'No summary available'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 mb-5">
+                            {getQuestions(post).length > 0 ? (
+                              getQuestions(post).slice(0, 3).map((q, qi) => (
+                                <span
+                                  key={q.id || qi}
+                                  className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate"
+                                >
+                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
+                                  {q.title || 'Question'}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-[hsl(222,12%,55%)]">No questions available</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(220,16%,90%)] shadow-sm">
+                            <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
+                            <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Sign in to view details</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* ── Meta ── */}
+                        <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDate(post.date)}
+                          </span>
+                        </div>
+
+                        {/* ── Summary ── */}
+                        <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                          {post.summary || 'No summary available'}
+                        </p>
+
+                        {/* ── Question Preview Chips ── */}
+                        <div className="flex flex-wrap items-center gap-2 mb-5">
+                          {getQuestions(post).length > 0 ? (
+                            <>
+                              {getQuestions(post).slice(0, 3).map((q, qi) => (
+                                <span
+                                  key={q.id || qi}
+                                  className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate"
+                                >
+                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
+                                  {q.title || 'Question'}
+                                </span>
+                              ))}
+                              {getQuestions(post).length > 3 && (
+                                <span className="px-2.5 py-1 rounded-lg bg-[hsl(221,91%,60%)]/8 text-[hsl(221,91%,60%)] text-xs font-medium">
+                                  +{getQuestions(post).length - 3} more
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-[hsl(222,12%,55%)]">No questions available</span>
                           )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-[hsl(222,12%,55%)]">No questions available</span>
-                      )}
-                    </div>
+                        </div>
 
-                    {/* ── Actions ── */}
-                    <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => toggleLike(post.id)}
-                          className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                            likedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
-                          }`}
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" />
-                          {likedPosts.has(post.id) ? 1 : 0}
-                        </button>
-                        <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          0
-                        </span>
-                        <button
-                          onClick={() => toggleSave(post.id)}
-                          className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                            savedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
-                          }`}
-                        >
-                          <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
-                          {savedPosts.has(post.id) ? 1 : 0}
-                        </button>
-                        <button className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] transition-colors">
-                          <Share2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                        {/* ── Actions ── */}
+                        <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}
+                              className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                likedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                              }`}
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                              {likedPosts.has(post.id) ? 1 : 0}
+                            </button>
+                            <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              {post.commentCount ?? 0}
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSave(post.id); }}
+                              className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                savedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                              }`}
+                            >
+                              <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
+                              {savedPosts.has(post.id) ? 1 : 0}
+                            </button>
+                            
+                            {/* Share Popover - Fixed implementation */}
+                            <SharePopover 
+                              data={{
+                                title: `${post.company} — ${post.round || 'Interview Experience'}`,
+                                subtitle: post.role,
+                                tags: [post.level, post.outcome, post.round].filter(Boolean),
+                                summary: post.summary || `Interview experience at ${post.company} for ${post.role} position`,
+                                url: `${window.location.origin}/experience/${post.id}`,
+                              }}
+                            >
+                              <button 
+                                type="button"
+                                className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] transition-colors"
+                              >
+                                <div className="w-6 h-6 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center pointer-events-none">
+                                  <Share2 className="w-3 h-3 text-white" />
+                                </div>
+                              </button>
+                            </SharePopover>
+                          </div>
 
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/experience/${post.id}`}
-                          className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
-                        >
-                          View Post
-                        </Link>
-                      </div>
-                    </div>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={`/experience/${post.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
+                            >
+                              View Post
+                            </Link>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </motion.article>
               ))}
@@ -993,7 +1021,7 @@ export function InterviewInsightsPage() {
                   </div>
                   <div className="space-y-1">
                     {hotThisWeek.map((item, i) => (
-                      <Link key={item.id} to={`/experience/${item.id}`} className="block group/hot">
+                      <Link key={item.id} to={isAuthenticated ? `/experience/${item.id}` : '/auth'} state={!isAuthenticated ? { from: { pathname: '/interview-insights' } } : undefined} className="block group/hot">
                         <div className="flex items-start gap-2.5 p-2.5 rounded-xl hover:bg-[hsl(220,20%,98%)] transition-colors">
                           <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${
                             i < 3 ? 'bg-gradient-to-br from-[hsl(221,91%,55%)] to-[hsl(221,91%,45%)] text-white' : 'bg-[hsl(220,20%,96%)] text-[hsl(222,12%,50%)]'

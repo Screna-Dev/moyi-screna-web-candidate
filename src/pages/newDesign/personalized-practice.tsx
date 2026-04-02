@@ -7,7 +7,6 @@ import {
   Zap,
   BarChart2,
   Building2,
-  Search,
   Sparkles,
   Lock,
   User,
@@ -28,13 +27,6 @@ import {
 import { Button } from '../../components/newDesign/ui/button';
 import { Badge } from '../../components/newDesign/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/newDesign/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -45,7 +37,8 @@ import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
 import { getJobTitleRecommendations, getProfile } from '@/services/ProfileServices';
-import { createTrainingPlan, deleteTrainingPlan } from '@/services/InterviewServices';
+import { createTrainingPlan } from '@/services/InterviewServices';
+import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
 
@@ -82,7 +75,7 @@ function useAuthState() {
     return () => window.removeEventListener('screna-auth-change', handler);
   }, []);
 
-const hasProfile = !!(userData?.role && userData?.experienceLevel);
+  const hasProfile = !!(userData?.role && userData?.experienceLevel);
   return { isLoggedIn, userData, hasProfile };
 }
 
@@ -101,7 +94,6 @@ interface PracticeSet {
   popular?: boolean;
   category: string;
   company: string;
-  matchScore?: number;
   topics?: string[];
   whatToExpect?: string[];
 }
@@ -148,123 +140,6 @@ function mapModuleToPracticeSet(module: any, index: number, planTitle?: string, 
 }
 
 // ─── Data ──────────────────────────────────────────────
-const PRACTICE_SETS: PracticeSet[] = [
-  {
-    id: 1,
-    module_id: 'product-sense-essentials',
-    title: 'Product Sense Essentials',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '30 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 539,
-    popular: true,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 2,
-    module_id: 'behavioral-star-method',
-    title: 'Behavioral STAR Method',
-    role: 'General',
-    focus: 'Behavioral',
-    time: '45 min',
-    difficulty: 'Junior',
-    credits: 8,
-    practiced: 198,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 3,
-    module_id: 'system-design-scalability',
-    title: 'System Design Scalability',
-    role: 'Software Engineer',
-    focus: 'System',
-    time: '48 min',
-    difficulty: 'Senior',
-    credits: 10,
-    practiced: 340,
-    category: 'system-design',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 4,
-    module_id: 'react-frontend-core',
-    title: 'React Frontend Core',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '20 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 181,
-    category: 'technical',
-    company: 'Startups',
-  },
-  {
-    id: 5,
-    module_id: 'ab-testing-metrics',
-    title: 'A/B Testing & Metrics',
-    role: 'Data Scientist',
-    focus: 'Analytical',
-    time: '30 min',
-    difficulty: 'Staff',
-    credits: 10,
-    practiced: 198,
-    category: 'analytical',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 6,
-    module_id: 'leadership-principles',
-    title: 'Leadership Principles',
-    role: 'Engineering Manager',
-    focus: 'Behavioral',
-    time: '25 min',
-    difficulty: 'Senior',
-    credits: 5,
-    practiced: 831,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 7,
-    module_id: 'pm-strategy-vision',
-    title: 'PM Strategy & Vision',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '35 min',
-    difficulty: 'Senior',
-    credits: 8,
-    practiced: 412,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 8,
-    module_id: 'api-design-patterns',
-    title: 'API Design Patterns',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '25 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 267,
-    category: 'technical',
-    company: 'Mid-size tech',
-  },
-];
-
-const RECENT_SESSIONS = [
-  { id: 1, title: 'System Design Interview', score: 82, date: 'Today, 2:30 PM', duration: '28 min', tag: 'Technical' },
-  { id: 2, title: 'PM Product Sense', score: 74, date: 'Yesterday, 10:00 AM', duration: '32 min', tag: 'Product' },
-  { id: 3, title: 'Behavioral STAR', score: 91, date: 'Mar 12, 4:15 PM', duration: '22 min', tag: 'Behavioral' },
-];
-
-
 // ─── Helpers ───────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
   'Product Manager': 'bg-blue-50 text-blue-700 border-blue-200/60',
@@ -291,15 +166,37 @@ const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
 
 
 // ════════════════════════════════════════════════════════
+// GENERATION PROGRESS BAR COMPONENT
+// ════════════════════════════════════════════════════════
+function GenerationProgressBar({ progress }: { progress: number }) {
+  return (
+    <div className="w-full max-w-md mx-auto mt-6">
+      <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+        <span className="font-medium">Generating your training plan</span>
+        <span className="font-mono text-blue-600">{progress}%</span>
+      </div>
+      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className="text-xs text-slate-400 text-center mt-3">
+        We're creating personalized practice modules based on your target role
+      </p>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // PRACTICE SET CARD (reused from mock-interview)
 // ════════════════════════════════════════════════════════
-function PracticeSetCard({ set, showMatch, onClick, isLoading, userBalance }: { set: PracticeSet; showMatch?: boolean; onClick?: () => void; isLoading?: boolean; userBalance?: number }) {
-  const navigate = useNavigate();
+function PracticeSetCard({ set, onClick, isLoading, userBalance }: { set: PracticeSet; onClick?: () => void; isLoading?: boolean; userBalance?: number }) {
   const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
   const visibleAvatars = 3;
   const hasInsufficientBalance = userBalance !== undefined && userBalance < set.credits;
 
-  const cardClass = `group bg-white rounded-2xl border transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''} ${hasInsufficientBalance ? 'border-orange-200 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-900/[0.04]' : 'border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06]'}`;
+  const cardClass = `group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''}`;
 
   const inner = (
     <>
@@ -314,12 +211,7 @@ function PracticeSetCard({ set, showMatch, onClick, isLoading, userBalance }: { 
           >
             {set.role}
           </Badge>
-          {showMatch && set.matchScore ? (
-            <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
-              <Target className="w-3 h-3" />
-              {set.matchScore}% Match
-            </Badge>
-          ) : set.popular ? (
+          {set.popular ? (
             <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
               <Sparkles className="w-3 h-3" />
               Popular
@@ -359,53 +251,27 @@ function PracticeSetCard({ set, showMatch, onClick, isLoading, userBalance }: { 
       </div>
 
       {/* Footer */}
-      {hasInsufficientBalance ? (
-        <div className="px-5 py-3 mt-3 border-t border-orange-100 bg-orange-50/50 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-            <span className="text-xs text-orange-700 truncate">
-              Need {set.credits} credits (you have {userBalance})
+      <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {hasInsufficientBalance ? (
+            <>
+              <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+              <span className="text-xs text-orange-600 truncate">
+                Need {set.credits} credits
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-slate-400">
+              {set.practiced > 0 ? `${set.practiced.toLocaleString()} practiced` : 'Ready to practice'}
             </span>
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); navigate('/billing'); }}
-            className="shrink-0 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-full transition-colors"
-          >
-            Buy tokens
-          </button>
+          )}
         </div>
-      ) : (
-        <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex -space-x-1.5">
-              {colorSet.slice(0, visibleAvatars).map((color, i) => (
-                <div
-                  key={i}
-                  className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
-                >
-                  {INITIALS[(set.id + i) % INITIALS.length]}
-                </div>
-              ))}
-            </div>
-            <span className="text-xs font-medium text-slate-400">
-              {isLoading ? 'Starting…' : `+${set.practiced.toLocaleString()} practiced`}
-            </span>
-          </div>
-          <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-            {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-          </div>
+        <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
+          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
         </div>
-      )}
+      </div>
     </>
   );
-
-  if (hasInsufficientBalance) {
-    return (
-      <button onClick={() => navigate('/billing')} className={`text-left w-full ${cardClass}`}>
-        {inner}
-      </button>
-    );
-  }
 
   if (onClick) {
     return (
@@ -844,7 +710,7 @@ export function PersonalizedPracticePage() {
   const navigate = useNavigate();
   const { isAuthenticated: isLoggedIn, user } = useAuth();
   const { planData } = useUserPlan();
-  const userBalance = planData.permanentCreditBalance;
+  const userBalance = planData?.permanentCreditBalance;
   const userData = user ? { role: user.role } : null;
   const hasProfile = !!userData?.role;
 
@@ -868,71 +734,18 @@ export function PersonalizedPracticePage() {
   const [planSets, setPlanSets] = useState<PracticeSet[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [isModulesGenerating, setIsModulesGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [isPartiallyReady, setIsPartiallyReady] = useState(false);
   const [existingPlans, setExistingPlans] = useState<any[]>([]);
   const [existingPlanId, setExistingPlanId] = useState<number | null>(null);
   const [isDeletingPlan, setIsDeletingPlan] = useState(false);
-  const [activeTab, setActiveTab] = useState<'popular' | 'foryou'>('popular');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [targetJob, setTargetJob] = useState<string | null>(null);
   const [showTargetJobModal, setShowTargetJobModal] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [signInMessage, setSignInMessage] = useState('');
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [personalizeWith, setPersonalizeWith] = useState<'profile' | 'targetjob' | null>(null);
-
-  // ── Effects ──
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setPlanSets([]);
-      setExistingPlans([]);
-      setExistingPlanId(null);
-      setTargetJob(null);
-      return;
-    }
-    setIsLoadingPlan(true);
-    InterviewService.getTrainingPlans()
-      .then((response) => {
-        let plansData = response.data?.data ?? response.data ?? [];
-        if (!Array.isArray(plansData)) plansData = [];
-        setExistingPlans(plansData);
-        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
-        for (const plan of plansData) {
-          const planTitle = plan.target_job_title || 'Your Training Plan';
-          const planId = plan.id;
-          const modules: any[] = plan.modules || [];
-          for (const m of modules) {
-            if (m.status === 'pending') {
-              pendingModules.push({ module: m, planTitle, planId });
-            }
-          }
-        }
-        if (plansData.length > 0) {
-          const firstPlan = plansData[0];
-          setExistingPlanId(firstPlan.id);
-          setTargetJob(firstPlan.target_job_title || 'Your Training Plan');
-          // Plan exists but modules not ready yet — still generating
-          const allModulesEmpty = plansData.every((p: any) => (p.modules || []).length === 0);
-          setIsModulesGenerating(allModulesEmpty);
-        } else {
-          setIsModulesGenerating(false);
-        }
-        const first8 = pendingModules.slice(0, 8);
-        setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
-      })
-      .catch(() => { setPlanSets([]); setExistingPlans([]); setIsModulesGenerating(false); })
-      .finally(() => setIsLoadingPlan(false));
-  }, [isLoggedIn]);
-
-  // ── Poll while modules are still generating ──
-  useEffect(() => {
-    if (!isModulesGenerating) return;
-    const interval = setInterval(() => {
-      refetchPlans();
-    }, 5000);
-    return () => clearInterval(interval);
-   
-  }, [isModulesGenerating]);
+  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
 
   // ── Helper functions ──
   const showToast = (message: string) => {
@@ -949,13 +762,33 @@ export function PersonalizedPracticePage() {
     return false;
   };
 
-  const refetchPlans = () => {
-    setIsLoadingPlan(true);
-    InterviewService.getTrainingPlans()
-      .then((response) => {
-        let plansData = response.data?.data ?? response.data ?? [];
-        if (!Array.isArray(plansData)) plansData = [];
-        setExistingPlans(plansData);
+  // ── Fetch plans function ──
+  const refetchPlans = async () => {
+    if (!isLoggedIn) return;
+    
+    try {
+      const response = await InterviewService.getTrainingPlans();
+      let plansData = response.data?.data ?? response.data ?? [];
+      if (!Array.isArray(plansData)) plansData = [];
+      
+      // Set target job from the first plan if it exists
+      if (plansData.length > 0 && !targetJob) {
+        const firstPlan = plansData[0];
+        setTargetJob(firstPlan.target_job_title || 'Your Training Plan');
+        setExistingPlanId(firstPlan.id);
+      }
+      
+      // Check plan status and modules
+      const hasAnyModules = plansData.some((plan: any) => (plan.modules || []).length > 0);
+      const planStatus = plansData[0]?.status;
+      const apiProgress = plansData[0]?.progress;
+
+      if (planStatus === 'active' && hasAnyModules) {
+        // Fully ready
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(false);
+        setGenerationProgress(100);
+
         const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
         for (const plan of plansData) {
           const planTitle = plan.target_job_title || 'Your Training Plan';
@@ -967,62 +800,141 @@ export function PersonalizedPracticePage() {
             }
           }
         }
-        if (plansData.length > 0) {
-          const firstPlan = plansData[0];
-          setExistingPlanId(firstPlan.id);
-          const allModulesEmpty = plansData.every((p: any) => (p.modules || []).length === 0);
-          setIsModulesGenerating(allModulesEmpty);
-        } else {
-          setIsModulesGenerating(false);
+        const first8 = pendingModules.slice(0, 8);
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) =>
+          mapModuleToPracticeSet(module, i, planTitle, undefined, planId)
+        ));
+      } else if (planStatus === 'partially_ready' && hasAnyModules) {
+        // First batch of modules ready, more still generating
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(true);
+        if (apiProgress != null) setGenerationProgress(apiProgress);
+
+        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
+        for (const plan of plansData) {
+          const planTitle = plan.target_job_title || 'Your Training Plan';
+          const planId = plan.id;
+          const modules: any[] = plan.modules || [];
+          for (const m of modules) {
+            if (m.status === 'pending') {
+              pendingModules.push({ module: m, planTitle, planId });
+            }
+          }
         }
         const first8 = pendingModules.slice(0, 8);
-        setPlanSets(first8.map(({ module, planTitle, planId }, i) => mapModuleToPracticeSet(module, i, planTitle, undefined, planId)));
-      })
-      .catch(() => { setPlanSets([]); setExistingPlans([]); setIsModulesGenerating(false); })
-      .finally(() => setIsLoadingPlan(false));
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) =>
+          mapModuleToPracticeSet(module, i, planTitle, undefined, planId)
+        ));
+      } else if (plansData.length > 0) {
+        // Plan exists but no modules yet — still processing
+        setIsModulesGenerating(true);
+        setIsPartiallyReady(false);
+        if (apiProgress != null) setGenerationProgress(apiProgress);
+      } else {
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(false);
+        setPlanSets([]);
+      }
+      
+      // Store existing plans for deletion
+      setExistingPlans(plansData);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+    }
   };
 
+  // ── Delete plan function ──
   const handleDeletePlan = async () => {
     if (!existingPlanId) return;
+    
     setIsDeletingPlan(true);
     try {
-      await deleteTrainingPlan(existingPlanId);
+      await InterviewService.deleteTrainingPlan(existingPlanId);
       setTargetJob(null);
+      setExistingPlanId(null);
       setPlanSets([]);
       setExistingPlans([]);
-      setExistingPlanId(null);
-      setIsModulesGenerating(false);
-      showToast('Training plan deleted');
-    } catch {
-      showToast('Failed to delete plan. Please try again.');
+      setIsPartiallyReady(false);
+      showToast('Training plan deleted successfully');
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      showToast('Failed to delete training plan');
     } finally {
       setIsDeletingPlan(false);
     }
   };
 
-  // ── Computed ──
-  const activeSets = planSets;
-
-  // ─── Filtered sets (Popular tab) ──────────────
-  const popularSets = activeSets.filter((set) => {
-    if (roleFilter !== 'all' && set.role !== roleFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        set.title.toLowerCase().includes(q) ||
-        set.role.toLowerCase().includes(q) ||
-        set.focus.toLowerCase().includes(q) ||
-        set.company.toLowerCase().includes(q)
-      );
+  // ── Effects ──
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setPlanSets([]);
+      setExistingPlans([]);
+      setExistingPlanId(null);
+      setTargetJob(null);
+      return;
     }
-    return true;
-  }).sort((a, b) => (b.practiced || 0) - (a.practiced || 0));
+    
+    setIsLoadingPlan(true);
+    refetchPlans().finally(() => setIsLoadingPlan(false));
+  }, [isLoggedIn]);
 
-  // ─── Personalized sets (For you tab) ──────────
-  const personalizedSets: PracticeSet[] = activeSets.map((set) => ({
-    ...set,
-    matchScore: Math.floor(65 + Math.random() * 30),
-  })).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  // ── Poll while modules are still generating or partially ready ──
+  useEffect(() => {
+    if (!isModulesGenerating && !isPartiallyReady) return;
+
+    // Poll the API every 3 seconds
+    const pollInterval = setInterval(() => {
+      refetchPlans();
+    }, 3000);
+
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [isModulesGenerating, isPartiallyReady]);
+
+  // ─── Plan card click: create session or delete plan ───
+  const TYPE_MAP: Record<string, string> = {
+    product: 'product',
+    'product sense': 'product',
+    behavioral: 'behavioral',
+    'system-design': 'system-design',
+    resume: 'resume',
+  };
+
+  const handlePlanCardClick = async (set: PracticeSet) => {
+    if (loadingCardId) return;
+    setLoadingCardId(set.module_id);
+    try {
+      // audioOnly=true → voice interview (1 credit/min, no camera)
+      const res = await createInterviewSession(set.module_id, true);
+      const d = res.data?.data ?? res.data;
+      const sessionData = {
+        liveKitUrl: d?.liveKitUrl ?? d?.url,
+        liveKitToken: d?.liveKitToken ?? d?.token,
+        maxInterviewDuration: d?.max_interview_duration ?? null,
+      };
+      const type = TYPE_MAP[set.category.toLowerCase()] || 'behavioral';
+      const difficulty = set.difficulty.toLowerCase();
+      navigate(
+        `/ai-mock?interviewId=${set.module_id}&type=${type}&difficulty=${difficulty}&mode=voice`,
+        { state: { prefetchedSession: sessionData } }
+      );
+    } catch {
+      // Session creation failed — this module was already used, delete the training plan
+      if (set.training_plan_id) {
+        try {
+          await InterviewService.deleteTrainingPlan(set.training_plan_id);
+          handleDeletePlan();
+        } catch {
+          // ignore delete errors
+        }
+      }
+      setPlanSets((prev) => prev.filter((s) => s.module_id !== set.module_id));
+      showToast('This session is no longer available and has been removed.');
+    } finally {
+      setLoadingCardId(null);
+    }
+  };
 
   if (isLoggedIn && hasResume === false) {
     return (
@@ -1102,14 +1014,12 @@ export function PersonalizedPracticePage() {
         <div className="max-w-7xl mx-auto px-6 pt-[150px] pb-16">
           {/* ─── Page Header ─────────────────────────── */}
           <div className="mb-8">
-            <h1 className="text-[#0F172A] mb-2 font-bold text-[40px]">Personalized Practice</h1>
-            <p className="text-slate-500 max-w-2xl whitespace-nowrap">
+            <h1 className="text-[#0F172A] mb-2 font-bold text-[40px] font-[family-name:var(--font-serif)]">Personalized Practice</h1>
+            <p className="text-slate-500 max-w-2xl">
               AI-powered mock interviews tailored to your profile and target roles.
             </p>
           </div>
 
-          {/* ─── Quick Start / Custom Session ───────── */}
-          
           {/* ─── Target Job Bar ────────────────────── */}
           <div className="mb-8">
             {targetJob ? (
@@ -1166,154 +1076,108 @@ export function PersonalizedPracticePage() {
             )}
           </div>
 
-          {/* ─── Curated Practice Sets ────────────────  */}
-          <div className="mb-12">
-            {/* Section header + tabs + filters */}
-            
+          {/* ── Practice Sets Content ─────────────────── */}
+          {isLoadingPlan ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden flex flex-col animate-pulse">
+                  <div className="px-5 pt-5 pb-0">
+                    <div className="h-6 w-28 bg-slate-100 rounded-full" />
+                  </div>
+                  <div className="px-5 pt-3 pb-0 flex-1">
+                    <div className="h-5 w-3/4 bg-slate-100 rounded mb-2" />
+                    <div className="h-4 w-1/2 bg-slate-100 rounded mb-4" />
+                    <div className="flex gap-2 mb-3">
+                      <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                      <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-6 w-20 bg-slate-100 rounded-full" />
+                      <div className="h-6 w-24 bg-slate-100 rounded-full" />
+                    </div>
+                  </div>
+                  <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="h-4 w-24 bg-slate-100 rounded" />
+                    <div className="w-7 h-7 bg-slate-100 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : isModulesGenerating ? (
+            /* Plan exists but modules still generating - with progress bar */
+            <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/50 to-white py-12 px-6 text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                <div className="relative">
+                  <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                  </div>
+                </div>
+              </div>
+              <h3 className="text-[18px] font-bold text-slate-900 mb-3">
+                Crafting your personalized training plan
+              </h3>
+              <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
+                We're analyzing your target role and creating practice modules tailored to your needs.
+                This usually takes 15-30 seconds.
+              </p>
+              <GenerationProgressBar progress={generationProgress || 10} />
 
-            {/* ── Popular Tab Content ─────────────────── */}
-            {activeTab === 'popular' && (
-              <>
-                {isLoadingPlan ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden flex flex-col animate-pulse">
-                        <div className="px-5 pt-5 pb-0">
-                          <div className="h-6 w-28 bg-slate-100 rounded-full" />
-                        </div>
-                        <div className="px-5 pt-3 pb-0 flex-1">
-                          <div className="h-5 w-3/4 bg-slate-100 rounded mb-2" />
-                          <div className="h-4 w-1/2 bg-slate-100 rounded mb-4" />
-                          <div className="flex gap-2 mb-3">
-                            <div className="h-6 w-16 bg-slate-100 rounded-full" />
-                            <div className="h-6 w-16 bg-slate-100 rounded-full" />
-                          </div>
-                          <div className="flex gap-2">
-                            <div className="h-6 w-20 bg-slate-100 rounded-full" />
-                            <div className="h-6 w-24 bg-slate-100 rounded-full" />
-                          </div>
-                        </div>
-                        <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-                          <div className="h-4 w-24 bg-slate-100 rounded" />
-                          <div className="w-7 h-7 bg-slate-100 rounded-full" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : isModulesGenerating ? (
-                  /* Plan exists but modules still generating */
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-                      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">Building your training plan…</h3>
-                    <p className="text-sm text-slate-500 max-w-sm mx-auto">
-                      We're generating personalized practice modules for your target role. This usually takes a moment.
-                    </p>
-                  </div>
-                ) : planSets.length === 0 ? (
-                  /* No training plan yet */
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-                      <Target className="w-6 h-6 text-blue-500" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">Add a target job to start</h3>
-                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
-                      Set your target role to get a personalized training plan with practice sessions tailored to your goal.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {popularSets.map((set) => (
-                        <PracticeSetCard key={set.id} set={set} userBalance={userBalance} />
-                      ))}
-                    </div>
-                    {popularSets.length === 0 && planSets.length > 0 && (
-                      <div className="text-center py-16">
-                        <p className="text-sm text-slate-500 mb-3">No practice sets match your search.</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setRoleFilter('all');
-                            setSearchQuery('');
-                          }}
-                        >
-                          Clear Filters
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* ── For You Tab Content ─────────────────── */}
-            {activeTab === 'foryou' && (
-              <>
-                {/* Not signed in: soft gate */}
-                {!isLoggedIn ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                      <Lock className="w-6 h-6 text-slate-400" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">
-                      Sign in to get personalized practice sets
-                    </h3>
-                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
-                      We'll recommend sets based on your profile, experience level, and target roles.
-                    </p>
-                    <div className="flex items-center justify-center gap-3">
-                      <Button
-                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
-                        onClick={() => navigate('/auth')}
-                      >
-                        Sign in
-                      </Button>
-                      <button
-                        onClick={() => setActiveTab('popular')}
-                        className="text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors"
-                      >
-                        Continue browsing
-                      </button>
-                    </div>
-                  </div>
-                ) : !hasProfile ? (
-                  /* Signed in but profile incomplete */
-                  <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50/30 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-100/60 flex items-center justify-center mb-4">
-                      <User className="w-6 h-6 text-blue-500" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">
-                      Complete your profile to personalize recommendations
-                    </h3>
-                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
-                      Add your role and experience level so we can tailor practice sets for you.
-                    </p>
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
-                      onClick={() => navigate('/settings')}
-                    >
-                      Complete profile
-                    </Button>
-                  </div>
-                ) : (
-                  /* Signed in + profile exists: show personalized */
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {personalizedSets.map((set) => (
-                        <PracticeSetCard key={set.id} set={set} showMatch />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* ─── Recent Sessions ──────────────────────  */}
-          
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Sparkles className="w-3 h-3 mr-1 text-blue-500" />
+                  Analyzing job requirements
+                </Badge>
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Target className="w-3 h-3 mr-1 text-blue-500" />
+                  Identifying skill gaps
+                </Badge>
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Clock className="w-3 h-3 mr-1 text-blue-500" />
+                  Creating practice modules
+                </Badge>
+              </div>
+            </div>
+          ) : planSets.length === 0 ? (
+            /* No training plan yet */
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+                <Target className="w-6 h-6 text-blue-500" />
+              </div>
+              <h3 className="text-[16px] font-bold text-slate-900 mb-2">Add a target job to start</h3>
+              <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
+                Set your target role to get a personalized training plan with practice sessions tailored to your goal.
+              </p>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
+                onClick={() => setShowTargetJobModal(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add target job
+              </Button>
+            </div>
+          ) : (
+            /* Show practice sets */
+            <>
+              {isPartiallyReady && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>More practice modules are being generated…</span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {planSets.map((set) => (
+                  <PracticeSetCard
+                    key={set.id}
+                    set={set}
+                    onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
+                    isLoading={loadingCardId === set.module_id}
+                    userBalance={userBalance}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </main>
 
@@ -1332,7 +1196,10 @@ export function PersonalizedPracticePage() {
           setTargetJob(job);
           showToast(`Target Job set: ${job}`);
         }}
-        onPlanCreated={refetchPlans}
+        onPlanCreated={() => {
+          setIsLoadingPlan(true);
+          refetchPlans().finally(() => setIsLoadingPlan(false));
+        }}
       />
       <Toast message={toast.message} visible={toast.visible} />
     </div>
