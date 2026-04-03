@@ -62,7 +62,7 @@ interface Post {
   tags?: string[];
 }
 
-const SORT_OPTIONS = ['Newest', 'Oldest', 'Hot'] as const;
+const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
 type SortOption = typeof SORT_OPTIONS[number];
 
 const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA'];

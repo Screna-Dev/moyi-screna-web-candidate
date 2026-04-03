@@ -24,44 +24,13 @@ interface SharePopoverProps {
 export function SharePopover({ data, children }: SharePopoverProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [discordCopied, setDiscordCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { toast, dismiss, recordShare } = useShareReward();
 
   const shareUrl = data.url || window.location.href;
   const shareText = `${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`;
-
-  const redeemShareCode = useCallback(() => {
-    PaymentService.redeemCode('SHAREPOST').catch(() => {
-      // silent — don't block UX if redeem fails
-    });
-  }, []);
-
-  /** Opens a share URL in a popup and redeems the code when the popup closes */
-  const openSharePopup = useCallback((url: string) => {
-    const w = 600;
-    const h = 500;
-    const left = window.screenX + (window.innerWidth - w) / 2;
-    const top = window.screenY + (window.innerHeight - h) / 2;
-    const popup = window.open(
-      url,
-      'share',
-      `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`,
-    );
-
-    if (!popup) {
-      // Popup blocked — open as a tab, redeem immediately since we can't track
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    const timer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(timer);
-        redeemShareCode();
-        recordShare();
-      }
-    }, 500);
-  }, [redeemShareCode, recordShare]);
+  const fullShareText = `${shareText}\n\nCheck out this interview insight on Screna!`;
 
   useEffect(() => {
     if (!open) return;
@@ -115,17 +84,31 @@ export function SharePopover({ data, children }: SharePopoverProps) {
 
   const openX = () => {
     const tweetText = `${shareText}\n\n`;
-    openSharePopup(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(shareUrl)}`);
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
+    recordShare();
     setOpen(false);
   };
 
   const openLinkedIn = () => {
-    openSharePopup(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`);
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
+    recordShare();
     setOpen(false);
   };
 
+  const openDiscord = () => {
+    const discordMessage = `${fullShareText}\n\n${shareUrl}`;
+    navigator.clipboard.writeText(discordMessage).then(() => {
+      setDiscordCopied(true);
+      setTimeout(() => setDiscordCopied(false), 2000);
+      window.open('https://discord.com/channels/@me', '_blank', 'noopener,noreferrer');
+    });
+    recordShare();
+    setTimeout(() => setOpen(false), 500);
+  };
+
   const openReddit = () => {
-    openSharePopup(`https://www.reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareText)}`);
+    window.open(`https://www.reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer');
+    recordShare();
     setOpen(false);
   };
 
@@ -180,13 +163,13 @@ export function SharePopover({ data, children }: SharePopoverProps) {
                 </p>
               )}
               <div className="flex items-center gap-1.5 mt-2.5">
-                <img src={screnaLogo} alt="Screna" className="w-12 object-contain" />
+                <img src={screnaLogo} alt="Screna" className="w-3.5 h-3.5 object-contain" />
                 <span className="text-[10px] font-medium text-[hsl(222,12%,55%)]">Screna AI</span>
               </div>
             </div>
 
             {/* Share actions */}
-            <div className="px-4 pb-4 grid grid-cols-4 gap-2">
+            <div className="px-4 pb-4 grid grid-cols-5 gap-2">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -225,6 +208,24 @@ export function SharePopover({ data, children }: SharePopoverProps) {
               >
                 <LinkedInIcon className="w-[18px] h-[18px] overflow-clip relative" />
                 <span className="text-[10px] font-medium">LinkedIn</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openDiscord();
+                }}
+                className={`flex flex-col items-center gap-1.5 py-2.5 rounded-lg transition-all duration-200 ${
+                  discordCopied
+                    ? 'bg-[#5865F2]/10 text-[#5865F2]'
+                    : 'text-[hsl(222,12%,45%)] hover:bg-[#5865F2]/5 hover:text-[#5865F2]'
+                }`}
+              >
+                <div className="w-[18px] h-[18px] relative">
+                  <DiscordIcon />
+                </div>
+                <span className="text-[10px] font-medium">{discordCopied ? 'Copied!' : 'Discord'}</span>
               </button>
 
               <button
