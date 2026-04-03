@@ -180,7 +180,7 @@ export function SharePopover({ data, children }: SharePopoverProps) {
                 </p>
               )}
               <div className="flex items-center gap-1.5 mt-2.5">
-                <img src={screnaLogo} alt="Screna" className="w-3 object-contain" />
+                <img src={screnaLogo} alt="Screna" className="w-12 object-contain" />
                 <span className="text-[10px] font-medium text-[hsl(222,12%,55%)]">Screna AI</span>
               </div>
             </div>
