@@ -36,7 +36,8 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { InterviewService } from '@/services';
-import { getJobTitleRecommendations, getProfile } from '@/services/ProfileServices';
+import { getProfile } from '@/services/ProfileServices';
+import { useRecommendedJobs } from '@/hooks/useRecommendedJobs';
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import { useAuth } from '@/contexts/AuthContext';
@@ -344,12 +345,6 @@ function SignInModal({
 // ════════════════════════════════════════════════════════
 // TARGET JOB MODAL
 // ════════════════════════════════════════════════════════
-interface RecommendedJob {
-  job_title: string;
-  match_percentage: number;
-  reason: string;
-  key_requirements: string[];
-}
 
 function TargetJobModal({
   open,
@@ -370,8 +365,7 @@ function TargetJobModal({
   const [jobDescription, setJobDescription] = useState('');
   const [interviewDate, setInterviewDate] = useState('');
   const [dailyPrepTime, setDailyPrepTime] = useState('2');
-  const [recommendedJobs, setRecommendedJobs] = useState<RecommendedJob[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { recommendations: recommendedJobs, isLoading, fetchRecommendations } = useRecommendedJobs();
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -384,19 +378,6 @@ function TargetJobModal({
       fetchRecommendations();
     }
   }, [open]);
-
-  const fetchRecommendations = async () => {
-    setIsLoading(true);
-    try {
-      const response = await getJobTitleRecommendations();
-      const data = response.data?.data;
-      setRecommendedJobs(data?.recommendations || []);
-    } catch {
-      setRecommendedJobs([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleQuickApply = async () => {
     if (!selectedRole || !selectedJobData) return;

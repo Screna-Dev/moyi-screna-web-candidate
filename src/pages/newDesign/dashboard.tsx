@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/newDesign/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useRecommendedJobs } from "@/hooks/useRecommendedJobs";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
@@ -422,6 +423,7 @@ export function DashboardPage() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const { toast } = useToast();
   const posthog = usePostHog();
+  const { invalidate: invalidateRecommendedJobs } = useRecommendedJobs();
 
   // States for resume upload dialogs
   const [showReplaceConfirmDialog, setShowReplaceConfirmDialog] = useState(false);
@@ -553,6 +555,9 @@ export function DashboardPage() {
         };
         setUserData(newUserData);
         localStorage.setItem('screnaUserData', JSON.stringify(newUserData));
+
+        // Invalidate cached job recommendations since resume changed
+        invalidateRecommendedJobs();
 
         // Check if visa status is missing and prompt user
         if (!structuredResume.profile?.visa_status) {

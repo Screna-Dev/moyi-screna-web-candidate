@@ -1,6 +1,7 @@
 import { createBrowserRouter, Outlet } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
+import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 
 // Public / marketing pages (home subdirectory, use @/ aliases)
 import { QuestionBankPage } from './pages/newDesign/home/question-bank';
@@ -50,8 +51,10 @@ function RootLayout() {
   return (
     <AuthProvider>
       <UserPlanProvider>
-        <Outlet />
-        <CookieBanner />
+        <RecommendedJobsProvider>
+          <Outlet />
+          <CookieBanner />
+        </RecommendedJobsProvider>
       </UserPlanProvider>
     </AuthProvider>
   );

@@ -26,15 +26,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { getJobTitleRecommendations } from "@/services/ProfileServices";
 import { createTrainingPlan } from "@/services/InterviewServices";
-
-interface RecommendedJob {
-  job_title: string;
-  match_percentage: number;
-  reason: string;
-  key_requirements: string[];
-}
+import { useRecommendedJobs, type RecommendedJob } from "@/hooks/useRecommendedJobs";
 
 interface ResumeAnalysisDialogProps {
   open: boolean;
@@ -55,42 +48,28 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName, skipAnalyzing, onP
   const [customJobTitle, setCustomJobTitle] = useState("");
   const [customJobDescription, setCustomJobDescription] = useState("");
   const [isAddingCustom, setIsAddingCustom] = useState(false);
-  const [recommendedJobs, setRecommendedJobs] = useState<RecommendedJob[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
 
+  const {
+    recommendations: recommendedJobs,
+    isLoading,
+    error,
+    fetchRecommendations,
+    invalidate,
+  } = useRecommendedJobs();
+
   // Fetch job recommendations when dialog opens
+  // This dialog appears after resume upload, so invalidate cache first
   useEffect(() => {
     if (open) {
       const initialStep = skipAnalyzing ? "select" : "analyzing";
       setStep(initialStep);
       if (initialStep === "analyzing" || skipAnalyzing) {
-        fetchRecommendations();
+        invalidate();
+        fetchRecommendations().then(() => setStep("select"));
       }
     }
   }, [open]);
-
-  const fetchRecommendations = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await getJobTitleRecommendations();
-      const data = response.data?.data;
-      if (data?.recommendations && data.recommendations.length > 0) {
-        setRecommendedJobs(data.recommendations);
-        setStep("select");
-      } else {
-        setRecommendedJobs([]);
-        setStep("select");
-      }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to get recommendations. Please try again.");
-      setStep("select");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSelectJob = (job: RecommendedJob) => {
     setSelectedJob(job);
@@ -163,9 +142,6 @@ const ResumeAnalysisDialog = ({ open, onOpenChange, fileName, skipAnalyzing, onP
     setCustomJobTitle("");
     setCustomJobDescription("");
     setIsAddingCustom(false);
-    setRecommendedJobs([]);
-    setError(null);
-    setIsLoading(false);
     setIsCreatingPlan(false);
   };
 

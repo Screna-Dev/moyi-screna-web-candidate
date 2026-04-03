@@ -62,7 +62,7 @@ interface Post {
   tags?: string[];
 }
 
-const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
+const SORT_OPTIONS = ['Newest', 'Oldest', 'Hot'] as const;
 type SortOption = typeof SORT_OPTIONS[number];
 
 const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA'];
@@ -480,7 +480,7 @@ export function InterviewInsightsPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      <ShareExperienceModal delayMs={5000} />
+      {/* <ShareExperienceModal delayMs={5000} /> */}
       <main className="pt-24 pb-20 bg-[#f9fafb]">
         {/* ─── Hero Header ─── */}
         <div className="max-w-7xl mx-auto px-6 my-[40px]">
@@ -517,6 +517,37 @@ export function InterviewInsightsPage() {
             <div className="flex-1 space-y-5 min-w-0">
               {/* Controls Bar */}
               <div className="flex flex-col md:flex-row md:items-center gap-4 mb-3">
+                {/* Sort Dropdown */}
+                <div className="relative md:order-last md:ml-auto">
+                  <button
+                    onClick={() => setOpenFilter(openFilter === '__sort__' ? null : '__sort__')}
+                    className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors"
+                  >
+                    <ListFilter className="w-4 h-4" />
+                    Sort: {activeSort}
+                  </button>
+                  {openFilter === '__sort__' && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setOpenFilter(null)} />
+                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden p-1">
+                        {SORT_OPTIONS.map(sort => (
+                          <button
+                            key={sort}
+                            onClick={() => { setActiveSort(sort); setOpenFilter(null); }}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                              activeSort === sort
+                                ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] font-medium'
+                                : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
+                            }`}
+                          >
+                            {sort === 'Hot' && <span className="mr-1">🔥</span>}
+                            {sort}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
                 {/* Filters */}
                 <div className="flex flex-wrap items-center gap-2 relative z-20">
                   {Object.keys(FILTER_OPTIONS).map(filter => {
