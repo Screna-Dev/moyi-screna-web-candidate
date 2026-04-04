@@ -3,13 +3,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom'; // Keep this for react-router-dom
+import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 
 // ─── Service Mocks ────────────────────────────────────────
 const mockGetPosts = vi.fn();
 
-vi.mock('../../services/CommunityService', () => ({
+vi.mock('@/services/CommunityService', () => ({
   getPosts: mockGetPosts,
   getPost: vi.fn(),
   createPost: vi.fn(),
@@ -81,6 +81,14 @@ vi.mock('../../components/newDesign/home/navbar', () => ({
 
 vi.mock('../../components/newDesign/home/footer', () => ({
   Footer: () => <footer data-testid="footer">Footer</footer>,
+}));
+
+vi.mock('../../components/newDesign/share-experience-modal', () => ({
+  ShareExperienceModal: () => null,
+}));
+
+vi.mock('@/components/newDesign/share-popover', () => ({
+  SharePopover: () => null,
 }));
 
 // ─── Mock Data ────────────────────────────────────────────

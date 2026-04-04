@@ -37,6 +37,7 @@ export default defineConfig({
     css: false,
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "react-router": path.resolve(__dirname, "node_modules/react-router/dist/development/index.mjs"),
     },
   },
   // Strip console.log from production builds (keeps console.error/warn)

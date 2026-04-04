@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { createUserPlanMock } from '@/test/utils';
 import React from 'react';
 
@@ -92,6 +92,17 @@ vi.mock('posthog-js/react', () => ({
 }));
 
 vi.mock('@/utils/posthog', () => ({ safeCapture: vi.fn() }));
+
+vi.mock('@/hooks/useRecommendedJobs', () => ({
+  useRecommendedJobs: () => ({
+    recommendations: [],
+    isLoading: false,
+    error: null,
+    fetchRecommendations: vi.fn().mockResolvedValue([]),
+    invalidate: vi.fn(),
+  }),
+  RecommendedJobsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 // ─── Mock data ────────────────────────────────────────────
 const personalInfoResponse = {
