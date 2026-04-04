@@ -1,12 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link2, X as XIcon, Check } from 'lucide-react';
 import LinkedInIcon from '../../imports/LinkedIn';
 import XLogo from '../../imports/X';
+import DiscordIcon from '../../imports/Group';
 import RedditIcon from '../../imports/Group1';
 import screnaLogo from '@/assets/Navbar.png';
 import { useShareReward, ShareRewardToast } from './share-reward-toast';
-import PaymentService from '../../services/PaymentServices';
 
 export interface ShareData {
   title: string;
