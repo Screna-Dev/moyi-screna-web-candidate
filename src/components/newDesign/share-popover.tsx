@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link2, X as XIcon, Check } from 'lucide-react';
 import LinkedInIcon from '../../imports/LinkedIn';
 import XLogo from '../../imports/X';
-import DiscordIcon from '../../imports/Group';
 import RedditIcon from '../../imports/Group1';
 import screnaLogo from '@/assets/Navbar.png';
 import { useShareReward, ShareRewardToast } from './share-reward-toast';
@@ -24,13 +23,11 @@ interface SharePopoverProps {
 export function SharePopover({ data, children }: SharePopoverProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [discordCopied, setDiscordCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { toast, dismiss, recordShare } = useShareReward();
 
   const shareUrl = data.url || window.location.href;
   const shareText = `${data.title}${data.subtitle ? ` — ${data.subtitle}` : ''}`;
-  const fullShareText = `${shareText}\n\nCheck out this interview insight on Screna!`;
 
   useEffect(() => {
     if (!open) return;
@@ -93,17 +90,6 @@ export function SharePopover({ data, children }: SharePopoverProps) {
     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
     recordShare();
     setOpen(false);
-  };
-
-  const openDiscord = () => {
-    const discordMessage = `${fullShareText}\n\n${shareUrl}`;
-    navigator.clipboard.writeText(discordMessage).then(() => {
-      setDiscordCopied(true);
-      setTimeout(() => setDiscordCopied(false), 2000);
-      window.open('https://discord.com/channels/@me', '_blank', 'noopener,noreferrer');
-    });
-    recordShare();
-    setTimeout(() => setOpen(false), 500);
   };
 
   const openReddit = () => {
@@ -169,7 +155,7 @@ export function SharePopover({ data, children }: SharePopoverProps) {
             </div>
 
             {/* Share actions */}
-            <div className="px-4 pb-4 grid grid-cols-5 gap-2">
+            <div className="px-4 pb-4 grid grid-cols-4 gap-2">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -208,24 +194,6 @@ export function SharePopover({ data, children }: SharePopoverProps) {
               >
                 <LinkedInIcon className="w-[18px] h-[18px] overflow-clip relative" />
                 <span className="text-[10px] font-medium">LinkedIn</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openDiscord();
-                }}
-                className={`flex flex-col items-center gap-1.5 py-2.5 rounded-lg transition-all duration-200 ${
-                  discordCopied
-                    ? 'bg-[#5865F2]/10 text-[#5865F2]'
-                    : 'text-[hsl(222,12%,45%)] hover:bg-[#5865F2]/5 hover:text-[#5865F2]'
-                }`}
-              >
-                <div className="w-[18px] h-[18px] relative">
-                  <DiscordIcon />
-                </div>
-                <span className="text-[10px] font-medium">{discordCopied ? 'Copied!' : 'Discord'}</span>
               </button>
 
               <button
