@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import path from "path"
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -27,6 +28,16 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    css: false,
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "react-router": path.resolve(__dirname, "node_modules/react-router/dist/development/index.mjs"),
     },
   },
   // Strip console.log from production builds (keeps console.error/warn)

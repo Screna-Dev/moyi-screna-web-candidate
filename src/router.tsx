@@ -1,6 +1,7 @@
 import { createBrowserRouter, Outlet } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
+import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 
 // Public / marketing pages (home subdirectory, use @/ aliases)
 import { QuestionBankPage } from './pages/newDesign/home/question-bank';
@@ -39,13 +40,21 @@ import { ContactPage } from './pages/newDesign/contact';
 import Admin from './pages/Admin';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
+import { HelpCenterPage } from './pages/newDesign/help-center';
+import { CookieBanner } from './components/newDesign/cookie-banner';
+import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
+import { CookiePolicy } from './pages/newDesign/cookie-policy';
+import { DataProtectionPolicy } from './pages/newDesign/data-protection-policy';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
     <AuthProvider>
       <UserPlanProvider>
-        <Outlet />
+        <RecommendedJobsProvider>
+          <Outlet />
+          <CookieBanner />
+        </RecommendedJobsProvider>
       </UserPlanProvider>
     </AuthProvider>
   );
@@ -104,7 +113,11 @@ export const router = createBrowserRouter([
       { path: '/messages', element: <MessageCenterPage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
-      {path: '/contact',element: <ContactPage />},
+      { path: '/contact',element: <ContactPage />},
+      { path: '/help',element: <HelpCenterPage />},
+      { path: '/privacy',element: <PrivacyPolicy/>},
+      { path: '/cookies',element: <CookiePolicy/>},
+      { path: '/data-protection',element: <DataProtectionPolicy/>},
       { path: '*', element: <ErrorBoundary /> },
 
       // admin

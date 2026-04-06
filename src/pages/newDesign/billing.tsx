@@ -25,6 +25,7 @@ import {
 import { Input } from '../../components/newDesign/ui/input';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { PaymentService } from '@/services';
+import { useToast } from '../../components/newDesign/ui/use-toast';
 
 interface Invoice {
   stripeInvoiceId: string;
@@ -54,6 +55,7 @@ const FIXED_PACKAGES = [
     pricePerCredit: '~$0.20/credit',
     description: 'Perfect for a few focused practice sessions.',
     popular: false,
+    purchaseMethod: 'starter',
   },
   {
     credits: 100,
@@ -62,22 +64,82 @@ const FIXED_PACKAGES = [
     pricePerCredit: '~$0.15/credit',
     description: 'Best value — enough for weekly practice across all modes.',
     popular: true,
+    purchaseMethod: 'growth',
   },
 ];
 
 export function BillingPage() {
-  const { planData, isLoading: isPlanLoading, buyCredits, isBuyingCredits } = useUserPlan();
+  const { planData, isLoading: isPlanLoading, refreshPlan } = useUserPlan();
+  const { toast } = useToast();
 
   // Buy credits dialog
   const [buyDialogOpen, setBuyDialogOpen] = useState(false);
   const [customCredits, setCustomCredits] = useState(200);
+  const [loadingPack, setLoadingPack] = useState<string | null>(null);
   const customPricePerCredit = 0.12;
   const customPrice = (customCredits * customPricePerCredit).toFixed(2);
 
-  const handleBuyCredits = async (credits: number) => {
-    const url = await buyCredits(credits);
-    if (url) window.location.href = url;
-    setBuyDialogOpen(false);
+  const handleBuyStarter = async () => {
+    setLoadingPack('starter');
+    try {
+      const response = await PaymentService.purchaseStarterPack();
+      const url = response.data?.data?.url;
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Failed to purchase starter pack:', error);
+      toast({
+        title: 'Purchase Failed',
+        description: 'Unable to process your purchase. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPack(null);
+      setBuyDialogOpen(false);
+    }
+  };
+
+  const handleBuyGrowth = async () => {
+    setLoadingPack('growth');
+    try {
+      const response = await PaymentService.purchaseGrowthPack();
+      const url = response.data?.data?.url;
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Failed to purchase growth pack:', error);
+      toast({
+        title: 'Purchase Failed',
+        description: 'Unable to process your purchase. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPack(null);
+      setBuyDialogOpen(false);
+    }
+  };
+
+  const handleBuyCustom = async () => {
+    setLoadingPack('custom');
+    try {
+      const response = await PaymentService.purchaseCustomPack(customCredits);
+      const url = response.data?.data?.url;
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Failed to purchase custom pack:', error);
+      toast({
+        title: 'Purchase Failed',
+        description: 'Unable to process your purchase. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPack(null);
+      setBuyDialogOpen(false);
+    }
   };
 
   // Invoice state
@@ -127,6 +189,44 @@ export function BillingPage() {
   // Redeem dialog
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
+  const [isRedeeming, setIsRedeeming] = useState(false);
+
+  const handleRedeemCode = async () => {
+    if (!redeemCode.trim()) {
+      toast({
+        title: 'Invalid Code',
+        description: 'Please enter a promotional code.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRedeeming(true);
+    try {
+      const response = await PaymentService.redeemCode(redeemCode.trim());
+      if (response.data?.status === 'success' || response.status === 200) {
+        toast({
+          title: 'Code Redeemed!',
+          description: response.data?.message || `Successfully redeemed ${redeemCode}. Credits have been added to your account.`,
+        });
+        await refreshPlan();
+        setRedeemCode('');
+        setRedeemDialogOpen(false);
+      } else {
+        throw new Error(response.data?.message || 'Failed to redeem code');
+      }
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to redeem code. Please try again.';
+      toast({
+        title: 'Redemption Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
 
   const permanentBalance = planData?.permanentCreditBalance ?? 0;
   const recurringBalance = planData?.recurringCreditBalance ?? 0;
@@ -205,9 +305,9 @@ export function BillingPage() {
               <Button
                 className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none"
                 onClick={() => setBuyDialogOpen(true)}
-                disabled={isBuyingCredits}
+                disabled={loadingPack !== null}
               >
-                {isBuyingCredits ? (
+                {loadingPack !== null ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
                   <Plus className="w-4 h-4 mr-2" />
@@ -234,23 +334,6 @@ export function BillingPage() {
           transition={{ delay: 0.2 }}
           className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm"
         >
-          {/* <h3 className="text-lg font-semibold text-slate-900 mb-6">Payment Method</h3>
-
-          <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl mb-8">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100">
-                <CreditCard className="w-5 h-5 text-slate-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-900">Visa ending in 4242</p>
-                <p className="text-xs text-slate-500">Expires 12/28</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-              Edit
-            </Button>
-          </div> */}
-
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">Invoices</h3>
@@ -379,15 +462,15 @@ export function BillingPage() {
                 </div>
                 <p className="text-sm text-slate-500 mb-4">{pkg.description}</p>
                 <button
-                  onClick={() => handleBuyCredits(pkg.credits)}
-                  disabled={isBuyingCredits}
+                  onClick={pkg.purchaseMethod === 'starter' ? handleBuyStarter : handleBuyGrowth}
+                  disabled={loadingPack !== null}
                   className={`w-full h-12 rounded-xl text-[14px] font-semibold transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
                     pkg.popular
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-slate-900 text-white hover:bg-slate-800'
                   }`}
                 >
-                  {isBuyingCredits ? (
+                  {loadingPack === pkg.purchaseMethod ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : pkg.popular ? (
                     <>Buy {pkg.name} <ArrowRight className="w-4 h-4" /></>
@@ -422,11 +505,11 @@ export function BillingPage() {
                 <span>1000</span>
               </div>
               <button
-                onClick={() => handleBuyCredits(customCredits)}
-                disabled={isBuyingCredits}
+                onClick={handleBuyCustom}
+                disabled={loadingPack !== null}
                 className="w-full h-12 rounded-xl bg-slate-900 text-white text-[14px] font-semibold hover:bg-slate-800 transition-all active:scale-[0.98] flex items-center justify-center"
               >
-                {isBuyingCredits ? (
+                {loadingPack === 'custom' ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   `Buy ${customCredits} credits`
@@ -434,7 +517,7 @@ export function BillingPage() {
               </button>
               <p className="text-center text-xs text-slate-400 mt-3">
                 Need 1,000+ credits?{' '}
-                <a href="mailto:support@screna.ai" className="text-blue-600 hover:underline">
+                <a href="mailto:operations@screna.ai" className="text-blue-600 hover:underline">
                   Contact sales
                 </a>
               </p>
@@ -462,10 +545,10 @@ export function BillingPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRedeemDialogOpen(false)}>Cancel</Button>
             <Button
-              onClick={() => { setRedeemCode(''); setRedeemDialogOpen(false); }}
-              disabled={!redeemCode.trim()}
+              onClick={handleRedeemCode}
+              disabled={!redeemCode.trim() || isRedeeming}
             >
-              Redeem
+              {isRedeeming ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Redeeming...</> : 'Redeem'}
             </Button>
           </DialogFooter>
         </DialogContent>

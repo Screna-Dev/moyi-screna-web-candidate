@@ -19,6 +19,11 @@ export function ContactPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const subject = encodeURIComponent(`Contact from ${form.firstName} ${form.lastName}`);
+    const body = encodeURIComponent(
+      `From: ${form.firstName} ${form.lastName}\nEmail: ${form.email}\n\n${form.message}`
+    );
+    window.location.href = `mailto:operations@screna.ai?subject=${subject}&body=${body}`;
     setSubmitted(true);
   };
 
@@ -57,7 +62,7 @@ export function ContactPage() {
                   <div>
                     <h3 className="text-sm text-[hsl(222,22%,15%)] mb-1">Email us</h3>
                     <a
-                      href="mailto:support@screna.ai"
+                      href="mailto:operations@screna.ai"
                       className="text-[hsl(221,91%,60%)] text-sm hover:underline"
                     >
                       support@screna.ai

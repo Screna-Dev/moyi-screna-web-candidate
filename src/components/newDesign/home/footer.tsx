@@ -32,7 +32,7 @@ const COMMUNITY_LINKS = [
 ];
 
 const SUPPORT_LINKS = [
-  { label: 'Help Center', href: '/#faq' },
+  { label: 'Help Center', href: '/help' },
   { label: 'Contact', href: '/contact' },
 ];
 
@@ -80,6 +80,8 @@ export function Footer() {
                   key={label}
                   href={href}
                   aria-label={label}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center justify-center w-9 h-9 rounded-full text-[hsl(222,12%,45%)] hover:text-[hsl(221,91%,60%)] hover:bg-[hsl(220,20%,96%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors"
                 >
                   <Icon className="w-[18px] h-[18px]" />
@@ -103,19 +105,19 @@ export function Footer() {
               © 2026 Screna AI. All rights reserved.
             </p>
             <div className="flex items-center gap-1 text-xs text-[hsl(222,12%,55%)]">
-              <a href="#" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
+              <a href="/privacy" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
                 Privacy
               </a>
               <span className="text-[hsl(220,16%,85%)]">·</span>
-              <a href="#" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
+              <a href="/terms" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
                 Terms
               </a>
               <span className="text-[hsl(220,16%,85%)]">·</span>
-              <a href="#" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
+              <a href="/cookies" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
                 Cookies
               </a>
               <span className="text-[hsl(220,16%,85%)]">·</span>
-              <a href="#" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
+              <a href="/data-protection" className="hover:text-[hsl(221,91%,60%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(221,91%,60%)] transition-colors px-1.5 py-0.5">
                 Data
               </a>
             </div>

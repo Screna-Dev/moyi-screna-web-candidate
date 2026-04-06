@@ -4,6 +4,10 @@ export const getPosts = (params = {}) => {
   return API.get('/community/posts/search', { params });
 };
 
+export const getPublicPosts = (params = {}) => {
+  return API.get('/community/public/posts/search', { params });
+};
+
 export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };

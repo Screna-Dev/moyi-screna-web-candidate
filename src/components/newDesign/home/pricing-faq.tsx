@@ -103,7 +103,7 @@ export function PricingFaq() {
               Still have questions?
             </p>
             <a
-              href="mailto:support@screna.ai"
+              href="mailto:operations@screna.ai"
               className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
             >
               Contact our support team →
