@@ -24,7 +24,6 @@ import {
   Eye,
   MapPin,
   ExternalLink,
-  RefreshCw,
   CircleAlert,
   Plus,
   FolderOpen,
@@ -72,9 +71,9 @@ const HINT_STATUS_MAP: Record<HintStatus, { label: string; color: string; icon: 
     icon: <AlertCircle className="w-3 h-3" />,
   },
   none: {
-    label: 'No Hints',
-    color: 'bg-slate-50 text-slate-500 border-slate-200',
-    icon: <AlertCircle className="w-3 h-3" />,
+    label: 'AI Hints',
+    color: 'bg-blue-50 text-blue-600 border-blue-200',
+    icon: <Sparkles className="w-3 h-3" />,
   },
 };
 
@@ -198,7 +197,6 @@ export function ExperienceDetailPage() {
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
-  const [retryingHints, setRetryingHints] = useState<Set<string>>(new Set());
   const [hintsData, setHintsData] = useState<Record<string, { suggested_approach: string; pro_tip: string; framework: { step: number; title: string; description: string }[]; key_points_to_mention: string[] }>>({});
   const [hintsLoadingSet, setHintsLoadingSet] = useState<Set<string>>(new Set());
   const [hintsFailedSet, setHintsFailedSet] = useState<Set<string>>(new Set());
@@ -266,6 +264,7 @@ export function ExperienceDetailPage() {
         const data = res.data?.data ?? res.data;
         if (data) {
           setHintsData(prev => ({ ...prev, [qId]: data }));
+          setExpandedHints(prev => new Set(prev).add(qId));
           setHintsFailedSet(prev => {
             const next = new Set(prev);
             next.delete(qId);
@@ -287,17 +286,6 @@ export function ExperienceDetailPage() {
       });
   }, [hintsData, hintsLoadingSet, hintsFailedSet]);
 
-  // Auto-fetch hints when question is expanded
-  useEffect(() => {
-    if (post?.questions) {
-      expandedQuestions.forEach(qId => {
-        const status = getQuestionHintStatus(qId, hintsData, hintsLoadingSet, hintsFailedSet);
-        if (status === 'none') {
-          fetchHints(qId);
-        }
-      });
-    }
-  }, [expandedQuestions, post, hintsData, hintsLoadingSet, hintsFailedSet, fetchHints]);
 
   // ── UI Handlers ──
   const toggleCollectionSave = (collectionId: string) => {
@@ -470,32 +458,6 @@ export function ExperienceDetailPage() {
     }
   };
 
-  const handleRetryHint = (qId: string) => {
-    setRetryingHints(prev => new Set(prev).add(qId));
-    setHintsFailedSet(prev => {
-      const next = new Set(prev);
-      next.delete(qId);
-      return next;
-    });
-    
-    // Clear existing hints
-    setHintsData(prev => {
-      const next = { ...prev };
-      delete next[qId];
-      return next;
-    });
-    
-    // Fetch new hints
-    fetchHints(qId);
-    
-    setTimeout(() => {
-      setRetryingHints(prev => {
-        const next = new Set(prev);
-        next.delete(qId);
-        return next;
-      });
-    }, 1000);
-  };
 
   if (postLoading) {
     return (
@@ -795,17 +757,10 @@ export function ExperienceDetailPage() {
                                 >
                                   <div className="flex items-center gap-2 mb-1.5">
                                     <span className="text-xs font-bold text-[hsl(222,12%,55%)]">Q{qi + 1}</span>
-                                    {retryingHints.has(q.id) ? (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-blue-50 text-blue-600 border-blue-200">
-                                        <RefreshCw className="w-3 h-3 animate-spin" />
-                                        Retrying…
-                                      </span>
-                                    ) : (
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${hintInfo.color}`}>
-                                        {hintInfo.icon}
-                                        {hintInfo.label}
-                                      </span>
-                                    )}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${hintInfo.color}`}>
+                                      {hintInfo.icon}
+                                      {hintInfo.label}
+                                    </span>
                                   </div>
                                   <h3 className="text-[15px] font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors leading-snug">
                                     {q.title}
@@ -1011,7 +966,38 @@ export function ExperienceDetailPage() {
                                   </div>
                                 )}
 
-                                {(hintStatus === 'failed' || hintStatus === 'none') && !retryingHints.has(q.id) && (
+                                {hintStatus === 'none' && (
+                                  <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
+                                    <button
+                                      onClick={() => fetchHints(q.id)}
+                                      className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-blue-50/40 transition-colors cursor-pointer"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-blue-100 rounded-lg">
+                                          <Lightbulb className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[15px] font-semibold text-slate-800">AI Hints</span>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-500 to-violet-500 text-white text-[10px] font-semibold">
+                                              <Sparkles className="w-2.5 h-2.5" />
+                                              AI Generated
+                                            </span>
+                                          </div>
+                                          <span className="block text-[12px] text-slate-500 mt-0.5">Click to generate AI hints for this question</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0 ml-4">
+                                        <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">
+                                          Show
+                                        </span>
+                                        <ChevronDown className="w-5 h-5 text-blue-500" />
+                                      </div>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {hintStatus === 'failed' && (
                                   <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                                     <div className="flex items-center justify-between px-5 py-4">
                                       <div className="flex items-center gap-3">
@@ -1028,65 +1014,6 @@ export function ExperienceDetailPage() {
                                           </div>
                                           <span className="block text-[12px] text-slate-500 mt-0.5">Hints temporarily unavailable for this question</span>
                                         </div>
-                                      </div>
-                                    </div>
-                                    <div className="px-5 pb-5 border-t border-slate-100">
-                                      <div className="bg-slate-50 rounded-xl p-5 mt-4 text-center">
-                                        <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center mx-auto mb-3 shadow-sm">
-                                          <Lightbulb className="w-6 h-6 text-slate-300" />
-                                        </div>
-                                        <h4 className="text-sm font-semibold text-slate-700 mb-1">Hints temporarily unavailable</h4>
-                                        <p className="text-[12px] text-slate-500 max-w-xs mx-auto leading-relaxed mb-4">
-                                          Our AI wasn't able to generate hints for this question right now. This can happen with very niche or complex topics.
-                                        </p>
-                                        <div className="flex items-center justify-center gap-2">
-                                          <button
-                                            onClick={() => handleRetryHint(q.id)}
-                                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700 hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,60%)] shadow-sm hover:shadow transition-all"
-                                          >
-                                            <RefreshCw className="w-3.5 h-3.5" />
-                                            Retry generation
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {retryingHints.has(q.id) && (
-                                  <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm shadow-blue-100/40">
-                                    <div className="flex items-center justify-between px-5 py-4">
-                                      <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-blue-100 rounded-lg">
-                                          <Lightbulb className="w-5 h-5 text-blue-600" />
-                                        </div>
-                                        <div>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[15px] font-semibold text-slate-800">AI Hints</span>
-                                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold">
-                                              <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                                              Retrying
-                                            </span>
-                                          </div>
-                                          <span className="block text-[12px] text-slate-500 mt-0.5">Re-analyzing this question…</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="px-5 pb-5 border-t border-blue-100">
-                                      <div className="bg-gradient-to-br from-blue-50/50 via-white to-indigo-50/30 rounded-xl border border-blue-100/60 p-5 mt-4">
-                                        <div className="flex items-center gap-2 mb-3">
-                                          <div className="w-7 h-7 rounded-lg bg-blue-200/50 animate-pulse" />
-                                          <div className="h-4 w-40 rounded-md bg-slate-200/60 animate-pulse" />
-                                        </div>
-                                        <div className="space-y-2.5">
-                                          <div className="h-3 w-full rounded-md bg-slate-200/50 animate-pulse" />
-                                          <div className="h-3 w-[88%] rounded-md bg-slate-200/50 animate-pulse" />
-                                          <div className="h-3 w-[72%] rounded-md bg-slate-200/50 animate-pulse" />
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center justify-center gap-2 mt-4 pt-3 border-t border-blue-50">
-                                        <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin" />
-                                        <span className="text-[12px] text-blue-500/80">Retrying hint generation…</span>
                                       </div>
                                     </div>
                                   </div>
