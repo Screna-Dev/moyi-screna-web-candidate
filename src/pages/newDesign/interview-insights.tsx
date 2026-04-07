@@ -26,6 +26,7 @@ import { getPosts, getPublicPosts } from '../../services/CommunityService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ShareExperienceModal } from '../../components/newDesign/share-experience-modal';
 import { SharePopover } from '@/components/newDesign/share-popover';
+import { Markdown } from '@/components/newDesign/ui/markdown';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -865,9 +866,9 @@ export function InterviewInsightsPage() {
                               {formatDate(post.date)}
                             </span>
                           </div>
-                          <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                            {post.summary || 'No summary available'}
-                          </p>
+                          <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                            {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
+                          </div>
                           <div className="flex flex-wrap items-center gap-2 mb-5">
                             {getQuestions(post).length > 0 ? (
                               getQuestions(post).slice(0, 3).map((q, qi) => (
@@ -902,9 +903,9 @@ export function InterviewInsightsPage() {
                         </div>
 
                         {/* ── Summary ── */}
-                        <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                          {post.summary || 'No summary available'}
-                        </p>
+                        <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                          {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
+                        </div>
 
                         {/* ── Question Preview Chips ── */}
                         <div className="flex flex-wrap items-center gap-2 mb-5">

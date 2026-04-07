@@ -35,6 +35,7 @@ import { Button } from '../../components/newDesign/ui/button';
 import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply } from '../../services/CommunityService';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
+import { Markdown } from '@/components/newDesign/ui/markdown';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -696,9 +697,9 @@ export function ExperienceDetailPage() {
                 <h2 className="text-sm font-semibold text-[hsl(222,12%,45%)] uppercase tracking-wider mb-3">
                   Summary
                 </h2>
-                <p className="text-[15px] text-[hsl(222,12%,30%)] leading-relaxed">
-                  {post.summary}
-                </p>
+                <div className="text-[15px] text-[hsl(222,12%,30%)] leading-relaxed">
+                  <Markdown className="text-[15px] text-[hsl(222,12%,30%)]">{post.summary}</Markdown>
+                </div>
               </div>
 
               {/* ── Section 3: Questions ── */}
@@ -1173,7 +1174,7 @@ export function ExperienceDetailPage() {
                               </div>
                             )}
 
-                            <p className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2">{comment.content}</p>
+                            <div className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2"><Markdown className="text-sm text-[hsl(222,12%,30%)]">{comment.content}</Markdown></div>
 
                             <div className="flex items-center gap-4 text-[hsl(222,12%,55%)]">
                               <button
@@ -1234,7 +1235,7 @@ export function ExperienceDetailPage() {
                                                 <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user?.name || 'Anonymous'}</span>
                                                 <span className="text-[10px] text-[hsl(222,12%,55%)]">· {formatRelativeTime(reply.createdAt)}</span>
                                               </div>
-                                              <p className="text-xs text-[hsl(222,12%,30%)] leading-relaxed">{reply.content}</p>
+                                              <div className="text-xs text-[hsl(222,12%,30%)] leading-relaxed"><Markdown className="text-xs text-[hsl(222,12%,30%)]">{reply.content}</Markdown></div>
                                               {isOwnReply && (
                                                 <button
                                                   onClick={() => handleDeleteReply(reply.id, comment.id)}
