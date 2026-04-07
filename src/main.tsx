@@ -5,7 +5,6 @@ import App from "./App.tsx";
 import "./index.css";
 import "./styles/index.css";
 
-
 // 将环境变量暴露到 window 对象，方便在浏览器控制台调试
 // 注意：VITE_* 开头的环境变量会被打包到客户端代码中，是公开的
 (window as any).__ENV__ = {

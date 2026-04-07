@@ -10,6 +10,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { CompanyLogo } from './ui/company-logo';
 
 // ─── Shared question pool (mock data) ────────────────────
 export interface SimilarQuestion {
@@ -272,9 +273,7 @@ export function SimilarQuestionsDrawer({
                         {/* Top row: company + difficulty + match */}
                         <div className="flex items-center justify-between mb-2.5">
                           <div className="flex items-center gap-2">
-                            <div className={`w-5 h-5 rounded ${COMPANY_COLORS[q.companyLogo] || 'bg-slate-500'} text-white flex items-center justify-center text-[9px]`}>
-                              {q.companyLogo}
-                            </div>
+                            <CompanyLogo company={q.company} size="sm" className="w-5 h-5" />
                             <span className="text-[11px] text-slate-600">{q.company}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${DIFFICULTY_COLORS[q.difficulty]}`}>
                               {q.difficulty}

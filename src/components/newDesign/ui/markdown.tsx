@@ -10,7 +10,7 @@ export function Markdown({ children, className = '' }: MarkdownProps) {
     <div className={`${className}`}>
       <ReactMarkdown
         components={{
-          p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+          p: ({ children }) => <p className="my-1 leading-relaxed whitespace-pre-line">{children}</p>,
           ul: ({ children }) => <ul className="my-1 pl-4 list-disc">{children}</ul>,
           ol: ({ children }) => <ol className="my-1 pl-4 list-decimal">{children}</ol>,
           li: ({ children }) => <li className="my-0.5">{children}</li>,

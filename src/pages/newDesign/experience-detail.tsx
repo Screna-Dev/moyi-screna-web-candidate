@@ -36,6 +36,7 @@ import { getPost, getComments, createComment, deleteComment, getReplies, createR
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 import { Markdown } from '@/components/newDesign/ui/markdown';
+import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -519,9 +520,7 @@ export function ExperienceDetailPage() {
               {/* ── Section 1: Header ── */}
               <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-6 md:p-8 mb-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-lg font-bold text-[hsl(222,22%,15%)] shrink-0">
-                    {post.company[0]}
-                  </div>
+                  <CompanyLogo company={post.company} className="w-10 h-10 rounded-xl" />
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-lg font-semibold text-[hsl(222,22%,15%)]">{post.company}</span>
@@ -807,7 +806,7 @@ export function ExperienceDetailPage() {
                                       </div>
                                       <span className="text-xs font-medium text-[hsl(222,12%,45%)]">Author's notes</span>
                                     </div>
-                                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed">{q.notes}</p>
+                                    <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed"><Markdown className="text-sm text-[hsl(222,12%,35%)]">{q.notes}</Markdown></div>
                                   </div>
                                 )}
 

@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { Search, Filter, ChevronRight, Lock, Sparkles, ThumbsUp, MessageSquare, Share2, Bookmark, FolderOpen, Plus, Check, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { searchQuestions } from '../../../services/QuestionBankService';
+import { CompanyLogo } from '../ui/company-logo';
 
 const bookmarkFolders = [
   {
@@ -300,9 +301,7 @@ const FeaturedQuestionLibrary = () => {
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-full bg-[hsl(220,20%,98%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[hsl(222,22%,15%)] text-xs font-bold shrink-0">
-                        {q.company?.[0] ?? '?'}
-                      </div>
+                      <CompanyLogo company={q.company} size="sm" className="rounded-full" />
                       <div className="space-y-1">
                         <div className="text-xs text-[hsl(222,12%,45%)] flex flex-wrap items-center gap-1 leading-none pt-2.5">
                           <span className="font-semibold text-[hsl(222,22%,15%)]">{q.company}</span>

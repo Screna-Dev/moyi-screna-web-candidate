@@ -30,6 +30,7 @@ import { Textarea } from '../../components/newDesign/ui/textarea';
 import { Label } from '../../components/newDesign/ui/label';
 import logoImg from '../../assets/Navbar.png';
 import { createPost } from '../../services/CommunityService';
+import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Step definitions ──────────────────────────────────
 const STEPS = [
@@ -979,9 +980,7 @@ export function AddExperiencePage() {
 
           <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 mb-6 text-left">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
-                {company === 'Prefer not to say' ? '?' : company[0]}
-              </div>
+              <CompanyLogo company={company === 'Prefer not to say' ? undefined : company} size="sm" />
               <div>
                 <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">{company} · {role}</p>
                 <p className="text-xs text-[hsl(222,12%,55%)]">{round} · {level}</p>
@@ -1357,9 +1356,7 @@ export function AddExperiencePage() {
                   <div className="bg-white rounded-xl border border-[hsl(220,16%,90%)] p-5">
                     <p className="text-xs font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-3">Preview</p>
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
-                        {company === 'Prefer not to say' ? '?' : (company?.[0] || '?')}
-                      </div>
+                      <CompanyLogo company={company === 'Prefer not to say' ? undefined : company} size="sm" />
                       <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{company || '—'}</span>
                       <span className="text-[hsl(222,12%,70%)]">·</span>
                       <span className="text-sm text-[hsl(222,12%,45%)]">{role || '—'}</span>
