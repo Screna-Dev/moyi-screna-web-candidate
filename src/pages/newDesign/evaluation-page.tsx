@@ -22,6 +22,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getInterviewSession } from '@/services/IntervewSesstionServices';
 import { InterviewService } from '@/services';
+import { Markdown } from '@/components/newDesign/ui/markdown';
 
 
 // ═════════════════════════════════════════════════���══════
@@ -767,12 +768,12 @@ export function EvaluationPage() {
                   <span className="text-[11px] text-slate-400 -mt-0.5 text-center">{overallLevel(overall)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14px] text-slate-600 leading-relaxed whitespace-pre-line">
+                  <div className="text-[14px] text-slate-600 leading-relaxed">
                     {apiData?.summary
-                      ? apiData.summary
+                      ? <Markdown className="text-[14px] text-slate-600">{apiData.summary}</Markdown>
                       : <>No Summary</>
                     }
-                  </p>
+                  </div>
                   <div className="flex flex-wrap gap-3 mt-3">
                     
                     
@@ -842,7 +843,7 @@ export function EvaluationPage() {
                                 <span className="text-[12.5px] text-slate-600 font-medium">{d.name}</span>
                                 <span className="text-[11px] text-emerald-600">{d.score}/100</span>
                               </div>
-                              {d.reasoning && <span className="text-[12px] text-slate-500">{d.reasoning}</span>}
+                              {d.reasoning && <div className="text-[12px] text-slate-500"><Markdown className="text-[12px] text-slate-500">{d.reasoning}</Markdown></div>}
                             </div>
                           </div>
                         ))
@@ -873,7 +874,7 @@ export function EvaluationPage() {
                                 <span className="text-[12.5px] text-slate-600 font-medium">{d.name}</span>
                                 <span className="text-[11px] text-amber-600">{d.score}/100</span>
                               </div>
-                              {d.reasoning && <span className="text-[12px] text-slate-500">{d.reasoning}</span>}
+                              {d.reasoning && <div className="text-[12px] text-slate-500"><Markdown className="text-[12px] text-slate-500">{d.reasoning}</Markdown></div>}
                             </div>
                           </div>
                         ))
@@ -994,9 +995,9 @@ function InlineDimDetail({
           <Brain className="w-3 h-3" />
           Reasoning
         </h4>
-        <p className="text-[12.5px] text-slate-600 leading-relaxed bg-white rounded-lg p-3 border border-slate-100">
-          {dim.reasoning}
-        </p>
+        <div className="text-[12.5px] text-slate-600 leading-relaxed bg-white rounded-lg p-3 border border-slate-100">
+          <Markdown className="text-[12.5px] text-slate-600">{dim.reasoning}</Markdown>
+        </div>
       </div>
 
       {/* ── Evidence ── */}
@@ -1112,7 +1113,7 @@ function QuestionRow({
                 {q.yourAnswer
                   ? (
                     <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-blue-300">
-                      <p className="text-[12px] text-slate-600 leading-relaxed">{q.yourAnswer}</p>
+                      <div className="text-[12px] text-slate-600 leading-relaxed"><Markdown className="text-[12px] text-slate-600">{q.yourAnswer}</Markdown></div>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3.5 py-2.5 border-l-2 border-l-slate-200">
@@ -1127,7 +1128,7 @@ function QuestionRow({
                 <div>
                   <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Sample Answer</h4>
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3.5 py-2.5 border-l-2 border-l-emerald-400">
-                    <p className="text-[12px] text-slate-700 leading-relaxed">{q.sampleAnswer}</p>
+                    <div className="text-[12px] text-slate-700 leading-relaxed"><Markdown className="text-[12px] text-slate-700">{q.sampleAnswer}</Markdown></div>
                   </div>
                 </div>
               )}
@@ -1136,7 +1137,7 @@ function QuestionRow({
               <div>
                 <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Feedback</h4>
                 <div className="rounded-lg border border-amber-100 bg-amber-50/40 px-3.5 py-2.5 border-l-2 border-l-amber-400">
-                  <p className="text-[12px] text-slate-600 leading-relaxed">{q.feedback}</p>
+                  <div className="text-[12px] text-slate-600 leading-relaxed"><Markdown className="text-[12px] text-slate-600">{q.feedback}</Markdown></div>
                 </div>
               </div>
 
@@ -1145,7 +1146,7 @@ function QuestionRow({
                 <div>
                   <h4 className="text-[11px] text-slate-400 mb-2 uppercase tracking-wider">Gap Analysis</h4>
                   <div className="rounded-lg border border-orange-100 bg-orange-50/30 px-3.5 py-2.5 border-l-2 border-l-orange-400">
-                    <p className="text-[12px] text-slate-600 leading-relaxed whitespace-pre-line">{q.gapAnalysis}</p>
+                    <div className="text-[12px] text-slate-600 leading-relaxed"><Markdown className="text-[12px] text-slate-600">{q.gapAnalysis}</Markdown></div>
                   </div>
                 </div>
               )}

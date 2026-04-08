@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
+import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Color Mappings ────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
@@ -379,9 +380,7 @@ export function MyContributionsPage() {
                               className="block group/link"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)] shrink-0">
-                                  {post.company[0]}
-                                </div>
+                                <CompanyLogo company={post.company} size="sm" />
                                 <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover/link:text-[hsl(221,91%,60%)] transition-colors truncate">
                                   {post.company} · {post.role}
                                 </h3>
@@ -477,9 +476,7 @@ export function MyContributionsPage() {
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <Link to={`/experience/${post.id}`} className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <div className="w-6 h-6 rounded-md bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
-                                  {post.company[0]}
-                                </div>
+                                <CompanyLogo company={post.company} size="sm" className="w-6 h-6" />
                                 <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
                                   {post.company} · {post.role}
                                 </h3>
@@ -616,9 +613,7 @@ export function MyContributionsPage() {
                         className="block bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 hover:border-[hsl(221,91%,60%)]/20 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all group"
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
-                            {saved.company[0]}
-                          </div>
+                          <CompanyLogo company={saved.company} size="sm" />
                           <div className="min-w-0">
                             <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors truncate">
                               {saved.company} · {saved.role}
@@ -678,9 +673,7 @@ export function MyContributionsPage() {
                 </p>
                 <div className="bg-[hsl(220,20%,98%)] rounded-xl border border-[hsl(220,16%,92%)] p-3 mb-5">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-white border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
-                      {deleteTarget.company[0]}
-                    </div>
+                    <CompanyLogo company={deleteTarget.company} size="sm" className="w-6 h-6" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
                         {deleteTarget.company} · {deleteTarget.role}

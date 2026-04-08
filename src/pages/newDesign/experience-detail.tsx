@@ -35,6 +35,8 @@ import { Button } from '../../components/newDesign/ui/button';
 import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply } from '../../services/CommunityService';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
+import { Markdown } from '@/components/newDesign/ui/markdown';
+import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -518,9 +520,7 @@ export function ExperienceDetailPage() {
               {/* ── Section 1: Header ── */}
               <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-6 md:p-8 mb-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-lg font-bold text-[hsl(222,22%,15%)] shrink-0">
-                    {post.company[0]}
-                  </div>
+                  <CompanyLogo company={post.company} className="w-10 h-10 rounded-xl" />
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-lg font-semibold text-[hsl(222,22%,15%)]">{post.company}</span>
@@ -696,9 +696,9 @@ export function ExperienceDetailPage() {
                 <h2 className="text-sm font-semibold text-[hsl(222,12%,45%)] uppercase tracking-wider mb-3">
                   Summary
                 </h2>
-                <p className="text-[15px] text-[hsl(222,12%,30%)] leading-relaxed">
-                  {post.summary}
-                </p>
+                <div className="text-[15px] text-[hsl(222,12%,30%)] leading-relaxed">
+                  <Markdown className="text-[15px] text-[hsl(222,12%,30%)]">{post.summary}</Markdown>
+                </div>
               </div>
 
               {/* ── Section 3: Questions ── */}
@@ -806,7 +806,7 @@ export function ExperienceDetailPage() {
                                       </div>
                                       <span className="text-xs font-medium text-[hsl(222,12%,45%)]">Author's notes</span>
                                     </div>
-                                    <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed">{q.notes}</p>
+                                    <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed"><Markdown className="text-sm text-[hsl(222,12%,35%)]">{q.notes}</Markdown></div>
                                   </div>
                                 )}
 
@@ -1173,7 +1173,7 @@ export function ExperienceDetailPage() {
                               </div>
                             )}
 
-                            <p className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2">{comment.content}</p>
+                            <div className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2"><Markdown className="text-sm text-[hsl(222,12%,30%)]">{comment.content}</Markdown></div>
 
                             <div className="flex items-center gap-4 text-[hsl(222,12%,55%)]">
                               <button
@@ -1234,7 +1234,7 @@ export function ExperienceDetailPage() {
                                                 <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user?.name || 'Anonymous'}</span>
                                                 <span className="text-[10px] text-[hsl(222,12%,55%)]">· {formatRelativeTime(reply.createdAt)}</span>
                                               </div>
-                                              <p className="text-xs text-[hsl(222,12%,30%)] leading-relaxed">{reply.content}</p>
+                                              <div className="text-xs text-[hsl(222,12%,30%)] leading-relaxed"><Markdown className="text-xs text-[hsl(222,12%,30%)]">{reply.content}</Markdown></div>
                                               {isOwnReply && (
                                                 <button
                                                   onClick={() => handleDeleteReply(reply.id, comment.id)}

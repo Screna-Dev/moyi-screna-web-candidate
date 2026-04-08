@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { getQuestion } from '../../../services/QuestionBankService';
+import { CompanyLogo } from '../../../components/newDesign/ui/company-logo';
 
 interface QuestionData {
   id: string;
@@ -77,9 +78,7 @@ export function QuestionUnknownPage() {
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     {questionData?.company && (
                       <>
-                        <div className="w-5 h-5 rounded bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
-                          {questionData.company[0]}
-                        </div>
+                        <CompanyLogo company={questionData.company} size="sm" className="w-5 h-5" />
                         <span className="font-medium text-slate-700">{questionData.company}</span>
                         <span>•</span>
                       </>

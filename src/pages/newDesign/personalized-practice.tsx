@@ -1151,7 +1151,6 @@ export function PersonalizedPracticePage() {
                   <PracticeSetCard
                     key={set.id}
                     set={set}
-                    onClick={set.training_plan_id ? () => handlePlanCardClick(set) : undefined}
                     isLoading={loadingCardId === set.module_id}
                     userBalance={userBalance}
                   />

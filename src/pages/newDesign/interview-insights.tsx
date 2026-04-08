@@ -26,6 +26,8 @@ import { getPosts, getPublicPosts } from '../../services/CommunityService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ShareExperienceModal } from '../../components/newDesign/share-experience-modal';
 import { SharePopover } from '@/components/newDesign/share-popover';
+import { Markdown } from '@/components/newDesign/ui/markdown';
+import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -837,9 +839,7 @@ export function InterviewInsightsPage() {
                     {/* ── Card Header (always visible) ── */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="w-8 h-8 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-sm font-bold text-[hsl(222,22%,15%)] shrink-0">
-                          {post.company?.[0] || '?'}
-                        </div>
+                        <CompanyLogo company={post.company} />
                         <div className="flex items-center gap-1.5 text-sm">
                           <span className="font-semibold text-[hsl(222,22%,15%)]">{post.company || 'Unknown'}</span>
                           <span className="text-[hsl(222,12%,70%)]">·</span>
@@ -865,9 +865,9 @@ export function InterviewInsightsPage() {
                               {formatDate(post.date)}
                             </span>
                           </div>
-                          <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                            {post.summary || 'No summary available'}
-                          </p>
+                          <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                            {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
+                          </div>
                           <div className="flex flex-wrap items-center gap-2 mb-5">
                             {getQuestions(post).length > 0 ? (
                               getQuestions(post).slice(0, 3).map((q, qi) => (
@@ -902,9 +902,9 @@ export function InterviewInsightsPage() {
                         </div>
 
                         {/* ── Summary ── */}
-                        <p className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                          {post.summary || 'No summary available'}
-                        </p>
+                        <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                          {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
+                        </div>
 
                         {/* ── Question Preview Chips ── */}
                         <div className="flex flex-wrap items-center gap-2 mb-5">
