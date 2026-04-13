@@ -238,8 +238,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('screnaIsLoggedIn');
+    localStorage.removeItem('screnaUserData');
+    localStorage.removeItem('screna_share_count');
+    localStorage.removeItem('theme');
+    localStorage.removeItem('cookie_consent');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
+    // Clear any PostHog tracking data
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('ph_')) {
+        localStorage.removeItem(key);
+      }
+    }
     setUser(null);
     navigate('/auth');
   };

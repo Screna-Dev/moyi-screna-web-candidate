@@ -555,7 +555,7 @@ export function ExperienceDetailPage() {
                 <div className="flex flex-wrap items-center gap-3 text-xs text-[hsl(222,12%,50%)] mb-5">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    {new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                   </span>
                   {post.location && (
                     <span className="flex items-center gap-1">
@@ -1300,7 +1300,7 @@ export function ExperienceDetailPage() {
                       { label: 'Round', value: post.round },
                       { label: 'Level', value: post.level },
                       { label: 'Outcome', value: post.outcome },
-                      { label: 'Date', value: new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) },
+                      { label: 'Date', value: new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) },
                       { label: 'Location', value: post.location },
                     ].filter(item => item.value).map(item => (
                       <div key={item.label} className="flex items-center justify-between">

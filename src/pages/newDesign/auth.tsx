@@ -321,7 +321,10 @@ export function AuthPage() {
       if (isLogin) {
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
-        if (loggedInUser?.role === 'CANDIDATE') navigate('/dashboard');
+        if (loggedInUser?.role === 'CANDIDATE') {
+          const stored = (() => { try { return JSON.parse(localStorage.getItem('screnaUserData') || '{}'); } catch { return {}; } })();
+          navigate(stored.resumeUploaded ? '/dashboard' : '/onboarding-resume');
+        }
         if (loggedInUser?.role === 'ADMIN') navigate('/admin');
       } else {
         await signup(email, password, name);

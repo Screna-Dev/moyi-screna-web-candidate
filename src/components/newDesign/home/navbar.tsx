@@ -63,7 +63,8 @@ export function Navbar({ transparent = false }: NavbarProps) {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed top-5 inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
+      className="fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
+      style={{ top: 'calc(var(--topbar-h, 0px) + 20px)' }}
     >
       {/* ── Capsule Shell ── */}
       <div
@@ -117,7 +118,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
               {/* Interview Dropdown */}
               {link.name === 'Interview' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-                  {/* <Link 
+                  <Link 
                     to="/mock-interview" 
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
                   >
@@ -125,10 +126,10 @@ export function Navbar({ transparent = false }: NavbarProps) {
                       <Bot className="w-[18px] h-[18px]" />
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Trendings</div>
-                      <div className="text-xs text-slate-500">Trending mock interviews</div>
+                      <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
+                      <div className="text-xs text-slate-500">Practice for popular roles</div>
                     </div>
-                  </Link> */}
+                  </Link>
                   <Link 
                     to="/personalized-practice" 
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
@@ -159,18 +160,6 @@ export function Navbar({ transparent = false }: NavbarProps) {
                       <div className="text-xs text-slate-500">Real interview experiences</div>
                     </div>
                   </Link>
-                  {/* <Link 
-                    to="/question-bank" 
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                      <MessageSquare className="w-[18px] h-[18px]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Question Bank</div>
-                      <div className="text-xs text-slate-500">Practice real questions</div>
-                    </div>
-                  </Link> */}
                 </div>
               )}
             </div>

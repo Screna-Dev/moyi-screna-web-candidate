@@ -212,11 +212,11 @@ function GlobalTopHeader({
                 : 'text-slate-500 hover:text-blue-600'
             }`}
           >
-            Interview
+            Practice
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-            {/* <Link
+            <Link
               to="/mock-interview"
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
             >
@@ -224,10 +224,10 @@ function GlobalTopHeader({
                 <Bot className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-[13px] font-semibold text-slate-900">Trendings</div>
-                <div className="text-[11px] text-slate-500">Trending mock interviews</div>
+                <div className="text-[13px] font-semibold text-slate-900">Trending Roles</div>
+                <div className="text-[11px] text-slate-500">Practice for popular roles</div>
               </div>
-            </Link> */}
+            </Link>
             <Link
               to="/personalized-practice"
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
@@ -268,18 +268,6 @@ function GlobalTopHeader({
                 <div className="text-[11px] text-slate-500">Real interview experiences</div>
               </div>
             </Link>
-            {/* <Link
-              to="/question-bank"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                <MessageSquare className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Question Bank</div>
-                <div className="text-[11px] text-slate-500">Practice real questions</div>
-              </div>
-            </Link> */}
           </div>
         </div>
 

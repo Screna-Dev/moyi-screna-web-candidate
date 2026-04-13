@@ -97,8 +97,9 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Redirect to dashboard
-        navigate('/dashboard');
+        // Redirect to onboarding if no resume, otherwise dashboard
+        const stored = (() => { try { return JSON.parse(localStorage.getItem('screnaUserData') || '{}'); } catch { return {}; } })();
+        navigate(stored.resumeUploaded ? '/dashboard' : '/onboarding-resume');
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);

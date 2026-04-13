@@ -86,7 +86,7 @@ export function OnboardingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[hsl(221,60%,20%)] via-[hsl(221,40%,40%)] to-[hsl(220,20%,85%)] flex flex-col">
       {/* Progress Bar */}
-      <div className="fixed top-0 left-0 right-0 h-1 bg-[hsl(221,20%,30%)]/30 z-50">
+      <div className="fixed top-[var(--top-bar-h)] left-0 right-0 h-1 bg-[hsl(221,20%,30%)]/30 z-50">
         <motion.div
           className="h-full bg-[hsl(165,82%,51%)]"
           initial={{ width: 0 }}
