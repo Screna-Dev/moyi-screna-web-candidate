@@ -663,7 +663,7 @@ function RowConnector({ label }: { label: string }) {
 
 export function OnboardingFlowOverviewPage() {
   return (
-    <div className="min-h-screen bg-[hsl(220,20%,98%)]">
+    <div className="min-h-screen bg-[hsl(220,20%,98%)]" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
       {/* ─ Page header ─ */}
       <header className="border-b border-[hsl(220,16%,92%)] bg-white">
         <div className="max-w-[1200px] mx-auto px-8 py-4 flex items-center justify-between">

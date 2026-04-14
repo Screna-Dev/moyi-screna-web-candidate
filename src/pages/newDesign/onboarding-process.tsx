@@ -884,7 +884,7 @@ export function OnboardingProcessPage() {
   const goBack = () => setCurrentStep((s) => Math.max(s - 1, 1));
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
       {/* Top nav */}
       <header className="flex items-center justify-between px-8 py-4 border-b border-[hsl(220,16%,94%)]">
         <a href="/" className="flex items-center gap-2">

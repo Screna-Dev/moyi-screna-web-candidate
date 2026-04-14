@@ -209,9 +209,9 @@ function NavHeader({ stepLabel }: { stepLabel: string }) {
           <div className="w-1.5 h-1.5 rounded-full bg-[hsl(142,70%,45%)]" />
           <span className="text-[11.5px] font-medium text-[hsl(222,12%,55%)]">{stepLabel}</span>
         </div>
-        <button className="text-[12px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,20%)] transition-colors">
+        <a href="/" className="text-[12px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,20%)] transition-colors">
           Save & exit
-        </button>
+        </a>
       </div>
     </header>
   );
@@ -1357,7 +1357,7 @@ export function OnboardingUploadResumePage() {
   const goBack = () => goTo(Math.max(step - 1, 2));
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
       <NavHeader stepLabel={stepLabels[step] || ''} />
       <ProgressHeader currentStep={step} />
 

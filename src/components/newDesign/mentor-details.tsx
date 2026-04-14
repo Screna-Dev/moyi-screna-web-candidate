@@ -1,13 +1,44 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { 
-  ArrowLeft, Star, Clock, Calendar, CheckCircle2, ChevronDown, 
-  MessageSquare, Briefcase, Award, Video, ShieldCheck
+import {
+  ArrowLeft, Clock, Calendar, Briefcase, Award, Video, ShieldCheck, X,
+  ChevronLeft, ChevronRight, CheckCircle2,
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/newDesign/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 
-// ─── Dummy Data ─────────────────────────────────────────────────────────────
+// ─── Icons ──────────────────────────────────────────────────────────────────
+
+function FileTextIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+      <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+      <path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
+    </svg>
+  );
+}
+function TargetIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+    </svg>
+  );
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type Duration = '30min' | '1hr';
+
+interface CoachingPlan {
+  id: string;
+  name: string;
+  description: string;
+  pricing: Record<Duration, number>;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+}
+
+// ─── Data ────────────────────────────────────────────────────────────────────
 
 const MENTOR = {
   name: 'Priya Mehta',
@@ -17,73 +48,57 @@ const MENTOR = {
   bio: 'I help candidates crack PM roles at top-tier tech companies. With 8+ years of experience across Google, Uber, and early-stage startups, I specialize in product sense, execution, and behavioral interviews.',
   tags: ['PM Interviews', 'Product Strategy', 'FAANG Prep', 'Career Transition'],
   experience: [
-    { role: 'Senior Product Manager', company: 'Google', years: '2021 - Present' },
-    { role: 'Product Manager', company: 'Uber', years: '2018 - 2021' },
+    { role: 'Senior Product Manager', company: 'Google', years: '2021 – Present' },
+    { role: 'Product Manager', company: 'Uber', years: '2018 – 2021' },
   ],
   rating: 4.9,
   reviewsCount: 127,
 };
 
-const COACHING_PLANS = [
+const COACHING_PLANS: CoachingPlan[] = [
   {
     id: 'mock-interview',
     name: 'Mock Interview (Product Sense)',
-    description: 'A realistic 45-minute mock interview focusing on product sense or execution, followed by 15 minutes of detailed, actionable feedback.',
-    duration: '60 min',
-    price: 120,
+    description: 'A realistic mock interview focusing on product sense or execution, followed by detailed, actionable feedback.',
+    pricing: { '30min': 80, '1hr': 140 },
     icon: Video,
   },
   {
     id: 'resume-review',
     name: 'Resume & LinkedIn Review',
-    description: 'Async or live teardown of your resume and LinkedIn profile. I will help you rewrite bullets to highlight impact and pass ATS screens.',
-    duration: '45 min',
-    price: 90,
+    description: 'Live teardown of your resume and LinkedIn profile. Rewrite bullets to highlight impact and pass ATS screens.',
+    pricing: { '30min': 60, '1hr': 90 },
     icon: FileTextIcon,
   },
   {
     id: 'career-planning',
     name: 'Career Strategy Session',
-    description: 'Feeling stuck? We will map out your 1-3 year career goals, identify skill gaps, and create a concrete plan to get you promoted or transitioned.',
-    duration: '45 min',
-    price: 100,
+    description: 'Map out your 1–3 year career goals, identify skill gaps, and build a concrete plan to get promoted or transition.',
+    pricing: { '30min': 75, '1hr': 120 },
     icon: TargetIcon,
   },
   {
     id: 'salary-negotiation',
     name: 'Offer & Salary Negotiation',
-    description: 'Received an offer? Let\'s build a negotiation strategy. I\'ll share compensation bands and scripts to help you maximize your total compensation.',
-    duration: '30 min',
-    price: 80,
+    description: 'Build a negotiation strategy with compensation band insights and scripts to maximize your total compensation.',
+    pricing: { '30min': 80, '1hr': 140 },
     icon: Briefcase,
   },
 ];
 
 const REVIEWS = [
   {
-    id: 1,
-    initials: 'SK',
-    name: 'Sarah K.',
-    rating: 5,
-    date: 'Oct 12, 2025',
+    id: 1, initials: 'SK', name: 'Sarah K.', rating: 5, date: 'Oct 12, 2025',
     traits: ['Insightful', 'Actionable'],
-    comment: 'Priya immediately identified that I was rambling in my execution answers. Her framework for structuring metrics completely changed how I approach these questions. Highly recommend!',
+    comment: 'Priya immediately identified that I was rambling in my execution answers. Her framework for structuring metrics completely changed how I approach these questions.',
   },
   {
-    id: 2,
-    initials: 'JL',
-    name: 'James L.',
-    rating: 5,
-    date: 'Sep 28, 2025',
+    id: 2, initials: 'JL', name: 'James L.', rating: 5, date: 'Sep 28, 2025',
     traits: ['Direct', 'Well-prepared'],
-    comment: 'She read my resume beforehand and tailored the mock interview to my specific background. The feedback was direct, honest, and exactly what I needed to hear before my onsite.',
+    comment: 'She read my resume beforehand and tailored the mock interview to my specific background. The feedback was direct, honest, and exactly what I needed before my onsite.',
   },
   {
-    id: 3,
-    initials: 'MR',
-    name: 'Michael R.',
-    rating: 4,
-    date: 'Sep 15, 2025',
+    id: 3, initials: 'MR', name: 'Michael R.', rating: 4, date: 'Sep 15, 2025',
     traits: ['Encouraging'],
     comment: 'Great session on career transition. Priya gave me a realistic view of what hiring managers look for in non-traditional PM candidates.',
   },
@@ -98,158 +113,537 @@ const RATING_BREAKDOWN = {
 };
 
 const FAQS = [
-  {
-    q: 'How do I book a session?',
-    a: 'Choose a coaching plan above, select an available time slot that works for you, and complete the booking process. You will receive a calendar invite with a video link immediately.',
-  },
-  {
-    q: 'What happens after I book?',
-    a: 'You will be prompted to share your resume, target roles, and any specific areas you want to focus on. Your mentor will review these materials before the session begins.',
-  },
-  {
-    q: 'Can I cancel or reschedule?',
-    a: 'Yes, you can reschedule or cancel up to 24 hours before your session for a full refund or credit.',
-  },
-  {
-    q: 'Will my session be recorded?',
-    a: 'By default, sessions are not recorded for privacy. However, you can request a recording at the start of the call, or use Screna’s AI note-taker if the mentor permits.',
-  },
-  {
-    q: 'How does payment work?',
-    a: 'Payments are processed securely via Stripe when you confirm your booking. The mentor receives the full amount, as Screna does not take a commission.',
-  },
-  {
-    q: 'What if my mentor doesn’t show up?',
-    a: 'In the rare event a mentor misses a session, you will automatically receive a full refund and a priority booking token for another time.',
-  },
+  { q: 'How do I book a session?', a: 'Choose a coaching plan, click Book, and follow the step-by-step flow to pick your duration, date, and time. You\'ll receive a calendar invite immediately after payment.' },
+  { q: 'What happens after I book?', a: 'You\'ll be prompted to share your resume, target roles, and focus areas. Your mentor reviews these before the session.' },
+  { q: 'Can I cancel or reschedule?', a: 'Yes. You can reschedule or cancel up to 24 hours before your session for a full refund or credit.' },
+  { q: 'Will my session be recorded?', a: 'By default, sessions are not recorded. You can request a recording at the start of the call, or use Screna\'s AI note-taker if the mentor permits.' },
+  { q: 'How does payment work?', a: 'Payments are processed securely via Stripe when you confirm your booking. The mentor receives the full amount — Screna does not take a commission.' },
+  { q: 'What if my mentor doesn\'t show up?', a: 'In the rare event a mentor misses a session, you\'ll automatically receive a full refund and a priority booking token.' },
 ];
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+const AVAILABLE_DAYS = [16, 17, 21, 22, 23, 28, 29, 30];
+const TIMEZONES = [
+  'America/Los_Angeles (PDT, UTC−7)',
+  'America/Denver (MDT, UTC−6)',
+  'America/Chicago (CDT, UTC−5)',
+  'America/New_York (EDT, UTC−4)',
+  'Europe/London (BST, UTC+1)',
+  'Europe/Berlin (CEST, UTC+2)',
+  'Asia/Singapore (SGT, UTC+8)',
+  'Asia/Tokyo (JST, UTC+9)',
+];
+const TIME_SLOTS = [
+  { time: '9:00 AM', avail: true }, { time: '9:30 AM', avail: true },
+  { time: '10:00 AM', avail: false }, { time: '10:30 AM', avail: true },
+  { time: '11:00 AM', avail: true }, { time: '11:30 AM', avail: false },
+  { time: '2:00 PM', avail: true }, { time: '2:30 PM', avail: true },
+  { time: '3:00 PM', avail: true }, { time: '4:00 PM', avail: false },
+  { time: '4:30 PM', avail: true },
+];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const STEP_LABELS = ['Plan','Date','Time','Notes','Payment'];
 
-// Stub icons for ones not imported from lucide-react directly above
-function FileTextIcon(props: any) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>;
-}
-function TargetIcon(props: any) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <svg
-          key={i}
-          className={`w-4 h-4 ${
-            i <= Math.floor(rating)
-              ? 'text-amber-400'
-              : i - 0.5 <= rating
-              ? 'text-amber-400' // half star simplified for brevity
-              : 'text-slate-200'
-          }`}
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+      {[1, 2, 3, 4, 5].map(i => (
+        <svg key={i} className={`w-4 h-4 ${i <= Math.round(rating) ? 'text-amber-400' : 'text-muted'}`} fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
         </svg>
       ))}
     </div>
   );
 }
 
-function Progress({ value }: { value: number }) {
+function RatingBar({ value }: { value: number }) {
   return (
-    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-      <div 
-        className="h-full bg-amber-400 rounded-full" 
-        style={{ width: `${value}%` }}
-      />
+    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(value / 5) * 100}%` }} />
     </div>
   );
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
+// ─── Booking Modal ────────────────────────────────────────────────────────────
+
+interface BookingModalProps {
+  plan: CoachingPlan;
+  onClose: () => void;
+}
+
+function BookingModal({ plan, onClose }: BookingModalProps) {
+  const [step, setStep] = useState(1);
+  const [duration, setDuration] = useState<Duration>('30min');
+  const [timezone, setTimezone] = useState(TIMEZONES[0]);
+  const [calYear, setCalYear] = useState(2026);
+  const [calMonth, setCalMonth] = useState(3); // April
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const price = plan.pricing[duration];
+  const isSuccess = step === 6;
+
+  // Calendar helpers
+  const firstDOW = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+  function prevMonth() {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); }
+    else setCalMonth(m => m - 1);
+    setSelectedDay(null);
+  }
+  function nextMonth() {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); }
+    else setCalMonth(m => m + 1);
+    setSelectedDay(null);
+  }
+
+  const canContinue =
+    step === 1 ? true :
+    step === 2 ? selectedDay !== null :
+    step === 3 ? selectedSlot !== null :
+    true;
+
+  function handleContinue() {
+    if (step < 5) setStep(s => s + 1);
+    else setStep(6); // payment → success
+  }
+
+  const formattedDate = selectedDay
+    ? `${MONTHS[calMonth]} ${selectedDay}, ${calYear}`
+    : '—';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+
+        {/* ── Header ── */}
+        {!isSuccess && (
+          <div className="px-6 pt-5 pb-4 border-b border-border shrink-0">
+            {/* Step indicator */}
+            <div className="flex items-center gap-0 mb-4">
+              {STEP_LABELS.map((label, i) => {
+                const stepNum = i + 1;
+                const done = step > stepNum;
+                const active = step === stepNum;
+                return (
+                  <div key={label} className="flex items-center flex-1 last:flex-none">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
+                        done ? 'bg-primary text-primary-foreground' :
+                        active ? 'bg-primary text-primary-foreground' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : stepNum}
+                      </div>
+                      <span className={`text-[10px] font-medium whitespace-nowrap ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {label}
+                      </span>
+                    </div>
+                    {i < STEP_LABELS.length - 1 && (
+                      <div className={`flex-1 h-px mx-1 mt-[-10px] transition-colors ${done ? 'bg-primary' : 'bg-border'}`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-foreground">{plan.name}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">with {MENTOR.name} · {MENTOR.company}</p>
+              </div>
+              <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* Step 1 — Plan + Duration */}
+          {step === 1 && (
+            <div className="flex flex-col gap-5">
+              <div className="bg-secondary border border-border rounded-lg p-4 flex flex-col gap-1.5">
+                <span className="text-xs text-muted-foreground">Coaching plan</span>
+                <span className="text-sm font-medium text-foreground">{plan.name}</span>
+                <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-foreground mb-3">Session duration</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['30min', '1hr'] as Duration[]).map(d => {
+                    const label = d === '30min' ? '30 minutes' : '1 hour';
+                    const p = plan.pricing[d];
+                    const active = duration === d;
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setDuration(d)}
+                        className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all ${
+                          active
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-border bg-card hover:bg-secondary'
+                        }`}
+                      >
+                        <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? 'text-primary' : 'text-foreground'}`}>
+                          <Clock className="w-4 h-4" />
+                          {label}
+                        </div>
+                        <span className="text-xs text-muted-foreground">${p} / session</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-muted/60 rounded-lg px-4 py-3 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Session total</span>
+                <span className="text-lg font-medium text-foreground">${price}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — Timezone + Date */}
+          {step === 2 && (
+            <div className="flex flex-col gap-5">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Your timezone</label>
+                <select
+                  value={timezone}
+                  onChange={e => setTimezone(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                >
+                  {TIMEZONES.map(tz => (
+                    <option key={tz} value={tz}>{tz}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-foreground mb-3">Select a date</p>
+                <div className="border border-border rounded-xl overflow-hidden">
+                  {/* Month nav */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary">
+                    <button onClick={prevMonth} className="w-7 h-7 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-sm font-medium text-foreground">{MONTHS[calMonth]} {calYear}</span>
+                    <button onClick={nextMonth} className="w-7 h-7 rounded-md hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {/* Day headers */}
+                  <div className="grid grid-cols-7 bg-secondary px-2 pb-1">
+                    {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                      <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-1">{d}</div>
+                    ))}
+                  </div>
+                  {/* Days grid */}
+                  <div className="grid grid-cols-7 gap-0.5 p-2 bg-card">
+                    {Array.from({ length: firstDOW }).map((_, i) => (
+                      <div key={`empty-${i}`} />
+                    ))}
+                    {Array.from({ length: daysInMonth }).map((_, i) => {
+                      const day = i + 1;
+                      const avail = AVAILABLE_DAYS.includes(day);
+                      const selected = selectedDay === day;
+                      return (
+                        <button
+                          key={day}
+                          disabled={!avail}
+                          onClick={() => { setSelectedDay(day); setSelectedSlot(null); }}
+                          className={`aspect-square flex items-center justify-center text-xs rounded-lg mx-auto w-full max-w-[36px] transition-colors ${
+                            selected
+                              ? 'bg-primary text-primary-foreground font-medium'
+                              : avail
+                              ? 'text-foreground hover:bg-primary/10 hover:text-primary font-medium cursor-pointer'
+                              : 'text-muted-foreground/40 cursor-default'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Availability legend */}
+                  <div className="flex items-center gap-4 px-4 py-2.5 border-t border-border bg-secondary">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-primary" />
+                      <span className="text-xs text-muted-foreground">Available</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                      <span className="text-xs text-muted-foreground">Unavailable</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Time slot */}
+          {step === 3 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">Available slots</p>
+                <span className="text-xs text-muted-foreground">{formattedDate}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {TIME_SLOTS.map(slot => {
+                  const active = selectedSlot === slot.time;
+                  return (
+                    <button
+                      key={slot.time}
+                      disabled={!slot.avail}
+                      onClick={() => setSelectedSlot(slot.time)}
+                      className={`py-2 px-2 rounded-lg border text-xs font-medium text-center transition-all ${
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : slot.avail
+                          ? 'bg-card border-border text-foreground hover:border-primary/50 hover:bg-primary/5'
+                          : 'bg-muted/40 border-border text-muted-foreground/40 cursor-default line-through'
+                      }`}
+                    >
+                      {slot.time}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedSlot && (
+                <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">Selected: </span>
+                  <span className="font-medium text-foreground">{selectedSlot} · {formattedDate}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 4 — Notes */}
+          {step === 4 && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">
+                  Add notes to this booking
+                </label>
+                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                  This can include what you want help with, your context, or anything your mentor should know before the session.
+                </p>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="e.g. I'm preparing for a FAANG PM onsite and struggling with metric-definition questions. I have 2 practice sessions left before my actual interview on May 5th..."
+                  rows={6}
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-foreground bg-card placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors leading-relaxed"
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">Optional — you can skip this and add notes later.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5 — Payment */}
+          {step === 5 && (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm font-medium text-foreground">Review your booking</p>
+
+              <div className="border border-border rounded-xl overflow-hidden">
+                {[
+                  { label: 'Mentor',   value: `${MENTOR.name} · ${MENTOR.company}` },
+                  { label: 'Plan',     value: plan.name },
+                  { label: 'Duration', value: duration === '30min' ? '30 minutes' : '1 hour' },
+                  { label: 'Date',     value: formattedDate },
+                  { label: 'Time',     value: selectedSlot ?? '—' },
+                ].map((row, i, arr) => (
+                  <div key={row.label} className={`flex items-start justify-between gap-4 px-4 py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
+                    <span className="text-xs text-muted-foreground w-20 shrink-0">{row.label}</span>
+                    <span className="text-xs font-medium text-foreground text-right">{row.value}</span>
+                  </div>
+                ))}
+                {notes && (
+                  <div className="flex items-start justify-between gap-4 px-4 py-3 border-t border-border">
+                    <span className="text-xs text-muted-foreground w-20 shrink-0">Notes</span>
+                    <span className="text-xs text-muted-foreground text-right line-clamp-2">{notes}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between bg-muted/60 rounded-lg px-4 py-3">
+                <span className="text-sm font-medium text-foreground">Total</span>
+                <span className="text-xl font-medium text-foreground">${price}</span>
+              </div>
+
+              <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-secondary border border-border rounded-lg px-3 py-2.5">
+                <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <span>Payments are processed securely via Stripe. If you're not satisfied, Screna will refund you or match you with another mentor.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Step 6 — Success */}
+          {step === 6 && (
+            <div className="flex flex-col items-center text-center gap-5 py-4">
+              <div className="w-14 h-14 rounded-full bg-accent/20 flex items-center justify-center">
+                <CheckCircle2 className="w-7 h-7 text-accent" />
+              </div>
+              <div>
+                <h2 className="text-lg font-medium text-foreground mb-1">Session booked!</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
+                  Your session is confirmed. A confirmation email has been sent to you with session details and next steps.
+                </p>
+              </div>
+
+              <div className="w-full border border-border rounded-xl overflow-hidden">
+                {[
+                  { label: 'Mentor',   value: `${MENTOR.name}` },
+                  { label: 'Plan',     value: plan.name },
+                  { label: 'Date',     value: formattedDate },
+                  { label: 'Time',     value: selectedSlot ?? '—' },
+                ].map((row, i, arr) => (
+                  <div key={row.label} className={`flex items-center justify-between px-4 py-3 text-left ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
+                    <span className="text-xs text-muted-foreground">{row.label}</span>
+                    <span className="text-xs font-medium text-foreground">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Check your email for your calendar invite and Zoom link.
+              </p>
+
+              <button
+                onClick={onClose}
+                className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        {!isSuccess && (
+          <div className="px-6 py-4 border-t border-border bg-secondary/50 flex items-center justify-between shrink-0">
+            {step > 1 ? (
+              <button
+                onClick={() => setStep(s => s - 1)}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </button>
+            ) : (
+              <div />
+            )}
+            <button
+              onClick={handleContinue}
+              disabled={!canContinue}
+              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {step === 4 ? 'Continue to payment' : step === 5 ? 'Pay with Stripe' : 'Continue'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function MentorDetailsPage() {
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [activePlan, setActivePlan] = useState<CoachingPlan | null>(null);
 
   return (
     <DashboardLayout headerTitle="Mentor Profile" noSidebar>
-      <div className="w-full max-w-5xl mx-auto space-y-16 pb-24 pt-28">
-        
-        {/* Top Actions */}
+      {activePlan && (
+        <BookingModal plan={activePlan} onClose={() => setActivePlan(null)} />
+      )}
+
+      <div className="w-full max-w-5xl mx-auto pb-24 pt-28">
+
+        {/* Back link */}
         <div className="flex items-center justify-between mb-8">
-          <Link 
-            to="/marketplace" 
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
-          >
+          <Link to="/marketplace" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
             Back to Mentorship
           </Link>
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-sm">
+          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
             <Calendar className="w-3.5 h-3.5" />
             View My Sessions
           </button>
         </div>
 
-        {/* 1. Basic Information Section */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 mb-8 flex flex-col md:flex-row gap-8 items-start">
+        {/* ── 1. Mentor Hero ── */}
+        <section className="bg-card rounded-2xl border border-border p-8 mb-8 flex flex-col md:flex-row gap-8 items-start">
           <div className="shrink-0 flex flex-col items-center">
-            <img 
-              src={MENTOR.avatar} 
-              alt={MENTOR.name} 
-              className="w-32 h-32 rounded-2xl object-cover ring-1 ring-slate-100 shadow-sm mb-4"
+            <img
+              src={MENTOR.avatar}
+              alt={MENTOR.name}
+              className="w-28 h-28 rounded-2xl object-cover ring-1 ring-border mb-3"
             />
             <div className="flex items-center gap-1.5">
               <StarRating rating={MENTOR.rating} />
-              <span className="font-semibold text-slate-800 text-sm ml-1">{MENTOR.rating}</span>
+              <span className="text-sm font-medium text-foreground ml-1">{MENTOR.rating}</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">{MENTOR.reviewsCount} reviews</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{MENTOR.reviewsCount} reviews</p>
           </div>
 
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{MENTOR.name}</h1>
-            <div className="flex items-center gap-2 mt-2 text-sm text-slate-600">
-              <Briefcase className="w-4 h-4 text-slate-400" />
+            <h1 className="text-foreground">{MENTOR.name}</h1>
+            <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
+              <Briefcase className="w-4 h-4" />
               <span>{MENTOR.role}</span>
-              <span className="text-slate-300">&bull;</span>
-              <span className="font-medium text-slate-800">{MENTOR.company}</span>
+              <span className="text-border">·</span>
+              <span className="font-medium text-foreground">{MENTOR.company}</span>
             </div>
 
             <div className="flex flex-wrap gap-2 mt-4">
               {MENTOR.tags.map(tag => (
-                <span key={tag} className="px-2.5 py-1 rounded-md bg-blue-50/50 border border-blue-100 text-blue-700 text-xs font-medium">
+                <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">
                   {tag}
                 </span>
               ))}
             </div>
 
-            <p className="mt-5 text-sm text-slate-600 leading-relaxed max-w-2xl">
-              {MENTOR.bio}
-            </p>
+            <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-2xl">{MENTOR.bio}</p>
 
-            <div className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4">
+            <div className="mt-6 pt-6 border-t border-border grid grid-cols-2 gap-6">
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Experience</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Experience</p>
                 <div className="space-y-3">
                   {MENTOR.experience.map((exp, i) => (
                     <div key={i} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                        <Award className="w-4 h-4 text-slate-400" />
+                      <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
+                        <Award className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-slate-900">{exp.role}</p>
-                        <p className="text-xs text-slate-500">{exp.company} &middot; {exp.years}</p>
+                        <p className="text-xs font-medium text-foreground">{exp.role}</p>
+                        <p className="text-xs text-muted-foreground">{exp.company} · {exp.years}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Verification</p>
-                <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg w-fit border border-emerald-100">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span className="font-medium">Identity & Experience Verified</span>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Verification</p>
+                <div className="flex items-center gap-2 text-sm bg-accent/10 text-accent-foreground px-3 py-2 rounded-lg w-fit border border-accent/20">
+                  <ShieldCheck className="w-4 h-4 text-accent" />
+                  <span className="text-xs font-medium">Identity & Experience Verified</span>
                 </div>
               </div>
             </div>
@@ -257,60 +651,46 @@ export function MentorDetailsPage() {
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
+
+          {/* ── Left: Plans + Reviews + FAQ ── */}
           <div className="lg:col-span-2 space-y-8">
-            {/* 2. Coaching Plans Section */}
+
+            {/* ── 2. Coaching Plans ── */}
             <section>
-              <h2 className="text-xl font-bold text-slate-900 mb-5">Coaching Plans</h2>
+              <h2 className="text-foreground mb-5">Coaching Plans</h2>
               <div className="flex flex-col gap-4">
                 {COACHING_PLANS.map(plan => {
-                  const isSelected = selectedPlan === plan.id;
                   const Icon = plan.icon;
                   return (
-                    <div 
+                    <div
                       key={plan.id}
-                      onClick={() => setSelectedPlan(plan.id)}
-                      className={`relative bg-white rounded-xl border p-5 cursor-pointer transition-all duration-200 hover:shadow-md ${
-                        isSelected 
-                          ? 'border-[hsl(221,91%,60%)] shadow-[0_0_0_1px_hsl(221,91%,60%)]' 
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
+                      className="bg-card rounded-xl border border-border p-5 hover:shadow-sm transition-shadow"
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-4 items-start">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                            isSelected ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)]' : 'bg-slate-100 text-slate-500'
-                          }`}>
-                            <Icon className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h3 className="text-base font-semibold text-slate-900">{plan.name}</h3>
-                            <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-500 font-medium">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5" />
-                                {plan.duration}
-                              </span>
-                              <span className="text-slate-300">&bull;</span>
-                              <span className="flex items-center gap-1">
-                                <Video className="w-3.5 h-3.5" />
-                                1:1 Video Call
-                              </span>
-                            </div>
-                            <p className="mt-3 text-sm text-slate-600 leading-relaxed pr-4">
-                              {plan.description}
-                            </p>
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0 text-muted-foreground p-[0px] mx-[0px] my-[20px]">
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
+                          <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
+
+                          {/* Duration + pricing row */}
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            
+                            
+                            
                           </div>
                         </div>
-                        <div className="shrink-0 flex flex-col items-end">
-                          <p className="text-2xl font-bold text-slate-900">${plan.price}</p>
-                          <button 
-                            className={`mt-4 px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
-                              isSelected
-                                ? 'bg-[hsl(221,91%,60%)] text-white shadow-md shadow-blue-500/20'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
+
+                        {/* CTA */}
+                        <div className="shrink-0 flex flex-col items-end gap-2 pl-2">
+                          
+                          
+                          <button
+                            onClick={() => setActivePlan(plan)}
+                            className="mt-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap mx-[0px] mt-[20px] mb-[0px]"
                           >
-                            Book this Plan
+                            Book
                           </button>
                         </div>
                       </div>
@@ -320,87 +700,76 @@ export function MentorDetailsPage() {
               </div>
             </section>
 
-            {/* 3. Rating & Reviews Section */}
-            <section className="pt-4">
-              <h2 className="text-xl font-bold text-slate-900 mb-5">Ratings & Reviews</h2>
-              
-              <div className="bg-white border border-slate-200 rounded-xl p-6 mb-6">
+            {/* ── 3. Ratings & Reviews ── */}
+            <section>
+              <h2 className="text-foreground mb-5">Ratings & Reviews</h2>
+
+              <div className="bg-card border border-border rounded-xl p-6 mb-5">
                 <div className="flex flex-col md:flex-row gap-8 items-center">
                   <div className="text-center md:w-1/3 shrink-0">
-                    <p className="text-5xl font-bold text-slate-900 tracking-tighter">{RATING_BREAKDOWN.overall}</p>
-                    <div className="flex justify-center my-2">
-                      <StarRating rating={RATING_BREAKDOWN.overall} />
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium">Based on {MENTOR.reviewsCount} reviews</p>
+                    <p className="text-5xl font-medium text-foreground tracking-tight">{RATING_BREAKDOWN.overall}</p>
+                    <div className="flex justify-center my-2"><StarRating rating={RATING_BREAKDOWN.overall} /></div>
+                    <p className="text-xs text-muted-foreground">Based on {MENTOR.reviewsCount} reviews</p>
                   </div>
-                  
-                  <div className="flex-1 w-full space-y-3 pl-0 md:pl-8 md:border-l border-slate-100">
+                  <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
                     {[
                       { label: 'Communication', val: RATING_BREAKDOWN.Communication },
-                      { label: 'Expertise', val: RATING_BREAKDOWN.Expertise },
-                      { label: 'Helpfulness', val: RATING_BREAKDOWN.Helpfulness },
-                      { label: 'Preparation', val: RATING_BREAKDOWN.Preparation },
+                      { label: 'Expertise',      val: RATING_BREAKDOWN.Expertise },
+                      { label: 'Helpfulness',    val: RATING_BREAKDOWN.Helpfulness },
+                      { label: 'Preparation',    val: RATING_BREAKDOWN.Preparation },
                     ].map(item => (
-                      <div key={item.label} className="flex items-center text-sm">
-                        <span className="w-32 text-slate-600">{item.label}</span>
-                        <div className="flex-1 mx-3">
-                          <Progress value={(item.val / 5) * 100} />
-                        </div>
-                        <span className="w-8 text-right font-medium text-slate-700">{item.val.toFixed(1)}</span>
+                      <div key={item.label} className="flex items-center gap-3 text-sm">
+                        <span className="w-28 text-muted-foreground text-xs">{item.label}</span>
+                        <div className="flex-1"><RatingBar value={item.val} /></div>
+                        <span className="w-8 text-right text-xs font-medium text-foreground">{item.val.toFixed(1)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {REVIEWS.map(review => (
-                  <div key={review.id} className="bg-white border border-slate-100 rounded-xl p-5">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex gap-3 items-center">
-                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-sm font-semibold text-slate-600 border border-slate-200 shrink-0">
-                          {review.initials}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{review.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <StarRating rating={review.rating} />
-                            <span className="text-xs text-slate-400">{review.date}</span>
-                          </div>
+                  <div key={review.id} className="bg-card border border-border rounded-xl p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-9 h-9 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+                        {review.initials}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{review.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <StarRating rating={review.rating} />
+                          <span className="text-xs text-muted-foreground">{review.date}</span>
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="flex gap-2 mb-3">
+                    <div className="flex gap-2 mb-2">
                       {review.traits.map(trait => (
-                        <span key={trait} className="px-2 py-0.5 bg-slate-50 text-slate-600 text-[11px] font-medium rounded-md border border-slate-100">
+                        <span key={trait} className="px-2 py-0.5 bg-secondary text-muted-foreground text-xs font-medium rounded-md border border-border">
                           {trait}
                         </span>
                       ))}
                     </div>
-                    
-                    <p className="text-sm text-slate-700 leading-relaxed">
-                      "{review.comment}"
-                    </p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">"{review.comment}"</p>
                   </div>
                 ))}
               </div>
-              <button className="mt-4 w-full py-3 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+              <button className="mt-4 w-full py-3 rounded-lg border border-border bg-card text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
                 Show more reviews
               </button>
             </section>
-            
-            {/* 5. FAQ Section */}
-            <section className="pt-4">
-              <h2 className="text-xl font-bold text-slate-900 mb-5">Frequently Asked Questions</h2>
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+
+            {/* ── 4. FAQ ── */}
+            <section>
+              <h2 className="text-foreground mb-5">Frequently Asked Questions</h2>
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
                 <Accordion type="single" collapsible className="w-full">
                   {FAQS.map((faq, idx) => (
-                    <AccordionItem key={idx} value={`item-${idx}`} className="px-5 border-slate-100 last:border-0">
-                      <AccordionTrigger className="text-sm font-medium text-slate-800 hover:text-blue-600 py-4 hover:no-underline">
+                    <AccordionItem key={idx} value={`item-${idx}`} className="px-5 border-border last:border-0">
+                      <AccordionTrigger className="text-sm font-medium text-foreground hover:text-primary py-4 hover:no-underline">
                         {faq.q}
                       </AccordionTrigger>
-                      <AccordionContent className="text-sm text-slate-600 pb-4 leading-relaxed">
+                      <AccordionContent className="text-sm text-muted-foreground pb-4 leading-relaxed">
                         {faq.a}
                       </AccordionContent>
                     </AccordionItem>
@@ -410,82 +779,64 @@ export function MentorDetailsPage() {
             </section>
           </div>
 
-          {/* Right Sidebar: 4. Available Time Slots Section */}
-          <div className="lg:col-span-1 relative">
-            <div className="sticky top-[calc(var(--top-bar-h)+5rem)]">
-              <div className="bg-white rounded-xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-                <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="text-base font-semibold text-slate-900">Available Time Slots</h3>
-                  <p className="text-xs text-slate-500 mt-1">Times are shown in your local timezone.</p>
-                </div>
-                
-                <div className="p-5">
-                  {/* Pseudo Calendly Widget styling */}
-                  <div className="flex justify-between items-center mb-4">
-                    <button className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-                    <span className="text-sm font-semibold text-slate-800">October 2025</span>
-                    <button className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                  </div>
+          {/* ── Right Sidebar ── */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-[calc(var(--top-bar-h)+5rem)] flex flex-col gap-4">
 
-                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                    {['S','M','T','W','T','F','S'].map((d,i) => (
-                      <div key={i} className="text-[10px] font-semibold text-slate-400 py-1">{d}</div>
+              {/* Instructional helper card */}
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="p-5 flex flex-col items-center text-center gap-4">
+                  <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground mb-1">Ready to book?</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Choose a coaching plan on the left and click <strong>Book</strong>. You'll be guided through selecting your duration, date, and time slot in a few simple steps.
+                    </p>
+                  </div>
+                  <div className="w-full border-t border-border pt-4 flex flex-col gap-2">
+                    {['Choose a plan', 'Pick duration & date', 'Select a time slot', 'Confirm & pay'].map((step, i) => (
+                      <div key={step} className="flex items-center gap-2.5 text-left">
+                        <div className="w-5 h-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
+                          {i + 1}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{step}</span>
+                      </div>
                     ))}
-                    
-                    {/* Dummy calendar days */}
-                    {Array.from({length: 31}).map((_, i) => {
-                      const day = i + 1;
-                      const isAvailable = [14, 15, 17, 21, 22, 28].includes(day);
-                      return (
-                        <div 
-                          key={day} 
-                          className={`aspect-square flex items-center justify-center text-sm rounded-full mx-auto w-8 ${
-                            isAvailable 
-                              ? 'bg-blue-50 text-blue-700 font-semibold cursor-pointer hover:bg-blue-600 hover:text-white transition-colors' 
-                              : 'text-slate-300'
-                          }`}
-                        >
-                          {day}
-                        </div>
-                      )
-                    })}
                   </div>
-
-                  <div className="mt-6 pt-5 border-t border-slate-100">
-                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 text-center">
-                      {selectedPlan ? (
-                        <div className="space-y-3">
-                          <p className="text-sm text-slate-700 font-medium">
-                            Ready to schedule your <span className="font-bold">{COACHING_PLANS.find(p=>p.id===selectedPlan)?.name}</span>?
-                          </p>
-                          <button className="w-full py-2.5 bg-[hsl(221,91%,60%)] text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors shadow-md shadow-blue-500/20">
-                            Continue to Booking
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto mb-3">
-                            <TargetIcon className="w-5 h-5 text-slate-400" />
-                          </div>
-                          <p className="text-sm text-slate-600 font-medium">Choose a coaching plan first to continue with booking.</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
                 </div>
               </div>
-              
-              <div className="mt-4 flex items-start gap-3 p-4 rounded-xl bg-[hsl(221,91%,60%)]/5 border border-[hsl(221,91%,60%)]/10 text-sm text-[hsl(221,91%,60%)]">
-                <ShieldCheck className="w-5 h-5 shrink-0" />
-                <p className="leading-snug">
-                  <span className="font-semibold block mb-0.5">Screna Guarantee</span>
-                  If you're not satisfied with your session, we'll refund your credit or match you with another mentor.
-                </p>
+
+              {/* Screna guarantee */}
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/15 text-sm">
+                <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-foreground mb-0.5">Screna Guarantee</p>
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    If you're not satisfied with your session, we'll refund your credit or match you with another mentor.
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick stats */}
+              <div className="bg-card border border-border rounded-xl p-5 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-lg font-medium text-foreground">127</p>
+                  <p className="text-xs text-muted-foreground">Sessions completed</p>
+                </div>
+                <div>
+                  <p className="text-lg font-medium text-foreground">4.9</p>
+                  <p className="text-xs text-muted-foreground">Avg. rating</p>
+                </div>
+                <div>
+                  <p className="text-lg font-medium text-foreground">98%</p>
+                  <p className="text-xs text-muted-foreground">Repeat booking rate</p>
+                </div>
+                <div>
+                  <p className="text-lg font-medium text-foreground">24h</p>
+                  <p className="text-xs text-muted-foreground">Cancellation window</p>
+                </div>
               </div>
             </div>
           </div>

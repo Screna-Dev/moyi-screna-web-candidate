@@ -402,8 +402,8 @@ export function MentorshipPage() {
   };
 
   return (
-    <DashboardLayout headerTitle="Mentorship">
-      <div className="w-full">
+    <DashboardLayout headerTitle="Mentorship" noSidebar>
+      <div className="max-w-7xl mx-auto px-6 pt-10 pb-16">
 
         {/* ── Demo toggle ─────────────────────────────────────────────────── */}
         <div className="flex justify-end mb-5">
@@ -431,10 +431,10 @@ export function MentorshipPage() {
         {/* ── Page Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between mb-6 gap-4">
           <div>
-            <div className="flex items-center gap-2.5 mb-2">
-              <h2 className="text-[22px] font-semibold text-slate-900" style={{ letterSpacing: '-0.02em' }}>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-[#0F172A] font-bold text-[40px] font-[family-name:var(--font-serif)]">
                 Mentorship
-              </h2>
+              </h1>
               {isMember && (
                 <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 border border-[hsl(221,91%,60%)]/20 text-[11px] font-medium text-[hsl(221,91%,55%)]">
                   <Sparkles className="w-2.5 h-2.5" />
@@ -442,7 +442,7 @@ export function MentorshipPage() {
                 </span>
               )}
             </div>
-            <p className="text-[13.5px] text-slate-500 leading-relaxed">
+            <p className="text-slate-500 max-w-2xl">
               Book 1:1 sessions with industry mentors to get guidance at the right moment.
             </p>
           </div>

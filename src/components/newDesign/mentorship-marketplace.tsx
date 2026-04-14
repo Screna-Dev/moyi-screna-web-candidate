@@ -5,8 +5,8 @@ import {
   X, Check, Shield, Sparkles, ArrowRight, Lock,
   Users, Plus, Minus, BookOpen, Star, MessageSquare,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router';
 import { DashboardLayout } from './dashboard-layout';
+import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
 
 // ─── Color palette helper ──────────────────────────────────────────────────────
@@ -450,7 +450,7 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="w-full space-y-16 pb-24 pt-28 bg-white -mx-6 px-6 -mt-8 bg-[#f9fafb]">
+      <div className="max-w-7xl mx-auto px-6 pt-10 pb-24 space-y-16">
 
         {/* ── Demo toggle ───────────────────────────────────────────────────── */}
         <div className="flex justify-end -mb-6">
@@ -479,15 +479,12 @@ export function MentorshipMarketplacePage() {
         <div className="flex items-start justify-between gap-6">
           <div>
             <div className="flex items-center gap-2.5 mb-2.5">
-              <h1
-                className="font-semibold text-slate-900 text-[40px]"
-                style={{ letterSpacing: '-0.025em' }}
-              >Mentorship Market Space</h1>
+              <h1 className="text-[#0F172A] font-bold text-[40px] font-[family-name:var(--font-serif)]">Mentorship Market Space</h1>
               {isMember && (
                 null
               )}
             </div>
-            <p className="text-[13.5px] text-slate-500 max-w-[520px] leading-relaxed">
+            <p className="text-slate-500 max-w-2xl">
               Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective.
             </p>
           </div>

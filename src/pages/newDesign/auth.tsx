@@ -243,6 +243,7 @@ export function AuthPage() {
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [isNewSignup, setIsNewSignup] = useState(false);
 
   const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
   const { toast } = useToast();
@@ -322,13 +323,15 @@ export function AuthPage() {
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
         if (loggedInUser?.role === 'CANDIDATE') {
-          const stored = (() => { try { return JSON.parse(localStorage.getItem('screnaUserData') || '{}'); } catch { return {}; } })();
-          navigate(stored.resumeUploaded ? '/dashboard' : '/onboarding-resume');
+          const isNewUser = localStorage.getItem('screna_new_user') === '1';
+          localStorage.removeItem('screna_new_user');
+          navigate(isNewUser ? '/onboarding-resume' : '/dashboard');
         }
         if (loggedInUser?.role === 'ADMIN') navigate('/admin');
       } else {
         await signup(email, password, name);
         setRegisteredEmail(email);
+        setIsNewSignup(true);
         setShowVerification(true);
         toast({ title: 'Account created!', description: 'Please check your email for the verification code.' });
       }
@@ -343,6 +346,7 @@ export function AuthPage() {
 
       if (isEmailNotVerified) {
         setRegisteredEmail(email);
+        setIsNewSignup(false);
         setShowVerification(true);
         try { await resendVerificationCode(email); } catch (_) {}
         toast({ title: 'Email not verified', description: "Please check your email for the verification code. We've sent a new one." });
@@ -372,6 +376,7 @@ export function AuthPage() {
     try {
       await verifyEmail(registeredEmail, verificationCode);
       toast({ title: 'Email verified!', description: 'Your account has been verified successfully.' });
+      if (isNewSignup) localStorage.setItem('screna_new_user', '1');
       setShowVerification(false);
       setIsLogin(true);
       setEmail('');

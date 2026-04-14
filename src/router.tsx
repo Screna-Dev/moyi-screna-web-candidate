@@ -110,7 +110,7 @@ export const router = createBrowserRouter([
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
       { path: '/dashboard', element: <DashboardPage /> },
-      { path: '/dashboard/contributions', element: <MyContributionsPage /> },
+      { path: '/contributions', element: <MyContributionsPage /> },
       { path: '/jobs', element: <JobsPage /> },
       { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
