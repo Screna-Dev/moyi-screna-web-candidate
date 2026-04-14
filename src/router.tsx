@@ -51,6 +51,10 @@ import { Footer } from './components/newDesign/home/footer';
 import { OnboardingProcessPage } from './pages/newDesign/onboarding-process';
 import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-overview';
 import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
+import { MentorshipPage } from './components/newDesign/mentorship';
+import { MentorshipMarketplacePage } from './components/newDesign/mentorship-marketplace';
+import { MentorDetailsPage } from './components/newDesign/mentor-details';
+import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -160,6 +164,26 @@ export const router = createBrowserRouter([
         element: <OnboardingUploadResumePage />,
         errorElement: <ErrorBoundary />,
       },
+        {
+          path: '/mentorship',
+          element: <MentorshipPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/marketplace',
+          element: <MentorshipMarketplacePage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/mentor-details',
+          element: <MentorDetailsPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/guest-dashboard',
+          element: <GuestDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
       { path: '*', element: <ErrorBoundary /> },
 
       // admin

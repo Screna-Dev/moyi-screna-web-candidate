@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import logoImg from '../../../assets/Navbar.png';
 import { Button } from '../ui/button';
-import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target } from 'lucide-react';
+import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -50,12 +50,11 @@ export function Navbar({ transparent = false }: NavbarProps) {
     logout();
   };
 
-  const navLinks = [
-    // { name: 'Jobs', path: '/job-board', hasDropdown: true },
-    { name: 'Interview', path: '#interview', hasDropdown: true },
-    { name: 'Community', path: '#community', hasDropdown: true },
+  const mobileLinks = [
+    { name: 'Service', path: '/marketplace' },
+    { name: 'Interview', path: '/mock-interview' },
+    { name: 'Community', path: '/interview-insights' },
     { name: 'Pricing', path: '/pricing' },
-    // { name: 'FAQ', path: '/faq' },
   ];
 
   return (
@@ -85,91 +84,94 @@ export function Navbar({ transparent = false }: NavbarProps) {
 
         {/* ── Center: Nav Links ── */}
         <div className="hidden md:flex items-center gap-7">
-          {navLinks.filter(link => link.name !== 'Pricing').map((link) => (
-            <div key={link.name} className="relative group">
+          {/* Service */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
+              Service
+              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
               <Link
-                to={link.path}
-                className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
+                to="/marketplace"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
               >
-                {link.name}
-                {link.hasDropdown && (
-                  <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-                )}
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                  <Users className="w-[18px] h-[18px]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-slate-900">Mentorship Marketplace</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-semibold">Pro</span>
+                  </div>
+                  <div className="text-xs text-slate-500">Book 1:1 sessions with mentors</div>
+                </div>
               </Link>
-
-              {/* Jobs Dropdown */}
-              {link.name === 'Jobs' && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-                  <Link 
-                    to="/job-board" 
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                      <Briefcase className="w-[18px] h-[18px]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Find Jobs</div>
-                      <div className="text-xs text-slate-500">Browse open positions</div>
-                    </div>
-                  </Link>
-                </div>
-              )}
-
-              {/* Interview Dropdown */}
-              {link.name === 'Interview' && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-                  <Link 
-                    to="/mock-interview" 
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                      <Bot className="w-[18px] h-[18px]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
-                      <div className="text-xs text-slate-500">Practice for popular roles</div>
-                    </div>
-                  </Link>
-                  <Link 
-                    to="/personalized-practice" 
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                      <Target className="w-[18px] h-[18px]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
-                      <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
-                    </div>
-                  </Link>
-                </div>
-              )}
-
-              {/* Community Dropdown */}
-              {link.name === 'Community' && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-                  <Link 
-                    to="/interview-insights" 
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
-                      <div className="text-xs text-slate-500">Real interview experiences</div>
-                    </div>
-                  </Link>
-                </div>
-              )}
             </div>
-          ))}
-        <Link
+          </div>
+
+          {/* Interview */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
+              Interview
+              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+              <Link
+                to="/mock-interview"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                  <Bot className="w-[18px] h-[18px]" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
+                  <div className="text-xs text-slate-500">Practice for popular roles</div>
+                </div>
+              </Link>
+              <Link
+                to="/personalized-practice"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
+                  <Target className="w-[18px] h-[18px]" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
+                  <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
+                </div>
+              </Link>
+            </div>
+          </div>
+
+          {/* Community */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
+              Community
+              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+              <Link
+                to="/interview-insights"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
+                  <div className="text-xs text-slate-500">Real interview experiences</div>
+                </div>
+              </Link>
+            </div>
+          </div>
+
+          {/* Pricing */}
+          <Link
             to="/pricing"
             className="text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
           >
             Pricing
-        </Link>
+          </Link>
         </div>
 
 
@@ -284,10 +286,10 @@ export function Navbar({ transparent = false }: NavbarProps) {
             transition={{ duration: 0.2 }}
             className="mt-2 p-2 bg-white/95 backdrop-blur-2xl border border-slate-100/80 rounded-2xl shadow-xl shadow-slate-900/[0.06] origin-top"
           >
-            {navLinks.map((link) => (
-              <Link 
-                key={link.name} 
-                to={link.path} 
+            {mobileLinks.map((link) => (
+              <Link
+                key={link.name}
+                to={link.path}
                 className="block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
