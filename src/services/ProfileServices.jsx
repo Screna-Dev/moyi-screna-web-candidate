@@ -97,6 +97,21 @@ export const getJobTitleRecommendations = () => {
   return API.get(`${BASE_URL}/job-title-recommendations`);
 };
 
+/**
+ * Save user insights collected during onboarding
+ * @param {Object} insights
+ * @param {string} insights.role - Target role (free text, max 100 chars)
+ * @param {string} insights.goalClarityLevel - KNOW_EXACTLY | DECIDING_BETWEEN | EXPLORING
+ * @param {string[]} insights.companyTypes - FAANG | LARGE | MID_SIZE | STARTUP
+ * @param {string[]} insights.companies - Specific company names (optional)
+ * @param {string} insights.jobSearchStage - JUST_EXPLORING | ACTIVELY_APPLYING | INTERVIEWING | FINAL_ROUNDS | URGENT_ASSISTANCE
+ * @param {string[]} insights.priorityNeeds - AI_INTERVIEW_PRACTICE | STRATEGIC_PLANNING | EXPERT_FEEDBACK | REFERRAL_SUPPORT | NOT_SURE_YET
+ * @returns {Promise} API response
+ */
+export const saveUserInsights = (insights) => {
+  return API.post(`${BASE_URL}/user-insights`, insights);
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile
@@ -110,6 +125,7 @@ const ProfileService = {
   uploadAvatar,
   changePassword,
   getJobTitleRecommendations,
+  saveUserInsights,
 };
 
 export default ProfileService;

@@ -274,9 +274,9 @@ function GlobalTopHeader({
 
         {/* FAQ — flat link */}
         <Link
-          to="/faq"
+          to="/help"
           className={`text-[13px] font-medium transition-colors duration-200 ${
-            isLinkActive('/faq')
+            isLinkActive('/help')
               ? 'text-[hsl(221,91%,60%)]'
               : 'text-slate-500 hover:text-blue-600'
           }`}

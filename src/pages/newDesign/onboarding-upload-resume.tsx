@@ -2,20 +2,20 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight,
-  ArrowRight, ArrowLeft, Sparkles, RefreshCw, Loader2,
+  ArrowRight, ArrowLeft, Sparkles, RefreshCw,
   Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
-  Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target,
+  Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2,
 } from 'lucide-react';
-import { uploadResume, updateProfile } from '@/services/ProfileServices';
+import { uploadResume, updateProfile, saveUserInsights } from '@/services/ProfileServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/newDesign/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/newDesign/ui/select';
-import { Button } from '@/components/newDesign/ui/button';
 import { Label } from '@/components/newDesign/ui/label';
+import { Button } from '@/components/newDesign/ui/button';
 
 // ─── Flow configuration ───────────────────────────────────────────────────────
 
@@ -26,8 +26,7 @@ const FLOW_STEPS = [
   { id: 4, label: 'Companies' },
   { id: 5, label: 'Status' },
   { id: 6, label: 'Help' },
-  { id: 7, label: 'AI Match' },
-  { id: 8, label: 'Your Hub' },
+  { id: 7, label: 'Your Hub' },
 ];
 
 const ROLE_CATEGORIES = [
@@ -101,6 +100,11 @@ const COMPANY_POOL = [
   'Shopify', 'Square', 'Twilio', 'Okta', 'Datadog', 'MongoDB', 'Atlassian',
 ];
 
+// Type-label chips that don't count toward the specific-company limit
+const COMPANY_TYPE_LABELS = new Set([
+  'FAANG / Big tech', 'Large enterprises', 'Mid-sized companies', 'Startups / Small companies',
+]);
+
 const JOB_STATUSES = [
   { id: 'exploring', label: 'Just exploring', sub: "Getting a sense of what's out there", icon: Compass, accent: '' },
   { id: 'applying', label: 'Actively applying', sub: 'Sending applications and waiting to hear back', icon: Send, accent: '' },
@@ -125,6 +129,41 @@ const SYNTHESIS_STEPS = [
   { id: 'plan', label: 'Preparing your personalized starting path', duration: 1100 },
 ];
 
+// ─── Resume → role matching ───────────────────────────────────────────────────
+
+const ROLE_KEYWORDS: { id: string; keywords: string[] }[] = [
+  { id: 'pm',        keywords: ['product manager', 'product owner', 'product management'] },
+  { id: 'apm',       keywords: ['associate product manager', 'apm'] },
+  { id: 'gpm',       keywords: ['growth product manager', 'growth pm'] },
+  { id: 'tpm',       keywords: ['technical product manager', 'technical pm', 'tpm'] },
+  { id: 'mle',       keywords: ['machine learning engineer', 'ml engineer', 'machine learning'] },
+  { id: 'ai-eng',    keywords: ['ai engineer', 'ai/ml engineer', 'deep learning engineer'] },
+  { id: 'ds',        keywords: ['data scientist', 'data science'] },
+  { id: 'da',        keywords: ['data analyst', 'analytics engineer', 'business analyst', 'bi analyst'] },
+  { id: 'fe',        keywords: ['frontend', 'front-end', 'front end', 'ui engineer', 'react developer', 'vue developer'] },
+  { id: 'be',        keywords: ['backend', 'back-end', 'back end', 'api engineer', 'server-side'] },
+  { id: 'fse',       keywords: ['full-stack', 'fullstack', 'full stack'] },
+  { id: 'mobile',    keywords: ['mobile engineer', 'ios engineer', 'android engineer', 'react native'] },
+  { id: 'devops',    keywords: ['devops', 'site reliability', 'sre', 'platform engineer', 'infrastructure'] },
+  { id: 'qa',        keywords: ['qa engineer', 'quality assurance', 'test engineer', 'sdet'] },
+  { id: 'swe',       keywords: ['software engineer', 'software developer', 'swe', 'sde', 'software development engineer'] },
+  { id: 'pd',        keywords: ['product designer', 'ui/ux designer'] },
+  { id: 'uxd',       keywords: ['ux designer', 'user experience designer'] },
+  { id: 'uxr',       keywords: ['ux researcher', 'user researcher'] },
+  { id: 'ba',        keywords: ['business analyst'] },
+  { id: 'consultant', keywords: ['consultant', 'management consultant'] },
+];
+
+function matchRoleFromJobTitles(jobTitles: string[]): string {
+  for (const title of jobTitles) {
+    const lower = title.toLowerCase();
+    for (const { id, keywords } of ROLE_KEYWORDS) {
+      if (keywords.some((k) => lower.includes(k))) return id;
+    }
+  }
+  return '';
+}
+
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
 type UploadState = 'idle' | 'dragging' | 'uploading' | 'success' | 'error';
@@ -133,6 +172,7 @@ type CompanyChoice = 'yes' | 'no' | 'exploring' | null;
 interface FlowData {
   uploadState: UploadState;
   uploadedFile: File | null;
+  resumeJobTitles: string[];
   targetRole: string;
   roleClarity: string;
   companyChoice: CompanyChoice;
@@ -209,9 +249,9 @@ function NavHeader({ stepLabel }: { stepLabel: string }) {
           <div className="w-1.5 h-1.5 rounded-full bg-[hsl(142,70%,45%)]" />
           <span className="text-[11.5px] font-medium text-[hsl(222,12%,55%)]">{stepLabel}</span>
         </div>
-        <a href="/" className="text-[12px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,20%)] transition-colors">
+        <button className="text-[12px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,20%)] transition-colors">
           Save & exit
-        </a>
+        </button>
       </div>
     </header>
   );
@@ -285,112 +325,25 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
   data: FlowData; update: (p: Partial<FlowData>) => void; onNext: () => void; onSkip: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  // Visa dialog state
-  const [showVisaDialog, setShowVisaDialog] = useState(false);
-  const [tempVisaStatus, setTempVisaStatus] = useState('');
-  const [isSavingVisa, setIsSavingVisa] = useState(false);
-  const [pendingResume, setPendingResume] = useState<{
-    structuredResume: any; fileName: string; resumePath?: string;
-  } | null>(null);
 
-  const saveToLocalStorage = (structuredResume: any, fileName: string, resumePath?: string) => {
-    const existing = (() => { try { return JSON.parse(localStorage.getItem('screnaUserData') || '{}'); } catch { return {}; } })();
-    localStorage.setItem('screnaUserData', JSON.stringify({
-      ...existing,
-      resumeFileName: fileName,
-      resumeUploadedAt: new Date().toISOString(),
-      resumeUploaded: true,
-      structuredResume,
-      ...(resumePath ? { resume_path: resumePath } : {}),
-    }));
-  };
-
-  const processFile = useCallback(async (file: File) => {
-    if (file.size > 1 * 1024 * 1024) {
-      setErrorMsg('Please upload a file smaller than 1MB');
-      update({ uploadState: 'error', uploadedFile: file });
-      return;
-    }
-    setErrorMsg(null);
-    update({ uploadState: 'uploading', uploadedFile: file });
-    try {
-      const response = await uploadResume(file);
-      const responseData = response.data?.data ?? response.data;
-      const structuredResume = responseData?.structured_resume;
-      const fileName = responseData?.resumeFileName || file.name;
-      const resumePath = responseData?.resume_path;
-
-      if (structuredResume) {
-        if (!structuredResume.profile?.visa_status) {
-          setPendingResume({ structuredResume, fileName, resumePath });
-          setTempVisaStatus('');
-          setShowVisaDialog(true);
-          update({ uploadState: 'success', uploadedFile: file });
-        } else {
-          await updateProfile(structuredResume);
-          saveToLocalStorage(structuredResume, fileName, resumePath);
-          update({ uploadState: 'success', uploadedFile: file });
-        }
-      } else {
-        saveToLocalStorage(null, fileName, resumePath);
-        update({ uploadState: 'success', uploadedFile: file });
-      }
-    } catch {
-      setErrorMsg('Upload failed. Please try again.');
-      update({ uploadState: 'error', uploadedFile: file });
-    } finally {
-      if (inputRef.current) inputRef.current.value = '';
-    }
+  const processFile = useCallback((file: File) => {
+    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    const ok = ['.pdf', '.doc', '.docx'].includes(ext) && file.size < 5 * 1024 * 1024;
+    if (!ok) { update({ uploadState: 'error', uploadedFile: file }); return; }
+    // Local validation only — API call happens during the analysis screen
+    update({ uploadState: 'success', uploadedFile: file });
   }, [update]);
-
-  const handleVisaStatusSave = async () => {
-    if (!tempVisaStatus || !pendingResume) return;
-    setIsSavingVisa(true);
-    try {
-      const updatedResume = {
-        ...pendingResume.structuredResume,
-        profile: { ...pendingResume.structuredResume.profile, visa_status: tempVisaStatus },
-      };
-      await updateProfile(updatedResume);
-      saveToLocalStorage(updatedResume, pendingResume.fileName, pendingResume.resumePath);
-      setShowVisaDialog(false);
-      setPendingResume(null);
-    } catch {
-      setErrorMsg('Failed to save profile. Please try again.');
-      setShowVisaDialog(false);
-    } finally {
-      setIsSavingVisa(false);
-    }
-  };
-
-  const handleSkipVisaStatus = async () => {
-    if (!pendingResume) return;
-    setIsSavingVisa(true);
-    try {
-      await updateProfile(pendingResume.structuredResume);
-      saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
-      setShowVisaDialog(false);
-      setPendingResume(null);
-    } catch {
-      setErrorMsg('Failed to save profile. Please try again.');
-      setShowVisaDialog(false);
-    } finally {
-      setIsSavingVisa(false);
-    }
-  };
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); if (data.uploadState === 'idle') update({ uploadState: 'dragging' }); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); if (data.uploadState === 'dragging') update({ uploadState: 'idle' }); };
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processFile(f); };
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) processFile(f); };
-  const onClear = () => { setErrorMsg(null); update({ uploadState: 'idle', uploadedFile: null }); };
+  const onClear = () => update({ uploadState: 'idle', uploadedFile: null });
 
   const us = data.uploadState;
   const isDragging = us === 'dragging';
   const isSuccess = us === 'success';
   const isError = us === 'error';
-  const isUploading = us === 'uploading';
 
   return (
     <div className="flex flex-col items-center w-full max-w-[500px] mx-auto">
@@ -436,14 +389,14 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
               {isDragging ? (
                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
                   <p className="text-[16px] font-semibold text-[hsl(221,91%,60%)] mb-1">Release to upload</p>
-                  <p className="text-[12.5px] text-[hsl(221,91%,60%)]/70">PDF or DOCX · Max 1MB</p>
+                  <p className="text-[12.5px] text-[hsl(221,91%,60%)]/70">PDF or DOCX · Max 5MB</p>
                 </motion.div>
               ) : (
                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
                   <p className="text-[15px] font-semibold text-[hsl(222,22%,18%)] mb-1.5" style={{ letterSpacing: '-0.01em' }}>
                     Drag and drop your resume here
                   </p>
-                  <p className="text-[12.5px] text-[hsl(222,12%,55%)] mb-5">PDF or DOCX · Max 1MB</p>
+                  <p className="text-[12.5px] text-[hsl(222,12%,55%)] mb-5">PDF or DOCX · Max 5MB</p>
                   <button onClick={() => inputRef.current?.click()}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[13px] font-semibold hover:bg-[hsl(221,91%,55%)] shadow-[0_3px_12px_rgba(67,118,248,0.28)] hover:-translate-y-px transition-all"
                   >
@@ -455,20 +408,7 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
             </motion.div>
           )}
 
-          {us === 'uploading' && data.uploadedFile && (
-            <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex flex-col items-center px-8 py-11 text-center"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-[hsl(221,91%,60%)]/10 border border-[hsl(221,91%,60%)]/20 flex items-center justify-center mb-4">
-                <Loader2 className="w-5 h-5 text-[hsl(221,91%,60%)] animate-spin" />
-              </div>
-              <p className="text-[13.5px] font-semibold text-[hsl(222,22%,18%)] mb-0.5 max-w-[240px] truncate">{data.uploadedFile.name}</p>
-              <p className="text-[11.5px] text-[hsl(222,12%,60%)] mb-2">{formatFileSize(data.uploadedFile.size)}</p>
-              <p className="text-[11.5px] text-[hsl(221,91%,60%)]">Uploading…</p>
-            </motion.div>
-          )}
-
-          {us === 'success' && data.uploadedFile && (
+          {isSuccess && data.uploadedFile && (
             <motion.div key="success" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
               className="flex flex-col items-center px-8 py-9 text-center"
@@ -483,12 +423,9 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
                 />
               </motion.div>
               <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-                <p className="text-[14.5px] font-semibold text-[hsl(222,22%,15%)] mb-1">Resume uploaded</p>
+                <p className="text-[14.5px] font-semibold text-[hsl(222,22%,15%)] mb-1">Resume ready</p>
                 <p className="text-[11.5px] text-[hsl(222,12%,58%)] mb-3 max-w-[240px] truncate">{data.uploadedFile.name} · {formatFileSize(data.uploadedFile.size)}</p>
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 mb-3">
-                  <Sparkles className="w-3 h-3 text-[hsl(221,91%,60%)]" />
-                  <span className="text-[11px] font-medium text-[hsl(221,91%,55%)]">Screna is scanning your resume…</span>
-                </div>
+                <p className="text-[11.5px] text-[hsl(222,12%,55%)] mb-3">AI will analyze it on the next step.</p>
                 <button onClick={onClear} className="flex items-center gap-1.5 mx-auto text-[11px] text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors">
                   <RefreshCw className="w-3 h-3" /> Replace file
                 </button>
@@ -496,15 +433,15 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
             </motion.div>
           )}
 
-          {us === 'error' && (
+          {isError && (
             <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center px-8 py-11 text-center"
             >
               <div className="w-12 h-12 rounded-2xl bg-[hsl(0,60%,50%)]/10 border border-[hsl(0,60%,50%)]/20 flex items-center justify-center mb-4">
                 <AlertCircle className="w-5 h-5 text-[hsl(0,60%,50%)]" />
               </div>
-              <p className="text-[13.5px] font-semibold text-[hsl(222,22%,18%)] mb-1">Couldn't upload that file</p>
-              <p className="text-[12px] text-[hsl(222,12%,55%)] mb-4 max-w-[260px]">{errorMsg || 'Please use a PDF or DOCX under 1MB.'}</p>
+              <p className="text-[13.5px] font-semibold text-[hsl(222,22%,18%)] mb-1">Can't use that file</p>
+              <p className="text-[12px] text-[hsl(222,12%,55%)] mb-4 max-w-[260px]">Please use a PDF or DOCX under 5MB.</p>
               <button onClick={onClear} className="px-4 py-2 rounded-lg border border-[hsl(220,16%,90%)] text-[12px] font-medium text-[hsl(222,22%,20%)] hover:border-[hsl(221,91%,60%)]/50 transition-all">
                 Try again
               </button>
@@ -540,54 +477,18 @@ function Screen2UploadResume({ data, update, onNext, onSkip }: {
       <div className="w-full mt-4 flex items-start gap-2.5 px-4 py-3 rounded-xl bg-[hsl(220,20%,99%)] border border-[hsl(220,16%,92%)]">
         <Shield className="w-3.5 h-3.5 text-[hsl(222,12%,60%)] mt-px shrink-0" />
         <p className="text-[11.5px] text-[hsl(222,12%,55%)] leading-relaxed">
-          <span className="font-medium text-[hsl(222,22%,25%)]">Uploading your resume helps Screna</span> generate more relevant practice sets. Your file is private and never shared.
+          <span className="font-medium text-[hsl(222,22%,25%)]">Your resume helps Screna</span> generate more relevant practice sets. Your file is private and never shared.
         </p>
       </div>
 
       <div className="w-full mt-6">
         <NavButtons
-          onNext={onNext} nextLabel="Continue to Target Role"
-          nextDisabled={us !== 'success' || showVisaDialog}
+          onNext={onNext} nextLabel="Continue"
+          nextDisabled={us !== 'success'}
           skipLabel="Skip for now" onSkip={onSkip}
           showBack={false}
         />
       </div>
-
-      {/* Visa Status Dialog */}
-      <Dialog open={showVisaDialog} onOpenChange={setShowVisaDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Set Your Work Authorization</DialogTitle>
-            <DialogDescription>
-              Please select your current work authorization status to help employers understand your eligibility.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Work Authorization Status</Label>
-            <Select value={tempVisaStatus} onValueChange={setTempVisaStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select your status" />
-              </SelectTrigger>
-              <SelectContent>
-                {VISA_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleSkipVisaStatus} disabled={isSavingVisa}>
-              Skip
-            </Button>
-            <Button onClick={handleVisaStatusSave} disabled={!tempVisaStatus || isSavingVisa}>
-              {isSavingVisa ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -599,6 +500,18 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
 }) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const [autoFilledFromResume, setAutoFilledFromResume] = useState(false);
+
+  // Auto-select role from resume job titles on first mount if not already set
+  useEffect(() => {
+    if (!data.targetRole && data.resumeJobTitles.length > 0) {
+      const matched = matchRoleFromJobTitles(data.resumeJobTitles);
+      if (matched) {
+        update({ targetRole: matched });
+        setAutoFilledFromResume(true);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedRole = useMemo(() => ALL_ROLES.find(r => r.id === data.targetRole), [data.targetRole]);
 
@@ -638,9 +551,14 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
                 <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
               </div>
               <span className="flex-1 text-[13px] font-semibold text-[hsl(221,91%,50%)]">{selectedRole.label}</span>
+              {autoFilledFromResume && (
+                <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
+                  Pre-filled from resume
+                </span>
+              )}
               <span className="text-[10.5px] text-[hsl(221,91%,60%)]/60 font-medium">{selectedRole.category}</span>
               <button
-                onClick={() => { update({ targetRole: '', roleClarity: '' }); searchRef.current?.focus(); }}
+                onClick={() => { update({ targetRole: '', roleClarity: '' }); setAutoFilledFromResume(false); searchRef.current?.focus(); }}
                 className="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-[hsl(221,91%,60%)]/60 hover:text-[hsl(221,91%,50%)] hover:bg-[hsl(221,91%,60%)]/15 transition-all"
               >
                 <X className="w-3 h-3" />
@@ -795,11 +713,20 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
     } else setSuggestions([]);
   };
 
+  const specificCount = data.targetCompanies.filter(c => !COMPANY_TYPE_LABELS.has(c)).length;
+
   const addCompany = (name: string) => {
-    if (data.targetCompanies.length >= 5 || data.targetCompanies.includes(name)) return;
-    update({ targetCompanies: [...data.targetCompanies, name] });
+    const trimmed = name.trim();
+    if (!trimmed || specificCount >= 5 || data.targetCompanies.includes(trimmed)) return;
+    update({ targetCompanies: [...data.targetCompanies, trimmed] });
     setQuery(''); setSuggestions([]);
     inputRef.current?.focus();
+  };
+
+  // Whether the typed query can be added as a custom entry
+  const canAddCustom = (q: string) => {
+    const t = q.trim();
+    return t.length > 0 && !data.targetCompanies.includes(t) && !suggestions.some(s => s.toLowerCase() === t.toLowerCase());
   };
 
   const removeCompany = (name: string) => {
@@ -822,8 +749,7 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
       <div className="flex gap-2 w-full mb-6">
         {[
           { id: 'yes', label: 'Yes', sub: 'I have companies in mind' },
-          { id: 'no', label: 'Not yet', sub: 'Open to options' },
-          { id: 'exploring', label: 'Still exploring', sub: 'Figuring it out' },
+          { id: 'no', label: 'Open to all', sub: 'Open to options' },
         ].map(({ id, label, sub }) => {
           const sel = data.companyChoice === id;
           return (
@@ -871,18 +797,14 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
                   { label: 'FAANG / Big tech',           Icon: Target    },
                 ] as { label: string; Icon: React.ElementType }[]).map(({ label, Icon }) => {
                   const sel = data.targetCompanies.includes(label);
-                  const atLimit = data.targetCompanies.length >= 5 && !sel;
                   return (
                     <button
                       key={label}
                       type="button"
-                      disabled={atLimit}
                       onClick={() => sel ? removeCompany(label) : addCompany(label)}
                       className={`flex items-center gap-2.5 px-3.5 py-3 rounded-xl border text-left transition-all duration-150 ${
                         sel
                           ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/6 shadow-[0_0_0_1px_hsl(221,91%,60%)]'
-                          : atLimit
-                          ? 'border-[hsl(220,16%,92%)] bg-[hsl(220,18%,99%)] opacity-40 cursor-not-allowed'
                           : 'border-[hsl(220,16%,90%)] bg-white hover:border-[hsl(221,91%,60%)]/40 hover:bg-[hsl(221,91%,60%)]/4'
                       }`}
                     >
@@ -903,7 +825,7 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
               {/* ── Divider ── */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-[hsl(220,16%,93%)]" />
-                <span className="text-[10px] font-semibold text-[hsl(222,12%,62%)] uppercase tracking-[0.6px]">or by name</span>
+                <span className="text-[10px] font-semibold text-[hsl(222,12%,62%)] uppercase tracking-[0.6px]">Have specific companies in mind? Add them for better personalization</span>
                 <div className="flex-1 h-px bg-[hsl(220,16%,93%)]" />
               </div>
 
@@ -911,13 +833,11 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
               <p className="text-[12.5px] font-semibold text-[hsl(222,22%,18%)] mb-3">
                 Specific companies
                 <span className="ml-2 text-[11px] font-normal text-[hsl(222,12%,58%)]">
-                  {data.targetCompanies.filter(c => !['Large enterprises','Mid-sized companies','Startups / Small companies','FAANG / Big tech'].includes(c)).length} added
-                  <span className="mx-1 text-[hsl(220,16%,82%)]">·</span>
-                  {data.targetCompanies.length}/5 total
+                  {specificCount} / 5 added
                 </span>
               </p>
 
-              {data.targetCompanies.filter(c => !['Large enterprises','Mid-sized companies','Startups / Small companies','FAANG / Big tech'].includes(c)).length > 0 && (
+              {data.targetCompanies.filter(c => !COMPANY_TYPE_LABELS.has(c)).length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   {data.targetCompanies
                     .filter(c => !['Large enterprises','Mid-sized companies','Startups / Small companies','FAANG / Big tech'].includes(c))
@@ -933,7 +853,7 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
               )}
 
               {/* ── Search input ── */}
-              {data.targetCompanies.length < 5 && (
+              {specificCount < 5 && (
                 <div className="relative">
                   <div className="flex items-center gap-2 h-10 px-3.5 rounded-xl border border-[hsl(220,16%,88%)] bg-white focus-within:border-[hsl(221,91%,60%)] focus-within:shadow-[0_0_0_3px_hsl(221,91%,60%,0.12)] transition-all">
                     <Search className="w-3.5 h-3.5 text-[hsl(222,12%,60%)] shrink-0" />
@@ -941,14 +861,29 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
                       ref={inputRef}
                       value={query}
                       onChange={e => onQueryChange(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && suggestions[0]) addCompany(suggestions[0]); }}
-                      placeholder="Search company name…"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (suggestions[0]) addCompany(suggestions[0]);
+                          else if (canAddCustom(query)) addCompany(query);
+                        }
+                      }}
+                      placeholder="Search or type a company name…"
                       className="flex-1 text-[13px] text-[hsl(222,22%,18%)] placeholder:text-[hsl(222,12%,65%)] bg-transparent outline-none"
                     />
+                    {query && canAddCustom(query) && suggestions.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => addCompany(query)}
+                        className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)] text-[11.5px] font-semibold hover:bg-[hsl(221,91%,60%)]/18 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    )}
                   </div>
 
                   <AnimatePresence>
-                    {suggestions.length > 0 && (
+                    {(suggestions.length > 0 || (query.trim() && canAddCustom(query))) && (
                       <motion.div
                         initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
                         className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-[0_8px_24px_rgba(0,0,0,0.1)] z-20 overflow-hidden"
@@ -964,6 +899,21 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
                             <span className="ml-auto text-[11px] text-[hsl(222,12%,60%)]">Add +</span>
                           </button>
                         ))}
+                        {canAddCustom(query) && (
+                          <button
+                            type="button"
+                            onClick={() => addCompany(query)}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[hsl(221,91%,60%)]/6 transition-colors ${suggestions.length > 0 ? 'border-t border-[hsl(220,16%,94%)]' : ''}`}
+                          >
+                            <div className="w-6 h-6 rounded-md bg-[hsl(221,91%,60%)]/12 flex items-center justify-center shrink-0">
+                              <Plus className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
+                            </div>
+                            <span className="text-[13px] font-medium text-[hsl(222,22%,18%)]">
+                              Add &ldquo;<span className="text-[hsl(221,91%,55%)]">{query.trim()}</span>&rdquo;
+                            </span>
+                            <span className="ml-auto text-[11px] text-[hsl(221,91%,60%)]">Custom</span>
+                          </button>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1133,189 +1083,316 @@ function Screen6HelpPreference({ data, update, onNext, onBack }: {
   );
 }
 
-// ─── Screen 7: AI Synthesis ───────────────────────────────────────────────────
 
-type SynthesisState = 'pending' | 'running' | 'done';
 
-function Screen7AISynthesis({ data, onDone }: { data: FlowData; onDone: () => void }) {
-  const [stepStates, setStepStates] = useState<SynthesisState[]>(
-    SYNTHESIS_STEPS.map(() => 'pending')
-  );
-  const [allDone, setAllDone] = useState(false);
+// ─── Analysis Transition Screen ───────────────────────────────────────────────
 
-  const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label || 'Software Engineer';
-  const statusLabel = JOB_STATUSES.find(s => s.id === data.jobStatus)?.label || 'Actively applying';
-  const helpLabel = HELP_OPTIONS.find(h => h.id === data.helpPreference)?.label || 'Practice interviews with AI';
+interface AnalysisResult {
+  jobTitles: string[];
+  needsVisa: boolean;
+  structuredResume: any;
+  fileName: string;
+}
 
+function ScreenAnalysisTransition({
+  data,
+  onComplete,
+}: {
+  data: FlowData;
+  onComplete: (result: AnalysisResult) => void;
+}) {
+  const [completedCount, setCompletedCount] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
+  const [animDone, setAnimDone] = useState(false);
+  const resultRef = useRef<AnalysisResult | null>(null);
+  const apiDoneRef = useRef(false);
+
+  // Run animation timers
   useEffect(() => {
-    let elapsed = 400;
+    let cumulative = 300;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    SYNTHESIS_STEPS.forEach((step, i) => {
-      // Start running
-      timers.push(setTimeout(() => {
-        setStepStates(prev => prev.map((s, idx) => idx === i ? 'running' : s));
-      }, elapsed));
-      elapsed += step.duration;
-
-      // Mark done
-      timers.push(setTimeout(() => {
-        setStepStates(prev => prev.map((s, idx) => idx === i ? 'done' : s));
-      }, elapsed));
-      elapsed += 180;
+    SYNTHESIS_STEPS.forEach((s, idx) => {
+      cumulative += s.duration;
+      const t = setTimeout(() => {
+        setCompletedCount(idx + 1);
+        setProgress(Math.round(((idx + 1) / SYNTHESIS_STEPS.length) * 100));
+        if (idx >= 1) setShowProfile(true);
+        if (idx === SYNTHESIS_STEPS.length - 1) {
+          setTimeout(() => setAnimDone(true), 350);
+        }
+      }, cumulative);
+      timers.push(t);
     });
 
-    // All done
-    timers.push(setTimeout(() => setAllDone(true), elapsed + 300));
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  const totalDone = stepStates.filter(s => s === 'done').length;
-  const progressPct = (totalDone / SYNTHESIS_STEPS.length) * 100;
+  // Fire real API call on mount
+  useEffect(() => {
+    const file = data.uploadedFile;
+    if (!file) {
+      // No file (user skipped) — mark api done with empty result
+      apiDoneRef.current = true;
+      resultRef.current = { jobTitles: [], needsVisa: false, structuredResume: null, fileName: '' };
+      return;
+    }
+
+    const saveToLocalStorage = (structuredResume: any, fileName: string) => {
+      const existing = (() => {
+        try { return JSON.parse(localStorage.getItem('screnaUserData') || '{}'); } catch { return {}; }
+      })();
+      localStorage.setItem('screnaUserData', JSON.stringify({
+        ...existing,
+        resumeFileName: fileName,
+        resumeUploadedAt: new Date().toISOString(),
+        resumeUploaded: true,
+        structuredResume,
+      }));
+    };
+
+    uploadResume(file).then(res => {
+      const structuredResume = res.data?.data?.structured_resume ?? res.data?.structured_resume ?? res.data;
+      const jobTitles: string[] = structuredResume?.job_titles ?? [];
+      const visaStatus = structuredResume?.profile?.visa_status;
+      // Save to localStorage now (visa status may be updated later)
+      saveToLocalStorage(structuredResume, file.name);
+      resultRef.current = {
+        jobTitles,
+        needsVisa: !visaStatus,
+        structuredResume,
+        fileName: file.name,
+      };
+    }).catch(() => {
+      // API failed — proceed without resume data
+      resultRef.current = { jobTitles: [], needsVisa: false, structuredResume: null, fileName: file.name };
+    }).finally(() => {
+      apiDoneRef.current = true;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show CTA when BOTH animation and API are done
+  const [showCTA, setShowCTA] = useState(false);
+  useEffect(() => {
+    if (!animDone) return;
+    // Poll until API finishes (usually already done by the time animation ends)
+    const check = () => {
+      if (apiDoneRef.current) {
+        setShowCTA(true);
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+  }, [animDone]);
+
+  const handleCTA = () => {
+    onComplete(resultRef.current ?? { jobTitles: [], needsVisa: false, structuredResume: null, fileName: '' });
+  };
+
+  const activeIdx = completedCount < SYNTHESIS_STEPS.length ? completedCount : -1;
 
   return (
-    <div className="flex flex-col items-center w-full max-w-[480px] mx-auto">
-      {/* Orb */}
-      <div className="relative mb-8 mt-2">
-        <div className="w-[88px] h-[88px] relative">
+    <div className="w-full max-w-[540px] flex flex-col items-center gap-7 py-2">
+
+      {/* ── Visual focus: pulsing Screna logo ── */}
+      <div className="relative flex items-center justify-center w-24 h-24">
+        <motion.div
+          className="absolute inset-0 rounded-full"
+          style={{ background: 'hsl(221 91% 60% / 0.08)' }}
+          animate={{ scale: [1, 1.55, 1], opacity: [0.7, 0, 0.7] }}
+          transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          className="absolute inset-3 rounded-full"
+          style={{ background: 'hsl(221 91% 60% / 0.12)' }}
+          animate={{ scale: [1, 1.35, 1], opacity: [0.9, 0.1, 0.9] }}
+          transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', delay: 0.35 }}
+        />
+        <div className="relative w-14 h-14 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shadow-[0_0_28px_rgba(67,118,248,0.45)]">
           <motion.div
-            className="absolute inset-0 rounded-full bg-[hsl(221,91%,60%)]/14"
-            animate={{ scale: [1, 1.15, 1], opacity: [0.7, 0.4, 0.7] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <motion.div
-            className="absolute inset-3 rounded-full bg-[hsl(221,91%,60%)]/22"
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-14 h-14 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shadow-[0_0_32px_rgba(67,118,248,0.45)]">
-              <Brain className="w-6 h-6 text-white" />
-            </div>
-          </div>
-          {/* Orbiting dots */}
-          {[0, 1, 2].map(i => (
-            <motion.div key={i}
-              className="absolute w-2 h-2 rounded-full bg-[hsl(221,91%,60%)] top-1/2 left-1/2"
-              style={{ marginLeft: -4, marginTop: -4 }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 3 + i * 0.8, repeat: Infinity, ease: 'linear', delay: i * 0.9 }}
-            >
-              <div className="absolute" style={{ transform: `translateX(${38 + i * 4}px)` }}>
-                <div className="w-2 h-2 rounded-full bg-[hsl(221,91%,60%)] opacity-80" />
-              </div>
-            </motion.div>
-          ))}
+            animate={{ rotate: [0, 360] }}
+            transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+          >
+            <Zap className="w-6 h-6 text-white" />
+          </motion.div>
         </div>
       </div>
 
-      <div className="text-center mb-8">
-        <h1 className="text-[26px] font-bold text-[hsl(222,22%,12%)] mb-2" style={{ letterSpacing: '-0.025em' }}>
-          {allDone ? 'Your path is ready' : 'Personalizing your starting path'}
-        </h1>
-        <p className="text-[14px] text-[hsl(222,12%,50%)] max-w-[380px] mx-auto leading-relaxed">
-          {allDone
-            ? "We've built a starting point tailored to your background, stage, and goals."
-            : "We're analyzing your background and goals to prepare the most relevant recommendations."}
+      {/* ── Title + subtitle ── */}
+      <div className="text-center">
+        <h2 className="text-[21px] font-semibold text-[hsl(222,22%,15%)] mb-2" style={{ letterSpacing: '-0.02em' }}>
+          Your path is taking shape
+        </h2>
+        <p className="text-[13.5px] text-[hsl(222,12%,55%)] leading-relaxed max-w-[400px]">
+          We're analyzing your resume and background to personalize your next steps — from role suggestions to practice depth and job-search guidance.
         </p>
       </div>
 
-      {/* Progress bar */}
-      <div className="w-full mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-[11.5px] font-medium text-[hsl(222,12%,55%)]">
-            {allDone ? 'Complete' : 'Analyzing…'}
-          </span>
-          <span className="text-[11.5px] font-bold text-[hsl(221,91%,60%)]">{Math.round(progressPct)}%</span>
-        </div>
-        <div className="h-1.5 bg-[hsl(220,18%,94%)] rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-[hsl(221,91%,60%)] to-[hsl(221,91%,72%)] rounded-full"
-            animate={{ width: `${allDone ? 100 : progressPct}%` }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-          />
-        </div>
-      </div>
-
-      {/* Synthesis step list */}
-      <div className="w-full flex flex-col gap-2.5 mb-8">
-        {SYNTHESIS_STEPS.map(({ id, label }, i) => {
-          const state = stepStates[i];
+      {/* ── Analysis checklist ── */}
+      <div className="w-full bg-white border border-[hsl(220,16%,92%)] rounded-xl p-5 flex flex-col gap-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+        {SYNTHESIS_STEPS.map((s, idx) => {
+          const isCompleted = idx < completedCount;
+          const isActive = idx === activeIdx;
           return (
-            <motion.div key={id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: state === 'pending' ? 0.35 : 1, x: 0 }}
-              transition={{ delay: i * 0.06, duration: 0.25 }}
-              className="flex items-center gap-3"
-            >
+            <div key={s.id} className="flex items-center gap-3">
               <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
-                state === 'done' ? 'bg-[hsl(142,70%,45%)]'
-                : state === 'running' ? 'bg-[hsl(221,91%,60%)]'
-                : 'bg-[hsl(220,18%,94%)]'
+                isCompleted
+                  ? 'bg-[hsl(142,70%,45%)]'
+                  : isActive
+                  ? 'bg-[hsl(221,91%,60%)]'
+                  : 'bg-[hsl(220,16%,94%)]'
               }`}>
-                {state === 'done'
-                  ? <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-                  : state === 'running'
-                  ? <motion.div className="w-1.5 h-1.5 rounded-full bg-white" animate={{ scale: [1, 0.6, 1] }} transition={{ duration: 0.7, repeat: Infinity }} />
-                  : null
-                }
+                {isCompleted ? (
+                  <Check className="w-3 h-3 text-white" strokeWidth={2.5} />
+                ) : isActive ? (
+                  <motion.div
+                    className="w-2 h-2 rounded-full bg-white"
+                    animate={{ scale: [1, 0.55, 1] }}
+                    transition={{ duration: 0.75, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                ) : null}
               </div>
-              <span className={`text-[13px] transition-all duration-300 ${
-                state === 'done' ? 'text-[hsl(222,22%,30%)] font-medium'
-                : state === 'running' ? 'text-[hsl(221,91%,55%)] font-semibold'
-                : 'text-[hsl(222,12%,65%)]'
-              }`}>{label}</span>
-            </motion.div>
+              <span className={`text-[13px] transition-colors duration-300 ${
+                isCompleted
+                  ? 'text-[hsl(142,70%,38%)]'
+                  : isActive
+                  ? 'text-[hsl(221,91%,48%)] font-medium'
+                  : 'text-[hsl(222,12%,65%)]'
+              }`}>
+                {s.label}
+              </span>
+            </div>
           );
         })}
+
+        {/* Progress bar */}
+        <div className="mt-1 pt-3.5 border-t border-[hsl(220,16%,94%)]">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] text-[hsl(222,12%,65%)]">
+              {showCTA ? 'Analysis complete' : 'Analyzing your profile…'}
+            </span>
+            <span className="text-[11px] font-semibold text-[hsl(221,91%,55%)]">{progress}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-[hsl(220,16%,93%)] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-[hsl(221,91%,60%)] rounded-full"
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Profile snapshot — fades in when done */}
+      {/* ── Profile snapshot preview ── */}
       <AnimatePresence>
-        {allDone && (
+        {showProfile && (
           <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
-            className="w-full mb-7"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+            className="w-full border border-[hsl(221,91%,60%)]/25 rounded-xl p-4"
+            style={{ background: 'hsl(221 91% 60% / 0.05)' }}
           >
-            <div className="p-5 rounded-2xl bg-[hsl(220,20%,99%)] border border-[hsl(220,16%,92%)] shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />
-                <span className="text-[11px] font-bold text-[hsl(221,91%,55%)] uppercase tracking-wider">Your profile snapshot</span>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Target Role', value: data.targetRole ? roleLabel : 'Exploring' },
-                  { label: 'Search Stage', value: data.jobStatus ? statusLabel : 'Getting started' },
-                  { label: 'Focus Area', value: data.helpPreference ? helpLabel.split(' ').slice(0, 3).join(' ') + '…' : 'To be defined' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex flex-col gap-1">
-                    <span className="text-[9.5px] font-semibold text-[hsl(222,12%,58%)] uppercase tracking-wider">{label}</span>
-                    <span className="text-[12.5px] font-semibold text-[hsl(222,22%,18%)] leading-snug">{value}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
+              <span className="text-[11px] font-semibold text-[hsl(221,91%,50%)] uppercase tracking-wider">
+                Your profile snapshot
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: 'Target role', value: data.targetRole || 'Exploring' },
+                { label: 'Search stage', value: data.jobStatus || 'Calibrating…' },
+                { label: 'Focus area', value: data.helpPreference || 'Preparing…' },
+              ].map(item => (
+                <div key={item.label} className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-[hsl(222,12%,60%)] uppercase tracking-wider">{item.label}</span>
+                  <span className="text-[12.5px] font-medium text-[hsl(222,22%,20%)]">{item.value}</span>
+                </div>
+              ))}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* CTA */}
+      {/* ── CTA ── */}
       <AnimatePresence>
-        {allDone && (
+        {showCTA ? (
           <motion.button
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.35, delay: 0.15 }}
-            onClick={onDone}
-            className="w-full h-12 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[14px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_18px_rgba(67,118,248,0.32)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_24px_rgba(67,118,248,0.42)] hover:-translate-y-[1px] transition-all duration-200"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+            onClick={handleCTA}
+            className="w-full h-12 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.28)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.38)] hover:-translate-y-[1px] transition-all duration-200"
           >
-            View your personalized hub
+            Continue to role setup
             <ArrowRight className="w-4 h-4" />
           </motion.button>
-        )}
+        ) : animDone ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center gap-2 text-[13px] text-[hsl(222,12%,55%)]"
+          >
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Finishing analysis…
+          </motion.div>
+        ) : null}
       </AnimatePresence>
     </div>
   );
+}
+
+// ─── Field mappings for POST /profile/user-insights ──────────────────────────
+
+function toGoalClarityLevel(roleClarity: string): string {
+  if (roleClarity === 'exact') return 'KNOW_EXACTLY';
+  if (roleClarity === 'few') return 'DECIDING_BETWEEN';
+  return 'EXPLORING';
+}
+
+const COMPANY_TYPE_LABEL_MAP: Record<string, string> = {
+  'FAANG / Big tech':          'FAANG',
+  'Large enterprises':         'LARGE',
+  'Mid-sized companies':       'MID_SIZE',
+  'Startups / Small companies':'STARTUP',
+};
+
+const TYPE_LABEL_SET = new Set(Object.keys(COMPANY_TYPE_LABEL_MAP));
+
+function toCompanyTypes(targetCompanies: string[]): string[] {
+  return targetCompanies.map((c) => COMPANY_TYPE_LABEL_MAP[c]).filter(Boolean);
+}
+
+function toSpecificCompanies(targetCompanies: string[]): string[] {
+  return targetCompanies.filter(c => !TYPE_LABEL_SET.has(c));
+}
+
+function toJobSearchStage(jobStatus: string): string {
+  const map: Record<string, string> = {
+    exploring: 'JUST_EXPLORING',
+    applying:  'ACTIVELY_APPLYING',
+    interviews:'INTERVIEWING',
+    final:     'INTERVIEWING',
+    urgent:    'URGENT_ASSISTANCE',
+  };
+  return map[jobStatus] ?? 'JUST_EXPLORING';
+}
+
+function toPriorityNeeds(helpPreference: string): string[] {
+  const helpMap: Record<string, string> = {
+    ai:       'AI_INTERVIEW_PRACTICE',
+    plan:     'STRATEGIC_PLANNING',
+    expert:   'EXPERT_FEEDBACK',
+    referrals:'REFERRALS_AND_JOB_SEARCH',
+    unsure:   'NOT_SURE_YET',
+  };
+  const ids = helpPreference.split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return ['NOT_SURE_YET'];
+  const mapped = [...new Set(ids.map(id => helpMap[id]).filter(Boolean))];
+  return mapped.length ? mapped : ['NOT_SURE_YET'];
 }
 
 // ─── Main flow controller ─────────────────────────────────────────────────────
@@ -1326,7 +1403,6 @@ const stepLabels: Record<number, string> = {
   4: 'Target companies',
   5: 'Job search status',
   6: 'Help preference',
-  7: 'AI synthesis',
 };
 
 const variants = {
@@ -1338,12 +1414,19 @@ const variants = {
 export function OnboardingUploadResumePage() {
   const [step, setStep] = useState(2);
   const [direction, setDirection] = useState(1);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [data, setData] = useState<FlowData>({
-    uploadState: 'idle', uploadedFile: null,
+    uploadState: 'idle', uploadedFile: null, resumeJobTitles: [],
     targetRole: '', roleClarity: '',
     companyChoice: null, targetCompanies: [],
     jobStatus: '', helpPreference: '',
   });
+
+  // Visa dialog state — lives here so it overlays the analysis screen
+  const [showVisaDialog, setShowVisaDialog] = useState(false);
+  const [tempVisaStatus, setTempVisaStatus] = useState('');
+  const [isSavingVisa, setIsSavingVisa] = useState(false);
+  const [pendingVisa, setPendingVisa] = useState<{ structuredResume: any; fileName: string } | null>(null);
 
   const update = useCallback((partial: Partial<FlowData>) => {
     setData(prev => ({ ...prev, ...partial }));
@@ -1353,18 +1436,69 @@ export function OnboardingUploadResumePage() {
     setDirection(next > step ? 1 : -1);
     setStep(next);
   };
-  const goNext = () => goTo(Math.min(step + 1, 7));
+  const goNext = () => {
+    if (step === 2) { setShowAnalysis(true); return; }
+    if (step === 6) {
+      const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
+      if (roleLabel) {
+        saveUserInsights({
+          role: roleLabel,
+          goalClarityLevel: toGoalClarityLevel(data.roleClarity),
+          companyTypes: toCompanyTypes(data.targetCompanies),
+          companies: toSpecificCompanies(data.targetCompanies),
+          jobSearchStage: toJobSearchStage(data.jobStatus),
+          priorityNeeds: toPriorityNeeds(data.helpPreference),
+        }).catch(() => {/* silent — non-blocking */});
+      }
+      window.location.href = '/dashboard';
+      return;
+    }
+    goTo(Math.min(step + 1, 6));
+  };
   const goBack = () => goTo(Math.max(step - 1, 2));
 
+  const proceedToStep3 = () => { setShowAnalysis(false); setDirection(1); setStep(3); };
+
+  const handleAnalysisComplete = (result: AnalysisResult) => {
+    update({ resumeJobTitles: result.jobTitles });
+    if (result.needsVisa && result.structuredResume) {
+      setPendingVisa({ structuredResume: result.structuredResume, fileName: result.fileName });
+      setShowVisaDialog(true);
+    } else {
+      proceedToStep3();
+    }
+  };
+
+  const handleVisaSave = async () => {
+    if (!tempVisaStatus || !pendingVisa) return;
+    setIsSavingVisa(true);
+    try {
+      await updateProfile({ visa_status: tempVisaStatus });
+    } catch { /* non-blocking */ } finally {
+      setIsSavingVisa(false);
+    }
+    setShowVisaDialog(false);
+    setPendingVisa(null);
+    setTempVisaStatus('');
+    proceedToStep3();
+  };
+
+  const handleVisaSkip = () => {
+    setShowVisaDialog(false);
+    setPendingVisa(null);
+    setTempVisaStatus('');
+    proceedToStep3();
+  };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
-      <NavHeader stepLabel={stepLabels[step] || ''} />
+    <div className="min-h-screen bg-white flex flex-col">
+      <NavHeader stepLabel={showAnalysis ? 'Analyzing resume' : stepLabels[step] || ''} />
       <ProgressHeader currentStep={step} />
 
       <main className="flex-1 flex flex-col items-center px-6 pt-10 pb-16 overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
-            key={step}
+            key={showAnalysis ? 'analysis' : step}
             custom={direction}
             variants={variants}
             initial="enter"
@@ -1373,12 +1507,12 @@ export function OnboardingUploadResumePage() {
             transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
             className="w-full flex flex-col items-center"
           >
-            {step === 2 && <Screen2UploadResume data={data} update={update} onNext={goNext} onSkip={goNext} />}
-            {step === 3 && <Screen3TargetRole data={data} update={update} onNext={goNext} onBack={goBack} />}
-            {step === 4 && <Screen4TargetCompanies data={data} update={update} onNext={goNext} onBack={goBack} />}
-            {step === 5 && <Screen5JobSearchStatus data={data} update={update} onNext={goNext} onBack={goBack} />}
-            {step === 6 && <Screen6HelpPreference data={data} update={update} onNext={goNext} onBack={goBack} />}
-            {step === 7 && <Screen7AISynthesis data={data} onDone={() => window.location.href = '/dashboard'} />}
+            {showAnalysis && <ScreenAnalysisTransition data={data} onComplete={handleAnalysisComplete} />}
+            {!showAnalysis && step === 2 && <Screen2UploadResume data={data} update={update} onNext={goNext} onSkip={goNext} />}
+            {!showAnalysis && step === 3 && <Screen3TargetRole data={data} update={update} onNext={goNext} onBack={goBack} />}
+            {!showAnalysis && step === 4 && <Screen4TargetCompanies data={data} update={update} onNext={goNext} onBack={goBack} />}
+            {!showAnalysis && step === 5 && <Screen5JobSearchStatus data={data} update={update} onNext={goNext} onBack={goBack} />}
+            {!showAnalysis && step === 6 && <Screen6HelpPreference data={data} update={update} onNext={goNext} onBack={goBack} />}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -1386,6 +1520,45 @@ export function OnboardingUploadResumePage() {
       <footer className="py-4 px-8 border-t border-[hsl(220,16%,94%)] flex items-center justify-center shrink-0">
         <p className="text-[11px] text-[hsl(222,12%,65%)]">© 2026 Screna · Privacy Policy · Terms</p>
       </footer>
+
+      {/* Visa Status Dialog — shown over the analysis screen when resume has no visa_status */}
+      <Dialog open={showVisaDialog} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>One more thing</DialogTitle>
+            <DialogDescription>
+              We couldn't detect your visa status from your resume. Please select it so we can tailor your results.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-sm font-medium mb-2 block">Visa Status</Label>
+            <Select value={tempVisaStatus} onValueChange={setTempVisaStatus}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select your visa status" />
+              </SelectTrigger>
+              <SelectContent>
+                {VISA_STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button onClick={handleVisaSave} disabled={!tempVisaStatus || isSavingVisa} className="w-full">
+              {isSavingVisa ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save &amp; Continue
+            </Button>
+            <button
+              type="button"
+              onClick={handleVisaSkip}
+              disabled={isSavingVisa}
+              className="w-full py-2 text-[13px] text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors"
+            >
+              Skip for now
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

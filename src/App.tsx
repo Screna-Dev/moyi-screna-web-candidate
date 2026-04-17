@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useLayoutEffect } from "react";
 import { Toaster } from "@/components/newDesign/ui/toaster";
 import { Toaster as Sonner } from "@/components/newDesign/ui/sonner";
 import { TooltipProvider } from "@/components/newDesign/ui/tooltip";
@@ -18,11 +18,20 @@ const LoadingFallback = () => (
 );
 
 function TopBarWrapper() {
-  useEffect(() => {
+  const isLoggedIn =
+    !!localStorage.getItem('authToken') || !!sessionStorage.getItem('authToken');
+
+  useLayoutEffect(() => {
+    if (isLoggedIn) {
+      document.documentElement.style.setProperty('--topbar-h', '0px');
+      return;
+    }
     const el = document.getElementById('top-bar');
-    const h = el ? el.getBoundingClientRect().height : 36;
+    const h = el ? el.getBoundingClientRect().height : 0;
     document.documentElement.style.setProperty('--topbar-h', `${h}px`);
-  }, []);
+  }, [isLoggedIn]);
+
+  if (isLoggedIn) return null;
   return <TopBar />;
 }
 

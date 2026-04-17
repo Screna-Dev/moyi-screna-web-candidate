@@ -97,9 +97,10 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Only redirect to onboarding for genuinely new users (API signals isNewUser or equivalent)
+        // Redirect to onboarding if backend signals new user OR if user came from the sign-up page
         const isNewUser = !!(data.data?.isNewUser || data.isNewUser);
-        navigate(isNewUser ? '/onboarding-resume' : '/dashboard');
+        const fromSignup = searchParams.get('state') === 'signup';
+        navigate(isNewUser || fromSignup ? '/onboarding-resume' : '/dashboard');
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);

@@ -292,11 +292,11 @@ export function BillingPage() {
                 <>
                   <div className="text-4xl font-bold mb-1">{permanentBalance}</div>
                   <p className="text-sm text-slate-400">Permanent credits</p>
-                  {recurringBalance > 0 && (
+                  {/* {recurringBalance > 0 && (
                     <p className="text-xs text-slate-500 mt-1">
                       + {recurringBalance} recurring credits
                     </p>
-                  )}
+                  )} */}
                 </>
               )}
             </div>

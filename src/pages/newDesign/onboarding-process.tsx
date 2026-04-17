@@ -434,9 +434,11 @@ function StepTargetRole({
 
       {/* Target role */}
       <div className="w-full mb-6">
-        <p className="text-[13px] font-semibold text-[hsl(222,22%,15%)] mb-3">
-          Target role <span className="text-[hsl(221,91%,60%)]">*</span>
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[13px] font-semibold text-[hsl(222,22%,15%)]">
+            Target role <span className="text-[hsl(221,91%,60%)]">*</span>
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           {TARGET_ROLES.map(({ id, label, icon: Icon }) => {
             const isSelected = profile.targetRole === id;
@@ -867,6 +869,7 @@ function StepCommandCenter({ profile }: { profile: UserProfile }) {
 
 export function OnboardingProcessPage() {
   const [currentStep, setCurrentStep] = useState(1);
+
   const [profile, setProfile] = useState<UserProfile>({
     careerStage: '',
     primaryGoal: '',
@@ -884,7 +887,7 @@ export function OnboardingProcessPage() {
   const goBack = () => setCurrentStep((s) => Math.max(s - 1, 1));
 
   return (
-    <div className="min-h-screen bg-white flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Top nav */}
       <header className="flex items-center justify-between px-8 py-4 border-b border-[hsl(220,16%,94%)]">
         <a href="/" className="flex items-center gap-2">

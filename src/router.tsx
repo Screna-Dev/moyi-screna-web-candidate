@@ -39,6 +39,7 @@ import { ContactPage } from './pages/newDesign/contact';
 import Admin from './pages/Admin';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
+import AdminRoute from './components/AdminRoute';
 import { HelpCenterPage } from './pages/newDesign/help-center';
 import { CookieBanner } from './components/newDesign/cookie-banner';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
@@ -186,10 +187,10 @@ export const router = createBrowserRouter([
         },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin
-      { path: '/admin', element: <Admin /> },
-      { path: '/redeem-code',element: <AdminRedeemCodes />},
-      { path: '/audit-logs', element: <AdminAuditLogs /> },
+      // admin — only accessible to users with role ADMIN
+      { path: '/admin', element: <AdminRoute><Admin /></AdminRoute> },
+      { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
+      { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
     ],
   },
 ]);

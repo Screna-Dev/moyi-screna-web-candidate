@@ -224,7 +224,7 @@ function PrivacyContent() {
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
-  const [isLogin, setIsLogin] = useState(false);
+  const [isLogin, setIsLogin] = useState(searchParams.get('login') === 'true');
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -278,7 +278,7 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle();
+      loginWithGoogle(!isLogin);
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');
