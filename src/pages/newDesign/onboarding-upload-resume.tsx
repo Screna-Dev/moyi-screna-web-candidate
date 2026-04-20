@@ -688,7 +688,7 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
       </AnimatePresence>
 
       <div className="w-full mt-6">
-        <NavButtons onBack={onBack} onNext={onNext} nextLabel="Continue to Companies" nextDisabled={!canProceed} skipLabel="Skip" onSkip={onNext} />
+        <NavButtons onBack={onBack} onNext={onNext} nextLabel="Continue to Companies" nextDisabled={!canProceed} />
       </div>
     </div>
   );
@@ -928,7 +928,7 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
         )}
       </AnimatePresence>
 
-      <NavButtons onBack={onBack} onNext={onNext} nextLabel="Continue to Status" nextDisabled={!canProceed} skipLabel="Skip" onSkip={onNext} />
+      <NavButtons onBack={onBack} onNext={onNext} nextLabel="Continue to Status" nextDisabled={!canProceed} />
     </div>
   );
 }

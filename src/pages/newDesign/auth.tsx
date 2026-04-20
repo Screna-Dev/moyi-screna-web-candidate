@@ -233,6 +233,7 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   // Policy modal state
@@ -268,6 +269,7 @@ export function AuthPage() {
   const handleToggle = () => {
     setIsLogin(!isLogin);
     setError('');
+    setFieldErrors({});
     setPassword('');
     setPasswordErrors([]);
     setShowVerification(false);
@@ -294,6 +296,7 @@ export function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
     if (!email || !password) {
       setError('Please fill in all required fields');
@@ -350,6 +353,26 @@ export function AuthPage() {
         setShowVerification(true);
         try { await resendVerificationCode(email); } catch (_) {}
         toast({ title: 'Email not verified', description: "Please check your email for the verification code. We've sent a new one." });
+        return;
+      }
+
+      // Backend field-level validation errors — show inline, suppress generic banner/toast
+      const isValidationError =
+        err.response?.data?.error === 'VALIDATION_ERROR' ||
+        err.response?.data?.errorCode === 'VALIDATION_ERROR' ||
+        err.response?.data?.message === 'Validation Error';
+      if (isValidationError) {
+        const rawErrors = err.response?.data?.errors;
+        const mapped: Record<string, string> = {};
+        if (Array.isArray(rawErrors)) {
+          rawErrors.forEach((e: { property?: string; field?: string; message?: string; constraints?: Record<string, string> }) => {
+            const key = e.property || e.field;
+            if (key) mapped[key] = e.message || Object.values(e.constraints || {})[0] || 'Invalid value';
+          });
+        } else if (rawErrors && typeof rawErrors === 'object') {
+          Object.entries(rawErrors).forEach(([k, v]) => { mapped[k] = String(v); });
+        }
+        setFieldErrors(mapped);
         return;
       }
 
@@ -587,15 +610,20 @@ export function AuthPage() {
                     <label htmlFor="name" className="block text-sm text-slate-700 font-medium">
                       Full Name
                     </label>
+                    {fieldErrors.name && (
+                      <p className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />{fieldErrors.name}
+                      </p>
+                    )}
                     <Input
                       id="name"
                       type="text"
                       placeholder="John Doe"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => { setName(e.target.value); if (fieldErrors.name) setFieldErrors(p => ({ ...p, name: '' })); }}
                       autoComplete="name"
                       disabled={isLoading || isGoogleLoading}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
+                      className={`w-full px-4 py-2.5 bg-slate-50 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400 ${fieldErrors.name ? 'border border-red-400' : 'border border-slate-200'}`}
                     />
                   </div>
                 )}
@@ -605,15 +633,20 @@ export function AuthPage() {
                   <label htmlFor="email" className="block text-sm text-slate-700 font-medium">
                     Email
                   </label>
+                  {fieldErrors.email && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />{fieldErrors.email}
+                    </p>
+                  )}
                   <Input
                     id="email"
                     type="email"
                     placeholder="e.g. alex@screna.ai"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors(p => ({ ...p, email: '' })); }}
                     autoComplete="email"
                     disabled={isLoading || isGoogleLoading}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
+                    className={`w-full px-4 py-2.5 bg-slate-50 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400 ${fieldErrors.email ? 'border border-red-400' : 'border border-slate-200'}`}
                   />
                 </div>
 
@@ -622,17 +655,22 @@ export function AuthPage() {
                   <label htmlFor="password" className="block text-sm text-slate-700 font-medium">
                     Password
                   </label>
+                  {fieldErrors.password && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />{fieldErrors.password}
+                    </p>
+                  )}
                   <Input
                     id="password"
                     type="password"
                     placeholder="••••••••"
                     value={password}
-                    onChange={handlePasswordChange}
+                    onChange={(e) => { handlePasswordChange(e); if (fieldErrors.password) setFieldErrors(p => ({ ...p, password: '' })); }}
                     autoComplete={isLogin ? 'current-password' : 'new-password'}
                     disabled={isLoading || isGoogleLoading}
                     className={`w-full px-4 py-2.5 bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400 ${
-                      !isLogin && passwordErrors.length > 0 && password.length > 0
-                        ? 'border-red-300'
+                      fieldErrors.password || (!isLogin && passwordErrors.length > 0 && password.length > 0)
+                        ? 'border-red-400'
                         : 'border-slate-200'
                     }`}
                   />
