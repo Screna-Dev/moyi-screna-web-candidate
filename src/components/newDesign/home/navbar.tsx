@@ -253,7 +253,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
             </>
           ) : (
             <>
-              <Link to="/auth">
+              <Link to="/auth?login=true">
                 <button className="text-[14px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200 px-1">
                   Log in
                 </button>
@@ -298,7 +298,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
             ))}
             {!isLoggedIn && (
               <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
-                <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
+                <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
                   <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     Log in
                   </button>

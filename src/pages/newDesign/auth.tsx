@@ -224,6 +224,7 @@ function PrivacyContent() {
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || '';
   const [isLogin, setIsLogin] = useState(searchParams.get('login') === 'true');
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
@@ -252,7 +253,7 @@ export function AuthPage() {
 
   const validatePassword = (pwd: string) => {
     const errors: string[] = [];
-    if (pwd.length < 8) errors.push("At least 8 characters long");
+    if (pwd.length < 8 || pwd.length > 16) errors.push("Between 8 and 16 characters");
     if (!/[A-Z]/.test(pwd)) errors.push("Contains uppercase letter");
     if (!/[a-z]/.test(pwd)) errors.push("Contains lowercase letter");
     if (!/\d/.test(pwd)) errors.push("Contains number");
@@ -328,7 +329,7 @@ export function AuthPage() {
         if (loggedInUser?.role === 'CANDIDATE') {
           const isNewUser = localStorage.getItem('screna_new_user') === '1';
           localStorage.removeItem('screna_new_user');
-          navigate(isNewUser ? '/onboarding-resume' : '/dashboard');
+          navigate(returnTo || (isNewUser ? '/onboarding-resume' : '/dashboard'));
         }
         if (loggedInUser?.role === 'ADMIN') navigate('/admin');
       } else {
@@ -362,7 +363,8 @@ export function AuthPage() {
         err.response?.data?.errorCode === 'VALIDATION_ERROR' ||
         err.response?.data?.message === 'Validation Error';
       if (isValidationError) {
-        const rawErrors = err.response?.data?.errors;
+        // Backend puts field errors in `data` array: [{ property, message }]
+        const rawErrors = err.response?.data?.data;
         const mapped: Record<string, string> = {};
         if (Array.isArray(rawErrors)) {
           rawErrors.forEach((e: { property?: string; field?: string; message?: string; constraints?: Record<string, string> }) => {
@@ -679,7 +681,7 @@ export function AuthPage() {
                   {!isLogin && password.length > 0 && (
                     <div className="mt-2 space-y-1.5 p-3 bg-slate-50 rounded-lg border border-slate-100">
                       <p className="text-xs font-medium text-slate-500 mb-2">Password requirements:</p>
-                      <PasswordRequirement met={password.length >= 8} text="At least 8 characters long" />
+                      <PasswordRequirement met={password.length >= 8 && password.length <= 16} text="Between 8 and 16 characters" />
                       <PasswordRequirement met={/[A-Z]/.test(password)} text="Contains uppercase letter" />
                       <PasswordRequirement met={/[a-z]/.test(password)} text="Contains lowercase letter" />
                       <PasswordRequirement met={/\d/.test(password)} text="Contains number" />

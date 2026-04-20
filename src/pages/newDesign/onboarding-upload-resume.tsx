@@ -122,11 +122,11 @@ const HELP_OPTIONS = [
 ];
 
 const SYNTHESIS_STEPS = [
-  { id: 'resume', label: 'Parsing your resume and work history', duration: 900 },
-  { id: 'role', label: 'Identifying role fit and skill alignment', duration: 800 },
-  { id: 'companies', label: 'Calibrating against target company patterns', duration: 1000 },
-  { id: 'stage', label: 'Adjusting depth for your job search stage', duration: 700 },
-  { id: 'plan', label: 'Preparing your personalized starting path', duration: 1100 },
+  { id: 'resume', label: 'Parsing your resume and work history', duration: 3000 },
+  { id: 'role', label: 'Identifying role fit and skill alignment', duration: 2500 },
+  { id: 'companies', label: 'Calibrating against target company patterns', duration: 3500 },
+  { id: 'stage', label: 'Adjusting depth for your job search stage', duration: 2500 },
+  { id: 'plan', label: 'Preparing your personalized starting path', duration: 4000 },
 ];
 
 // ─── Resume → role matching ───────────────────────────────────────────────────
@@ -1107,6 +1107,7 @@ function ScreenAnalysisTransition({
   const [animDone, setAnimDone] = useState(false);
   const resultRef = useRef<AnalysisResult | null>(null);
   const apiDoneRef = useRef(false);
+  const apiCalledRef = useRef(false);
 
   // Run animation timers
   useEffect(() => {
@@ -1129,8 +1130,11 @@ function ScreenAnalysisTransition({
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  // Fire real API call on mount
+  // Fire real API call on mount — guard against React StrictMode double-invoke
   useEffect(() => {
+    if (apiCalledRef.current) return;
+    apiCalledRef.current = true;
+
     const file = data.uploadedFile;
     if (!file) {
       // No file (user skipped) — mark api done with empty result
@@ -1448,7 +1452,14 @@ export function OnboardingUploadResumePage() {
           companies: toSpecificCompanies(data.targetCompanies),
           jobSearchStage: toJobSearchStage(data.jobStatus),
           priorityNeeds: toPriorityNeeds(data.helpPreference),
-        }).catch(() => {/* silent — non-blocking */});
+        }).then((res) => {
+          console.log('[saveUserInsights] ✅ success', res?.data);
+        }).catch((err) => {
+          console.error('[saveUserInsights] ❌ failed', err?.response?.data ?? err);
+        }).finally(() => {
+          window.location.href = '/dashboard';
+        });
+        return;
       }
       window.location.href = '/dashboard';
       return;
@@ -1508,7 +1519,7 @@ export function OnboardingUploadResumePage() {
             className="w-full flex flex-col items-center"
           >
             {showAnalysis && <ScreenAnalysisTransition data={data} onComplete={handleAnalysisComplete} />}
-            {!showAnalysis && step === 2 && <Screen2UploadResume data={data} update={update} onNext={goNext} onSkip={goNext} />}
+            {!showAnalysis && step === 2 && <Screen2UploadResume data={data} update={update} onNext={goNext} onSkip={proceedToStep3} />}
             {!showAnalysis && step === 3 && <Screen3TargetRole data={data} update={update} onNext={goNext} onBack={goBack} />}
             {!showAnalysis && step === 4 && <Screen4TargetCompanies data={data} update={update} onNext={goNext} onBack={goBack} />}
             {!showAnalysis && step === 5 && <Screen5JobSearchStatus data={data} update={update} onNext={goNext} onBack={goBack} />}

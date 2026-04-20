@@ -1,7 +1,8 @@
 import { Lock, ArrowRight, Shield, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-export function GoalPage() {
+export function GoalPage({ returnTo }: { returnTo?: string } = {}) {
+  const qs = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : '';
   return (
     <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col items-center justify-center py-16 px-4">
       <div className="w-full max-w-[680px] flex flex-col items-center relative">
@@ -146,11 +147,11 @@ export function GoalPage() {
             SECTION 4 — CTA Group
         =========================================== */}
         <div className="mt-9 w-full flex flex-col items-center gap-3">
-          <Link to="/auth?login=true" className="w-full max-w-[280px] h-11 flex items-center justify-center rounded-lg bg-[hsl(221,91%,60%)] text-white text-[14px] font-medium hover:bg-[hsl(221,91%,55%)] transition-colors">
+          <Link to={`/auth?login=true${qs}`} className="w-full max-w-[280px] h-11 flex items-center justify-center rounded-lg bg-[hsl(221,91%,60%)] text-white text-[14px] font-medium hover:bg-[hsl(221,91%,55%)] transition-colors">
             Sign in
           </Link>
 
-          <Link to="/auth" className="w-full max-w-[280px] h-11 flex items-center justify-center rounded-lg bg-transparent border border-[hsl(220,16%,90%)] text-[hsl(222,22%,15%)] text-[14px] font-medium hover:bg-white hover:border-[hsl(220,16%,80%)] transition-colors">
+          <Link to={returnTo ? `/auth?returnTo=${encodeURIComponent(returnTo)}` : '/auth'} className="w-full max-w-[280px] h-11 flex items-center justify-center rounded-lg bg-transparent border border-[hsl(220,16%,90%)] text-[hsl(222,22%,15%)] text-[14px] font-medium hover:bg-white hover:border-[hsl(220,16%,80%)] transition-colors">
             Create account
           </Link>
 

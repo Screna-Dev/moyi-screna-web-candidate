@@ -923,7 +923,7 @@ export function PersonalizedPracticePage() {
       <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
         <Navbar />
         <main className="flex-1 flex items-center justify-center pt-[90px]">
-          <GoalPage />
+          <GoalPage returnTo="/personalized-practice" />
         </main>
         <Footer />
       </div>
