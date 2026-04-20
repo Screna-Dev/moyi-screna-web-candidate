@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight,
   ArrowRight, ArrowLeft, Sparkles, RefreshCw,
   Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
-  Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2,
+  Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { uploadResume, updateProfile, saveUserInsights } from '@/services/ProfileServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
@@ -717,8 +718,13 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
 
   const addCompany = (name: string) => {
     const trimmed = name.trim();
-    if (!trimmed || specificCount >= 5 || data.targetCompanies.includes(trimmed)) return;
-    update({ targetCompanies: [...data.targetCompanies, trimmed] });
+    if (!trimmed) return;
+    update((prev) => {
+      if (prev.targetCompanies.includes(trimmed)) return {};
+      const prevSpecificCount = prev.targetCompanies.filter(c => !COMPANY_TYPE_LABELS.has(c)).length;
+      if (!COMPANY_TYPE_LABELS.has(trimmed) && prevSpecificCount >= 5) return {};
+      return { targetCompanies: [...prev.targetCompanies, trimmed] };
+    });
     setQuery(''); setSuggestions([]);
     inputRef.current?.focus();
   };
@@ -730,7 +736,7 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
   };
 
   const removeCompany = (name: string) => {
-    update({ targetCompanies: data.targetCompanies.filter(c => c !== name) });
+    update((prev) => ({ targetCompanies: prev.targetCompanies.filter(c => c !== name) }));
   };
 
   const canProceed = data.companyChoice !== null;
@@ -1085,6 +1091,78 @@ function Screen6HelpPreference({ data, update, onNext, onBack }: {
 
 
 
+// ─── Screen 7: Your Hub ───────────────────────────────────────────────────────
+
+function Screen7YourHub({ data, onNext }: {
+  data: FlowData; onNext: () => void;
+}) {
+  const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
+  const statusLabel = JOB_STATUSES.find(s => s.id === data.jobStatus)?.label ?? data.jobStatus;
+  const helpIds = data.helpPreference.split(',').filter(Boolean);
+  const helpLabel = helpIds.length
+    ? helpIds.map(id => HELP_OPTIONS.find(h => h.id === id)?.label ?? id).join(', ')
+    : '—';
+
+  const items = [
+    { label: 'Target role', value: roleLabel || 'Exploring' },
+    { label: 'Search stage', value: statusLabel || '—' },
+    { label: 'What would help', value: helpLabel },
+  ];
+
+  return (
+    <div className="flex flex-col items-center w-full max-w-[500px] mx-auto">
+      <ScreenEyebrow step={7} total={8} />
+
+      {/* Icon */}
+      <div className="relative w-16 h-16 mb-6">
+        <motion.div
+          className="absolute inset-0 rounded-full"
+          style={{ background: 'hsl(221 91% 60% / 0.12)' }}
+          animate={{ scale: [1, 1.4, 1], opacity: [0.8, 0, 0.8] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <div className="relative w-16 h-16 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shadow-[0_6px_24px_rgba(67,118,248,0.35)]">
+          <Sparkles className="w-7 h-7 text-white" />
+        </div>
+      </div>
+
+      <h1 className="text-[28px] font-bold text-[hsl(222,22%,12%)] mb-2 text-center" style={{ letterSpacing: '-0.025em', lineHeight: 1.15 }}>
+        Your hub is ready
+      </h1>
+      <p className="text-[14px] text-[hsl(222,12%,50%)] text-center mb-8 max-w-[360px] leading-relaxed">
+        We've set up a personalized practice path based on your profile. Here's what we're working with:
+      </p>
+
+      {/* Summary card */}
+      <div className="w-full bg-white border border-[hsl(220,16%,92%)] rounded-2xl p-6 shadow-[0_1px_6px_rgba(0,0,0,0.04)] mb-8">
+        <div className="flex flex-col gap-4">
+          {items.map(({ label, value }) => (
+            <div key={label} className="flex items-start justify-between gap-4">
+              <span className="text-[12px] text-[hsl(222,12%,55%)] font-medium shrink-0 mt-0.5">{label}</span>
+              <span className="text-[13px] font-semibold text-[hsl(222,22%,15%)] text-right leading-snug">{value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 pt-4 border-t border-[hsl(220,16%,94%)] flex items-center gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5 text-[hsl(142,70%,45%)] shrink-0" />
+          <p className="text-[11.5px] text-[hsl(222,12%,55%)] leading-relaxed">
+            Your practice questions, plan, and recommendations are personalized to this profile.
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={onNext}
+        className="w-full h-12 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.26)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.36)] hover:-translate-y-[1px] transition-all duration-200"
+      >
+        Go to my dashboard
+        <ArrowRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+
 // ─── Analysis Transition Screen ───────────────────────────────────────────────
 
 interface AnalysisResult {
@@ -1407,6 +1485,7 @@ const stepLabels: Record<number, string> = {
   4: 'Target companies',
   5: 'Job search status',
   6: 'Help preference',
+  7: 'Your hub',
 };
 
 const variants = {
@@ -1416,6 +1495,8 @@ const variants = {
 };
 
 export function OnboardingUploadResumePage() {
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || '';
   const [step, setStep] = useState(2);
   const [direction, setDirection] = useState(1);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -1432,8 +1513,11 @@ export function OnboardingUploadResumePage() {
   const [isSavingVisa, setIsSavingVisa] = useState(false);
   const [pendingVisa, setPendingVisa] = useState<{ structuredResume: any; fileName: string } | null>(null);
 
-  const update = useCallback((partial: Partial<FlowData>) => {
-    setData(prev => ({ ...prev, ...partial }));
+  const update = useCallback((partial: Partial<FlowData> | ((prev: FlowData) => Partial<FlowData>)) => {
+    setData(prev => {
+      const p = typeof partial === 'function' ? partial(prev) : partial;
+      return { ...prev, ...p };
+    });
   }, []);
 
   const goTo = (next: number) => {
@@ -1443,6 +1527,7 @@ export function OnboardingUploadResumePage() {
   const goNext = () => {
     if (step === 2) { setShowAnalysis(true); return; }
     if (step === 6) {
+      // Fire-and-forget save, then move to step 7
       const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
       if (roleLabel) {
         saveUserInsights({
@@ -1456,15 +1541,16 @@ export function OnboardingUploadResumePage() {
           console.log('[saveUserInsights] ✅ success', res?.data);
         }).catch((err) => {
           console.error('[saveUserInsights] ❌ failed', err?.response?.data ?? err);
-        }).finally(() => {
-          window.location.href = '/dashboard';
         });
-        return;
       }
-      window.location.href = '/dashboard';
+      goTo(7);
       return;
     }
-    goTo(Math.min(step + 1, 6));
+    if (step === 7) {
+      window.location.href = returnTo || '/dashboard';
+      return;
+    }
+    goTo(Math.min(step + 1, 7));
   };
   const goBack = () => goTo(Math.max(step - 1, 2));
 
@@ -1524,6 +1610,7 @@ export function OnboardingUploadResumePage() {
             {!showAnalysis && step === 4 && <Screen4TargetCompanies data={data} update={update} onNext={goNext} onBack={goBack} />}
             {!showAnalysis && step === 5 && <Screen5JobSearchStatus data={data} update={update} onNext={goNext} onBack={goBack} />}
             {!showAnalysis && step === 6 && <Screen6HelpPreference data={data} update={update} onNext={goNext} onBack={goBack} />}
+            {!showAnalysis && step === 7 && <Screen7YourHub data={data} onNext={goNext} />}
           </motion.div>
         </AnimatePresence>
       </main>

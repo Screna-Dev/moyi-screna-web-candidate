@@ -281,7 +281,7 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle(!isLogin);
+      loginWithGoogle(!isLogin, returnTo);
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');
@@ -400,6 +400,22 @@ export function AuthPage() {
     setError('');
     try {
       await verifyEmail(registeredEmail, verificationCode);
+      // Auto-login after verification and go directly to onboarding
+      try {
+        const loggedInUser = await login(registeredEmail, password, false);
+        localStorage.removeItem('screna_new_user');
+        if (loggedInUser?.role === 'CANDIDATE') {
+          const onboardingDest = '/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '');
+          navigate(onboardingDest);
+          return;
+        }
+        if (loggedInUser?.role === 'ADMIN') {
+          navigate('/admin');
+          return;
+        }
+      } catch (_) {
+        // Auto-login failed — fall back to login form
+      }
       toast({ title: 'Email verified!', description: 'Your account has been verified successfully.' });
       if (isNewSignup) localStorage.setItem('screna_new_user', '1');
       setShowVerification(false);

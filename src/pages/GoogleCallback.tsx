@@ -97,10 +97,24 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Redirect to onboarding if backend signals new user OR if user came from the sign-up page
+        // Parse state — supports legacy plain string ('signup'/'login') and new JSON format
+        const rawState = searchParams.get('state') || '';
+        let fromSignup = false;
+        let returnTo = '';
+        try {
+          const parsed = JSON.parse(decodeURIComponent(rawState));
+          fromSignup = parsed.flow === 'signup';
+          returnTo = parsed.returnTo || '';
+        } catch {
+          fromSignup = rawState === 'signup';
+        }
+
         const isNewUser = !!(data.data?.isNewUser || data.isNewUser);
-        const fromSignup = searchParams.get('state') === 'signup';
-        navigate(isNewUser || fromSignup ? '/onboarding-resume' : '/dashboard');
+        if (isNewUser || fromSignup) {
+          navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
+        } else {
+          navigate(returnTo || '/dashboard');
+        }
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);

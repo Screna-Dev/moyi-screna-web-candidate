@@ -21,7 +21,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
   signup: (email: string, password: string, name: string) => Promise<void>;
-  loginWithGoogle: (fromSignup?: boolean) => void;
+  loginWithGoogle: (fromSignup?: boolean, returnTo?: string) => void;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
@@ -214,12 +214,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await API.post('/auth/resend-confirmation-code', { email });
   };
 
-  const loginWithGoogle = (fromSignup = false) => {
+  const loginWithGoogle = (fromSignup = false, returnTo = '') => {
     const clientId = "930330871717-0atvb2bigfithtl3d9pp9amer7u81klc.apps.googleusercontent.com";
     const redirectUri = `${window.location.origin}/auth/google/callback`;
     const scope = "openid email profile";
     const responseType = "code";
-    const state = fromSignup ? 'signup' : 'login';
+    const state = encodeURIComponent(JSON.stringify({ flow: fromSignup ? 'signup' : 'login', returnTo }));
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}` +
