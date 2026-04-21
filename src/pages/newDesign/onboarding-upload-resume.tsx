@@ -7,7 +7,8 @@ import {
   Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
   Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2,
 } from 'lucide-react';
-import { uploadResume, updateProfile, saveUserInsights } from '@/services/ProfileServices';
+import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
+import { createTrainingPlan } from '@/services/InterviewServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -539,7 +540,7 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
 
       {/* Selected role badge */}
       <AnimatePresence>
-        {selectedRole && (
+        {data.targetRole && (
           <motion.div
             initial={{ opacity: 0, y: -6, height: 0, marginBottom: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto', marginBottom: 12 }}
@@ -551,13 +552,21 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
               <div className="w-4 h-4 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shrink-0">
                 <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
               </div>
-              <span className="flex-1 text-[13px] font-semibold text-[hsl(221,91%,50%)]">{selectedRole.label}</span>
+              <span className="flex-1 text-[13px] font-semibold text-[hsl(221,91%,50%)]">
+                {selectedRole ? selectedRole.label : data.targetRole}
+              </span>
               {autoFilledFromResume && (
                 <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
                   Pre-filled from resume
                 </span>
               )}
-              <span className="text-[10.5px] text-[hsl(221,91%,60%)]/60 font-medium">{selectedRole.category}</span>
+              {selectedRole ? (
+                <span className="text-[10.5px] text-[hsl(221,91%,60%)]/60 font-medium">{selectedRole.category}</span>
+              ) : (
+                <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
+                  Custom
+                </span>
+              )}
               <button
                 onClick={() => { update({ targetRole: '', roleClarity: '' }); setAutoFilledFromResume(false); searchRef.current?.focus(); }}
                 className="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-[hsl(221,91%,60%)]/60 hover:text-[hsl(221,91%,50%)] hover:bg-[hsl(221,91%,60%)]/15 transition-all"
@@ -595,10 +604,24 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
           style={{ maxHeight: '272px' }}
         >
           {totalFiltered === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="flex flex-col items-center justify-center py-8 px-5 text-center">
               <Search className="w-7 h-7 text-[hsl(222,12%,75%)] mb-3" />
               <p className="text-[13px] font-medium text-[hsl(222,22%,30%)]">No roles found</p>
-              <p className="text-[11.5px] text-[hsl(222,12%,60%)] mt-1">Try a different keyword</p>
+              {query.trim() ? (
+                <>
+                  <p className="text-[11.5px] text-[hsl(222,12%,60%)] mt-1 mb-4">No match — add it as a custom role</p>
+                  <button
+                    type="button"
+                    onClick={() => { update({ targetRole: query.trim(), roleClarity: '' }); setQuery(''); }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[hsl(221,91%,60%)]/10 border border-[hsl(221,91%,60%)]/30 text-[13px] font-semibold text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/18 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Use &ldquo;{query.trim()}&rdquo; as my role
+                  </button>
+                </>
+              ) : (
+                <p className="text-[11.5px] text-[hsl(222,12%,60%)] mt-1">Try a different keyword</p>
+              )}
             </div>
           ) : (
             <div className="p-3 flex flex-col gap-4">
@@ -634,6 +657,25 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
                   )}
                 </div>
               ))}
+              {/* Custom role option when query doesn't match any existing role exactly */}
+              {query.trim() && !ALL_ROLES.some(r => r.label.toLowerCase() === query.trim().toLowerCase()) && (
+                <>
+                  <div className="h-px bg-[hsl(220,16%,94%)]" />
+                  <button
+                    type="button"
+                    onClick={() => { update({ targetRole: query.trim(), roleClarity: '' }); setQuery(''); }}
+                    className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[hsl(221,91%,60%)]/5 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-[hsl(221,91%,60%)]/12 flex items-center justify-center shrink-0">
+                      <Plus className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
+                    </div>
+                    <span className="text-[13px] font-medium text-[hsl(222,22%,18%)]">
+                      Add &ldquo;<span className="text-[hsl(221,91%,55%)]">{query.trim()}</span>&rdquo; as a custom role
+                    </span>
+                    <span className="ml-auto text-[11px] text-[hsl(221,91%,60%)]">Custom</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -739,7 +781,10 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
     update((prev) => ({ targetCompanies: prev.targetCompanies.filter(c => c !== name) }));
   };
 
-  const canProceed = data.companyChoice !== null;
+  const hasCompanyType = data.targetCompanies.some(c => COMPANY_TYPE_LABELS.has(c));
+  const hasSpecificCompany = data.targetCompanies.some(c => !COMPANY_TYPE_LABELS.has(c));
+  const canProceed = data.companyChoice === 'no' ||
+    (data.companyChoice === 'yes' && hasCompanyType && hasSpecificCompany);
 
   return (
     <div className="flex flex-col items-center w-full max-w-[500px] mx-auto">
@@ -935,6 +980,15 @@ function Screen4TargetCompanies({ data, update, onNext, onBack }: {
       </AnimatePresence>
 
       <NavButtons onBack={onBack} onNext={onNext} nextLabel="Continue to Status" nextDisabled={!canProceed} />
+      {data.companyChoice === 'yes' && !canProceed && (
+        <p className="text-[11.5px] text-[hsl(222,12%,58%)] text-center mt-2">
+          {!hasCompanyType && !hasSpecificCompany
+            ? 'Select at least one company type and one specific company to continue'
+            : !hasCompanyType
+            ? 'Select at least one company type to continue'
+            : 'Add at least one specific company to continue'}
+        </p>
+      )}
     </div>
   );
 }
@@ -1526,6 +1580,26 @@ export function OnboardingUploadResumePage() {
   };
   const goNext = () => {
     if (step === 2) { setShowAnalysis(true); return; }
+    if (step === 4) {
+      // Fire-and-forget training plan creation
+      const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
+      if (roleLabel) {
+        const firstCompany = data.companyChoice === 'yes'
+          ? (data.targetCompanies.filter(c => !TYPE_LABEL_SET.has(c))[0] ?? '')
+          : '';
+        createTrainingPlan({ jobTitle: roleLabel, company: firstCompany, jobDescription: roleLabel })
+          .then(res => console.log('[createTrainingPlan] ✅', res?.data))
+          .catch(err => console.error('[createTrainingPlan] ❌', err?.response?.data ?? err));
+      }
+      // Pre-generate profile-based suggestions if resume was uploaded
+      if (data.uploadedFile) {
+        getJobTitleRecommendations()
+          .then(res => console.log('[getJobTitleRecommendations] ✅ pre-generated', res?.data))
+          .catch(err => console.error('[getJobTitleRecommendations] ❌', err?.response?.data ?? err));
+      }
+      goTo(5);
+      return;
+    }
     if (step === 6) {
       // Fire-and-forget save, then move to step 7
       const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;

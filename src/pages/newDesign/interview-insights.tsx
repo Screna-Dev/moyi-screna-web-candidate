@@ -12,8 +12,8 @@ import {
   ListFilter,
   Loader2,
   MessageSquare,
-  ThumbsUp,
-  Bookmark,
+  // ThumbsUp, // TODO: like — implement in future
+  // Bookmark, // TODO: save — implement in future
   Share2,
   Eye,
   ArrowUp,
@@ -251,25 +251,15 @@ export function InterviewInsightsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Interaction state
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
-  const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
-
-  const toggleLike = (postId: string) => {
-    setLikedPosts(prev => {
-      const next = new Set(prev);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
-  };
-
-  const toggleSave = (postId: string) => {
-    setSavedPosts(prev => {
-      const next = new Set(prev);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
-  };
+  // TODO: Like/Save interaction state — implement in future
+  // const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  // const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
+  // const toggleLike = (postId: string) => {
+  //   setLikedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
+  // };
+  // const toggleSave = (postId: string) => {
+  //   setSavedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
+  // };
 
   // Client-side filtering only for fields the API doesn't support (category/tags)
   const filteredPosts = useMemo(() => {
@@ -890,6 +880,7 @@ export function InterviewInsightsPage() {
                         {/* ── Actions ── */}
                         <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
                           <div className="flex items-center gap-4">
+                            {/* TODO: Like button — implement in future
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
@@ -899,10 +890,12 @@ export function InterviewInsightsPage() {
                               <ThumbsUp className="w-3.5 h-3.5" />
                               {likedPosts.has(post.id) ? 1 : 0}
                             </button>
+                            */}
                             <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
                               <MessageSquare className="w-3.5 h-3.5" />
                               {post.commentCount ?? 0}
                             </span>
+                            {/* TODO: Save button — implement in future
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleSave(post.id); }}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
@@ -912,6 +905,7 @@ export function InterviewInsightsPage() {
                               <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
                               {savedPosts.has(post.id) ? 1 : 0}
                             </button>
+                            */}
                             
                             {/* Share Popover - Fixed implementation */}
                             <SharePopover 

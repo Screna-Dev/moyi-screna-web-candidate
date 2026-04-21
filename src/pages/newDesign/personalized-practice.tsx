@@ -694,12 +694,13 @@ export function PersonalizedPracticePage() {
 
   // Resume check
   const [hasResume, setHasResume] = useState<boolean | null>(null);
+  const [hasSkippedTargetJob, setHasSkippedTargetJob] = useState(false);
 
   const refetchProfile = () => {
     getProfile()
       .then((res) => {
         const data = res.data?.data ?? res.data;
-        setHasResume(!!(data?.structured_resume || data?.resume_path));
+        setHasResume(!!(data?.resume_path));
       })
       .catch(() => setHasResume(false));
   };
@@ -707,6 +708,7 @@ export function PersonalizedPracticePage() {
   useEffect(() => {
     if (!isLoggedIn) {
       setHasResume(null);
+      setHasSkippedTargetJob(false);
       return;
     }
     refetchProfile();
@@ -922,7 +924,7 @@ export function PersonalizedPracticePage() {
     return (
       <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
         <Navbar />
-        <main className="flex-1 flex items-center justify-center pt-[90px]">
+        <main className="flex-1 flex items-center justify-center pt-[150px]">
           <GoalPage returnTo="/personalized-practice" />
         </main>
         <Footer />
@@ -934,9 +936,34 @@ export function PersonalizedPracticePage() {
     return (
       <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
         <Navbar />
-        <main className="flex-1 flex items-center justify-center pt-[90px]">
-          <GoalUploadPage onUploadSuccess={refetchProfile} />
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            onUploadSuccess={() => { refetchProfile(); setHasSkippedTargetJob(false); }}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
         </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (isLoggedIn && hasResume === true && !isLoadingPlan && !targetJob && !hasSkippedTargetJob) {
+    return (
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            initialState="target-job"
+            onUploadSuccess={() => setHasSkippedTargetJob(true)}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
+        </main>
+        <TargetJobModal
+          open={showTargetJobModal}
+          onOpenChange={setShowTargetJobModal}
+          onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
+          onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
+        />
         <Footer />
       </div>
     );

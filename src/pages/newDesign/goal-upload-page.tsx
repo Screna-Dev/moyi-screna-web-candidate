@@ -19,8 +19,18 @@ import imgMascot from '@/assets/aef618fe1fbeac6dda6a449e6b61497c1dc80b4d.png';
 
 type UploadState = 'idle' | 'uploading' | 'success';
 
-export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => void }) {
-  const [uploadState, setUploadState] = useState<UploadState>('idle');
+export function GoalUploadPage({
+  onUploadSuccess,
+  onAddTargetJob,
+  initialState = 'upload',
+  hideStepBar = false,
+}: {
+  onUploadSuccess?: () => void;
+  onAddTargetJob?: () => void;
+  initialState?: 'upload' | 'target-job';
+  hideStepBar?: boolean;
+}) {
+  const [uploadState, setUploadState] = useState<UploadState>(initialState === 'target-job' ? 'success' : 'idle');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,8 +95,8 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
       }
 
       saveToLocalStorage(structuredResume, file.name, resumePath);
+      updateProfile(structuredResume).catch(() => {});
       setUploadState('success');
-      onUploadSuccess?.();
     } catch (err: any) {
       setUploadError(err?.response?.data?.message || 'Upload failed. Please try again.');
       setUploadState('idle');
@@ -97,21 +107,20 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
     if (!tempVisaStatus || !pendingResume) return;
     setIsSavingVisa(true);
     try {
+      await updateProfile(pendingResume.structuredResume);
       await updateProfile({ visa_status: tempVisaStatus });
       saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
       setShowVisaDialog(false);
       setPendingResume(null);
       setTempVisaStatus('');
       setUploadState('success');
-      onUploadSuccess?.();
     } catch {
-      // still complete upload even if visa save fails
+      // still complete upload even if save fails
       saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
       setShowVisaDialog(false);
       setPendingResume(null);
       setTempVisaStatus('');
       setUploadState('success');
-      onUploadSuccess?.();
     } finally {
       setIsSavingVisa(false);
     }
@@ -124,7 +133,7 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
     <div className="w-full max-w-[1226px] mx-auto px-6 md:px-8 flex flex-col">
 
       {/* Header & Stepper Row */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between w-full gap-12 lg:gap-8 mb-10">
+      {!hideStepBar && <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between w-full gap-12 lg:gap-8 mb-10">
 
         {/* Left Header */}
         <div className="mt-1">
@@ -182,7 +191,7 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Central Content Area */}
       <div className="w-full mx-auto flex flex-col items-center relative z-10">
@@ -267,7 +276,7 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
               transition={{ duration: 0.4, ease: 'easeOut' }}
               className="w-full flex flex-col items-center"
             >
-              <div className="w-full mb-16">
+              <div className="w-full mb-8">
                 <Card className="w-full border-slate-200 shadow-sm hover:shadow-md hover:border-[hsl(221,91%,60%)]/40 transition-all duration-200 overflow-hidden cursor-pointer group">
                   <CardContent className="p-5 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-50/80 to-white">
                     <div className="flex items-start sm:items-center gap-4">
@@ -281,7 +290,7 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
                         </p>
                       </div>
                     </div>
-                    <Button variant="outline" className="shrink-0 h-9 rounded-full px-4 border-slate-200 bg-white text-slate-800 text-xs font-medium shadow-sm hover:bg-slate-50 mt-3 sm:mt-0">
+                    <Button onClick={onAddTargetJob} variant="outline" className="shrink-0 h-9 rounded-full px-4 border-slate-200 bg-white text-slate-800 text-xs font-medium shadow-sm hover:bg-slate-50 mt-3 sm:mt-0">
                       <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 16 16">
                         <path d="M3.33333 8H12.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.33333" />
                         <path d="M8 3.33333V12.6667" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.33333" />
@@ -292,20 +301,8 @@ export function GoalUploadPage({ onUploadSuccess }: { onUploadSuccess?: () => vo
                 </Card>
               </div>
 
-              <div className="w-[384px] h-[256px] relative mb-3 pointer-events-none">
+              <div className="w-[280px] h-[186px] relative pointer-events-none">
                 <img src={imgMascot} alt="" className="absolute inset-0 w-full h-full object-cover" />
-              </div>
-
-              <div className="w-full flex flex-col items-center">
-                <div className="h-px w-[200px] bg-[#e2e8f0] mb-6" />
-                <p className="text-[14px] text-[#62748e] mb-1.5">Just exploring?</p>
-                <Link
-                  to="/job-board"
-                  className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#45556c] hover:text-slate-900 transition-colors px-4 py-2 rounded-[12px] hover:bg-slate-100"
-                >
-                  Check out Trending Roles
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
               </div>
             </motion.div>
           )}
