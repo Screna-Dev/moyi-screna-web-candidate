@@ -839,6 +839,7 @@ export function PersonalizedPracticePage() {
       setPlanSets([]);
       setExistingPlans([]);
       setIsPartiallyReady(false);
+      setHasSkippedTargetJob(false);
       showToast('Training plan deleted successfully');
     } catch (error) {
       console.error('Error deleting plan:', error);
@@ -984,9 +985,8 @@ export function PersonalizedPracticePage() {
           </div>
 
           {/* ─── Target Job Bar ────────────────────── */}
-          <div className="mb-8">
-            {targetJob ? (
-              /* Active target job state */
+          {targetJob && (
+            <div className="mb-8">
               <div className="flex items-center justify-between bg-gradient-to-r from-blue-50/80 to-white rounded-2xl border border-blue-100 px-5 py-4">
                 <div className="flex items-center gap-4">
                   <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
@@ -1013,31 +1013,8 @@ export function PersonalizedPracticePage() {
                   </button>
                 </div>
               </div>
-            ) : (
-              /* Empty target job state */
-              <div className="flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white rounded-2xl border border-slate-200/80 px-5 py-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-                    <Crosshair className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold text-slate-900">Target job</span>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      Add a job description to tailor sessions, or keep using recommendations based on your profile.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="rounded-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-none text-xs h-9 px-4 shrink-0 gap-1.5"
-                  onClick={() => setShowTargetJobModal(true)}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add target job
-                </Button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* ── Practice Sets Content ─────────────────── */}
           {isLoadingPlan ? (
