@@ -18,13 +18,42 @@ interface RecommendedJobsContextValue {
   invalidate: () => void;
 }
 
+const CACHE_KEY = 'screna_job_recommendations';
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function readCache(): RecommendedJob[] | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: RecommendedJob[]; ts: number };
+    if (Date.now() - ts > CACHE_TTL_MS) {
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(data: RecommendedJob[]) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* storage full — ignore */ }
+}
+
+function clearCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
 const RecommendedJobsContext = createContext<RecommendedJobsContextValue | null>(null);
 
 export function RecommendedJobsProvider({ children }: { children: ReactNode }) {
-  const [recommendations, setRecommendations] = useState<RecommendedJob[]>([]);
+  const cached = readCache();
+  const [recommendations, setRecommendations] = useState<RecommendedJob[]>(cached ?? []);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasFetched = useRef(false);
+  const hasFetched = useRef(cached !== null && cached.length > 0);
   // Keep a ref to the in-flight promise so concurrent callers share the same request
   const inflightRef = useRef<Promise<RecommendedJob[]> | null>(null);
 
@@ -47,6 +76,7 @@ export function RecommendedJobsProvider({ children }: { children: ReactNode }) {
         const data = response.data?.data;
         const jobs: RecommendedJob[] = data?.recommendations || [];
         setRecommendations(jobs);
+        writeCache(jobs);
         hasFetched.current = true;
         return jobs;
       } catch (err: any) {
@@ -65,6 +95,7 @@ export function RecommendedJobsProvider({ children }: { children: ReactNode }) {
 
   const invalidate = useCallback(() => {
     hasFetched.current = false;
+    clearCache();
     setRecommendations([]);
     setError(null);
   }, []);

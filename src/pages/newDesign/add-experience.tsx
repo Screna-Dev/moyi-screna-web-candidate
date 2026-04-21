@@ -974,9 +974,7 @@ export function AddExperiencePage() {
             <Clock className="w-8 h-8 text-amber-600" />
           </div>
           <h1 className="text-2xl font-semibold text-[hsl(222,22%,15%)] mb-2">Submitted for Review</h1>
-          <p className="text-[hsl(222,12%,45%)] mb-8 leading-relaxed">
-            Thank you for sharing! Your experience is now under review by our moderation team. You'll be notified once it's approved and live.
-          </p>
+          <p className="text-[hsl(222,12%,45%)] mb-8 leading-relaxed">Thank you for sharing! Your experience is now under review. Once it’s approved and live, you’ll be notified and receive 10 credits.</p>
 
           <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 mb-6 text-left">
             <div className="flex items-center gap-2 mb-3">

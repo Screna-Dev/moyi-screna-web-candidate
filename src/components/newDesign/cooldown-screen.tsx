@@ -29,10 +29,13 @@ const ENCOURAGEMENTS = [
 export function CooldownScreen({
   config,
   onComplete,
+  theme = 'light',
 }: {
   config: CooldownConfig;
   onComplete: () => void;
+  theme?: 'dark' | 'light';
 }) {
+  const isDark = theme === 'dark';
   const [stepIndex, setStepIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [encourageIdx] = useState(() => Math.floor(Math.random() * ENCOURAGEMENTS.length));
@@ -60,17 +63,26 @@ export function CooldownScreen({
   const currentStep = stepIndex < PROCESSING_STEPS.length ? PROCESSING_STEPS[stepIndex] : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0b1120] via-[#0f172a] to-[#0b1120] flex flex-col items-center justify-center relative overflow-hidden">
+    <div className={`min-h-screen flex flex-col items-center justify-center relative overflow-hidden ${
+      isDark
+        ? 'bg-gradient-to-b from-[#0b1120] via-[#0f172a] to-[#0b1120]'
+        : 'bg-gradient-to-b from-slate-50 via-white to-slate-50'
+    }`}>
       {/* Ambient glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[140px]"
           animate={{
-            backgroundColor: [
+            backgroundColor: isDark ? [
               'rgba(59,130,246,0.03)',
               'rgba(139,92,246,0.035)',
               'rgba(45,212,191,0.03)',
               'rgba(59,130,246,0.03)',
+            ] : [
+              'rgba(59,130,246,0.06)',
+              'rgba(139,92,246,0.05)',
+              'rgba(45,212,191,0.05)',
+              'rgba(59,130,246,0.06)',
             ],
           }}
           transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
@@ -99,7 +111,7 @@ export function CooldownScreen({
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
               />
-              <span className="text-blue-100/70 text-sm tracking-wide">
+              <span className={`text-sm tracking-wide ${isDark ? 'text-blue-100/70' : 'text-slate-600'}`}>
                 {currentStep.text}
               </span>
             </motion.div>
@@ -115,7 +127,7 @@ export function CooldownScreen({
                 animate={{ scale: [1, 1.3, 1] }}
                 transition={{ duration: 0.8, repeat: 2 }}
               />
-              <span className="text-emerald-200/70 text-sm tracking-wide">
+              <span className={`text-sm tracking-wide ${isDark ? 'text-emerald-200/70' : 'text-emerald-600'}`}>
                 Your feedback is ready
               </span>
             </motion.div>
@@ -123,7 +135,7 @@ export function CooldownScreen({
         </AnimatePresence>
 
         {/* Progress bar */}
-        <div className="w-56 mx-auto h-[2px] bg-white/[0.05] rounded-full overflow-hidden">
+        <div className={`w-56 mx-auto h-[2px] rounded-full overflow-hidden ${isDark ? 'bg-white/[0.05]' : 'bg-slate-200'}`}>
           <motion.div
             className="h-full rounded-full"
             style={{
@@ -135,7 +147,7 @@ export function CooldownScreen({
         </div>
 
         {/* Step counter */}
-        <p className="text-[11px] text-slate-600 tabular-nums">
+        <p className={`text-[11px] tabular-nums ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
           {Math.min(stepIndex + 1, PROCESSING_STEPS.length)} of {PROCESSING_STEPS.length}
         </p>
 
@@ -144,19 +156,19 @@ export function CooldownScreen({
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.45 }}
           transition={{ delay: 2, duration: 1.2 }}
-          className="text-slate-500 text-xs tracking-wide pt-4"
+          className={`text-xs tracking-wide pt-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
         >
           {ENCOURAGEMENTS[encourageIdx]}
         </motion.p>
       </div>
 
       {/* Footer */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 text-[11px] text-slate-600">
+      <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 text-[11px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
         <span className="flex items-center gap-1.5">
           <Shield className="w-3 h-3" />
           Analysis is private
         </span>
-        <span className="w-0.5 h-0.5 rounded-full bg-slate-700" />
+        <span className={`w-0.5 h-0.5 rounded-full ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`} />
         <span>Only you can see results</span>
       </div>
     </div>

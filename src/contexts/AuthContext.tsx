@@ -21,7 +21,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
   signup: (email: string, password: string, name: string) => Promise<void>;
-  loginWithGoogle: () => void;
+  loginWithGoogle: (fromSignup?: boolean, returnTo?: string) => void;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
@@ -214,19 +214,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await API.post('/auth/resend-confirmation-code', { email });
   };
 
-  const loginWithGoogle = () => {
+  const loginWithGoogle = (fromSignup = false, returnTo = '') => {
     const clientId = "930330871717-0atvb2bigfithtl3d9pp9amer7u81klc.apps.googleusercontent.com";
     const redirectUri = `${window.location.origin}/auth/google/callback`;
     const scope = "openid email profile";
     const responseType = "code";
-    
+    const state = encodeURIComponent(JSON.stringify({ flow: fromSignup ? 'signup' : 'login', returnTo }));
+
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=${responseType}` +
       `&scope=${encodeURIComponent(scope)}` +
-      `&access_type=offline`;
-    
+      `&access_type=offline` +
+      `&state=${state}`;
+
     window.location.href = authUrl;
   };
 
@@ -238,8 +240,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('screnaIsLoggedIn');
+    localStorage.removeItem('screnaUserData');
+    localStorage.removeItem('screna_share_count');
+    localStorage.removeItem('theme');
+    localStorage.removeItem('cookie_consent');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
+    // Clear any PostHog tracking data
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('ph_')) {
+        localStorage.removeItem(key);
+      }
+    }
     setUser(null);
     navigate('/auth');
   };

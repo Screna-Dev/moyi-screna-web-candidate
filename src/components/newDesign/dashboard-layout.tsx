@@ -6,6 +6,7 @@ import {
   Settings,
   Menu,
   Briefcase,
+  FileText,
   Gift,
   ArrowLeft,
   Coins,
@@ -36,7 +37,7 @@ type UserData = {
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   // { icon: Briefcase, label: 'Jobs', path: '/jobs' },
-  // { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
+  // { icon: FileText, label: 'My Contributions', path: '/contributions' },
   // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
   { icon: History, label: 'Interview History', path: '/history' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
@@ -165,7 +166,7 @@ function GlobalTopHeader({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-[hsl(220,16%,90%)] h-14 flex items-center px-4 sm:px-6">
+    <header className="sticky z-50 bg-white/95 backdrop-blur-xl border-b border-[hsl(220,16%,90%)] h-14 flex items-center px-4 sm:px-6" style={{ top: 'var(--topbar-h, 0px)' }}>
       {/* Left: Logo + Home */}
       <div className="flex items-center gap-3 shrink-0">
         <Link to="/dashboard" className="flex items-center gap-2">
@@ -212,7 +213,7 @@ function GlobalTopHeader({
                 : 'text-slate-500 hover:text-blue-600'
             }`}
           >
-            Interview
+            Practice
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
@@ -224,8 +225,8 @@ function GlobalTopHeader({
                 <Bot className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-[13px] font-semibold text-slate-900">Trendings</div>
-                <div className="text-[11px] text-slate-500">Trending mock interviews</div>
+                <div className="text-[13px] font-semibold text-slate-900">Trending Roles</div>
+                <div className="text-[11px] text-slate-500">Practice for popular roles</div>
               </div>
             </Link> */}
             <Link
@@ -268,26 +269,14 @@ function GlobalTopHeader({
                 <div className="text-[11px] text-slate-500">Real interview experiences</div>
               </div>
             </Link>
-            {/* <Link
-              to="/question-bank"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                <MessageSquare className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Question Bank</div>
-                <div className="text-[11px] text-slate-500">Practice real questions</div>
-              </div>
-            </Link> */}
           </div>
         </div>
 
         {/* FAQ — flat link */}
         <Link
-          to="/faq"
+          to="/help"
           className={`text-[13px] font-medium transition-colors duration-200 ${
-            isLinkActive('/faq')
+            isLinkActive('/help')
               ? 'text-[hsl(221,91%,60%)]'
               : 'text-slate-500 hover:text-blue-600'
           }`}
@@ -449,9 +438,10 @@ function GlobalTopHeader({
 interface DashboardLayoutProps {
   children: ReactNode;
   headerTitle?: string;
+  noSidebar?: boolean;
 }
 
-export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerTitle, noSidebar }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isLoading } = useAuth();
@@ -474,7 +464,7 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
   const displayTitle = headerTitle || `${greeting}, ${firstName}`;
 
   return (
-    <div className="min-h-screen bg-[hsl(220,20%,97%)] flex flex-col">
+    <div className="min-h-screen bg-[hsl(220,20%,97%)] flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
       {/* ── Global Top Header (full width) ── */}
       <GlobalTopHeader
         firstName={firstName}
@@ -484,65 +474,66 @@ export function DashboardLayout({ children, headerTitle }: DashboardLayoutProps)
         isPlanLoading={isPlanLoading}
       />
 
-      {/* ── Below header: Sidebar + Content ── */}
-      <div className="flex flex-1 min-h-0">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col w-60 bg-white border-r border-[hsl(220,16%,90%)] sticky top-14 h-[calc(100vh-3.5rem)] z-40 shrink-0 overflow-y-auto">
-          <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
-        </aside>
+      {noSidebar ? (
+        /* ── No-sidebar layout (full-width, like landing pages) ── */
+        <main className="flex-1">
+          {children}
+        </main>
+      ) : (
+        /* ── Below header: Sidebar + Content ── */
+        <div className="flex flex-1 min-h-0">
+          {/* Desktop Sidebar */}
+          <aside className="hidden lg:flex flex-col w-60 bg-white border-r border-[hsl(220,16%,90%)] sticky z-40 shrink-0 overflow-y-auto" style={{ top: 'calc(var(--topbar-h, 0px) + 3.5rem)', height: 'calc(100vh - 3.5rem - var(--topbar-h, 0px))' }}>
+            <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
+          </aside>
 
-        {/* Main content */}
-        <main className="flex-1 flex flex-col min-w-0">
-          {/* Context sub-header: page title + breadcrumb */}
-          <div className="sticky top-14 z-20 bg-[hsl(220,20%,97%)]/90 backdrop-blur-sm border-b border-[hsl(220,16%,92%)] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Mobile sidebar trigger */}
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8">
-                    <Menu className="w-5 h-5 text-[hsl(222,22%,15%)]" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="p-0 w-72">
-                  <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                  <SheetDescription className="sr-only">Main navigation links</SheetDescription>
-                  <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
-                </SheetContent>
-              </Sheet>
+          {/* Main content */}
+          <main className="flex-1 flex flex-col min-w-0">
+            {/* Context sub-header: page title + breadcrumb */}
+            <div className="sticky z-20 bg-[hsl(220,20%,97%)]/90 backdrop-blur-sm border-b border-[hsl(220,16%,92%)] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between" style={{ top: 'calc(var(--topbar-h, 0px) + 3.5rem)' }}>
+              <div className="flex items-center gap-3">
+                {/* Mobile sidebar trigger */}
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8">
+                      <Menu className="w-5 h-5 text-[hsl(222,22%,15%)]" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="p-0 w-72">
+                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                    <SheetDescription className="sr-only">Main navigation links</SheetDescription>
+                    <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
+                  </SheetContent>
+                </Sheet>
 
-              {/* {location.pathname === '/history' && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]" onClick={() => navigate(-1)}>
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-              )} */}
+                <div>
+                  <p className="text-[11px] text-[hsl(222,12%,55%)] uppercase tracking-wider mb-0.5">
+                    {location.pathname === '/dashboard' ? 'Dashboard'
+                      : location.pathname.startsWith('/settings') || location.pathname.startsWith('/billing') ? 'PERSONAL'
+                      : location.pathname.slice(1).replace('-', ' ').replace('/', ' / ')}
+                  </p>
+                  <h1 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
+                    {displayTitle}
+                  </h1>
+                </div>
+              </div>
 
-              <div>
-                <p className="text-[11px] text-[hsl(222,12%,55%)] uppercase tracking-wider mb-0.5">
-                  {location.pathname === '/dashboard' ? 'Dashboard'
-                    : location.pathname.startsWith('/settings') || location.pathname.startsWith('/billing') ? 'PERSONAL'
-                    : location.pathname.slice(1).replace('-', ' ').replace('/', ' / ')}
-                </p>
-                <h1 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
-                  {displayTitle}
-                </h1>
+              {/* Credits indicator */}
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
+                <Coins className="w-3.5 h-3.5 text-amber-500" />
+                <span className="tabular-nums">
+                  {isPlanLoading ? '—' : creditBalance} credit{!isPlanLoading && creditBalance === 1 ? '' : 's'}
+                </span>
               </div>
             </div>
 
-            {/* Credits indicator (compact, visible on sub-header for quick reference) */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-              <Coins className="w-3.5 h-3.5 text-amber-500" />
-              <span className="tabular-nums">
-                {isPlanLoading ? '—' : creditBalance} credit{!isPlanLoading && creditBalance === 1 ? '' : 's'}
-              </span>
+            {/* Page body */}
+            <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8 w-full max-w-5xl mx-auto">
+              {children}
             </div>
-          </div>
-
-          {/* Page body */}
-          <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8 w-full max-w-5xl mx-auto">
-            {children}
-          </div>
-        </main>
-      </div>
+          </main>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router';
 import {
   Clock,
   ArrowRight,
-  Coins,
   Zap,
   BarChart2,
   Building2,
@@ -13,11 +12,7 @@ import {
   Target,
   Plus,
   X,
-  FileText,
   CheckCircle2,
-  ChevronRight,
-  Briefcase,
-  ClipboardPaste,
   Calendar,
   Crosshair,
   Loader2,
@@ -35,6 +30,8 @@ import {
 } from '../../components/newDesign/ui/dialog';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
+import { GoalPage } from './goal-page';
+import { GoalUploadPage } from './goal-upload-page';
 import { InterviewService } from '@/services';
 import { getProfile } from '@/services/ProfileServices';
 import { useRecommendedJobs } from '@/hooks/useRecommendedJobs';
@@ -697,18 +694,24 @@ export function PersonalizedPracticePage() {
 
   // Resume check
   const [hasResume, setHasResume] = useState<boolean | null>(null);
+  const [hasSkippedTargetJob, setHasSkippedTargetJob] = useState(false);
+
+  const refetchProfile = () => {
+    getProfile()
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        setHasResume(!!(data?.resume_path));
+      })
+      .catch(() => setHasResume(false));
+  };
 
   useEffect(() => {
     if (!isLoggedIn) {
       setHasResume(null);
+      setHasSkippedTargetJob(false);
       return;
     }
-    getProfile()
-      .then((res) => {
-        const data = res.data?.data ?? res.data;
-        setHasResume(!!(data?.structured_resume || data?.resume_path));
-      })
-      .catch(() => setHasResume(false));
+    refetchProfile();
   }, [isLoggedIn]);
 
   // ── All state declarations ──
@@ -836,6 +839,7 @@ export function PersonalizedPracticePage() {
       setPlanSets([]);
       setExistingPlans([]);
       setIsPartiallyReady(false);
+      setHasSkippedTargetJob(false);
       showToast('Training plan deleted successfully');
     } catch (error) {
       console.error('Error deleting plan:', error);
@@ -917,71 +921,50 @@ export function PersonalizedPracticePage() {
     }
   };
 
-  if (isLoggedIn && hasResume === false) {
+  if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-white flex flex-col">
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
         <Navbar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6 py-20 max-w-md">
-            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-5">
-              <FileText className="w-7 h-7 text-blue-500" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-3">Upload your resume first</h1>
-            <p className="text-slate-500 mb-7 leading-relaxed">
-              Personalized practice uses your resume to tailor mock interviews and training plans to your background. Upload your resume to get started.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none px-6"
-                onClick={() => navigate('/dashboard')}
-              >
-                Upload resume
-              </Button>
-              <Button
-                variant="outline"
-                className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
-                onClick={() => navigate('/')}
-              >
-                Go home
-              </Button>
-            </div>
-          </div>
+        <main className="flex-1 flex items-center justify-center pt-[150px]">
+          <GoalPage returnTo="/personalized-practice" />
         </main>
         <Footer />
       </div>
     );
   }
 
-  if (!isLoggedIn) {
+  if (isLoggedIn && hasResume === false) {
     return (
-      <div className="min-h-screen bg-white flex flex-col">
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
         <Navbar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6 py-20 max-w-md">
-            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center mb-5">
-              <Lock className="w-7 h-7 text-blue-500" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-3">Sign in to access Personalized Practice</h1>
-            <p className="text-slate-500 mb-7 leading-relaxed">
-              Get AI-powered mock interviews tailored to your profile, track your progress, and build a personalized training plan.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none px-6"
-                onClick={() => navigate('/auth')}
-              >
-                Sign in
-              </Button>
-              <Button
-                variant="outline"
-                className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
-                onClick={() => navigate('/')}
-              >
-                Go home
-              </Button>
-            </div>
-          </div>
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            onUploadSuccess={() => { refetchProfile(); setHasSkippedTargetJob(false); }}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
         </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (isLoggedIn && hasResume === true && !isLoadingPlan && !targetJob && !hasSkippedTargetJob) {
+    return (
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            initialState="target-job"
+            onUploadSuccess={() => setHasSkippedTargetJob(true)}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
+        </main>
+        <TargetJobModal
+          open={showTargetJobModal}
+          onOpenChange={setShowTargetJobModal}
+          onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
+          onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
+        />
         <Footer />
       </div>
     );
@@ -1002,9 +985,8 @@ export function PersonalizedPracticePage() {
           </div>
 
           {/* ─── Target Job Bar ────────────────────── */}
-          <div className="mb-8">
-            {targetJob ? (
-              /* Active target job state */
+          {targetJob && (
+            <div className="mb-8">
               <div className="flex items-center justify-between bg-gradient-to-r from-blue-50/80 to-white rounded-2xl border border-blue-100 px-5 py-4">
                 <div className="flex items-center gap-4">
                   <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
@@ -1031,31 +1013,8 @@ export function PersonalizedPracticePage() {
                   </button>
                 </div>
               </div>
-            ) : (
-              /* Empty target job state */
-              <div className="flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white rounded-2xl border border-slate-200/80 px-5 py-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-                    <Crosshair className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold text-slate-900">Target job</span>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      Add a job description to tailor sessions, or keep using recommendations based on your profile.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="rounded-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-none text-xs h-9 px-4 shrink-0 gap-1.5"
-                  onClick={() => setShowTargetJobModal(true)}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add target job
-                </Button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* ── Practice Sets Content ─────────────────── */}
           {isLoadingPlan ? (

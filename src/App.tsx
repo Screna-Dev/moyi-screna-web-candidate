@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useLayoutEffect } from "react";
 import { Toaster } from "@/components/newDesign/ui/toaster";
 import { Toaster as Sonner } from "@/components/newDesign/ui/sonner";
 import { TooltipProvider } from "@/components/newDesign/ui/tooltip";
@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import BuildInfo from "./components/BuildInfo";
 import { router } from "./router";
+import { TopBar } from "@/components/newDesign/top-bar";
 
 const queryClient = new QueryClient();
 
@@ -16,11 +17,30 @@ const LoadingFallback = () => (
   </div>
 );
 
+function TopBarWrapper() {
+  const isLoggedIn =
+    !!localStorage.getItem('authToken') || !!sessionStorage.getItem('authToken');
+
+  useLayoutEffect(() => {
+    if (isLoggedIn) {
+      document.documentElement.style.setProperty('--topbar-h', '0px');
+      return;
+    }
+    const el = document.getElementById('top-bar');
+    const h = el ? el.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+  }, [isLoggedIn]);
+
+  if (isLoggedIn) return null;
+  return <TopBar />;
+}
+
 // AuthProvider and UserPlanProvider are mounted inside the router (RootLayout)
 // so that useNavigate works correctly within AuthContext.
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <TopBarWrapper />
       <Toaster />
       <Sonner />
       <BuildInfo />

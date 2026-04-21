@@ -65,7 +65,7 @@ export function ContactPage() {
                       href="mailto:operations@screna.ai"
                       className="text-[hsl(221,91%,60%)] text-sm hover:underline"
                     >
-                      support@screna.ai
+                      operations@screna.ai
                     </a>
                     <p className="text-xs text-[hsl(222,12%,55%)] mt-1">We reply within 24 hours.</p>
                   </div>

@@ -4,7 +4,6 @@ import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 
 // Public / marketing pages (home subdirectory, use @/ aliases)
-import { QuestionBankPage } from './pages/newDesign/home/question-bank';
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
 import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
@@ -40,11 +39,23 @@ import { ContactPage } from './pages/newDesign/contact';
 import Admin from './pages/Admin';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
+import AdminRoute from './components/AdminRoute';
 import { HelpCenterPage } from './pages/newDesign/help-center';
 import { CookieBanner } from './components/newDesign/cookie-banner';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
 import { CookiePolicy } from './pages/newDesign/cookie-policy';
 import { DataProtectionPolicy } from './pages/newDesign/data-protection-policy';
+import { GoalPage } from './pages/newDesign/goal-page';
+import { GoalUploadPage } from './pages/newDesign/goal-upload-page';
+import { Navbar } from './components/newDesign/home/navbar';
+import { Footer } from './components/newDesign/home/footer';
+import { OnboardingProcessPage } from './pages/newDesign/onboarding-process';
+import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-overview';
+import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
+import { MentorshipPage } from './components/newDesign/mentorship';
+import { MentorshipMarketplacePage } from './components/newDesign/mentorship-marketplace';
+import { MentorDetailsPage } from './components/newDesign/mentor-details';
+import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
@@ -86,7 +97,6 @@ export const router = createBrowserRouter([
     errorElement: <ErrorBoundary />,
     children: [
       { path: '/', element: <HomePage /> },
-      { path: '/question-bank', element: <QuestionBankPage /> },
       { path: '/question/:id', element: <QuestionDetailPage /> },
       { path: '/question-unknown/:id', element: <QuestionUnknownPage /> },
       { path: '/pricing', element: <PricingPage /> },
@@ -101,7 +111,7 @@ export const router = createBrowserRouter([
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
       { path: '/dashboard', element: <DashboardPage /> },
-      { path: '/dashboard/contributions', element: <MyContributionsPage /> },
+      { path: '/contributions', element: <MyContributionsPage /> },
       { path: '/jobs', element: <JobsPage /> },
       { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
@@ -118,12 +128,69 @@ export const router = createBrowserRouter([
       { path: '/privacy',element: <PrivacyPolicy/>},
       { path: '/cookies',element: <CookiePolicy/>},
       { path: '/data-protection',element: <DataProtectionPolicy/>},
+      {
+        path: '/goal',
+        element: (
+          <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+            <Navbar />
+            <main className="flex-1 flex items-center justify-center pt-[90px]"><GoalPage /></main>
+            <Footer />
+          </div>
+        ),
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/goal-upload',
+        element: (
+          <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+            <Navbar />
+            <main className="flex-1 flex items-center justify-center pt-[90px]"><GoalUploadPage /></main>
+            <Footer />
+          </div>
+        ),
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/onboarding-process',
+        element: <OnboardingProcessPage />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/onboarding-flow',
+        element: <OnboardingFlowOverviewPage />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/onboarding-resume',
+        element: <OnboardingUploadResumePage />,
+        errorElement: <ErrorBoundary />,
+      },
+        {
+          path: '/mentorship',
+          element: <MentorshipPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/marketplace',
+          element: <MentorshipMarketplacePage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/mentor-details',
+          element: <MentorDetailsPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/guest-dashboard',
+          element: <GuestDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin
-      { path: '/admin', element: <Admin /> },
-      { path: '/redeem-code',element: <AdminRedeemCodes />},
-      { path: '/audit-logs', element: <AdminAuditLogs /> },
+      // admin — only accessible to users with role ADMIN
+      { path: '/admin', element: <AdminRoute><Admin /></AdminRoute> },
+      { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
+      { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
     ],
   },
 ]);

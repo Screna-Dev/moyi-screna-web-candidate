@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams } from 'react-router';
 import {
   ArrowLeft,
-  ThumbsUp,
+  // ThumbsUp, // TODO: like — implement in future
   MessageSquare,
   Share2,
-  Bookmark,
+  // Bookmark,   // TODO: save — implement in future
   Play,
   Clock,
   ChevronDown,
@@ -25,8 +25,8 @@ import {
   MapPin,
   ExternalLink,
   CircleAlert,
-  Plus,
-  FolderOpen,
+  // Plus,       // TODO: save (create collection) — implement in future
+  // FolderOpen, // TODO: save (collection icon) — implement in future
   ChevronsUpDown,
 } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
@@ -183,18 +183,19 @@ export function ExperienceDetailPage() {
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
 
   // ── UI State ──
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [showSavePopover, setShowSavePopover] = useState(false);
-  const [collections, setCollections] = useState([
-    { id: 'c1', name: 'System Design Prep', count: 12, saved: false },
-    { id: 'c2', name: 'Google Interviews', count: 5, saved: false },
-    { id: 'c3', name: 'Senior-level Rounds', count: 8, saved: false },
-    { id: 'c4', name: 'Behavioral Questions', count: 3, saved: false },
-  ]);
-  const [creatingNew, setCreatingNew] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const savePopoverRef = useRef<HTMLDivElement>(null);
+  // TODO: Like/Save — implement in future
+  // const [liked, setLiked] = useState(false);
+  // const [saved, setSaved] = useState(false);
+  // const [showSavePopover, setShowSavePopover] = useState(false);
+  // const [collections, setCollections] = useState([
+  //   { id: 'c1', name: 'System Design Prep', count: 12, saved: false },
+  //   { id: 'c2', name: 'Google Interviews', count: 5, saved: false },
+  //   { id: 'c3', name: 'Senior-level Rounds', count: 8, saved: false },
+  //   { id: 'c4', name: 'Behavioral Questions', count: 3, saved: false },
+  // ]);
+  // const [creatingNew, setCreatingNew] = useState(false);
+  // const [newCollectionName, setNewCollectionName] = useState('');
+  // const savePopoverRef = useRef<HTMLDivElement>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
@@ -290,29 +291,9 @@ export function ExperienceDetailPage() {
 
 
   // ── UI Handlers ──
-  const toggleCollectionSave = (collectionId: string) => {
-    setCollections(prev => prev.map(c =>
-      c.id === collectionId ? { ...c, saved: !c.saved } : c
-    ));
-    const col = collections.find(c => c.id === collectionId);
-    if (col) {
-      setSaved(!col.saved);
-    }
-  };
-
-  const createCollection = () => {
-    if (!newCollectionName.trim()) return;
-    const newCol = {
-      id: `c${Date.now()}`,
-      name: newCollectionName.trim(),
-      count: 0,
-      saved: true,
-    };
-    setCollections(prev => [...prev, newCol]);
-    setNewCollectionName('');
-    setCreatingNew(false);
-    setSaved(true);
-  };
+  // TODO: Like/Save handlers — implement in future
+  // const toggleCollectionSave = (collectionId: string) => { ... };
+  // const createCollection = () => { ... };
 
   const toggleAllQuestions = () => {
     if (allExpanded) {
@@ -555,7 +536,7 @@ export function ExperienceDetailPage() {
                 <div className="flex flex-wrap items-center gap-3 text-xs text-[hsl(222,12%,50%)] mb-5">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    {new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                   </span>
                   {post.location && (
                     <span className="flex items-center gap-1">
@@ -571,6 +552,7 @@ export function ExperienceDetailPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-5 border-t border-[hsl(220,16%,94%)]">
                   <div className="flex items-center gap-4">
+                    {/* TODO: Like button — implement in future
                     <button
                       onClick={() => setLiked(!liked)}
                       className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
@@ -578,10 +560,12 @@ export function ExperienceDetailPage() {
                       <ThumbsUp className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
                       {liked ? 1 : 0}
                     </button>
+                    */}
                     <a href="#discussion" className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors">
                       <MessageSquare className="w-4 h-4" />
                       {comments.length}
                     </a>
+                    {/* TODO: Save to collection — implement in future
                     <div className="relative" ref={savePopoverRef}>
                       <button
                         onClick={() => setShowSavePopover(!showSavePopover)}
@@ -590,86 +574,9 @@ export function ExperienceDetailPage() {
                         <Bookmark className={`w-4 h-4 ${saved ? 'fill-current' : ''}`} />
                         {saved ? 1 : 0}
                       </button>
-                      <AnimatePresence>
-                        {showSavePopover && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl z-50 overflow-hidden"
-                          >
-                            <div className="px-3.5 py-2.5 border-b border-[hsl(220,16%,94%)] flex items-center justify-between">
-                              <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">Save to Collection</span>
-                              <button
-                                onClick={() => { setShowSavePopover(false); setCreatingNew(false); setNewCollectionName(''); }}
-                                className="w-5 h-5 rounded-md flex items-center justify-center text-[hsl(222,12%,55%)] hover:bg-[hsl(220,20%,96%)] transition-colors"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                            <div className="max-h-48 overflow-y-auto p-1.5">
-                              {collections.map(col => (
-                                <button
-                                  key={col.id}
-                                  onClick={() => toggleCollectionSave(col.id)}
-                                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] transition-colors text-left group/col"
-                                >
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                                    col.saved ? 'bg-[hsl(221,91%,60%)]/10' : 'bg-[hsl(220,20%,96%)]'
-                                  }`}>
-                                    <FolderOpen className={`w-3.5 h-3.5 ${col.saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)]'}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-[hsl(222,22%,15%)] truncate">{col.name}</p>
-                                    <p className="text-[10px] text-[hsl(222,12%,60%)]">{col.count} item{col.count !== 1 ? 's' : ''}</p>
-                                  </div>
-                                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
-                                    col.saved
-                                      ? 'bg-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)]'
-                                      : 'border-[hsl(220,16%,85%)] group-hover/col:border-[hsl(220,16%,75%)]'
-                                  }`}>
-                                    {col.saved && <Check className="w-3 h-3 text-white" />}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                            <div className="border-t border-[hsl(220,16%,94%)] p-1.5">
-                              {creatingNew ? (
-                                <div className="flex items-center gap-1.5 px-1">
-                                  <input
-                                    type="text"
-                                    value={newCollectionName}
-                                    onChange={e => setNewCollectionName(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') createCollection(); if (e.key === 'Escape') { setCreatingNew(false); setNewCollectionName(''); } }}
-                                    placeholder="Collection name..."
-                                    className="flex-1 h-8 px-2.5 rounded-lg border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,99%)] text-sm outline-none focus:border-[hsl(221,91%,60%)] transition-colors"
-                                    autoFocus
-                                  />
-                                  <button
-                                    onClick={createCollection}
-                                    disabled={!newCollectionName.trim()}
-                                    className="h-8 px-2.5 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,50%)] transition-colors disabled:opacity-40"
-                                  >
-                                    Save
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => setCreatingNew(true)}
-                                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] transition-colors text-left"
-                                >
-                                  <div className="w-8 h-8 rounded-lg bg-[hsl(221,91%,60%)]/8 flex items-center justify-center shrink-0">
-                                    <Plus className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />
-                                  </div>
-                                  <span className="text-sm font-medium text-[hsl(221,91%,60%)]">Create new collection</span>
-                                </button>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      ... save popover UI ...
                     </div>
+                    */}
                     <button
                       onClick={handleShare}
                       className={`flex items-center gap-1.5 text-sm transition-colors ${shareCopied ? 'text-emerald-600' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
@@ -1300,7 +1207,7 @@ export function ExperienceDetailPage() {
                       { label: 'Round', value: post.round },
                       { label: 'Level', value: post.level },
                       { label: 'Outcome', value: post.outcome },
-                      { label: 'Date', value: new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) },
+                      { label: 'Date', value: new Date(post.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) },
                       { label: 'Location', value: post.location },
                     ].filter(item => item.value).map(item => (
                       <div key={item.label} className="flex items-center justify-between">

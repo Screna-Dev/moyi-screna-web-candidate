@@ -14,6 +14,7 @@ import {
 import LiveKitService from '@/services/LiveKitService';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import type { SessionCredentials } from '@/pages/newDesign/ai-mock';
+import { useCaptionAnimator, CaptionDisplay, CaptionToggleButton, useUserSpeechTranscript } from '@/components/newDesign/caption-display';
 
 // ─── Types ─────────────────────────────────────────────
 export type AIState = 'listening' | 'thinking' | 'speaking';
@@ -89,7 +90,7 @@ export function LiveInterview({
   config,
   interviewId,
   onEnd,
-  theme = 'dark',
+  theme = 'light',
   sessionCredentials = null,
   prefetchedStream = null,
 }: {
@@ -101,6 +102,11 @@ export function LiveInterview({
   prefetchedStream?: MediaStream | null;
 }) {
   const isDark = theme === 'dark';
+
+  // ── Captions ──
+  const { displayState: captionDisplayState, addCaption, resetCaptions } = useCaptionAnimator();
+  const [captionVisible, setCaptionVisible] = useState(true);
+
   // Demo runs ONLY when no interviewId provided.
   const isDemoMode = !interviewId;
   const isLiveMode = !isDemoMode;
@@ -128,8 +134,11 @@ export function LiveInterview({
   const safeEnd = useCallback(() => {
     if (!endCalledRef.current) {
       endCalledRef.current = true;
+      stopUserTranscript();
+      resetCaptions();
       onEnd();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onEnd]);
   // Whether the user is actually speaking right now (LiveKit VAD)
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -137,11 +146,27 @@ export function LiveInterview({
   const totalSeconds = parseInt(config.duration) * 60;
   const progress = Math.min((elapsed / totalSeconds) * 100, 100);
 
-  // ── Timer ──
+  // Ref so bot-caption / SpeechRecognition callbacks always see current elapsed
+  const elapsedRef = useRef(0);
+
+  // ── Timer + keep ref in sync ──
   useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const t = setInterval(() => setElapsed((e) => {
+      elapsedRef.current = e + 1;
+      return e + 1;
+    }), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // ── User speech → transcript (browser SpeechRecognition, live mode only) ──
+  const { start: startUserTranscript, pause: pauseUserTranscript, resume: resumeUserTranscript, stop: stopUserTranscript } = useUserSpeechTranscript({
+    onTranscript: (text) => {
+      setTranscript((prev) => [
+        ...prev,
+        { id: Date.now(), role: 'user', text, timestamp: formatTime(elapsedRef.current) },
+      ]);
+    },
+  });
 
   // ── Capture audio (or reuse prefetched stream from warmup) ──
   useEffect(() => {
@@ -180,6 +205,7 @@ export function LiveInterview({
       console.log('[LiveInterview] ✅ LiveKit connected');
       setLiveConnected(true);
       setAiState('listening');
+      startUserTranscript();
       LiveKitService.publishExistingTracks(audioStreamRef.current, null)
         .then(() => console.log('[LiveInterview] 🎤 Audio track published'))
         .catch((err: unknown) => console.error('[LiveInterview] Failed to publish audio:', err));
@@ -202,8 +228,24 @@ export function LiveInterview({
       if (isAISpeaking) botHasSpokenRef.current = true;
       setIsUserSpeaking(userSpeaking);
       setAiState(isAISpeaking ? 'speaking' : 'listening');
+      // Pause mic capture while AI speaks to prevent its voice being transcribed as user
+      if (isAISpeaking) pauseUserTranscript();
+      else resumeUserTranscript();
     },
-    onDataReceived: (message: { type?: string; text?: string; role?: string; label?: string }) => {
+    onDataReceived: (message: { type?: string; text?: string; role?: string; label?: string; data?: { text?: string; sentence_index?: number } }) => {
+      // AI real-time captions from LiveKit data channel
+      // Format: { type: 'bot-caption', data: { text: string, sentence_index: number } }
+      if (message?.type === 'bot-caption') {
+        const { text, sentence_index } = message.data ?? {};
+        if (text) {
+          addCaption(text);
+          setTranscript((prev) => [
+            ...prev,
+            { id: sentence_index ?? Date.now(), role: 'ai', text, timestamp: formatTime(elapsedRef.current) },
+          ]);
+        }
+        return;
+      }
       if (message?.label === 'rtvi-ai') {
         if (message.type === 'bot-started-speaking') {
           botHasSpokenRef.current = true;
@@ -393,7 +435,7 @@ export function LiveInterview({
       </div>
 
       {/* ── Main content area ── */}
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 overflow-hidden">
         {/* Orb */}
         <div className="relative mb-6">
           <LiveOrb aiState={aiState} />
@@ -477,6 +519,9 @@ export function LiveInterview({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* ── Caption overlay ── */}
+        {/* <CaptionDisplay displayState={captionDisplayState} visible={captionVisible} /> */}
       </div>
 
       {/* ── Bottom controls ── */}
@@ -514,12 +559,12 @@ export function LiveInterview({
                     ? 'bg-white/[0.03] border border-white/[0.05]'
                     : 'bg-white border border-slate-200 shadow-sm'
                 }`}>
-                  {transcript.length === 0 && (
+                  {transcript.filter((t) => t.role === 'ai').length === 0 && (
                     <p className={`text-xs text-center py-4 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                       Transcript will appear here...
                     </p>
                   )}
-                  {transcript.map((entry) => (
+                  {transcript.filter((t) => t.role === 'ai').map((entry) => (
                     <div key={entry.id} className="flex gap-2.5">
                       <div
                         className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
@@ -615,8 +660,8 @@ export function LiveInterview({
             )}
           </div>
 
-          {/* Spacer for visual balance */}
-          <div className="w-12 h-12" />
+          {/* Caption toggle */}
+          <CaptionToggleButton visible={captionVisible} onToggle={() => setCaptionVisible((v) => !v)} isDark={isDark} />
         </div>
       </div>
     </div>

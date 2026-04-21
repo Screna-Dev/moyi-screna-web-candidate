@@ -7,7 +7,7 @@ export function TopBar() {
         LIMITED TIME 🎁: Register now to get 60 minutes of AI Mock Interviewing for FREE!
       </p>
       <a
-        href="/signup"
+        href="/auth"
         className="bg-[#f0f0f0] flex gap-1 items-center justify-center px-2.5 py-1.5 rounded-2xl hover:bg-white transition-colors"
       >
         <span className="text-sm text-[#242424]">Join</span>

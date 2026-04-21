@@ -139,7 +139,7 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 // ════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════
-export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode }) {
+export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -776,7 +776,7 @@ export function AIMockPage({ defaultTheme = 'dark' }: { defaultTheme?: ThemeMode
             exit={{ opacity: 0 }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            <CooldownScreen config={config} onComplete={() => {
+            <CooldownScreen config={config} theme={theme} onComplete={() => {
               const interviewId = searchParams.get('interviewId');
               if (interviewId) endTrainingModule(interviewId).catch(() => {});
               navigate(interviewId ? `/evaluation?interviewId=${interviewId}` : '/evaluation');

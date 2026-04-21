@@ -1,5 +1,5 @@
 import {
-  X, Maximize2, Minimize2, RotateCcw, Bookmark,
+  X, Maximize2, Minimize2, RotateCcw,
   ChevronRight, Target, TrendingUp, Brain,
   MessageSquare, Users, Shield, Lightbulb, Crown,
   Scale, Quote, ArrowRight, Zap, BookOpen, Dumbbell,
@@ -716,6 +716,7 @@ export function EvaluationPage() {
                 <RotateCcw className={`w-3.5 h-3.5 ${isRetaking ? 'animate-spin' : ''}`} />
                 {isRetaking ? 'Starting...' : 'Retry'}
               </Button>
+              {/* TODO: Save report — implement in future
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="outline" size="icon" className="h-8 w-8 border-slate-200">
@@ -724,6 +725,7 @@ export function EvaluationPage() {
                 </TooltipTrigger>
                 <TooltipContent>Save report</TooltipContent>
               </Tooltip>
+              */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   

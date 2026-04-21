@@ -12,8 +12,8 @@ import {
   ListFilter,
   Loader2,
   MessageSquare,
-  ThumbsUp,
-  Bookmark,
+  // ThumbsUp, // TODO: like — implement in future
+  // Bookmark, // TODO: save — implement in future
   Share2,
   Eye,
   ArrowUp,
@@ -47,8 +47,14 @@ interface PostQuestion {
   notes: string;
 }
 
+interface PostUser {
+  id: string;
+  name: string;
+}
+
 interface Post {
   id: string;
+  user?: PostUser;
   company: string;
   role: string;
   level: string;
@@ -59,13 +65,27 @@ interface Post {
   questions: PostQuestion[];
   summary: string;
   status: string;
+  isAnonymous?: boolean;
   createdAt: string;
   commentCount?: number;
   tags?: string[];
 }
 
-const SORT_OPTIONS = ['Newest', 'Oldest'] as const;
+const SORT_OPTIONS = ['Relevance', 'Newest'] as const;
+
 type SortOption = typeof SORT_OPTIONS[number];
+
+const SORT_TO_API: Record<SortOption, string> = {
+  Relevance: 'RELEVANCE',
+  Newest: 'NEWEST',
+};
+
+const TIME_TO_API: Record<string, string> = {
+  'Past week': 'PAST_WEEK',
+  'Past month': 'PAST_MONTH',
+  'Past 3 months': 'PAST_3_MONTHS',
+  'Past year': 'PAST_YEAR',
+};
 
 const TOP_COMPANIES = ['Google', 'Meta', 'Amazon', 'Apple', 'Netflix', 'Microsoft', 'LinkedIn', 'Uber', 'Airbnb', 'TikTok', 'OpenAI', 'Anthropic', 'NVIDIA'];
 
@@ -191,7 +211,7 @@ const FILTER_OPTIONS: Record<string, string[]> = {
   Company: ALL_COMPANIES,
   Round: ALL_ROUNDS,
   Level: ['Junior', 'Intermediate', 'Senior', 'Staff'],
-  Category: ALL_TAGS,
+  Time: ['Past week', 'Past month', 'Past 3 months', 'Past year'],
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -231,90 +251,21 @@ export function InterviewInsightsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Interaction state
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
-  const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
+  // TODO: Like/Save interaction state — implement in future
+  // const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  // const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
+  // const toggleLike = (postId: string) => {
+  //   setLikedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
+  // };
+  // const toggleSave = (postId: string) => {
+  //   setSavedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
+  // };
 
-  const toggleLike = (postId: string) => {
-    setLikedPosts(prev => {
-      const next = new Set(prev);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
-  };
-
-  const toggleSave = (postId: string) => {
-    setSavedPosts(prev => {
-      const next = new Set(prev);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
-  };
-
-  // Filter posts based on applied filters and search
+  // Client-side filtering only for fields the API doesn't support (category/tags)
   const filteredPosts = useMemo(() => {
     let result = [...allPosts];
-    
-    // Apply search filter
-    if (debouncedSearchQuery) {
-      const query = debouncedSearchQuery.toLowerCase();
-      result = result.filter(post => {
-        const company = (post.company || '').toLowerCase();
-        const role = (post.role || '').toLowerCase();
-        const summary = (post.summary || '').toLowerCase();
-        const questions = post.questions || [];
-        const hasMatchingQuestion = questions.some(q => 
-          (q.title || '').toLowerCase().includes(query)
-        );
-        
-        return company.includes(query) || 
-              role.includes(query) || 
-              summary.includes(query) || 
-              hasMatchingQuestion;
-      });
-    }
-    
-    // Apply role filter
-    if (appliedFilters.Role?.length) {
-      result = result.filter(post => {
-        const postRole = post.role || '';
-        return appliedFilters.Role.some(filterRole => 
-          postRole.toLowerCase() === filterRole.toLowerCase()
-        );
-      });
-    }
-    
-    // Apply company filter
-    if (appliedFilters.Company?.length) {
-      result = result.filter(post => {
-        const postCompany = post.company || '';
-        return appliedFilters.Company.some(filterCompany => 
-          postCompany.toLowerCase() === filterCompany.toLowerCase()
-        );
-      });
-    }
-    
-    // Apply round filter
-    if (appliedFilters.Round?.length) {
-      result = result.filter(post => {
-        const postRound = post.round || '';
-        return appliedFilters.Round.some(filterRound => 
-          postRound.toLowerCase() === filterRound.toLowerCase()
-        );
-      });
-    }
-    
-    // Apply level filter
-    if (appliedFilters.Level?.length) {
-      result = result.filter(post => {
-        const postLevel = post.level || '';
-        return appliedFilters.Level.some(filterLevel =>
-          postLevel.toLowerCase() === filterLevel.toLowerCase()
-        );
-      });
-    }
 
-    // Apply category/tag filter
+    // Apply category/tag filter (not supported by API)
     if (appliedFilters.Category?.length) {
       result = result.filter(post =>
         post.questions?.some(q =>
@@ -326,38 +277,10 @@ export function InterviewInsightsPage() {
     }
 
     return result;
-  }, [allPosts, debouncedSearchQuery, appliedFilters]);
+  }, [allPosts, appliedFilters]);
 
-  // Sort posts locally
-  const sortedPosts = useMemo(() => {
-    const sorted = [...filteredPosts];
-    
-    if (activeSort === 'Newest') {
-      sorted.sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        
-        if (isNaN(dateA) && isNaN(dateB)) return 0;
-        if (isNaN(dateA)) return 1;
-        if (isNaN(dateB)) return -1;
-        
-        return dateB - dateA;
-      });
-    } else if (activeSort === 'Oldest') {
-      sorted.sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        
-        if (isNaN(dateA) && isNaN(dateB)) return 0;
-        if (isNaN(dateA)) return 1;
-        if (isNaN(dateB)) return -1;
-        
-        return dateA - dateB;
-      });
-    }
-    
-    return sorted;
-  }, [filteredPosts, activeSort]);
+  // API returns sorted results, no client-side sorting needed
+  const sortedPosts = filteredPosts;
 
   // Sidebar: top 5 newest posts as "hot this week"
   const hotThisWeek = useMemo(() => {
@@ -381,27 +304,29 @@ export function InterviewInsightsPage() {
     setLoading(true);
     setError(null);
     try {
-      // Build API params - only filters that the API supports
+      // Build API params
       const params: any = {
         page: pageNum,
+        sortBy: SORT_TO_API[activeSort] || 'RELEVANCE',
       };
 
-      // Only send filters that the API actually supports
+      // Filters the API supports
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (appliedFilters.Role?.[0]) params.role = appliedFilters.Role[0];
       if (appliedFilters.Company?.[0]) params.company = appliedFilters.Company[0];
       if (appliedFilters.Round?.[0]) params.round = appliedFilters.Round[0];
-      if (appliedFilters.Level?.[0]) params.level = appliedFilters.Level[0];
+      if (appliedFilters.Level?.[0]) params.Level = appliedFilters.Level[0];
+      if (appliedFilters.Time?.[0]) params.time = TIME_TO_API[appliedFilters.Time[0]] || undefined;
 
       // Use public API for non-authenticated users, only fetch first page
       const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
       const res = await fetchFn(isAuthenticated ? params : { page: 0 });
       const data = res.data?.data ?? res.data;
-      const content: Post[] = data?.content ?? (Array.isArray(data) ? data : []);
-      const pageMeta = data?.pageMeta;
+      const content: Post[] = Array.isArray(data) ? data : [];
 
       setAllPosts(prev => reset ? content : [...prev, ...content]);
-      setHasMore(isAuthenticated ? (pageMeta ? !pageMeta.last : false) : false);
+      // No pagination info in response — if fewer than 10 results, it's the last page
+      setHasMore(isAuthenticated ? content.length >= 10 : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch posts:', err);
@@ -413,7 +338,7 @@ export function InterviewInsightsPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [debouncedSearchQuery, appliedFilters, isAuthenticated]);
+  }, [debouncedSearchQuery, appliedFilters, activeSort, isAuthenticated]);
 
   // Refetch when filters or search changes (reset to first page)
   useEffect(() => {
@@ -542,7 +467,6 @@ export function InterviewInsightsPage() {
                                 : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
                             }`}
                           >
-                            {sort === 'Hot' && <span className="mr-1">🔥</span>}
                             {sort}
                           </button>
                         ))}
@@ -740,6 +664,29 @@ export function InterviewInsightsPage() {
                               </div>
                             )}
 
+                            {/* Time Filter Dropdown */}
+                            {filter === 'Time' && (
+                              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
+                                <div className="p-2 max-h-56 overflow-y-auto space-y-0.5">
+                                  {FILTER_OPTIONS.Time.map(option => (
+                                    <label key={option} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
+                                      <input
+                                        type="checkbox"
+                                        checked={(tempFilters['Time'] || []).includes(option)}
+                                        onChange={() => toggleTempFilter('Time', option)}
+                                        className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]"
+                                      />
+                                      <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                                <div className="p-2 bg-[hsl(220,20%,98%)] border-t border-[hsl(220,16%,90%)] flex justify-between">
+                                  <button onClick={() => resetFilter('Time')} className="text-xs text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] font-medium">Reset</button>
+                                  <button onClick={() => applyFilter('Time')} className="px-3 py-1 rounded-lg bg-[hsl(221,91%,60%)] text-white text-xs font-medium hover:bg-[hsl(221,91%,55%)]">Apply</button>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Category Filter Dropdown */}
                             {filter === 'Category' && (
                               <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
@@ -933,6 +880,7 @@ export function InterviewInsightsPage() {
                         {/* ── Actions ── */}
                         <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
                           <div className="flex items-center gap-4">
+                            {/* TODO: Like button — implement in future
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
@@ -942,10 +890,12 @@ export function InterviewInsightsPage() {
                               <ThumbsUp className="w-3.5 h-3.5" />
                               {likedPosts.has(post.id) ? 1 : 0}
                             </button>
+                            */}
                             <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
                               <MessageSquare className="w-3.5 h-3.5" />
                               {post.commentCount ?? 0}
                             </span>
+                            {/* TODO: Save button — implement in future
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleSave(post.id); }}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
@@ -955,6 +905,7 @@ export function InterviewInsightsPage() {
                               <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
                               {savedPosts.has(post.id) ? 1 : 0}
                             </button>
+                            */}
                             
                             {/* Share Popover - Fixed implementation */}
                             <SharePopover 

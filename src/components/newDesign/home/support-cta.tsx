@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Mail } from 'lucide-react';
 import { Link } from 'react-router';
 export function SupportCTA() {
   return (
@@ -20,22 +20,21 @@ export function SupportCTA() {
 
           {/* Content */}
           <div className="relative z-10 text-center max-w-xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl text-white tracking-tight mb-4">
-              Still have questions?🤔
+            <h2 className="text-3xl sm:text-4xl text-[hsl(222,22%,15%)] tracking-tight mb-4">
+              Still have questions?
             </h2>
-            <p className="text-[hsl(222,12%,45%)] text-base sm:text-lg leading-relaxed mb-9 text-[#ffffff]">
+            <p className="text-[hsl(222,12%,45%)] text-base sm:text-lg leading-relaxed mb-9">
               Check our FAQs or reach out anytime — we're here to help.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
-                to="/faq"
+                to="/help"
                 className="inline-flex items-center gap-2 px-7 py-3 rounded-full bg-[hsl(222,22%,15%)] text-white text-sm hover:bg-[hsl(222,22%,10%)] transition-colors shadow-md shadow-[hsl(222,22%,15%)]/15"
               >
                 Check our FAQs
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              
             </div>
           </div>
         </motion.div>
