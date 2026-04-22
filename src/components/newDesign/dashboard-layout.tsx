@@ -22,6 +22,16 @@ import { JobApplyTab } from './job-apply-tab';
 import { ProfileTab } from './profile-tab';
 import { DashboardHome } from '@/pages/newDesign/dashboard-home';
 
+function LearningActivityChart() {
+  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
+}
+function FreshFromCommunity() {
+  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
+}
+function JobApplyTab() {
+  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
+}
+
 type UserData = {
   firstName?: string;
   lastName?: string;
@@ -227,7 +237,7 @@ function GlobalTopHeader({
             className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
             style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
           >
-            Practice
+            Interview
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className={dropdownPanelClass}>
