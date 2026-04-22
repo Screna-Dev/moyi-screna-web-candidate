@@ -42,6 +42,16 @@ function JobApplyTab() {
   return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
 }
 
+function LearningActivityChart() {
+  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
+}
+function FreshFromCommunity() {
+  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
+}
+function JobApplyTab() {
+  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
+}
+
 type UserData = {
   firstName?: string;
   lastName?: string;
