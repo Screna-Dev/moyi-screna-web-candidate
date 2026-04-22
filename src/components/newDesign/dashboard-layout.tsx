@@ -316,7 +316,7 @@ function GlobalTopHeader({
             className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
             style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
           >
-            Practice
+            Interview
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className={dropdownPanelClass}>

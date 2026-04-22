@@ -3,7 +3,6 @@ import { Link } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserPlan } from '@/hooks/useUserPlan';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -37,9 +36,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
-  const { planData, isLoading: isPlanLoading } = useUserPlan();
 
   const nameParts = (user?.name || '').trim().split(' ');
   const firstName = nameParts[0] || '';
@@ -67,9 +66,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setAvatarOpen(false);
-    logout();
+    await logout();
   };
 
   return (
@@ -288,9 +287,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               >
                 Start free
               </Link>
-            </>
+            </div>
           )}
-        </div>
 
         {/* Mobile toggle */}
         <button
