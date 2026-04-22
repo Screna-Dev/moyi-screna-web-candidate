@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import logoImg from '../../../assets/Navbar.png';
-import { Button } from '../ui/button';
 import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserPlan } from '@/hooks/useUserPlan';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -16,9 +14,9 @@ export function Navbar({ transparent = false }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
-  const { planData, isLoading: isPlanLoading } = useUserPlan();
 
   const nameParts = (user?.name || '').trim().split(' ');
   const firstName = nameParts[0] || '';
@@ -45,15 +43,15 @@ export function Navbar({ transparent = false }: NavbarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setAvatarOpen(false);
-    logout();
+    await logout();
   };
 
-  const mobileLinks = [
-    { name: 'Service', path: '/marketplace' },
-    { name: 'Interview', path: '/mock-interview' },
-    { name: 'Community', path: '/interview-insights' },
+  const navLinks = [
+    { name: 'Service', path: '#service', hasDropdown: true },
+    { name: 'Practice', path: '#practice', hasDropdown: true },
+    { name: 'Community', path: '#community', hasDropdown: true },
     { name: 'Pricing', path: '/pricing' },
   ];
 
@@ -62,14 +60,13 @@ export function Navbar({ transparent = false }: NavbarProps) {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
-      style={{ top: 'calc(var(--topbar-h, 0px) + 20px)' }}
+      className="fixed top-[calc(var(--topbar-h)+1.25rem)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[960px]"
     >
       {/* ── Capsule Shell ── */}
       <div
         className={`
-          pointer-events-auto relative flex items-center justify-between
-          w-full max-w-[960px] h-[58px] rounded-[999px] px-8
+          relative grid grid-cols-[auto_1fr_auto] items-center
+          h-[58px] rounded-[999px] px-8
           border transition-all duration-500 ease-in-out
           ${scrolled
             ? 'bg-white/80 border-slate-200/60 shadow-lg shadow-blue-900/[0.04] backdrop-blur-2xl'
@@ -79,93 +76,93 @@ export function Navbar({ transparent = false }: NavbarProps) {
       >
         {/* ── Left: Logo + Wordmark ── */}
         <Link to="/" className="flex items-center gap-3 shrink-0">
-          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+          <img src={logoImg} alt="Screna" className="h-8 w-auto" />
         </Link>
 
         {/* ── Center: Nav Links ── */}
-        <div className="hidden md:flex items-center gap-7">
-          {/* Service */}
-          {/* <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Service
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+        <div className="hidden md:flex items-center justify-center gap-7">
+          {navLinks.filter(link => link.name !== 'Pricing').map((link) => (
+            <div key={link.name} className="relative group">
               <Link
-                to="/marketplace"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                to={link.path}
+                className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
               >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <Users className="w-[18px] h-[18px]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-slate-900">Mentorship Marketplace</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-semibold">Pro</span>
-                  </div>
-                  <div className="text-xs text-slate-500">Book 1:1 sessions with mentors</div>
-                </div>
+                {link.name}
+                {link.hasDropdown && (
+                  <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+                )}
               </Link>
-            </div>
-          </div> */}
 
-          {/* Interview */}
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Interview
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-              {/* <Link
-                to="/mock-interview"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <Bot className="w-[18px] h-[18px]" />
+              {/* Service Dropdown */}
+              {link.name === 'Service' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+                  <Link
+                    to="/marketplace"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                      <Users className="w-[18px] h-[18px]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-slate-900">Mentorship Marketplace</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-semibold">Pro</span>
+                      </div>
+                      <div className="text-xs text-slate-500">Book 1:1 sessions with mentors</div>
+                    </div>
+                  </Link>
                 </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
-                  <div className="text-xs text-slate-500">Practice for popular roles</div>
-                </div>
-              </Link> */}
-              <Link
-                to="/personalized-practice"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                  <Target className="w-[18px] h-[18px]" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
-                  <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
-                </div>
-              </Link>
-            </div>
-          </div>
+              )}
 
-          {/* Community */}
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Community
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-              <Link
-                to="/interview-insights"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              {/* Practice Dropdown */}
+              {link.name === 'Practice' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+                  <Link 
+                    to="/mock-interview" 
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                      <Bot className="w-[18px] h-[18px]" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
+                      <div className="text-xs text-slate-500">Practice for popular roles</div>
+                    </div>
+                  </Link>
+                  <Link 
+                    to="/personalized-practice" 
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
+                      <Target className="w-[18px] h-[18px]" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
+                      <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
+                    </div>
+                  </Link>
                 </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
-                  <div className="text-xs text-slate-500">Real interview experiences</div>
-                </div>
-              </Link>
-            </div>
-          </div>
+              )}
 
-          {/* Pricing */}
+              {/* Community Dropdown */}
+              {link.name === 'Community' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+                  <Link 
+                    to="/interview-insights" 
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
+                      <div className="text-xs text-slate-500">Real interview experiences</div>
+                    </div>
+                  </Link>
+                </div>
+              )}
+            </div>
+          ))}
           <Link
             to="/pricing"
             className="text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200"
@@ -174,25 +171,16 @@ export function Navbar({ transparent = false }: NavbarProps) {
           </Link>
         </div>
 
-
-        {/* ── Right: Auth Area ── */}
-        <div className="hidden md:flex items-center gap-4 shrink-0">
+        {/* ── Right: Auth Area + Mobile Toggle ── */}
+        <div className="flex items-center justify-end gap-4">
           {isLoggedIn ? (
             <>
-              <div className="relative" ref={avatarRef}>
+              <div className="hidden md:block relative" ref={avatarRef}>
                 <button
                   onClick={() => setAvatarOpen((v) => !v)}
-                  className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
-                    user?.role === 'ADMIN'
-                      ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
-                      : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
-                  }`}
+                  className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-[13px] transition-all duration-200 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80"
                 >
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
-                  ) : (
-                    initials
-                  )}
+                  {initials}
                 </button>
 
                 {/* User Dropdown */}
@@ -209,9 +197,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         <p className="text-sm font-semibold text-slate-900 truncate">
                           {user?.name || 'My Account'}
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {isPlanLoading ? 'Loading…' : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
-                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">12 Credits remaining</p>
                       </div>
                       <Link
                         to="/dashboard"
@@ -221,22 +207,22 @@ export function Navbar({ transparent = false }: NavbarProps) {
                         <LayoutDashboard className="w-4 h-4 opacity-50" />
                         Personal Center
                       </Link>
-                      {/* <Link
+                      <Link
                         to="/messages"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <MessageSquare className="w-4 h-4 opacity-50" />
                         Messages
-                      </Link> */}
-                      {/* <Link
+                      </Link>
+                      <Link
                         to="/refer"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <Gift className="w-4 h-4 opacity-50" />
                         Refer & Earn
-                      </Link> */}
+                      </Link>
                       <div className="border-t border-slate-100/60 mt-1 pt-1">
                         <button
                           onClick={handleSignOut}
@@ -252,8 +238,8 @@ export function Navbar({ transparent = false }: NavbarProps) {
               </div>
             </>
           ) : (
-            <>
-              <Link to="/auth?login=true">
+            <div className="hidden md:flex items-center gap-4">
+              <Link to="/auth">
                 <button className="text-[14px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200 px-1">
                   Log in
                 </button>
@@ -263,17 +249,17 @@ export function Navbar({ transparent = false }: NavbarProps) {
                   Try Screna Free
                 </button>
               </Link>
-            </>
+            </div>
           )}
-        </div>
 
-        {/* ── Mobile: Menu Toggle ── */}
-        <button 
-          className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
-        </button>
+          {/* ── Mobile: Menu Toggle ── */}
+          <button
+            className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
+          </button>
+        </div>
       </div>
 
       {/* ── Mobile Menu Dropdown ── */}
@@ -286,10 +272,10 @@ export function Navbar({ transparent = false }: NavbarProps) {
             transition={{ duration: 0.2 }}
             className="mt-2 p-2 bg-white/95 backdrop-blur-2xl border border-slate-100/80 rounded-2xl shadow-xl shadow-slate-900/[0.06] origin-top"
           >
-            {mobileLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
+            {navLinks.map((link) => (
+              <Link 
+                key={link.name} 
+                to={link.path} 
                 className="block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
@@ -298,7 +284,7 @@ export function Navbar({ transparent = false }: NavbarProps) {
             ))}
             {!isLoggedIn && (
               <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
-                <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
+                <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
                   <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     Log in
                   </button>

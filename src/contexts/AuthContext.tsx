@@ -139,6 +139,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        window.dispatchEvent(new Event('screna-auth-change'));
       }
     } finally {
       setIsLoading(false);
@@ -175,10 +176,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        window.dispatchEvent(new Event('screna-auth-change'));
         return userData;
       } else {
         const fallback: User = { id: '', email, name: '', avatar: '' };
         setUser(fallback);
+        window.dispatchEvent(new Event('screna-auth-change'));
         return fallback;
       }
     } finally {
@@ -254,6 +257,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     }
     setUser(null);
+    window.dispatchEvent(new Event('screna-auth-change'));
     navigate('/auth');
   };
 
