@@ -13,6 +13,7 @@ import {
   FileText,
   History,
   User,
+  Sparkles,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -28,9 +29,6 @@ function LearningActivityChart() {
 function FreshFromCommunity() {
   return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
 }
-function JobApplyTab() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
-}
 
 type UserData = {
   firstName?: string;
@@ -42,7 +40,7 @@ type UserData = {
 
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: Briefcase, label: 'Jobs', path: '/applications' },
+  { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
   { icon: History, label: 'Interview History', path: '/history' },
   { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
 ];
@@ -78,6 +76,9 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
               >
                 <item.icon className="w-4 h-4 shrink-0" />
                 <span className="text-sm">{item.label}</span>
+                {item.premiumOnly && (
+                  <Sparkles className="w-3 h-3 text-amber-500 ml-auto shrink-0" aria-label="Premium feature" />
+                )}
               </Link>
             );
           })}
@@ -281,7 +282,7 @@ function GlobalTopHeader({
             className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
             style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
           >
-            Service
+            Coach
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className={dropdownPanelClass}>
