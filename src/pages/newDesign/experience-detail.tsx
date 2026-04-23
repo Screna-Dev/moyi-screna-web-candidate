@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams } from 'react-router';
 import {
   ArrowLeft,
-  // ThumbsUp, // TODO: like — implement in future
+  ThumbsUp,
   MessageSquare,
   Share2,
-  // Bookmark,   // TODO: save — implement in future
+  Bookmark,
   Play,
   Clock,
   ChevronDown,
@@ -25,14 +25,13 @@ import {
   MapPin,
   ExternalLink,
   CircleAlert,
-  // Plus,       // TODO: save (create collection) — implement in future
-  // FolderOpen, // TODO: save (collection icon) — implement in future
   ChevronsUpDown,
 } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply } from '../../services/CommunityService';
+import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 import { Markdown } from '@/components/newDesign/ui/markdown';
@@ -112,6 +111,10 @@ interface ExperiencePost {
   createdAt: string;
   questions: PostQuestion[];
   commentCount?: number;
+  likeCount?: number;
+  saveCount?: number;
+  isLiked?: boolean;
+  isSaved?: boolean;
 }
 
 // ─── Comment interface matching API ─────────────────────
@@ -182,20 +185,15 @@ export function ExperienceDetailPage() {
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
 
-  // ── UI State ──
-  // TODO: Like/Save — implement in future
-  // const [liked, setLiked] = useState(false);
-  // const [saved, setSaved] = useState(false);
-  // const [showSavePopover, setShowSavePopover] = useState(false);
-  // const [collections, setCollections] = useState([
-  //   { id: 'c1', name: 'System Design Prep', count: 12, saved: false },
-  //   { id: 'c2', name: 'Google Interviews', count: 5, saved: false },
-  //   { id: 'c3', name: 'Senior-level Rounds', count: 8, saved: false },
-  //   { id: 'c4', name: 'Behavioral Questions', count: 3, saved: false },
-  // ]);
-  // const [creatingNew, setCreatingNew] = useState(false);
-  // const [newCollectionName, setNewCollectionName] = useState('');
-  // const savePopoverRef = useRef<HTMLDivElement>(null);
+  // ── Like / Save state ──
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [saved, setSaved] = useState(false);
+  const [saveCount, setSaveCount] = useState(0);
+  const likeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLike = useRef<boolean | null>(null);
+  const pendingSave = useRef<boolean | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
@@ -222,6 +220,11 @@ export function ExperienceDetailPage() {
       const res = await getPost(id);
       const data = res.data?.data ?? res.data;
       setPost(data);
+      // Initialize like/save from API
+      setLiked(data?.isLiked ?? false);
+      setLikeCount(data?.likeCount ?? 0);
+      setSaved(data?.isSaved ?? false);
+      setSaveCount(data?.saveCount ?? 0);
       // Auto-expand all questions
       if (data?.questions) {
         setExpandedQuestions(new Set(data.questions.map((q: PostQuestion) => q.id)));
@@ -290,10 +293,52 @@ export function ExperienceDetailPage() {
   }, [hintsData, hintsLoadingSet, hintsFailedSet]);
 
 
-  // ── UI Handlers ──
-  // TODO: Like/Save handlers — implement in future
-  // const toggleCollectionSave = (collectionId: string) => { ... };
-  // const createCollection = () => { ... };
+  // ── Like / Save handlers (debounced) ──
+  const toggleLike = useCallback(() => {
+    if (!currentUser) return;
+    const newLiked = !liked;
+    setLiked(newLiked);
+    setLikeCount(prev => Math.max(0, prev + (newLiked ? 1 : -1)));
+    pendingLike.current = newLiked;
+
+    if (likeTimer.current) clearTimeout(likeTimer.current);
+    likeTimer.current = setTimeout(() => {
+      const shouldLike = pendingLike.current;
+      if (shouldLike === null || !id) return;
+      pendingLike.current = null;
+      (shouldLike ? likePost(id) : unlikePost(id)).catch((err: any) => {
+        if (err?.response?.data?.errorCode === 'BAD_REQUEST') {
+          toast.info(shouldLike ? 'You already liked this post.' : 'You already unliked this post.');
+          return;
+        }
+        setLiked(!shouldLike);
+        setLikeCount(prev => Math.max(0, prev + (shouldLike ? -1 : 1)));
+      });
+    }, 1000);
+  }, [liked, currentUser, id]);
+
+  const toggleSave = useCallback(() => {
+    if (!currentUser) return;
+    const newSaved = !saved;
+    setSaved(newSaved);
+    setSaveCount(prev => Math.max(0, prev + (newSaved ? 1 : -1)));
+    pendingSave.current = newSaved;
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const shouldSave = pendingSave.current;
+      if (shouldSave === null || !id) return;
+      pendingSave.current = null;
+      (shouldSave ? savePost(id) : unsavePost(id)).catch((err: any) => {
+        if (err?.response?.data?.errorCode === 'BAD_REQUEST') {
+          toast.info(shouldSave ? 'You already saved this post.' : 'You already unsaved this post.');
+          return;
+        }
+        setSaved(!shouldSave);
+        setSaveCount(prev => Math.max(0, prev + (shouldSave ? -1 : 1)));
+      });
+    }, 1000);
+  }, [saved, currentUser, id]);
 
   const toggleAllQuestions = () => {
     if (allExpanded) {
@@ -552,31 +597,26 @@ export function ExperienceDetailPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-5 border-t border-[hsl(220,16%,94%)]">
                   <div className="flex items-center gap-4">
-                    {/* TODO: Like button — implement in future
+                    {/* Like button */}
                     <button
-                      onClick={() => setLiked(!liked)}
+                      onClick={toggleLike}
                       className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
                     >
-                      <ThumbsUp className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
-                      {liked ? 1 : 0}
+                      <ThumbsUp className={`w-4 h-4 transition-transform ${liked ? 'fill-current scale-110' : ''}`} />
+                      {likeCount}
                     </button>
-                    */}
                     <a href="#discussion" className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors">
                       <MessageSquare className="w-4 h-4" />
                       {comments.length}
                     </a>
-                    {/* TODO: Save to collection — implement in future
-                    <div className="relative" ref={savePopoverRef}>
-                      <button
-                        onClick={() => setShowSavePopover(!showSavePopover)}
-                        className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
-                      >
-                        <Bookmark className={`w-4 h-4 ${saved ? 'fill-current' : ''}`} />
-                        {saved ? 1 : 0}
-                      </button>
-                      ... save popover UI ...
-                    </div>
-                    */}
+                    {/* Save button */}
+                    <button
+                      onClick={toggleSave}
+                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
+                    >
+                      <Bookmark className={`w-4 h-4 transition-transform ${saved ? 'fill-current scale-110' : ''}`} />
+                      {saveCount}
+                    </button>
                     <button
                       onClick={handleShare}
                       className={`flex items-center gap-1.5 text-sm transition-colors ${shareCopied ? 'text-emerald-600' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}

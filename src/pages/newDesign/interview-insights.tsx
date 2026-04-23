@@ -12,8 +12,8 @@ import {
   ListFilter,
   Loader2,
   MessageSquare,
-  // ThumbsUp, // TODO: like — implement in future
-  // Bookmark, // TODO: save — implement in future
+  ThumbsUp,
+  Bookmark,
   Share2,
   Eye,
   ArrowUp,
@@ -22,7 +22,8 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { ShareExperienceModal } from '../../components/newDesign/share-experience-modal';
 import { SharePopover } from '@/components/newDesign/share-popover';
@@ -68,16 +69,22 @@ interface Post {
   isAnonymous?: boolean;
   createdAt: string;
   commentCount?: number;
+  likeCount?: number;
+  saveCount?: number;
+  isLiked?: boolean;
+  isSaved?: boolean;
   tags?: string[];
 }
 
-const SORT_OPTIONS = ['Relevance', 'Newest'] as const;
+const SORT_OPTIONS = ['Relevance', 'Newest', 'Hot', 'Most Saved'] as const;
 
 type SortOption = typeof SORT_OPTIONS[number];
 
 const SORT_TO_API: Record<SortOption, string> = {
   Relevance: 'RELEVANCE',
   Newest: 'NEWEST',
+  Hot: 'HOT',
+  'Most Saved': 'MOST_SAVED',
 };
 
 const TIME_TO_API: Record<string, string> = {
@@ -251,15 +258,106 @@ export function InterviewInsightsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // TODO: Like/Save interaction state — implement in future
-  // const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
-  // const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
-  // const toggleLike = (postId: string) => {
-  //   setLikedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
-  // };
-  // const toggleSave = (postId: string) => {
-  //   setSavedPosts(prev => { const next = new Set(prev); next.has(postId) ? next.delete(postId) : next.add(postId); return next; });
-  // };
+  // ── Like / Save interaction state ──
+  type PostInteraction = { liked: boolean; likeCount: number; saved: boolean; saveCount: number };
+  const [interactions, setInteractions] = useState<Map<string, PostInteraction>>(new Map());
+  const likeTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingLikes = useRef<Map<string, boolean>>(new Map());
+  const pendingSaves = useRef<Map<string, boolean>>(new Map());
+
+  const initInteractions = useCallback((posts: Post[], reset: boolean) => {
+    setInteractions(prev => {
+      const next = reset ? new Map() : new Map(prev);
+      for (const p of posts) {
+        // Always use fresh API data; preserve local pending changes only if timer is still running
+        const hasPending = pendingLikes.current.has(p.id) || pendingSaves.current.has(p.id);
+        if (!hasPending) {
+          next.set(p.id, {
+            liked: p.isLiked ?? false,
+            likeCount: p.likeCount ?? 0,
+            saved: p.isSaved ?? false,
+            saveCount: p.saveCount ?? 0,
+          });
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleLike = useCallback((postId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate('/auth'); return; }
+
+    const curr = interactions.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
+    const newLiked = !curr.liked;
+
+    setInteractions(prev => {
+      const next = new Map(prev);
+      const c = next.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
+      next.set(postId, { ...c, liked: newLiked, likeCount: Math.max(0, c.likeCount + (newLiked ? 1 : -1)) });
+      return next;
+    });
+    pendingLikes.current.set(postId, newLiked);
+
+    const existing = likeTimers.current.get(postId);
+    if (existing) clearTimeout(existing);
+    likeTimers.current.set(postId, setTimeout(() => {
+      const shouldLike = pendingLikes.current.get(postId);
+      if (shouldLike === undefined) return;
+      pendingLikes.current.delete(postId);
+      likeTimers.current.delete(postId);
+      (shouldLike ? likePost(postId) : unlikePost(postId)).catch((err: any) => {
+        if (err?.response?.data?.errorCode === 'BAD_REQUEST') {
+          toast.info(shouldLike ? 'You already liked this post.' : 'You already unliked this post.');
+          return;
+        }
+        setInteractions(prev => {
+          const next = new Map(prev);
+          const c = next.get(postId);
+          if (c) next.set(postId, { ...c, liked: !shouldLike, likeCount: Math.max(0, c.likeCount + (shouldLike ? -1 : 1)) });
+          return next;
+        });
+      });
+    }, 1000));
+  }, [isAuthenticated, navigate, interactions]);
+
+  const toggleSave = useCallback((postId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate('/auth'); return; }
+
+    const curr = interactions.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
+    const newSaved = !curr.saved;
+
+    setInteractions(prev => {
+      const next = new Map(prev);
+      const c = next.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
+      next.set(postId, { ...c, saved: newSaved, saveCount: Math.max(0, c.saveCount + (newSaved ? 1 : -1)) });
+      return next;
+    });
+    pendingSaves.current.set(postId, newSaved);
+
+    const existing = saveTimers.current.get(postId);
+    if (existing) clearTimeout(existing);
+    saveTimers.current.set(postId, setTimeout(() => {
+      const shouldSave = pendingSaves.current.get(postId);
+      if (shouldSave === undefined) return;
+      pendingSaves.current.delete(postId);
+      saveTimers.current.delete(postId);
+      (shouldSave ? savePost(postId) : unsavePost(postId)).catch((err: any) => {
+        if (err?.response?.data?.errorCode === 'BAD_REQUEST') {
+          toast.info(shouldSave ? 'You already saved this post.' : 'You already unsaved this post.');
+          return;
+        }
+        setInteractions(prev => {
+          const next = new Map(prev);
+          const c = next.get(postId);
+          if (c) next.set(postId, { ...c, saved: !shouldSave, saveCount: Math.max(0, c.saveCount + (shouldSave ? -1 : 1)) });
+          return next;
+        });
+      });
+    }, 1000));
+  }, [isAuthenticated, navigate, interactions]);
 
   // Client-side filtering only for fields the API doesn't support (category/tags)
   const filteredPosts = useMemo(() => {
@@ -325,6 +423,7 @@ export function InterviewInsightsPage() {
       const content: Post[] = Array.isArray(data) ? data : [];
 
       setAllPosts(prev => reset ? content : [...prev, ...content]);
+      initInteractions(content, reset);
       // No pagination info in response — if fewer than 10 results, it's the last page
       setHasMore(isAuthenticated ? content.length >= 10 : false);
       setPage(pageNum);
@@ -338,7 +437,7 @@ export function InterviewInsightsPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [debouncedSearchQuery, appliedFilters, activeSort, isAuthenticated]);
+  }, [debouncedSearchQuery, appliedFilters, activeSort, isAuthenticated, initInteractions]);
 
   // Refetch when filters or search changes (reset to first page)
   useEffect(() => {
@@ -880,32 +979,30 @@ export function InterviewInsightsPage() {
                         {/* ── Actions ── */}
                         <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
                           <div className="flex items-center gap-4">
-                            {/* TODO: Like button — implement in future
+                            {/* Like button */}
                             <button
-                              onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }}
+                              onClick={(e) => toggleLike(post.id, e)}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                                likedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                                interactions.get(post.id)?.liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
                               }`}
                             >
-                              <ThumbsUp className="w-3.5 h-3.5" />
-                              {likedPosts.has(post.id) ? 1 : 0}
+                              <ThumbsUp className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.liked ? 'fill-current scale-110' : ''}`} />
+                              {interactions.get(post.id)?.likeCount ?? 0}
                             </button>
-                            */}
                             <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
                               <MessageSquare className="w-3.5 h-3.5" />
                               {post.commentCount ?? 0}
                             </span>
-                            {/* TODO: Save button — implement in future
+                            {/* Save button */}
                             <button
-                              onClick={(e) => { e.stopPropagation(); toggleSave(post.id); }}
+                              onClick={(e) => toggleSave(post.id, e)}
                               className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                                savedPosts.has(post.id) ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
+                                interactions.get(post.id)?.saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'
                               }`}
                             >
-                              <Bookmark className={`w-3.5 h-3.5 ${savedPosts.has(post.id) ? 'fill-current' : ''}`} />
-                              {savedPosts.has(post.id) ? 1 : 0}
+                              <Bookmark className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.saved ? 'fill-current scale-110' : ''}`} />
+                              {interactions.get(post.id)?.saveCount ?? 0}
                             </button>
-                            */}
                             
                             {/* Share Popover - Fixed implementation */}
                             <SharePopover 

@@ -39,3 +39,8 @@ export const createReply = (commentId, data) => {
 export const deleteReply = (replyId) => {
   return API.delete(`/community/replies/${replyId}`);
 };
+
+export const likePost = (postId) => API.put(`/community/posts/${postId}/like`);
+export const unlikePost = (postId) => API.delete(`/community/posts/${postId}/unlike`);
+export const savePost = (postId) => API.put(`/community/posts/${postId}/save`);
+export const unsavePost = (postId) => API.delete(`/community/posts/${postId}/unsave`);
