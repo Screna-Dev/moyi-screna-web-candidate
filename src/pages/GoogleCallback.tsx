@@ -5,6 +5,19 @@ import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
+import { getUserInsights } from '@/services/ProfileServices';
+
+async function hasCompletedOnboarding(): Promise<boolean> {
+  try {
+    const res = await getUserInsights();
+    const data = res.data?.data ?? res.data;
+    // If key fields are missing the user hasn't finished onboarding
+    return !!(data?.role || data?.jobSearchStage || data?.goalClarityLevel);
+  } catch {
+    // 400 / 404 → no insights saved yet
+    return false;
+  }
+}
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -73,7 +86,6 @@ export default function GoogleCallback() {
         // Extract tokens based on your API structure
         const accessToken = data.data?.accessToken || data.accessToken;
         const refreshToken = data.data?.refreshToken || data.refreshToken;
-        const isFirstLogin = data.data?.isFirstLogin ?? data.isFirstLogin ?? false;
         
         if (!accessToken) {
           console.error('No token in response. Full response:', data);
@@ -108,7 +120,9 @@ export default function GoogleCallback() {
           // ignore parse errors
         }
 
-        if (isFirstLogin) {
+        // Check whether this user has already completed onboarding
+        const onboarded = await hasCompletedOnboarding();
+        if (!onboarded) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           navigate(returnTo || '/dashboard');

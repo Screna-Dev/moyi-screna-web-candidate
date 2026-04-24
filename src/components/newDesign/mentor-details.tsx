@@ -6,11 +6,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
-<<<<<<< HEAD
-import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
-=======
 import { getMentor, getMentorSlots } from '../../services/MentorService';
->>>>>>> 5214902 (merge confilict)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,11 +65,7 @@ function topicToPlan(t: MentorData['topics'][0]): CoachingPlan {
     id: t.id,
     name: t.title,
     description: t.description,
-<<<<<<< HEAD
-    pricing: { '30min': t.price30min / 100, '1hr': t.price60min / 100 },
-=======
     pricing: { '30min': t.price30min, '1hr': t.price60min },
->>>>>>> 5214902 (merge confilict)
     icon: Video,
   };
 }
@@ -142,8 +134,6 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   const [notes, setNotes] = useState('');
   const [slots, setSlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [bookingError, setBookingError] = useState<string | null>(null);
 
   // Fetch available slots when duration changes
   useEffect(() => {
@@ -156,7 +146,6 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
       .then((res: any) => {
         const data = res.data?.data ?? res.data ?? [];
         const list = Array.isArray(data) ? data : [];
-        console.log('[mentor-slots] received', list.length, 'slots; sample:', list[0]);
         setSlots(list);
         if (list.length > 0) {
           const first = new Date(list[0].startTime);
@@ -226,36 +215,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
     step === 3 ? selectedSlot !== null :
     true;
 
-  async function handleContinue() {
-    if (step < 5) {
-      setStep(s => s + 1);
-      return;
-    }
-    if (!selectedSlot) {
-      setBookingError('Please select a time slot.');
-      return;
-    }
-    setSubmitting(true);
-    setBookingError(null);
-    try {
-      const res: any = await createBooking(mentorId, {
-        topicId: plan.id,
-        durationMinutes: duration === '30min' ? 30 : 60,
-        startTime: selectedSlot,
-        note: notes || undefined,
-      });
-      const data = res.data?.data ?? res.data ?? {};
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
-      setBookingError('Booking created but no checkout URL was returned. Please contact support.');
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to create booking. Please try again.';
-      setBookingError(msg);
-    } finally {
-      setSubmitting(false);
-    }
+  function handleContinue() {
+    if (step < 5) setStep(s => s + 1);
+    else setStep(6); // payment → success
   }
 
   const formattedDate = selectedDay
@@ -410,9 +372,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                           onClick={() => { setSelectedDay(day); setSelectedSlot(null); }}
                           className={`aspect-square flex items-center justify-center text-xs rounded-lg mx-auto w-full max-w-[36px] transition-colors ${
                             selected
-                              ? 'bg-primary text-primary-foreground font-semibold ring-2 ring-primary/40'
+                              ? 'bg-primary text-primary-foreground font-medium'
                               : avail
-                              ? 'bg-primary/10 text-primary font-semibold hover:bg-primary/20 cursor-pointer'
+                              ? 'text-foreground hover:bg-primary/10 hover:text-primary font-medium cursor-pointer'
                               : 'text-muted-foreground/40 cursor-default'
                           }`}
                         >
@@ -537,12 +499,6 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                 <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <span>Payments are processed securely via Stripe. If you're not satisfied, Screna will refund you or match you with another mentor.</span>
               </div>
-
-              {bookingError && (
-                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-                  {bookingError}
-                </div>
-              )}
             </div>
           )}
 
@@ -603,11 +559,10 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
             )}
             <button
               onClick={handleContinue}
-              disabled={!canContinue || submitting}
-              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={!canContinue}
+              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {step === 4 ? 'Continue to payment' : step === 5 ? (submitting ? 'Redirecting…' : 'Pay with Stripe') : 'Continue'}
+              {step === 4 ? 'Continue to payment' : step === 5 ? 'Pay with Stripe' : 'Continue'}
             </button>
           </div>
         )}
@@ -679,13 +634,10 @@ export function MentorDetailsPage() {
             <ArrowLeft className="w-4 h-4" />
             Back to Mentorship
           </Link>
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          >
+          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
             <Calendar className="w-3.5 h-3.5" />
             View My Sessions
-          </Link>
+          </button>
         </div>
 
         {/* ── 1. Mentor Hero ── */}
@@ -716,11 +668,7 @@ export function MentorDetailsPage() {
 
             <div className="flex flex-wrap gap-2 mt-4">
               {(mentor?.expertiseTags ?? []).map(tag => (
-<<<<<<< HEAD
-                <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
-=======
                 <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">{tag}</span>
->>>>>>> 5214902 (merge confilict)
               ))}
             </div>
 
@@ -745,7 +693,7 @@ export function MentorDetailsPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Verification</p>
-                <div className="flex items-center gap-2 text-sm bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent-foreground px-3 py-2 rounded-lg w-fit border border-[color-mix(in_srgb,var(--accent)_20%,transparent)]">
+                <div className="flex items-center gap-2 text-sm bg-accent/10 text-accent-foreground px-3 py-2 rounded-lg w-fit border border-accent/20">
                   <ShieldCheck className="w-4 h-4 text-accent" />
                   <span className="text-xs font-medium">Identity & Experience Verified</span>
                 </div>
@@ -815,7 +763,7 @@ export function MentorDetailsPage() {
                     <div className="flex justify-center my-2"><StarRating rating={ratingBreakdown.overall} /></div>
                     <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
                   </div>
-                  {/* <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
+                  <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
                     {[
                       { label: 'Communication', val: ratingBreakdown.Communication },
                       { label: 'Expertise',      val: ratingBreakdown.Expertise },
@@ -828,7 +776,7 @@ export function MentorDetailsPage() {
                         <span className="w-8 text-right text-xs font-medium text-foreground">{item.val.toFixed(1)}</span>
                       </div>
                     ))}
-                  </div> */}
+                  </div>
                 </div>
               </div>
 
@@ -847,13 +795,13 @@ export function MentorDetailsPage() {
                         </div>
                       </div>
                     </div>
-                    {/* <div className="flex gap-2 mb-2">
+                    <div className="flex gap-2 mb-2">
                       {(review.tags ?? []).map(tag => (
                         <span key={tag} className="px-2 py-0.5 bg-secondary text-muted-foreground text-xs font-medium rounded-md border border-border">
                           {tag}
                         </span>
                       ))}
-                      </div> */}
+                    </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">"{review.comment}"</p>
                   </div>
                 ))}
@@ -913,7 +861,7 @@ export function MentorDetailsPage() {
               </div>
 
               {/* Screna guarantee */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-[color-mix(in_srgb,var(--primary)_5%,transparent)] border border-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-sm">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/15 text-sm">
                 <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-medium text-foreground mb-0.5">Screna Guarantee</p>
@@ -934,8 +882,8 @@ export function MentorDetailsPage() {
                   <p className="text-xs text-muted-foreground">Avg. rating</p>
                 </div>
                 <div>
-                  <p className="text-lg font-medium text-foreground">{'—'}</p>
-                  <p className="text-xs text-muted-foreground">Repeat booking rate</p>
+                  <p className="text-lg font-medium text-foreground">{mentor?.yearsOfExperience ? `${mentor.yearsOfExperience}yr` : '—'}</p>
+                  <p className="text-xs text-muted-foreground">Experience</p>
                 </div>
                 <div>
                   <p className="text-lg font-medium text-foreground">24h</p>

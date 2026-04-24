@@ -150,6 +150,10 @@ export const getOnboardingStatus = () => {
   return API.get('/apply/candidates/onboarding-status');
 };
 
+export const getUserInsights = () => {
+  return API.get(`${BASE_URL}/user-insights`);
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile
