@@ -1,13 +1,46 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   FileText, Target, Mic, Search, TrendingUp, Globe,
   Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal,
   X, Check, Shield, Sparkles, ArrowRight, Lock,
-  Users, Plus, Minus, BookOpen, Star, MessageSquare,
+  Users, Plus, Minus, BookOpen, Star, MessageSquare, Loader2,
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
+import { getMentors } from '../../services/MentorService';
+
+// ─── API Types ─────────────────────────────────────────────────────────────────
+
+interface ApiMentor {
+  id: string;
+  name: string;
+  currentRole: string;
+  currentCompany: string;
+  avatarUrl: string;
+  expertiseTags: string[];
+  priceFrom: number;
+  averageRating: number;
+  reviewCount: number;
+  hasSlotsThisWeek: boolean;
+  hasSlotsNextWeek: boolean;
+}
+
+// ─── Filter → API mappings ─────────────────────────────────────────────────────
+
+const PRICE_TO_PARAMS: Record<string, { priceMin?: number; priceMax?: number }> = {
+  '$0–$50':    { priceMin: 0,   priceMax: 50 },
+  '$50–$100':  { priceMin: 50,  priceMax: 100 },
+  '$100+':     { priceMin: 100 },
+};
+const AVAIL_TO_API: Record<string, string> = {
+  'Has slots this week': 'THIS_WEEK',
+  'Next week':           'NEXT_WEEK',
+  'Flexible':            'FLEXIBLE',
+};
+const RATING_TO_MIN: Record<string, number> = {
+  '4.0+': 4.0, '4.5+': 4.5, '5.0 only': 5.0,
+};
 
 // ─── Color palette helper ──────────────────────────────────────────────────────
 
@@ -67,92 +100,6 @@ const SERVICES = [
   },
 ];
 
-const MENTORS = [
-  {
-    id: 1,
-    name: 'Priya Mehta',
-    role: 'Senior Product Manager',
-    company: 'Google',
-    tags: ['PM Interviews', 'Product Strategy', 'FAANG Prep'],
-    focus: 'Helping candidates crack PM roles at top-tier tech companies.',
-    rating: 4.9,
-    reviews: 127,
-    price: 120,
-    nextSlot: 'Tomorrow',
-    slotsThisWeek: 4,
-    avatar: 'https://images.unsplash.com/photo-1689600944138-da3b150d9cb8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-  {
-    id: 2,
-    name: 'James Liu',
-    role: 'Staff Software Engineer',
-    company: 'Stripe',
-    tags: ['System Design', 'Backend', 'Coding Interviews'],
-    focus: 'System design deep-dives and backend interview fundamentals.',
-    rating: 4.8,
-    reviews: 89,
-    price: 90,
-    nextSlot: 'Thu',
-    slotsThisWeek: 6,
-    avatar: 'https://images.unsplash.com/photo-1600896997793-b8ed3459a17f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-  {
-    id: 3,
-    name: 'Sofia Reyes',
-    role: 'Data Scientist',
-    company: 'Meta',
-    tags: ['Data Science', 'ML Concepts', 'Career Transitions'],
-    focus: 'Navigating career pivots into data and machine learning roles.',
-    rating: 4.7,
-    reviews: 64,
-    price: 80,
-    nextSlot: 'Fri',
-    slotsThisWeek: 3,
-    avatar: 'https://images.unsplash.com/photo-1762522921456-cdfe882d36c3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-  {
-    id: 4,
-    name: 'Alex Chen',
-    role: 'Product Designer',
-    company: 'Airbnb',
-    tags: ['Portfolio Review', 'Design Process', 'Case Studies'],
-    focus: 'Design portfolio critique and product case study coaching.',
-    rating: 4.8,
-    reviews: 52,
-    price: 70,
-    nextSlot: 'Mon',
-    slotsThisWeek: 5,
-    avatar: 'https://images.unsplash.com/photo-1774813958486-4c180dcda729?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-  {
-    id: 5,
-    name: 'Marcus Webb',
-    role: 'ML Engineer',
-    company: 'OpenAI',
-    tags: ['ML Systems', 'Research Interviews', 'AI Careers'],
-    focus: 'ML system design and research role interview preparation.',
-    rating: 5.0,
-    reviews: 31,
-    price: 150,
-    nextSlot: 'Wed',
-    slotsThisWeek: 2,
-    avatar: 'https://images.unsplash.com/photo-1588178454780-441fa5b99fa5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-  {
-    id: 6,
-    name: 'Dana Park',
-    role: 'Engineering Manager',
-    company: 'Datadog',
-    tags: ['EM Interviews', 'Leadership', 'Career Growth'],
-    focus: 'Engineering leadership transitions and EM interview coaching.',
-    rating: 4.6,
-    reviews: 78,
-    price: 100,
-    nextSlot: 'Thu',
-    slotsThisWeek: 3,
-    avatar: 'https://images.unsplash.com/photo-1690166444493-b3f5fbcd4762?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  },
-];
 
 const FILTERS = [
   {
@@ -316,17 +263,13 @@ function FilterDropdown({
   );
 }
 
-// ─── MentorCard ───────────��─────────────────────────────────────────────────────
+// ─── MentorCard ────────────────────────────────────────────────────────────────
 
-function MentorCard({
-  mentor,
-  isMember,
-}: {
-  mentor: (typeof MENTORS)[0];
-  isMember: boolean;
-}) {
+function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean }) {
   const [hovered, setHovered] = useState(false);
   const navigate = useNavigate();
+
+  const nextSlotLabel = mentor.hasSlotsThisWeek ? 'This week' : mentor.hasSlotsNextWeek ? 'Next week' : 'Check';
 
   return (
     <div
@@ -337,66 +280,57 @@ function MentorCard({
           ? 'border-slate-300 shadow-[0_4px_20px_rgba(0,0,0,0.08)] -translate-y-0.5'
           : 'border-slate-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)]'
       }`}
-      onClick={(e) => {
-        if (isMember) {
-          navigate('/mentor-details');
-        }
-      }}
+      onClick={() => { if (isMember) navigate(`/mentor-details?mentorId=${mentor.id}`); }}
     >
       {/* Header */}
       <div className="px-5 pt-5 pb-4 border-b border-slate-100">
         <div className="flex items-start gap-3.5">
-          <img
-            src={mentor.avatar}
-            alt={mentor.name}
-            className="w-10 h-10 rounded-full object-cover shrink-0 ring-2 ring-white shadow-sm"
-          />
+          {mentor.avatarUrl ? (
+            <img src={mentor.avatarUrl} alt={mentor.name} className="w-10 h-10 rounded-full object-cover shrink-0 ring-2 ring-white shadow-sm" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-slate-200 shrink-0 flex items-center justify-center text-slate-500 text-xs font-semibold">
+              {mentor.name.split(' ').map(p => p[0]).join('').slice(0, 2)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-[14px] font-semibold text-slate-900 truncate">{mentor.name}</p>
             <p className="text-[12px] text-slate-500 mt-0.5 truncate">
-              {mentor.role}
+              {mentor.currentRole}
               <span className="text-slate-300 mx-1">·</span>
-              <span className="text-slate-700 font-medium">{mentor.company}</span>
+              <span className="text-slate-700 font-medium">{mentor.currentCompany}</span>
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="font-semibold text-[#2466f5] text-[20px]">${mentor.price}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px]">${mentor.priceFrom}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
 
-        {/* Rating and Availability placed above Tags */}
         <div className="flex items-center justify-between mt-3.5">
           <div className="flex items-center gap-1.5">
-            <StarRating rating={mentor.rating} />
-            <span className="font-semibold text-slate-700 text-[15px]">{mentor.rating.toFixed(1)}</span>
-            <span className="text-[11.5px] text-slate-400 text-[12px]">({mentor.reviews})</span>
+            <StarRating rating={mentor.averageRating} />
+            <span className="font-semibold text-slate-700 text-[15px]">{mentor.averageRating.toFixed(1)}</span>
+            <span className="text-[11.5px] text-slate-400">({mentor.reviewCount})</span>
           </div>
           <div className="flex items-center gap-1 text-[11.5px] text-slate-500">
             <Calendar className="w-3 h-3 text-slate-400" />
-            <span className="text-[12px]">Next: <span className="font-medium text-slate-700">{mentor.nextSlot}</span></span>
+            <span className="text-[12px]">Next: <span className="font-medium text-slate-700">{nextSlotLabel}</span></span>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5 mt-3">
-          {mentor.tags.map((tag) => (
-            <span
-              key={tag}
-              className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium"
-            >
-              {tag}
-            </span>
+          {mentor.expertiseTags.map((tag) => (
+            <span key={tag} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium">{tag}</span>
           ))}
         </div>
       </div>
 
       {/* Body */}
       <div className="px-5 py-4 flex-1 flex flex-col gap-3">
-        <p className="text-[12.5px] text-slate-500 leading-snug italic">"{mentor.focus}"</p>
         <div className="flex items-center gap-1">
           <Clock className="w-3 h-3 text-emerald-500" />
           <span className="text-[11.5px] text-emerald-600 font-medium">
-            {mentor.slotsThisWeek} slot{mentor.slotsThisWeek !== 1 ? 's' : ''} this week
+            {mentor.hasSlotsThisWeek ? 'Available this week' : mentor.hasSlotsNextWeek ? 'Available next week' : 'No upcoming slots'}
           </span>
         </div>
       </div>
@@ -405,7 +339,7 @@ function MentorCard({
       <div className="px-5 pb-5">
         {isMember ? (
           <button
-            onClick={(e) => { e.stopPropagation(); navigate('/mentor-details'); }}
+            onClick={(e) => { e.stopPropagation(); navigate(`/mentor-details?mentorId=${mentor.id}`); }}
             className={`w-full py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 ${
               hovered
                 ? 'bg-[hsl(221,91%,60%)] text-white shadow-[0_2px_12px_hsl(221,91%,60%)/30]'
@@ -439,6 +373,35 @@ export function MentorshipMarketplacePage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const sortRef = useRef<HTMLDivElement>(null);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  const [mentors, setMentors] = useState<ApiMentor[]>([]);
+  const [loadingMentors, setLoadingMentors] = useState(false);
+
+  const fetchMentorList = useCallback(async () => {
+    setLoadingMentors(true);
+    try {
+      const params: Record<string, unknown> = { page: 0, size: 20 };
+      if (filters.role) params.role = filters.role;
+      if (filters.availability) params.availability = AVAIL_TO_API[filters.availability];
+      if (filters.rating) params.ratingMin = RATING_TO_MIN[filters.rating];
+      if (filters.price) {
+        const p = PRICE_TO_PARAMS[filters.price];
+        if (p.priceMin !== undefined) params.priceMin = p.priceMin;
+        if (p.priceMax !== undefined) params.priceMax = p.priceMax;
+      }
+      const res = await getMentors(params);
+      const data = res.data?.data?.content ?? res.data?.content ?? [];
+      setMentors(Array.isArray(data) ? data : []);
+    } catch {
+      setMentors([]);
+    } finally {
+      setLoadingMentors(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    fetchMentorList();
+  }, [fetchMentorList]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -546,7 +509,7 @@ export function MentorshipMarketplacePage() {
                 Find a mentor
               </h2>
               <p className="text-[13px] text-slate-400 mt-1">
-                {MENTORS.length} verified mentors · updated weekly
+                {mentors.length} verified mentors · updated weekly
               </p>
             </div>
 
@@ -610,11 +573,21 @@ export function MentorshipMarketplacePage() {
             </div>
 
             {/* Mentor grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {MENTORS.map((mentor) => (
-                <MentorCard key={mentor.id} mentor={mentor} isMember={isMember} />
-              ))}
-            </div>
+            {loadingMentors ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+              </div>
+            ) : mentors.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <p className="text-[14px]">No mentors found for the selected filters.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {mentors.map((mentor) => (
+                  <MentorCard key={mentor.id} mentor={mentor} isMember={isMember} />
+                ))}
+              </div>
+            )}
 
             {/* Services helper grid moved here */}
             <div className="mt-16 pt-16 border-t border-slate-200 flex flex-col items-center w-full">

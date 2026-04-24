@@ -1,30 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { useState, useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import {
   ArrowLeft, Clock, Calendar, Briefcase, Award, Video, ShieldCheck, X,
-  ChevronLeft, ChevronRight, CheckCircle2,
+  ChevronLeft, ChevronRight, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
-
-// ─── Icons ──────────────────────────────────────────────────────────────────
-
-function FileTextIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
-      <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
-      <path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
-    </svg>
-  );
-}
-function TargetIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
-    </svg>
-  );
-}
+import { getMentor, getMentorSlots } from '../../services/MentorService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -38,79 +20,55 @@ interface CoachingPlan {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 }
 
-// ─── Data ────────────────────────────────────────────────────────────────────
+interface ApiReview {
+  id: string;
+  reviewerName: string;
+  overallRating: number;
+  communicationRating: number;
+  expertiseRating: number;
+  helpfulnessRating: number;
+  preparationRating: number;
+  tags: string[];
+  comment: string;
+  createdAt: string;
+}
 
-const MENTOR = {
-  name: 'Priya Mehta',
-  role: 'Senior Product Manager',
-  company: 'Google',
-  avatar: 'https://images.unsplash.com/photo-1689600944138-da3b150d9cb8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-  bio: 'I help candidates crack PM roles at top-tier tech companies. With 8+ years of experience across Google, Uber, and early-stage startups, I specialize in product sense, execution, and behavioral interviews.',
-  tags: ['PM Interviews', 'Product Strategy', 'FAANG Prep', 'Career Transition'],
-  experience: [
-    { role: 'Senior Product Manager', company: 'Google', years: '2021 – Present' },
-    { role: 'Product Manager', company: 'Uber', years: '2018 – 2021' },
-  ],
-  rating: 4.9,
-  reviewsCount: 127,
-};
+interface MentorData {
+  id: string;
+  name: string;
+  currentRole: string;
+  currentCompany: string;
+  avatarUrl: string;
+  bio: string;
+  headline: string;
+  expertiseTags: string[];
+  yearsOfExperience: number;
+  careerBackground: { company: string; role: string; startYear: number; endYear: number }[];
+  averageRating: number;
+  reviewCount: number;
+  topics: { id: string; title: string; description: string; price30min: number; price60min: number; active: boolean }[];
+  reviews: ApiReview[];
+}
 
-const COACHING_PLANS: CoachingPlan[] = [
-  {
-    id: 'mock-interview',
-    name: 'Mock Interview (Product Sense)',
-    description: 'A realistic mock interview focusing on product sense or execution, followed by detailed, actionable feedback.',
-    pricing: { '30min': 80, '1hr': 140 },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function initials(name: string) {
+  return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function formatReviewDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function topicToPlan(t: MentorData['topics'][0]): CoachingPlan {
+  return {
+    id: t.id,
+    name: t.title,
+    description: t.description,
+    pricing: { '30min': t.price30min, '1hr': t.price60min },
     icon: Video,
-  },
-  {
-    id: 'resume-review',
-    name: 'Resume & LinkedIn Review',
-    description: 'Live teardown of your resume and LinkedIn profile. Rewrite bullets to highlight impact and pass ATS screens.',
-    pricing: { '30min': 60, '1hr': 90 },
-    icon: FileTextIcon,
-  },
-  {
-    id: 'career-planning',
-    name: 'Career Strategy Session',
-    description: 'Map out your 1–3 year career goals, identify skill gaps, and build a concrete plan to get promoted or transition.',
-    pricing: { '30min': 75, '1hr': 120 },
-    icon: TargetIcon,
-  },
-  {
-    id: 'salary-negotiation',
-    name: 'Offer & Salary Negotiation',
-    description: 'Build a negotiation strategy with compensation band insights and scripts to maximize your total compensation.',
-    pricing: { '30min': 80, '1hr': 140 },
-    icon: Briefcase,
-  },
-];
-
-const REVIEWS = [
-  {
-    id: 1, initials: 'SK', name: 'Sarah K.', rating: 5, date: 'Oct 12, 2025',
-    traits: ['Insightful', 'Actionable'],
-    comment: 'Priya immediately identified that I was rambling in my execution answers. Her framework for structuring metrics completely changed how I approach these questions.',
-  },
-  {
-    id: 2, initials: 'JL', name: 'James L.', rating: 5, date: 'Sep 28, 2025',
-    traits: ['Direct', 'Well-prepared'],
-    comment: 'She read my resume beforehand and tailored the mock interview to my specific background. The feedback was direct, honest, and exactly what I needed before my onsite.',
-  },
-  {
-    id: 3, initials: 'MR', name: 'Michael R.', rating: 4, date: 'Sep 15, 2025',
-    traits: ['Encouraging'],
-    comment: 'Great session on career transition. Priya gave me a realistic view of what hiring managers look for in non-traditional PM candidates.',
-  },
-];
-
-const RATING_BREAKDOWN = {
-  overall: 4.9,
-  Communication: 5.0,
-  Expertise: 4.9,
-  Helpfulness: 4.8,
-  Preparation: 5.0,
-};
+  };
+}
 
 const FAQS = [
   { q: 'How do I book a session?', a: 'Choose a coaching plan, click Book, and follow the step-by-step flow to pick your duration, date, and time. You\'ll receive a calendar invite immediately after payment.' },
@@ -121,7 +79,6 @@ const FAQS = [
   { q: 'What if my mentor doesn\'t show up?', a: 'In the rare event a mentor misses a session, you\'ll automatically receive a full refund and a priority booking token.' },
 ];
 
-const AVAILABLE_DAYS = [16, 17, 21, 22, 23, 28, 29, 30];
 const TIMEZONES = [
   'America/Los_Angeles (PDT, UTC−7)',
   'America/Denver (MDT, UTC−6)',
@@ -132,18 +89,8 @@ const TIMEZONES = [
   'Asia/Singapore (SGT, UTC+8)',
   'Asia/Tokyo (JST, UTC+9)',
 ];
-const TIME_SLOTS = [
-  { time: '9:00 AM', avail: true }, { time: '9:30 AM', avail: true },
-  { time: '10:00 AM', avail: false }, { time: '10:30 AM', avail: true },
-  { time: '11:00 AM', avail: true }, { time: '11:30 AM', avail: false },
-  { time: '2:00 PM', avail: true }, { time: '2:30 PM', avail: true },
-  { time: '3:00 PM', avail: true }, { time: '4:00 PM', avail: false },
-  { time: '4:30 PM', avail: true },
-];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STEP_LABELS = ['Plan','Date','Time','Notes','Payment'];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -169,18 +116,73 @@ function RatingBar({ value }: { value: number }) {
 
 interface BookingModalProps {
   plan: CoachingPlan;
+  mentorId: string;
+  mentorName: string;
+  mentorCompany: string;
   onClose: () => void;
 }
 
-function BookingModal({ plan, onClose }: BookingModalProps) {
+function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: BookingModalProps) {
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
   const [timezone, setTimezone] = useState(TIMEZONES[0]);
-  const [calYear, setCalYear] = useState(2026);
-  const [calMonth, setCalMonth] = useState(3); // April
+  const now = new Date();
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [slots, setSlots] = useState<{ startTime: string; endTime: string }[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
+  // Fetch available slots when duration changes
+  useEffect(() => {
+    if (!mentorId || !plan.id) return;
+    setLoadingSlots(true);
+    setSlots([]);
+    setSelectedDay(null);
+    setSelectedSlot(null);
+    getMentorSlots(mentorId, plan.id, duration === '30min' ? 30 : 60)
+      .then((res: any) => {
+        const data = res.data?.data ?? res.data ?? [];
+        const list = Array.isArray(data) ? data : [];
+        setSlots(list);
+        if (list.length > 0) {
+          const first = new Date(list[0].startTime);
+          setCalYear(first.getFullYear());
+          setCalMonth(first.getMonth());
+        }
+      })
+      .catch(() => setSlots([]))
+      .finally(() => setLoadingSlots(false));
+  }, [mentorId, plan.id, duration]);
+
+  // Days that have at least one slot
+  const availableDaysSet = useMemo(() => {
+    const s = new Set<string>();
+    slots.forEach(sl => {
+      const d = new Date(sl.startTime);
+      s.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    });
+    return s;
+  }, [slots]);
+
+  // Slots for the currently selected day
+  const slotsForDay = useMemo(() => {
+    if (selectedDay === null) return [];
+    return slots.filter(sl => {
+      const d = new Date(sl.startTime);
+      return d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === selectedDay;
+    });
+  }, [slots, selectedDay, calYear, calMonth]);
+
+  function isDayAvailable(year: number, month: number, day: number) {
+    return availableDaysSet.has(`${year}-${month}-${day}`);
+  }
+
+  function formatSlotTime(iso: string) {
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -263,7 +265,7 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-medium text-foreground">{plan.name}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">with {MENTOR.name} · {MENTOR.company}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">with {mentorName} · {mentorCompany}</p>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                 <X className="w-4 h-4" />
@@ -361,7 +363,7 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
                     ))}
                     {Array.from({ length: daysInMonth }).map((_, i) => {
                       const day = i + 1;
-                      const avail = AVAILABLE_DAYS.includes(day);
+                      const avail = isDayAvailable(calYear, calMonth, day);
                       const selected = selectedDay === day;
                       return (
                         <button
@@ -404,31 +406,37 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
                 <p className="text-sm font-medium text-foreground">Available slots</p>
                 <span className="text-xs text-muted-foreground">{formattedDate}</span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {TIME_SLOTS.map(slot => {
-                  const active = selectedSlot === slot.time;
-                  return (
-                    <button
-                      key={slot.time}
-                      disabled={!slot.avail}
-                      onClick={() => setSelectedSlot(slot.time)}
-                      className={`py-2 px-2 rounded-lg border text-xs font-medium text-center transition-all ${
-                        active
-                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                          : slot.avail
-                          ? 'bg-card border-border text-foreground hover:border-primary/50 hover:bg-primary/5'
-                          : 'bg-muted/40 border-border text-muted-foreground/40 cursor-default line-through'
-                      }`}
-                    >
-                      {slot.time}
-                    </button>
-                  );
-                })}
-              </div>
+              {loadingSlots ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : slotsForDay.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No slots available for this date.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {slotsForDay.map(slot => {
+                    const label = formatSlotTime(slot.startTime);
+                    const active = selectedSlot === slot.startTime;
+                    return (
+                      <button
+                        key={slot.startTime}
+                        onClick={() => setSelectedSlot(slot.startTime)}
+                        className={`py-2 px-2 rounded-lg border text-xs font-medium text-center transition-all ${
+                          active
+                            ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                            : 'bg-card border-border text-foreground hover:border-primary/50 hover:bg-primary/5'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {selectedSlot && (
                 <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
                   <span className="text-muted-foreground">Selected: </span>
-                  <span className="font-medium text-foreground">{selectedSlot} · {formattedDate}</span>
+                  <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
                 </div>
               )}
             </div>
@@ -463,11 +471,11 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
 
               <div className="border border-border rounded-xl overflow-hidden">
                 {[
-                  { label: 'Mentor',   value: `${MENTOR.name} · ${MENTOR.company}` },
+                  { label: 'Mentor',   value: `${mentorName} · ${mentorCompany}` },
                   { label: 'Plan',     value: plan.name },
                   { label: 'Duration', value: duration === '30min' ? '30 minutes' : '1 hour' },
                   { label: 'Date',     value: formattedDate },
-                  { label: 'Time',     value: selectedSlot ?? '—' },
+                  { label: 'Time',     value: selectedSlot ? formatSlotTime(selectedSlot) : '—' },
                 ].map((row, i, arr) => (
                   <div key={row.label} className={`flex items-start justify-between gap-4 px-4 py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                     <span className="text-xs text-muted-foreground w-20 shrink-0">{row.label}</span>
@@ -509,10 +517,10 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
 
               <div className="w-full border border-border rounded-xl overflow-hidden">
                 {[
-                  { label: 'Mentor',   value: `${MENTOR.name}` },
+                  { label: 'Mentor',   value: mentorName },
                   { label: 'Plan',     value: plan.name },
                   { label: 'Date',     value: formattedDate },
-                  { label: 'Time',     value: selectedSlot ?? '—' },
+                  { label: 'Time',     value: selectedSlot ? formatSlotTime(selectedSlot) : '—' },
                 ].map((row, i, arr) => (
                   <div key={row.label} className={`flex items-center justify-between px-4 py-3 text-left ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                     <span className="text-xs text-muted-foreground">{row.label}</span>
@@ -566,12 +574,56 @@ function BookingModal({ plan, onClose }: BookingModalProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function MentorDetailsPage() {
+  const [searchParams] = useSearchParams();
+  const mentorId = searchParams.get('mentorId') ?? '';
   const [activePlan, setActivePlan] = useState<CoachingPlan | null>(null);
+  const [mentor, setMentor] = useState<MentorData | null>(null);
+  const [loading, setLoading] = useState(!!mentorId);
+
+  useEffect(() => {
+    if (!mentorId) return;
+    setLoading(true);
+    getMentor(mentorId)
+      .then((res: any) => setMentor(res.data?.data ?? res.data))
+      .catch(() => setMentor(null))
+      .finally(() => setLoading(false));
+  }, [mentorId]);
+
+  const plans = useMemo(() => (mentor?.topics ?? []).filter(t => t.active).map(topicToPlan), [mentor]);
+
+  const ratingBreakdown = useMemo(() => {
+    const reviews = mentor?.reviews ?? [];
+    const avg = (key: keyof ApiReview) =>
+      reviews.length > 0 ? reviews.reduce((s, r) => s + (r[key] as number), 0) / reviews.length : 0;
+    return {
+      overall: mentor?.averageRating ?? 0,
+      Communication: avg('communicationRating'),
+      Expertise: avg('expertiseRating'),
+      Helpfulness: avg('helpfulnessRating'),
+      Preparation: avg('preparationRating'),
+    };
+  }, [mentor]);
+
+  if (loading) {
+    return (
+      <DashboardLayout headerTitle="Mentor Profile" noSidebar>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout headerTitle="Mentor Profile" noSidebar>
-      {activePlan && (
-        <BookingModal plan={activePlan} onClose={() => setActivePlan(null)} />
+      {activePlan && mentor && (
+        <BookingModal
+          plan={activePlan}
+          mentorId={mentor.id}
+          mentorName={mentor.name}
+          mentorCompany={mentor.currentCompany}
+          onClose={() => setActivePlan(null)}
+        />
       )}
 
       <div className="w-full max-w-5xl mx-auto pb-24 pt-28">
@@ -591,49 +643,49 @@ export function MentorDetailsPage() {
         {/* ── 1. Mentor Hero ── */}
         <section className="bg-card rounded-2xl border border-border p-8 mb-8 flex flex-col md:flex-row gap-8 items-start">
           <div className="shrink-0 flex flex-col items-center">
-            <img
-              src={MENTOR.avatar}
-              alt={MENTOR.name}
-              className="w-28 h-28 rounded-2xl object-cover ring-1 ring-border mb-3"
-            />
+            {mentor?.avatarUrl ? (
+              <img src={mentor.avatarUrl} alt={mentor.name} className="w-28 h-28 rounded-2xl object-cover ring-1 ring-border mb-3" />
+            ) : (
+              <div className="w-28 h-28 rounded-2xl bg-muted border border-border flex items-center justify-center text-2xl font-semibold text-muted-foreground mb-3">
+                {mentor ? initials(mentor.name) : '?'}
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
-              <StarRating rating={MENTOR.rating} />
-              <span className="text-sm font-medium text-foreground ml-1">{MENTOR.rating}</span>
+              <StarRating rating={mentor?.averageRating ?? 0} />
+              <span className="text-sm font-medium text-foreground ml-1">{mentor?.averageRating?.toFixed(1) ?? '—'}</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{MENTOR.reviewsCount} reviews</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{mentor?.reviewCount ?? 0} reviews</p>
           </div>
 
           <div className="flex-1">
-            <h1 className="text-foreground">{MENTOR.name}</h1>
+            <h1 className="text-foreground">{mentor?.name ?? '—'}</h1>
             <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
               <Briefcase className="w-4 h-4" />
-              <span>{MENTOR.role}</span>
+              <span>{mentor?.currentRole}</span>
               <span className="text-border">·</span>
-              <span className="font-medium text-foreground">{MENTOR.company}</span>
+              <span className="font-medium text-foreground">{mentor?.currentCompany}</span>
             </div>
 
             <div className="flex flex-wrap gap-2 mt-4">
-              {MENTOR.tags.map(tag => (
-                <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">
-                  {tag}
-                </span>
+              {(mentor?.expertiseTags ?? []).map(tag => (
+                <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">{tag}</span>
               ))}
             </div>
 
-            <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-2xl">{MENTOR.bio}</p>
+            <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-2xl">{mentor?.bio}</p>
 
             <div className="mt-6 pt-6 border-t border-border grid grid-cols-2 gap-6">
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Experience</p>
                 <div className="space-y-3">
-                  {MENTOR.experience.map((exp, i) => (
+                  {(mentor?.careerBackground ?? []).map((exp, i) => (
                     <div key={i} className="flex gap-3">
                       <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
                         <Award className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-foreground">{exp.role}</p>
-                        <p className="text-xs text-muted-foreground">{exp.company} · {exp.years}</p>
+                        <p className="text-xs text-muted-foreground">{exp.company} · {exp.startYear} – {exp.endYear || 'Present'}</p>
                       </div>
                     </div>
                   ))}
@@ -659,7 +711,7 @@ export function MentorDetailsPage() {
             <section>
               <h2 className="text-foreground mb-5">Coaching Plans</h2>
               <div className="flex flex-col gap-4">
-                {COACHING_PLANS.map(plan => {
+                {plans.map(plan => {
                   const Icon = plan.icon;
                   return (
                     <div
@@ -707,16 +759,16 @@ export function MentorDetailsPage() {
               <div className="bg-card border border-border rounded-xl p-6 mb-5">
                 <div className="flex flex-col md:flex-row gap-8 items-center">
                   <div className="text-center md:w-1/3 shrink-0">
-                    <p className="text-5xl font-medium text-foreground tracking-tight">{RATING_BREAKDOWN.overall}</p>
-                    <div className="flex justify-center my-2"><StarRating rating={RATING_BREAKDOWN.overall} /></div>
-                    <p className="text-xs text-muted-foreground">Based on {MENTOR.reviewsCount} reviews</p>
+                    <p className="text-5xl font-medium text-foreground tracking-tight">{ratingBreakdown.overall.toFixed(1)}</p>
+                    <div className="flex justify-center my-2"><StarRating rating={ratingBreakdown.overall} /></div>
+                    <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
                   </div>
                   <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
                     {[
-                      { label: 'Communication', val: RATING_BREAKDOWN.Communication },
-                      { label: 'Expertise',      val: RATING_BREAKDOWN.Expertise },
-                      { label: 'Helpfulness',    val: RATING_BREAKDOWN.Helpfulness },
-                      { label: 'Preparation',    val: RATING_BREAKDOWN.Preparation },
+                      { label: 'Communication', val: ratingBreakdown.Communication },
+                      { label: 'Expertise',      val: ratingBreakdown.Expertise },
+                      { label: 'Helpfulness',    val: ratingBreakdown.Helpfulness },
+                      { label: 'Preparation',    val: ratingBreakdown.Preparation },
                     ].map(item => (
                       <div key={item.label} className="flex items-center gap-3 text-sm">
                         <span className="w-28 text-muted-foreground text-xs">{item.label}</span>
@@ -729,24 +781,24 @@ export function MentorDetailsPage() {
               </div>
 
               <div className="space-y-3">
-                {REVIEWS.map(review => (
+                {(mentor?.reviews ?? []).map(review => (
                   <div key={review.id} className="bg-card border border-border rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-9 h-9 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-medium text-foreground shrink-0">
-                        {review.initials}
+                        {initials(review.reviewerName)}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-foreground">{review.name}</p>
+                        <p className="text-sm font-medium text-foreground">{review.reviewerName}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <StarRating rating={review.rating} />
-                          <span className="text-xs text-muted-foreground">{review.date}</span>
+                          <StarRating rating={review.overallRating} />
+                          <span className="text-xs text-muted-foreground">{formatReviewDate(review.createdAt)}</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-2 mb-2">
-                      {review.traits.map(trait => (
-                        <span key={trait} className="px-2 py-0.5 bg-secondary text-muted-foreground text-xs font-medium rounded-md border border-border">
-                          {trait}
+                      {(review.tags ?? []).map(tag => (
+                        <span key={tag} className="px-2 py-0.5 bg-secondary text-muted-foreground text-xs font-medium rounded-md border border-border">
+                          {tag}
                         </span>
                       ))}
                     </div>
@@ -822,16 +874,16 @@ export function MentorDetailsPage() {
               {/* Quick stats */}
               <div className="bg-card border border-border rounded-xl p-5 grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-lg font-medium text-foreground">127</p>
+                  <p className="text-lg font-medium text-foreground">{mentor?.reviewCount ?? '—'}</p>
                   <p className="text-xs text-muted-foreground">Sessions completed</p>
                 </div>
                 <div>
-                  <p className="text-lg font-medium text-foreground">4.9</p>
+                  <p className="text-lg font-medium text-foreground">{mentor?.averageRating?.toFixed(1) ?? '—'}</p>
                   <p className="text-xs text-muted-foreground">Avg. rating</p>
                 </div>
                 <div>
-                  <p className="text-lg font-medium text-foreground">98%</p>
-                  <p className="text-xs text-muted-foreground">Repeat booking rate</p>
+                  <p className="text-lg font-medium text-foreground">{mentor?.yearsOfExperience ? `${mentor.yearsOfExperience}yr` : '—'}</p>
+                  <p className="text-xs text-muted-foreground">Experience</p>
                 </div>
                 <div>
                   <p className="text-lg font-medium text-foreground">24h</p>

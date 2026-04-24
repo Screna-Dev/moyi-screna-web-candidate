@@ -5,6 +5,19 @@ import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
+import { getUserInsights } from '@/services/ProfileServices';
+
+async function hasCompletedOnboarding(): Promise<boolean> {
+  try {
+    const res = await getUserInsights();
+    const data = res.data?.data ?? res.data;
+    // If key fields are missing the user hasn't finished onboarding
+    return !!(data?.role || data?.jobSearchStage || data?.goalClarityLevel);
+  } catch {
+    // 400 / 404 → no insights saved yet
+    return false;
+  }
+}
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -97,20 +110,19 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Parse state — supports legacy plain string ('signup'/'login') and new JSON format
+        // Parse returnTo from state param
         const rawState = searchParams.get('state') || '';
-        let fromSignup = false;
         let returnTo = '';
         try {
           const parsed = JSON.parse(decodeURIComponent(rawState));
-          fromSignup = parsed.flow === 'signup';
           returnTo = parsed.returnTo || '';
         } catch {
-          fromSignup = rawState === 'signup';
+          // ignore parse errors
         }
 
-        const isNewUser = !!(data.data?.isNewUser || data.isNewUser);
-        if (isNewUser || fromSignup) {
+        // Check whether this user has already completed onboarding
+        const onboarded = await hasCompletedOnboarding();
+        if (!onboarded) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           navigate(returnTo || '/dashboard');
