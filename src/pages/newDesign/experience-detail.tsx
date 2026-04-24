@@ -113,8 +113,8 @@ interface ExperiencePost {
   commentCount?: number;
   likeCount?: number;
   saveCount?: number;
-  isLiked?: boolean;
-  isSaved?: boolean;
+  liked?: boolean;
+  saved?: boolean;
 }
 
 // ─── Comment interface matching API ─────────────────────
@@ -221,9 +221,9 @@ export function ExperienceDetailPage() {
       const data = res.data?.data ?? res.data;
       setPost(data);
       // Initialize like/save from API
-      setLiked(data?.isLiked ?? false);
+      setLiked(data?.liked ?? false);
       setLikeCount(data?.likeCount ?? 0);
-      setSaved(data?.isSaved ?? false);
+      setSaved(data?.saved ?? false);
       setSaveCount(data?.saveCount ?? 0);
       // Auto-expand all questions
       if (data?.questions) {

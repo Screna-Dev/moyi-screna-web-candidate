@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/newDesign/ui/checkbox';
 import { motion } from 'motion/react';
 import { Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { getUserInsights } from '@/services/ProfileServices';
 
 function RisoTexture({ className, rotation = 0 }: { className?: string; rotation?: number }) {
   return (
@@ -327,9 +328,15 @@ export function AuthPage() {
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
         if (loggedInUser?.role === 'CANDIDATE') {
-          const isNewUser = localStorage.getItem('screna_new_user') === '1';
-          localStorage.removeItem('screna_new_user');
-          navigate(returnTo || (isNewUser ? '/onboarding-resume' : '/dashboard'));
+          let onboarded = false;
+          try {
+            const res = await getUserInsights();
+            const data = res.data?.data ?? res.data;
+            onboarded = !!(data?.role || data?.jobSearchStage || data?.goalClarityLevel);
+          } catch {
+            onboarded = false;
+          }
+          navigate(returnTo || (onboarded ? '/dashboard' : '/onboarding-resume'));
         }
         if (loggedInUser?.role === 'ADMIN') navigate('/admin');
       } else {

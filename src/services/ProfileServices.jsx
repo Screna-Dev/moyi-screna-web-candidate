@@ -112,6 +112,10 @@ export const saveUserInsights = (insights) => {
   return API.post(`${BASE_URL}/user-insights`, insights);
 };
 
+export const getUserInsights = () => {
+  return API.get(`${BASE_URL}/user-insights`);
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile

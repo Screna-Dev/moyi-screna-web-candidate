@@ -71,8 +71,8 @@ interface Post {
   commentCount?: number;
   likeCount?: number;
   saveCount?: number;
-  isLiked?: boolean;
-  isSaved?: boolean;
+  liked?: boolean;
+  saved?: boolean;
   tags?: string[];
 }
 
@@ -274,9 +274,9 @@ export function InterviewInsightsPage() {
         const hasPending = pendingLikes.current.has(p.id) || pendingSaves.current.has(p.id);
         if (!hasPending) {
           next.set(p.id, {
-            liked: p.isLiked ?? false,
+            liked: p.liked ?? false,
             likeCount: p.likeCount ?? 0,
-            saved: p.isSaved ?? false,
+            saved: p.saved ?? false,
             saveCount: p.saveCount ?? 0,
           });
         }
