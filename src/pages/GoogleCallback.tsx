@@ -5,6 +5,19 @@ import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
+import { getUserInsights } from '@/services/ProfileServices';
+
+async function hasCompletedOnboarding(): Promise<boolean> {
+  try {
+    const res = await getUserInsights();
+    const data = res.data?.data ?? res.data;
+    // If key fields are missing the user hasn't finished onboarding
+    return !!(data?.role || data?.jobSearchStage || data?.goalClarityLevel);
+  } catch {
+    // 400 / 404 → no insights saved yet
+    return false;
+  }
+}
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
