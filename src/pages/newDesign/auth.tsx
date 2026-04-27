@@ -247,9 +247,15 @@ export function AuthPage() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [isNewSignup, setIsNewSignup] = useState(false);
 
-  const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
+  const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate(returnTo || '/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate, returnTo]);
 
   const validatePassword = (pwd: string) => {
     const errors: string[] = [];
