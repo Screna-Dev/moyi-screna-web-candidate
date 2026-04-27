@@ -247,9 +247,15 @@ export function AuthPage() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [isNewSignup, setIsNewSignup] = useState(false);
 
-  const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
+  const { login, signup, loginWithGoogle, verifyEmail, resendVerificationCode, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate(returnTo || '/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate, returnTo]);
 
   const validatePassword = (pwd: string) => {
     const errors: string[] = [];
@@ -327,9 +333,7 @@ export function AuthPage() {
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
         if (loggedInUser?.role === 'CANDIDATE') {
-          const isNewUser = localStorage.getItem('screna_new_user') === '1';
-          localStorage.removeItem('screna_new_user');
-          navigate(returnTo || (isNewUser ? '/onboarding-resume' : '/dashboard'));
+          navigate(returnTo || '/dashboard');
         }
         if (loggedInUser?.role === 'ADMIN') navigate('/admin');
       } else {

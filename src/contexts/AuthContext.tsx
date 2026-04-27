@@ -134,6 +134,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const personalInfo = await fetchPersonalInfo();
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
         setUser(userData);
+        window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
           email: userData.email,
           name: userData.name,
@@ -170,6 +171,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const personalInfo = await fetchPersonalInfo();
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
         setUser(userData);
+        window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
           email: userData.email,
           name: userData.name,
@@ -179,6 +181,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       } else {
         const fallback: User = { id: '', email, name: '', avatar: '' };
         setUser(fallback);
+        window.dispatchEvent(new Event('screna-auth-change'));
         return fallback;
       }
     } finally {
@@ -254,6 +257,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     }
     setUser(null);
+    window.dispatchEvent(new Event('screna-auth-change'));
     navigate('/auth');
   };
 

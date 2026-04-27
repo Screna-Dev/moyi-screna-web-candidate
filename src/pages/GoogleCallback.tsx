@@ -73,6 +73,7 @@ export default function GoogleCallback() {
         // Extract tokens based on your API structure
         const accessToken = data.data?.accessToken || data.accessToken;
         const refreshToken = data.data?.refreshToken || data.refreshToken;
+        const isFirstLogin = data.data?.isFirstLogin ?? data.isFirstLogin ?? false;
         
         if (!accessToken) {
           console.error('No token in response. Full response:', data);
@@ -97,20 +98,17 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Parse state — supports legacy plain string ('signup'/'login') and new JSON format
+        // Parse returnTo from state param
         const rawState = searchParams.get('state') || '';
-        let fromSignup = false;
         let returnTo = '';
         try {
           const parsed = JSON.parse(decodeURIComponent(rawState));
-          fromSignup = parsed.flow === 'signup';
           returnTo = parsed.returnTo || '';
         } catch {
-          fromSignup = rawState === 'signup';
+          // ignore parse errors
         }
 
-        const isNewUser = !!(data.data?.isNewUser || data.isNewUser);
-        if (isNewUser || fromSignup) {
+        if (isFirstLogin) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           navigate(returnTo || '/dashboard');
