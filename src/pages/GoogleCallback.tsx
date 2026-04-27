@@ -5,17 +5,6 @@ import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
-import { getUserInsights } from '@/services/ProfileServices';
-
-async function hasCompletedOnboarding(): Promise<boolean> {
-  try {
-    const res = await getUserInsights();
-    const data = res.data?.data ?? res.data;
-    return !!(data?.role || data?.jobSearchStage || data?.goalClarityLevel);
-  } catch {
-    return false;
-  }
-}
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -84,6 +73,7 @@ export default function GoogleCallback() {
         // Extract tokens based on your API structure
         const accessToken = data.data?.accessToken || data.accessToken;
         const refreshToken = data.data?.refreshToken || data.refreshToken;
+        const isFirstLogin = data.data?.isFirstLogin ?? data.isFirstLogin ?? false;
         
         if (!accessToken) {
           console.error('No token in response. Full response:', data);
@@ -118,9 +108,7 @@ export default function GoogleCallback() {
           // ignore parse errors
         }
 
-        // Use /profile/user-insights to determine onboarding status
-        const onboarded = await hasCompletedOnboarding();
-        if (!onboarded) {
+        if (isFirstLogin) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           navigate(returnTo || '/dashboard');
