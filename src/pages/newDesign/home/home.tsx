@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
@@ -22,7 +22,6 @@ const XMark = () => (
 const Note = ({ text }: { text: string }) => (
   <span className="text-[11px] text-slate-400 italic">{text}</span>
 );
-
 const ArrowRight = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 8h10M9 4l4 4-4 4"/>
@@ -39,35 +38,363 @@ function creditPrice(q: number): number {
   return Math.max(rounded, 19.99);
 }
 
+// ── Styled logo wordmarks ─────────────────────────────────────────────────────
+const LOGO_STYLES: Record<string, React.CSSProperties> = {
+  Google:     { fontFamily: "'Playfair Display', serif", fontSize: 22, fontStyle: 'italic', letterSpacing: '-0.02em' },
+  Meta:       { fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 600 },
+  Stripe:     { fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 600, letterSpacing: '-0.04em' },
+  Airbnb:     { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600 },
+  Linear:     { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 500, letterSpacing: '-0.02em' },
+  Anthropic:  { fontFamily: "'Playfair Display', serif", fontSize: 18, letterSpacing: '-0.01em' },
+  Figma:      { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' },
+  Netflix:    { fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' },
+  Shopify:    { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600 },
+  Databricks: { fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' },
+};
+function LogoWordmark({ name }: { name: string }) {
+  return (
+    <span style={{ color: '#9ea3ad', opacity: 0.75, whiteSpace: 'nowrap', ...(LOGO_STYLES[name] ?? {}) }}>
+      {name}
+    </span>
+  );
+}
+
+// ── Hero tracker mockup ───────────────────────────────────────────────────────
+function HeroTracker() {
+  const navItems = ['Dashboard','Mock interviews','Interview insights','Mentors','Applications','Resume'];
+  const stages = [
+    { n: '01', l: 'Understand', s: 'done' },
+    { n: '02', l: 'Practice',   s: 'active' },
+    { n: '03', l: 'Get support',s: 'todo' },
+    { n: '04', l: 'Apply',      s: 'todo' },
+    { n: '05', l: 'Offer',      s: 'todo' },
+  ];
+  const tasks = [
+    { l: 'System design · 3 mocks',         p: 100 },
+    { l: 'Behavioral · STAR tightening',     p: 66  },
+    { l: 'Coding · 2 hard DP problems',      p: 50  },
+    { l: 'Read 3 Meta E5 experiences',       p: 100 },
+    { l: '1-on-1 with coach',                p: 0   },
+  ];
+  return (
+    <div style={{ borderRadius: 20, background: '#fff', border: '1px solid #E8E8EA', boxShadow: '0 2px 4px rgba(10,10,10,0.03),0 30px 60px -20px rgba(30,60,120,0.18),0 80px 120px -40px rgba(30,60,120,0.12)', overflow: 'hidden' }}>
+      {/* App chrome */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px', borderBottom: '1px solid #F0F0F2', background: '#FBFBFC' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['#EEE','#EEE','#EEE'].map((c, i) => <span key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: c, display: 'inline-block' }} />)}
+        </div>
+        <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: '#fff', border: '1px solid #EEE', borderRadius: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#8a8f9a' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#bfc4cc', display: 'inline-block' }} />
+          app.screna.ai / career
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#5b5f6a' }}>
+          <span>Priya Shah</span>
+          <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#E7EFFB,#C9D8EF)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#2B7AEF' }}>PS</span>
+        </div>
+      </div>
+      {/* Body */}
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: 480 }}>
+        {/* Sidebar */}
+        <aside style={{ borderRight: '1px solid #F0F0F2', padding: '22px 18px', background: '#FBFBFC' }}>
+          <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 10 }}>Workspace</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {navItems.map((l, i) => (
+              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, fontSize: 13, color: i === 0 ? '#2E5BFF' : '#5b5f6a', background: i === 0 ? '#F0F3FF' : 'transparent', fontWeight: i === 0 ? 600 : 450 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: i === 0 ? '#2E5BFF' : '#cfd3da', display: 'inline-block' }} />{l}
+              </div>
+            ))}
+          </div>
+          <div style={{ height: 1, background: '#F0F0F2', margin: '22px -18px 22px' }} />
+          <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 10 }}>Your journey</div>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 14, color: '#0A0A0A', lineHeight: 1.3 }}>Staff backend · Meta, Stripe, Airbnb</div>
+          <div style={{ fontSize: 11, color: '#8a8f9a', marginTop: 4 }}>Target start · June 2026</div>
+        </aside>
+        {/* Main */}
+        <div style={{ padding: '28px 32px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2E5BFF', marginBottom: 8, fontWeight: 600 }}>Your career path</div>
+              <h3 style={{ fontFamily: "'Playfair Display',serif", fontWeight: 400, fontSize: 28, letterSpacing: '-0.02em', margin: 0, color: '#0A0A0A', lineHeight: 1.15 }}>
+                You're in <em style={{ color: '#2E5BFF' }}>Practice</em>.
+                <span style={{ color: '#8a8f9a', fontSize: 14, fontFamily: "'Inter',sans-serif", fontStyle: 'normal', marginLeft: 8 }}>Week 3 of 7</span>
+              </h3>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, color: '#8a8f9a' }}>Progress</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#2E5BFF', fontWeight: 600 }}>42%</span>
+            </div>
+          </div>
+          {/* Progress rail */}
+          <div style={{ marginTop: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
+              {stages.map(st => (
+                <div key={st.n}>
+                  <div style={{ height: 4, borderRadius: 2, background: st.s === 'done' ? '#2E5BFF' : st.s === 'active' ? 'linear-gradient(to right,#2E5BFF 55%,#E8E8EA 55%)' : '#E8E8EA' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: st.s === 'done' ? '#2E5BFF' : '#fff', border: `1px solid ${st.s === 'done' ? '#2E5BFF' : st.s === 'active' ? '#2E5BFF' : '#E8E8EA'}`, color: st.s === 'done' ? '#fff' : '#2E5BFF', fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {st.s === 'done' ? '✓' : st.n}
+                    </span>
+                    <div style={{ fontSize: 12, color: '#0A0A0A', fontWeight: 500 }}>{st.l}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Two cards row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14, marginTop: 36 }}>
+            {/* This week */}
+            <div style={{ border: '1px solid #F0F0F2', borderRadius: 14, padding: '18px 20px', background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#0A0A0A' }}>This week</div>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#8a8f9a' }}>3 of 5</div>
+              </div>
+              {tasks.map(row => (
+                <div key={row.l} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: '1px solid #F6F6F8' }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, background: row.p === 100 ? '#22B07D' : '#fff', border: `1px solid ${row.p === 100 ? '#22B07D' : '#D7D9DE'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8 }}>
+                    {row.p === 100 ? '✓' : ''}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: row.p === 100 ? '#8a8f9a' : '#0A0A0A', textDecoration: row.p === 100 ? 'line-through' : 'none' }}>{row.l}</div>
+                    <div style={{ height: 3, background: '#F3F3F5', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${row.p}%`, background: row.p === 100 ? '#22B07D' : '#2E5BFF' }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Next up */}
+            <div style={{ border: '1px solid #E4EAFC', borderRadius: 14, padding: '18px 20px', background: 'linear-gradient(160deg,#F0F3FF 0%,#FFFFFF 60%)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#0A0A0A' }}>Next up</div>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />Live
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#8a8f9a', marginBottom: 16 }}>In 12 minutes · with Aditi D.</div>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, lineHeight: 1.15, letterSpacing: '-0.01em', color: '#0A0A0A', marginBottom: 20 }}>Staff backend system design</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, padding: '8px 12px', background: '#2E5BFF', color: '#fff', fontSize: 12, fontWeight: 500, borderRadius: 999, textAlign: 'center', boxShadow: '0 6px 16px -4px rgba(46,91,255,0.4)' }}>Join mock</div>
+                <div style={{ padding: '8px 12px', background: '#fff', color: '#0A0A0A', fontSize: 12, fontWeight: 500, borderRadius: 999, textAlign: 'center', border: '1px solid #E8E8EA' }}>Reschedule</div>
+              </div>
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(10,10,10,0.06)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ display: 'flex' }}>
+                  {['#C9D8EF','#EFD5C6','#CFE3D8'].map((c, i) => (
+                    <span key={i} style={{ width: 24, height: 24, borderRadius: '50%', background: c, border: '2px solid #fff', marginLeft: i === 0 ? 0 : -8, display: 'inline-block' }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#5b5f6a', lineHeight: 1.4 }}>3 mentors available<br/>in your target role today</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Pillar shot mockups ───────────────────────────────────────────────────────
+function ShotAI() {
+  return (
+    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', height: 110, background: 'linear-gradient(135deg,#1a2d4a,#0e1a2e)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ position: 'absolute', top: 10, left: 10, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.22)', color: '#FCA5A5', fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 999 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />Recording
+        </span>
+        <span style={{ position: 'absolute', top: 12, right: 10, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.1)', padding: '3px 8px', borderRadius: 6 }}>05:20</span>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#C9D8EF,#2B7AEF)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600, fontSize: 15, boxShadow: '0 0 0 4px rgba(255,255,255,0.08)' }}>AD</div>
+      </div>
+      <div style={{ padding: '12px 14px' }}>
+        <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <svg width="11" height="11" fill="none" stroke="#2B7AEF" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z" strokeLinejoin="round"/></svg>
+          Live coaching
+        </div>
+        <div style={{ background: '#F0F7EE', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#2A7A47', marginBottom: 2 }}>Strong framing</div>
+          <div style={{ fontSize: 10.5, color: '#3c3e42', lineHeight: 1.4 }}>You asked the right scoping questions in the first 30 seconds.</div>
+        </div>
+        <div style={{ background: '#FDF5E8', borderRadius: 8, padding: '8px 10px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#A06912', marginBottom: 2 }}>Try a trade-off</div>
+          <div style={{ fontSize: 10.5, color: '#3c3e42', lineHeight: 1.4 }}>Name one concrete trade-off before diving into the design.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShotCommunity() {
+  const rows = [
+    { n: 'Priya S.',  r: 'Staff SWE', c: 'Stripe', t: '2d', o: 'offer',  init: 'PS', bg: '#C9D8EF' },
+    { n: 'Ravi M.',   r: 'Staff SWE', c: 'Meta',   t: '3d', o: 'offer',  init: 'RM', bg: '#EFD5C6' },
+    { n: 'Jordan K.', r: 'Senior PM', c: 'Airbnb', t: '4d', o: 'reject', init: 'JK', bg: '#CFE3D8' },
+    { n: 'Alicia N.', r: 'SWE L4',   c: 'Google', t: '5d', o: 'offer',  init: 'AN', bg: '#E0D4EF' },
+  ];
+  return (
+    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)' }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid #F0F0F2', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 500 }}>Fresh experiences</div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />Live
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: '#8a8f9a' }}>this week · 847</span>
+      </div>
+      {rows.map((row, i) => (
+        <div key={row.init} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < 3 ? '1px solid #F6F6F8' : 'none' }}>
+          <span style={{ width: 28, height: 28, borderRadius: '50%', background: row.bg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#0A0A0A', flexShrink: 0 }}>{row.init}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 500, color: '#0A0A0A' }}>{row.n} · <span style={{ color: '#5b5f6a', fontWeight: 450 }}>{row.r}</span></div>
+            <div style={{ fontSize: 10.5, color: '#8a8f9a' }}>{row.c} · {row.t} ago · 4 rounds</div>
+          </div>
+          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, ...(row.o === 'offer' ? { background: 'rgba(34,176,125,0.12)', color: '#17794F' } : { background: '#F5F0F0', color: '#8a8f9a' }) }}>{row.o}</span>
+        </div>
+      ))}
+      <div style={{ padding: '10px 14px', background: '#FBFBFC', borderTop: '1px solid #F0F0F2', borderRadius: '0 0 12px 12px' }}>
+        <div style={{ fontSize: 10, color: '#8a8f9a', marginBottom: 4, letterSpacing: '.06em', textTransform: 'uppercase' }}>Top question this week</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12.5, lineHeight: 1.35, color: '#0A0A0A', fontStyle: 'italic' }}>"Design a rate limiter for a global API at 10M QPS."</div>
+      </div>
+    </div>
+  );
+}
+
+function ShotMentor() {
+  const tags = ['System design','Backend','E5/E6 loops','Offer negotiation'];
+  return (
+    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
+      <div style={{ height: 56, background: 'linear-gradient(120deg,#E7EFFB,#D7E3F7)' }} />
+      <div style={{ padding: '0 16px 16px', marginTop: -26 }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,#EFD5C6,#E6B998)', border: '3px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#6b3a1c', marginBottom: 10 }}>AD</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, color: '#0A0A0A', letterSpacing: '-0.01em', lineHeight: 1.1 }}>Aditi D.</div>
+          <div style={{ fontSize: 10, color: '#2A7A47', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2A7A47', display: 'inline-block' }} />Available
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: '#5b5f6a', marginTop: 4 }}>Staff Engineer · Stripe · ex-Meta</div>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0' }}>
+          {tags.map(t => (
+            <span key={t} style={{ fontSize: 9.5, color: '#5b5f6a', padding: '3px 7px', border: '1px solid #E8E8EA', borderRadius: 999 }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: '#5b5f6a', lineHeight: 1.45, padding: '10px 12px', background: '#FBFBFC', borderRadius: 8, marginBottom: 12, fontStyle: 'italic', fontFamily: "'Playfair Display',serif" }}>"Helped 40+ engineers land staff roles at FAANG + unicorns."</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, color: '#0A0A0A' }}>$80<span style={{ fontSize: 10.5, color: '#8a8f9a', fontFamily: "'Inter',sans-serif" }}> · 45 min</span></div>
+          <div style={{ padding: '7px 12px', background: '#2E5BFF', color: '#fff', fontSize: 11.5, fontWeight: 500, borderRadius: 999, boxShadow: '0 6px 16px -4px rgba(46,91,255,0.45)' }}>Book session</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShotSupport() {
+  return (
+    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
+      <div style={{ padding: '11px 13px', borderBottom: '1px solid #F0F0F2', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#0A0A0A' }}>Career support</div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />24/7
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: '#8a8f9a' }}>Members only</span>
+      </div>
+      <div style={{ padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 9, background: '#FBFBFC' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#7C3AED', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>✦</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED' }}>AI Coach</span>
+          </div>
+          <div style={{ background: '#F5F3FF', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#1f1a2e' }}>Based on your L5 offer from Google, push back on: sign-on bonus (20–30% flex) and RSU cliff timing.</div>
+        </div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#16A34A', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>S</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#16A34A' }}>Sarah · Screna team</span>
+          </div>
+          <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#14321b' }}>Saw you're prepping the Meta system design loop — here are our top 3 picks for E5.</div>
+        </div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#7C3AED', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>✦</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED' }}>AI Coach</span>
+          </div>
+          <div style={{ background: '#F5F3FF', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#1f1a2e' }}>Your next mock is Thursday. Want 3 practice questions on last session's weak areas?</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Stats item with count-up animation ────────────────────────────────────────
+function StatItem({ num, suf, label }: { num: number; suf: string; label: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const animated = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !animated.current) {
+          animated.current = true;
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            el.textContent = String(num);
+            observer.disconnect();
+            return;
+          }
+          const DURATION = 1600;
+          const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+          const start = performance.now();
+          const tick = (now: number) => {
+            const t = Math.min(1, (now - start) / DURATION);
+            el.textContent = String(Math.round(num * easeOut(t)));
+            if (t < 1) requestAnimationFrame(tick);
+            else el.textContent = String(num);
+          };
+          requestAnimationFrame(tick);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.4 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [num]);
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-center gap-0.5 mb-1">
+        <span ref={ref} style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] leading-none text-slate-900 tracking-tight">0</span>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[28px] font-medium text-[hsl(221,91%,60%)]">{suf}</span>
+      </div>
+      <p className="text-[13px] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HERO
 // ─────────────────────────────────────────────────────────────────────────────
 function Hero() {
   return (
-    <section className="relative pt-36 pb-24 bg-white overflow-hidden">
-      {/* Subtle bg gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-blue-50/40 to-white pointer-events-none" />
+    <section className="relative pt-36 pb-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
+      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
 
       <div className="relative max-w-5xl mx-auto px-6 text-center">
-        {/* Eyebrow */}
+        <div className="flex justify-center mb-8">
+          <img src="/landing/logo-full.png" alt="Screna" className="h-9 w-auto" />
+        </div>
         <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)] mb-5 font-medium">
           AI · COMMUNITY · CAREER SUPPORT
         </p>
-
-        {/* Headline */}
         <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(38px,5.5vw,66px)] font-[500] leading-[1.08] tracking-[-0.02em] text-slate-900 mb-6 max-w-3xl mx-auto">
           Cut the busywork. Focus on what{' '}
           <em className="italic text-[hsl(221,91%,60%)]">actually</em>{' '}
           gets you the offer.
         </h1>
-
-        {/* Subtext */}
         <p className="text-[17px] text-slate-500 leading-relaxed max-w-xl mx-auto mb-10">
           AI practice. Real community. Vetted mentors. 24/7 support. Everything you need to prep smarter — without reinventing the wheel every time.
         </p>
-
-        {/* CTAs */}
-        <div className="flex items-center justify-center gap-4 mb-20 flex-wrap">
+        <div className="flex items-center justify-center gap-4 mb-16 flex-wrap">
           <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-[hsl(221,91%,60%)] text-white text-[15px] font-medium hover:bg-[hsl(221,91%,52%)] shadow-lg shadow-blue-600/25 transition-all duration-200">
             <span className="w-1.5 h-1.5 rounded-full bg-white/70"></span>
             Start free
@@ -78,80 +405,33 @@ function Hero() {
           </a>
         </div>
 
-        {/* Hero visual: tracker card + chips */}
-        <div className="relative max-w-3xl mx-auto">
-          {/* Chip: live notification */}
-          <div className="absolute -top-3 left-4 z-10 flex items-center gap-2 bg-white rounded-full px-3 py-1.5 shadow-md border border-slate-100 text-[12px] font-medium text-slate-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        {/* Hero visual: career progress tracker mockup */}
+        <div className="relative max-w-4xl mx-auto">
+          {/* Floating chips */}
+          <div className="absolute -top-4 left-6 z-10 flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] font-medium text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12), 0 20px 60px -20px rgba(46,91,255,0.2)' }}>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" style={{ boxShadow: '0 0 0 4px rgba(34,176,125,0.15)' }}></span>
             Priya S. just landed at Stripe
           </div>
-          {/* Chip: session chip */}
-          <div className="absolute -top-3 right-4 z-10 flex items-center gap-2 bg-white rounded-full px-3 py-1.5 shadow-md border border-slate-100 text-[12px] text-slate-700">
-            <span className="w-5 h-5 rounded-full bg-[hsl(221,91%,60%)] text-white text-[9px] font-bold flex items-center justify-center">AD</span>
+          <div className="absolute top-1/3 -right-2 z-10 flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12)' }}>
+            <span className="w-6 h-6 rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#2E5BFF,#1231B8)' }}>AD</span>
             Aditi's session · in 12 min
           </div>
-
-          {/* Main card */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-900/[0.07] p-8">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Your job search</p>
-                <h3 className="text-[18px] font-semibold text-slate-900">2025 Progress</h3>
-              </div>
-              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 text-[11px] font-semibold px-2.5 py-1 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                Active
-              </span>
-            </div>
-
-            <div className="space-y-4 mb-6">
-              {[
-                { label: 'Mock sessions completed', val: 8, max: 12, pct: 67 },
-                { label: 'Applications sent', val: 24, max: 30, pct: 80 },
-                { label: 'Recruiter callbacks', val: 6, max: 24, pct: 25 },
-              ].map(({ label, val, max, pct }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-[12px] mb-1.5">
-                    <span className="text-slate-500">{label}</span>
-                    <span className="font-semibold text-slate-700">{val} / {max}</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[hsl(221,91%,60%)] rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-blue-50/70 rounded-2xl">
-              <div>
-                <p className="text-[11px] text-slate-400 mb-0.5">Next scheduled</p>
-                <p className="text-[13px] font-semibold text-slate-800">System Design Mock</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Tomorrow · 2:00 PM</p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-[hsl(221,91%,60%)] text-white flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {/* Chip: mocks done */}
-          <div className="absolute -bottom-3 right-4 z-10 flex items-center gap-1.5 bg-white rounded-full px-3 py-1.5 shadow-md border border-slate-100 text-[12px] text-slate-700">
+          <div className="absolute -bottom-4 left-8 z-10 flex items-center gap-1.5 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12)' }}>
             <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6</span>
-            <span className="text-slate-500">mocks done this week</span>
+            <span className="text-slate-400 text-[11px]">mocks done this week</span>
           </div>
+          <HeroTracker />
         </div>
       </div>
 
       {/* Company logos */}
       <div className="relative max-w-4xl mx-auto px-6 mt-20 text-center">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-5">
+        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6">
           Members have landed roles at
         </p>
         <div className="flex items-center justify-center gap-8 flex-wrap">
           {['Google', 'Meta', 'Stripe', 'Airbnb', 'Linear', 'Anthropic'].map((co) => (
-            <span key={co} className="text-[14px] font-semibold text-slate-300 tracking-wide select-none">{co}</span>
+            <LogoWordmark key={co} name={co} />
           ))}
         </div>
       </div>
@@ -164,23 +444,15 @@ function Hero() {
 // ─────────────────────────────────────────────────────────────────────────────
 function StatsBar() {
   const stats = [
-    { num: '200', suf: '+', label: 'Offers with the help of Screna' },
-    { num: '100', suf: '%', label: 'Real-time 1:1 support, 7 days a week' },
-    { num: '140', suf: '+', label: 'Targeted applications per week' },
+    { num: 200, suf: '+', label: 'Offers with the help of Screna' },
+    { num: 100, suf: '%', label: 'Real-time 1:1 support, 7 days a week' },
+    { num: 140, suf: '+', label: 'Targeted applications per week' },
   ];
   return (
-    <section className="border-y border-slate-100 bg-slate-50/60 py-10">
+    <section className="py-16 bg-white border-t border-b" style={{ borderColor: '#F0F0F2' }}>
       <div className="max-w-5xl mx-auto px-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-          {stats.map(({ num, suf, label }) => (
-            <div key={label}>
-              <div className="flex items-baseline justify-center gap-0.5 mb-1">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] leading-none text-slate-900 tracking-tight">{num}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[28px] font-medium text-[hsl(221,91%,60%)]">{suf}</span>
-              </div>
-              <p className="text-[13px] text-slate-500">{label}</p>
-            </div>
-          ))}
+          {stats.map((s) => <StatItem key={s.label} {...s} />)}
         </div>
       </div>
     </section>
@@ -199,9 +471,10 @@ const PILLARS = [
       </svg>
     ),
     title: 'AI that tells you the why',
-    desc: 'Practice for your exact target role. Get feedback that explains what worked, what didn\'t, and what to focus on next — based on your resume and the jobs you\'re chasing.',
+    desc: "Practice for your exact target role. Get feedback that explains what worked, what didn't, and what to focus on next — based on your resume and the jobs you're chasing.",
     link: '/personalized-practice',
     linkLabel: 'Start practicing',
+    shot: <ShotAI />,
   },
   {
     icon: (
@@ -214,6 +487,7 @@ const PILLARS = [
     desc: 'Read structured debriefs from people who just went through the process. See what was asked, how many rounds, and what got them the offer — searchable by company, role, and level.',
     link: '/interview-insights',
     linkLabel: 'Browse insights',
+    shot: <ShotCommunity />,
   },
   {
     icon: (
@@ -223,9 +497,10 @@ const PILLARS = [
       </svg>
     ),
     title: 'A mentor who grows with your search',
-    desc: 'Work with a vetted mentor on a structured topic — resume, system design, offer negotiation. Come back as you progress. Build an ongoing relationship that changes what\'s possible.',
+    desc: "Work with a vetted mentor on a structured topic — resume, system design, offer negotiation. Come back as you progress. Build an ongoing relationship that changes what's possible.",
     link: '/marketplace',
     linkLabel: 'Find a mentor',
+    shot: <ShotMentor />,
   },
   {
     icon: (
@@ -237,6 +512,7 @@ const PILLARS = [
     desc: "Get answers anytime from our AI career coach. Members also get direct access to our team — prep advice, curated resources, the best tools for every stage, and negotiation guidance after you land the offer.",
     link: '/auth',
     linkLabel: 'Get started',
+    shot: <ShotSupport />,
   },
 ];
 
@@ -254,18 +530,24 @@ function Pillars() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {PILLARS.map(({ icon, title, desc, link, linkLabel }) => (
-            <article key={title} className="group relative bg-white border border-slate-200 rounded-2xl p-6 hover:border-[hsl(221,91%,60%)]/30 hover:shadow-lg hover:shadow-blue-900/[0.04] transition-all duration-300">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[hsl(221,91%,60%)] flex items-center justify-center mb-4">
-                {icon}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          {PILLARS.map(({ icon, title, desc, link, linkLabel, shot }) => (
+            <article key={title} className="group relative bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-[hsl(221,91%,60%)]/40 hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300" style={{ boxShadow: '0 1px 3px rgba(10,10,10,0.06)' }}>
+              <div className="p-7 pb-5">
+                <div className="w-10 h-10 rounded-xl border border-slate-200 text-slate-700 group-hover:bg-[hsl(221,91%,60%)] group-hover:text-white group-hover:border-[hsl(221,91%,60%)] flex items-center justify-center mb-5 transition-all duration-300">
+                  {icon}
+                </div>
+                <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[22px] font-[400] text-slate-900 mb-3 leading-snug tracking-[-0.01em]">{title}</h3>
+                <p className="text-[14px] text-slate-500 leading-relaxed mb-5">{desc}</p>
+                <Link to={link} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[hsl(221,91%,60%)] hover:underline">
+                  {linkLabel}
+                  <ArrowRight />
+                </Link>
               </div>
-              <h3 className="text-[15px] font-semibold text-slate-900 mb-2">{title}</h3>
-              <p className="text-[13px] text-slate-500 leading-relaxed mb-5">{desc}</p>
-              <Link to={link} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[hsl(221,91%,60%)] hover:underline">
-                {linkLabel}
-                <ArrowRight />
-              </Link>
+              {/* Mockup shot area */}
+              <div className="border-t border-slate-100 bg-[#F7F9FF] group-hover:bg-[#F0F3FF] transition-colors duration-300 flex justify-center items-end px-5 pt-5 overflow-hidden" style={{ minHeight: 240 }}>
+                {shot}
+              </div>
             </article>
           ))}
         </div>
@@ -340,7 +622,7 @@ function ComparisonTable() {
   const competitors = ['Scale Jobs', 'Exponent', 'Simplify', 'Wonsulting'];
 
   return (
-    <section className="py-24 bg-slate-50/60">
+    <section className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-12">
           <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">
@@ -355,9 +637,12 @@ function ComparisonTable() {
           </p>
         </div>
 
+        <div className="mb-10 rounded-2xl overflow-hidden border border-slate-200 shadow-md max-w-3xl mx-auto">
+          <img src="/landing/comparison-alt.png" alt="How Screna compares" className="w-full block" />
+        </div>
+
         <div className="overflow-x-auto">
           <div className="min-w-[720px]">
-            {/* Header */}
             <div className="grid gap-0 mb-1" style={{ gridTemplateColumns: '1fr repeat(5, 100px)' }}>
               <div />
               <div className="text-center">
@@ -369,16 +654,12 @@ function ComparisonTable() {
                 </div>
               ))}
             </div>
-
-            {/* Groups */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
               {CMP_DATA.map((group) => (
                 <div key={group.label}>
-                  {/* Group label */}
                   <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100">
                     <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-500 font-medium">{group.label}</p>
                   </div>
-                  {/* Rows */}
                   {group.rows.map((row, i) => (
                     <div key={row.name} className={`grid items-center gap-0 px-5 py-3.5 ${i > 0 ? 'border-t border-slate-50' : ''}`} style={{ gridTemplateColumns: '1fr repeat(5, 100px)' }}>
                       <div>
@@ -415,7 +696,7 @@ const STAGES = [
 
 function Journey() {
   return (
-    <section className="py-24 bg-white">
+    <section className="py-24" style={{ background: 'linear-gradient(180deg, #FAFBFF 0%, #F7F9FF 100%)' }}>
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-14">
           <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">
@@ -429,12 +710,8 @@ function Journey() {
             Screna guides you from figuring out where you stand to celebrating your offer. Unlock more support as you go.
           </p>
         </div>
-
-        {/* Horizontal on desktop */}
         <div className="hidden lg:flex items-start gap-0 relative">
-          {/* Track line */}
           <div className="absolute top-8 left-[calc(10%+20px)] right-[calc(10%+20px)] h-px bg-slate-200" />
-
           {STAGES.map(({ num, name, desc }) => (
             <div key={num} className="flex-1 px-4 text-center relative">
               <div className="w-16 h-16 rounded-full border-2 border-[hsl(221,91%,60%)] bg-white flex items-center justify-center mx-auto mb-4 relative z-10">
@@ -445,8 +722,6 @@ function Journey() {
             </div>
           ))}
         </div>
-
-        {/* Vertical on mobile */}
         <div className="lg:hidden space-y-6">
           {STAGES.map(({ num, name, desc }) => (
             <div key={num} className="flex items-start gap-4">
@@ -512,7 +787,10 @@ function Pricing() {
     <section id="pricing" className="py-24 bg-slate-50/60">
       <div className="max-w-5xl mx-auto px-6">
         <div className="text-center mb-12">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">Pricing</p>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)]">Pricing</p>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">Coming soon</span>
+          </div>
           <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(26px,3.2vw,40px)] font-[500] leading-[1.2] text-slate-900 mb-3">
             Plans for every stage of your{' '}
             <em className="italic text-slate-600">job search.</em>
@@ -545,17 +823,17 @@ function Pricing() {
           <div className="bg-white border border-slate-200 rounded-3xl p-8">
             <h3 className="text-[17px] font-semibold text-slate-900 mb-1">Limited Access</h3>
             <p className="text-[13px] text-slate-500 mb-6">Practice on your own schedule. No subscription required — buy credits when you need them.</p>
-
             <div className="flex items-baseline gap-2 mb-1">
               <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] text-slate-900 leading-none">$0</span>
               <span className="text-[14px] text-slate-400">no recurring charge</span>
             </div>
             <p className="text-[12px] text-slate-400 mb-6">Pay only for the credits you use</p>
-
-            <Link to="/auth" className="block w-full h-11 rounded-full border-2 border-slate-200 text-slate-700 text-[14px] font-medium hover:border-slate-300 hover:bg-slate-50 transition-all duration-200 text-center leading-[44px]">
-              Get started free
-            </Link>
-
+            <div className="relative">
+              <div className="block w-full h-11 rounded-full border-2 border-slate-100 bg-slate-50 text-slate-300 text-[14px] font-medium text-center leading-[44px] cursor-not-allowed select-none">
+                Get started free
+              </div>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+            </div>
             <p className="text-[12px] text-slate-400 mt-6 mb-3 font-medium">What's included</p>
             <ul className="space-y-2.5">
               {LIMITED_FEATURES.map(({ ok, text }) => (
@@ -577,23 +855,21 @@ function Pricing() {
 
           {/* Full Access */}
           <div className="relative bg-gradient-to-b from-[hsl(221,91%,60%)] to-[hsl(221,91%,48%)] rounded-3xl p-8 text-white overflow-hidden">
-            {/* Glow */}
             <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-white/10 translate-x-16 -translate-y-16" />
             <span className="relative inline-block bg-white/20 text-white text-[11px] font-semibold px-3 py-1 rounded-full mb-4">Recommended</span>
-
             <h3 className="relative text-[17px] font-semibold mb-1">Full Access</h3>
             <p className="relative text-[13px] text-white/70 mb-6">The complete job search platform. Every feature, every service, one subscription.</p>
-
             <div className="relative flex items-baseline gap-2 mb-1">
               <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] leading-none">{price}</span>
               <span className="text-[14px] text-white/70">/ month</span>
             </div>
             <p className="relative text-[12px] text-white/60 mb-6">{note}</p>
-
-            <Link to="/pricing" className="relative block w-full h-11 rounded-full bg-white text-[hsl(221,91%,60%)] text-[14px] font-semibold hover:bg-white/90 transition-all duration-200 text-center leading-[44px]">
-              Start Premium
-            </Link>
-
+            <div className="relative">
+              <div className="relative block w-full h-11 rounded-full bg-white/40 text-white/40 text-[14px] font-semibold text-center leading-[44px] cursor-not-allowed select-none">
+                Start Premium
+              </div>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+            </div>
             <p className="relative text-[12px] text-white/70 mt-6 mb-3 font-medium">Everything in Limited Access, plus:</p>
             <div className="relative space-y-5">
               {FULL_GROUPS.map(({ title, items }) => (
@@ -612,7 +888,6 @@ function Pricing() {
                 </div>
               ))}
             </div>
-
             <div className="relative mt-6 pt-4 border-t border-white/20 flex justify-between text-[12px]">
               <span className="text-white/60">Included each month</span>
               <span className="font-semibold">300 credits / mo</span>
@@ -692,8 +967,6 @@ function CreditPacks() {
               <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] text-slate-400">${per.toFixed(4)} / credit</p>
             </div>
           </div>
-
-          {/* Slider */}
           <div className="relative pb-6">
             <input
               type="range"
@@ -711,7 +984,6 @@ function CreditPacks() {
               ))}
             </div>
           </div>
-
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex gap-5 flex-wrap text-[12px] text-slate-500">
               {['Credits never expire', 'Refund after the mock', 'Use across AI & mentor sessions'].map((n) => (
@@ -748,7 +1020,6 @@ function CallbackCTA() {
             <p className="text-[14px] text-slate-500 mb-6 max-w-sm">
               Leave your number and a Screna advisor will reach out within one business day. No sales pressure — just a quick chat about your goals.
             </p>
-
             {sent ? (
               <p className="text-[14px] font-medium text-emerald-600 bg-emerald-50 px-4 py-3 rounded-xl">
                 Thanks — we'll call you within one business day.
@@ -783,20 +1054,17 @@ function CallbackCTA() {
               </form>
             )}
           </div>
-
-          {/* Visual */}
           <div className="hidden md:flex flex-col items-center gap-3 shrink-0">
-            <div className="relative w-24 h-24">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="absolute inset-0 rounded-full border-2 border-[hsl(221,91%,60%)]/20 animate-ping" style={{ animationDuration: `${i * 1.4}s`, animationDelay: `${i * 0.3}s` }} />
-              ))}
-              <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="hsl(221,91%,60%)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 16.92V21a1 1 0 0 1-1.09 1 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 3.21 4.09 1 1 0 0 1 4.2 3h4.09a1 1 0 0 1 1 .75 12 12 0 0 0 .66 2.65 1 1 0 0 1-.23 1l-1.73 1.73a16 16 0 0 0 6 6l1.73-1.73a1 1 0 0 1 1-.23 12 12 0 0 0 2.65.66 1 1 0 0 1 .75 1z"/>
-                </svg>
-              </div>
+            <div className="relative">
+              <div className="absolute inset-[-18px] rounded-full border border-[hsl(221,91%,60%)]/15 animate-ping" style={{ animationDuration: '2.8s' }} />
+              <div className="absolute inset-[-36px] rounded-full border border-[hsl(221,91%,60%)]/10 animate-ping" style={{ animationDuration: '2.8s', animationDelay: '0.5s' }} />
+              <img
+                src="/landing/cta-agent.png"
+                alt="Screna advisor"
+                className="relative w-28 h-28 rounded-full object-cover object-top shadow-xl border-4 border-white"
+              />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 mt-2">
               {['1:1 advisor', 'No obligation', '~15 min'].map((chip) => (
                 <span key={chip} className="bg-white border border-slate-200 text-[11px] font-medium text-slate-600 px-3 py-1 rounded-full text-center shadow-sm">
                   {chip}
@@ -843,23 +1111,19 @@ function SocialProof() {
   return (
     <section className="py-24 bg-slate-50/60">
       <div className="max-w-6xl mx-auto px-6">
-        {/* Logo strip */}
         <div className="text-center mb-14">
           <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6">
             Trusted by job hunters who landed roles at
           </p>
           <div className="flex items-center justify-center gap-6 flex-wrap">
             {companies.map((co) => (
-              <span key={co} className="text-[13px] font-semibold text-slate-300 tracking-wide select-none">{co}</span>
+              <LogoWordmark key={co} name={co} />
             ))}
           </div>
         </div>
-
-        {/* Testimonials */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {TESTIMONIALS.map(({ quote, name, role, initials, bg }) => (
             <article key={name} className="bg-white rounded-2xl border border-slate-200 p-7 hover:shadow-lg hover:shadow-slate-900/[0.04] hover:-translate-y-1 transition-all duration-300">
-              {/* Stars */}
               <div className="flex gap-0.5 mb-4">
                 {[...Array(5)].map((_, i) => (
                   <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="hsl(221,91%,60%)" className="opacity-90">
@@ -899,11 +1163,11 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Do you do the applying for me?',
-    a: 'No. You drive your search — we back you up. On Managed Outcome, a strategist helps with referral outreach and pipeline hygiene, but the decisions, applications, and interviews are yours.',
+    a: "No. You drive your search — we back you up. On Managed Outcome, a strategist helps with referral outreach and pipeline hygiene, but the decisions, applications, and interviews are yours.",
   },
   {
     q: 'How is Screna different from other AI job tools?',
-    a: 'Most tools hand you generic AI feedback and disappear. Screna combines AI practice, peer-shared interview intel, and on-demand human mentors — so you get the scale of software and the judgment of people who\'ve done the loops.',
+    a: "Most tools hand you generic AI feedback and disappear. Screna combines AI practice, peer-shared interview intel, and on-demand human mentors — so you get the scale of software and the judgment of people who've done the loops.",
   },
   {
     q: 'What kinds of tech roles is Screna for?',
@@ -918,15 +1182,12 @@ function FAQ() {
     <section id="faq" className="py-24 bg-white">
       <div className="max-w-5xl mx-auto px-6">
         <div className="flex flex-col lg:flex-row gap-16">
-          {/* Left */}
           <div className="lg:w-64 shrink-0">
             <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">FAQ</p>
             <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(24px,2.8vw,36px)] font-[500] text-slate-900 leading-[1.2]">
               Questions people ask before signing up.
             </h2>
           </div>
-
-          {/* Right: accordion */}
           <div className="flex-1 divide-y divide-slate-100">
             {FAQ_ITEMS.map(({ q, a }, i) => (
               <div key={q} className="py-4">
@@ -961,10 +1222,8 @@ function FAQ() {
 function FinalCTA() {
   return (
     <section className="py-28 bg-gradient-to-br from-slate-900 to-[hsl(221,91%,15%)] text-white overflow-hidden relative">
-      {/* Decoration */}
       <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-[hsl(221,91%,60%)]/10 translate-x-32 -translate-y-32 blur-3xl" />
       <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-[hsl(221,91%,60%)]/10 -translate-x-16 translate-y-16 blur-3xl" />
-
       <div className="relative max-w-3xl mx-auto px-6 text-center">
         <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.14em] text-white/50 mb-5">
           Get started
@@ -974,16 +1233,18 @@ function FinalCTA() {
           <em className="italic text-[hsl(221,91%,70%)]">job search?</em>
         </h2>
         <p className="text-[17px] text-white/60 mb-10">Start free in under 2 minutes.</p>
-
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-8 rounded-full bg-white text-[hsl(221,91%,55%)] text-[15px] font-semibold hover:bg-white/90 shadow-xl shadow-black/20 transition-all duration-200">
             <span className="w-1.5 h-1.5 rounded-full bg-[hsl(221,91%,60%)]"></span>
             Start free
           </Link>
-          <Link to="/marketplace" className="inline-flex items-center gap-2 h-12 px-8 rounded-full border border-white/20 text-white text-[15px] font-medium hover:border-white/40 hover:bg-white/5 transition-all duration-200">
-            Book a consult
-            <ArrowRight />
-          </Link>
+          <div className="relative">
+            <div className="inline-flex items-center gap-2 h-12 px-8 rounded-full border border-white/10 text-white/30 text-[15px] font-medium cursor-not-allowed select-none">
+              Book a consult
+              <ArrowRight />
+            </div>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+          </div>
         </div>
       </div>
     </section>
