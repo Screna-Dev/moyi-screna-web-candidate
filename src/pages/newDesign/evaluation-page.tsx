@@ -9,7 +9,7 @@ import {
   Download, Share2, ThumbsUp, CircleAlert,
 } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -489,6 +489,7 @@ interface ApiReportData {
 // ════════════════════════════════════════════════════════
 export function EvaluationPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
@@ -616,7 +617,12 @@ export function EvaluationPage() {
 
   const [isRetaking, setIsRetaking] = useState(false);
 
-  const handleClose = () => navigate(-1);
+  const navState = location.state as { from?: string; jobTitle?: string } | null;
+  const handleClose = () => {
+    const from = navState?.from;
+    if (from) navigate(from);
+    else navigate(-1);
+  };
 
   const handleRetry = async () => {
     if (!interviewId) return;
@@ -701,7 +707,7 @@ export function EvaluationPage() {
               {/* Session meta */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5">
                 <MetaChip icon={<Mic className="w-3 h-3" />} label={SESSION_META.type} />
-                <MetaChip icon={<Target className="w-3 h-3" />} label={SESSION_META.role} />
+                {(navState?.jobTitle) && <MetaChip icon={<Target className="w-3 h-3" />} label={navState.jobTitle} />}
                 <MetaChip icon={<Clock className="w-3 h-3" />} label={SESSION_META.duration} />
                 {apiData?.generated_at
                   ? <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={new Date(apiData.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />

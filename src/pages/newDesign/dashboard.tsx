@@ -810,6 +810,7 @@ export function DashboardPage() {
                   <Link
                     key={session.id}
                     to={`/evaluation?interviewId=${session.id}`}
+                    state={{ from: '/dashboard', jobTitle: session.title }}
                     className={`flex items-center gap-4 px-5 py-4 hover:bg-[hsl(220,18%,98%)] transition-colors ${
                       i < recentSessions.length - 1 ? 'border-b border-[hsl(220,16%,92%)]' : ''
                     }`}

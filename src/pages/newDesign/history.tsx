@@ -230,7 +230,7 @@ export function HistoryPage() {
                   <div className="flex items-center gap-3 self-end md:self-center">
                     <Button
                       onClick={() =>
-                        navigate(`/evaluation?interviewId=${session.interviewId}`)
+                        navigate(`/evaluation?interviewId=${session.interviewId}`, { state: { from: '/history', jobTitle: session.title } })
                       }
                       variant="ghost"
                       size="sm"
