@@ -456,20 +456,6 @@ export function LiveInterview({
           </motion.div>
         </AnimatePresence>
 
-        {/* Current question text (subtle, only in listening state) */}
-        <AnimatePresence>
-          {aiState === 'listening' && transcript.length > 0 && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
-              exit={{ opacity: 0 }}
-              className={`text-xs max-w-xs text-center px-6 mt-1 line-clamp-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
-            >
-              {transcript.filter((t) => t.role === 'ai').slice(-1)[0]?.text}
-            </motion.p>
-          )}
-        </AnimatePresence>
-
         {/* "Need a hint?" prompt */}
         <AnimatePresence>
           {showHint && aiState === 'listening' && (
@@ -521,7 +507,7 @@ export function LiveInterview({
         </AnimatePresence>
 
         {/* ── Caption overlay ── */}
-        {/* <CaptionDisplay displayState={captionDisplayState} visible={captionVisible} /> */}
+        <CaptionDisplay displayState={captionDisplayState} visible={captionVisible} />
       </div>
 
       {/* ── Bottom controls ── */}

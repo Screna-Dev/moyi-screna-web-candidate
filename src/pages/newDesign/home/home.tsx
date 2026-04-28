@@ -2,6 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
+import googleLogo from '@/assets/Logo-group/Google.svg';
+import metaLogo from '@/assets/Logo-group/Meta.svg';
+import amazonLogo from '@/assets/Logo-group/Amazon.svg';
+import microsoftLogo from '@/assets/Logo-group/Microsoft.svg';
+import appleLogo from '@/assets/Logo-group/Apple.svg';
 
 // ── SVG helpers ───────────────────────────────────────────────────────────────
 const CheckFull = () => (
@@ -37,6 +42,15 @@ function creditPrice(q: number): number {
   const rounded = Math.ceil(total / step) * step - 0.01;
   return Math.max(rounded, 19.99);
 }
+
+// ── Company SVG logos ─────────────────────────────────────────────────────────
+const COMPANY_LOGOS = [
+  { name: 'Google',    src: googleLogo },
+  { name: 'Meta',      src: metaLogo },
+  { name: 'Amazon',    src: amazonLogo },
+  { name: 'Microsoft', src: microsoftLogo },
+  { name: 'Apple',     src: appleLogo },
+];
 
 // ── Styled logo wordmarks ─────────────────────────────────────────────────────
 const LOGO_STYLES: Record<string, React.CSSProperties> = {
@@ -376,13 +390,12 @@ function StatItem({ num, suf, label }: { num: number; suf: string; label: string
 // ─────────────────────────────────────────────────────────────────────────────
 function Hero() {
   return (
-    <section className="relative pt-36 pb-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
-      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
+    <section className="relative pt-36 pb-24" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
+      </div>
 
       <div className="relative max-w-5xl mx-auto px-6 text-center">
-        <div className="flex justify-center mb-8">
-          <img src="/landing/logo-full.png" alt="Screna" className="h-9 w-auto" />
-        </div>
         <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)] mb-5 font-medium">
           AI · COMMUNITY · CAREER SUPPORT
         </p>
@@ -420,7 +433,24 @@ function Hero() {
             <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6</span>
             <span className="text-slate-400 text-[11px]">mocks done this week</span>
           </div>
-          <HeroTracker />
+          {/* Scale tracker to fit container on all screen sizes */}
+          <style>{`
+            .tracker-outer { overflow: hidden; border-radius: 20px; height: 600px; }
+            .tracker-inner { transform-origin: top left; }
+            @media (max-width: 1024px) {
+              .tracker-outer { height: 468px; }
+              .tracker-inner { transform: scale(0.78); width: calc(100% / 0.78); }
+            }
+            @media (max-width: 640px) {
+              .tracker-outer { height: 300px; }
+              .tracker-inner { transform: scale(0.5); width: calc(100% / 0.5); }
+            }
+          `}</style>
+          <div className="tracker-outer">
+            <div className="tracker-inner">
+              <HeroTracker />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -430,8 +460,8 @@ function Hero() {
           Members have landed roles at
         </p>
         <div className="flex items-center justify-center gap-8 flex-wrap">
-          {['Google', 'Meta', 'Stripe', 'Airbnb', 'Linear', 'Anthropic'].map((co) => (
-            <LogoWordmark key={co} name={co} />
+          {COMPANY_LOGOS.map(({ name, src }) => (
+            <img key={name} src={src} alt={name} className="h-6 w-auto object-contain opacity-35 hover:opacity-60 transition-opacity duration-300" />
           ))}
         </div>
       </div>
@@ -1106,8 +1136,6 @@ const TESTIMONIALS = [
 ];
 
 function SocialProof() {
-  const companies = ['Google', 'Meta', 'Stripe', 'Airbnb', 'Linear', 'Anthropic', 'Figma', 'Netflix', 'Shopify', 'Databricks'];
-
   return (
     <section className="py-24 bg-slate-50/60">
       <div className="max-w-6xl mx-auto px-6">
@@ -1115,9 +1143,9 @@ function SocialProof() {
           <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6">
             Trusted by job hunters who landed roles at
           </p>
-          <div className="flex items-center justify-center gap-6 flex-wrap">
-            {companies.map((co) => (
-              <LogoWordmark key={co} name={co} />
+          <div className="flex items-center justify-center gap-8 flex-wrap">
+            {COMPANY_LOGOS.map(({ name, src }) => (
+              <img key={name} src={src} alt={name} className="h-6 w-auto object-contain opacity-35 hover:opacity-60 transition-opacity duration-300" />
             ))}
           </div>
         </div>

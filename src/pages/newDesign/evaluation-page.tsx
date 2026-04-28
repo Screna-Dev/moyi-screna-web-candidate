@@ -566,8 +566,8 @@ export function EvaluationPage() {
     : interviewId ? [] : DIMENSIONS;
 
   const displayQuestions: QuestionItem[] = apiData?.questions?.length
-    ? apiData.questions.map((q) => ({
-        id: `q${q.seq ?? q.question_id}`,
+    ? apiData.questions.map((q, i) => ({
+        id: `q${q.seq || q.question_id || (i + 1)}`,
         prompt: q.question_text ?? '',
         score: Math.round((q.score ?? 0) * 10),
         dimensions: [],
@@ -616,7 +616,7 @@ export function EvaluationPage() {
 
   const [isRetaking, setIsRetaking] = useState(false);
 
-  const handleClose = () => navigate('/personalized-practice');
+  const handleClose = () => navigate(-1);
 
   const handleRetry = async () => {
     if (!interviewId) return;

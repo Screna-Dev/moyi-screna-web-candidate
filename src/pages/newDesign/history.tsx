@@ -33,8 +33,6 @@ function formatDate(isoDate: string): string {
 
 function mapScore(raw: number): number {
   if (!raw) return 0;
-  if (raw <= 1)  return Math.round(raw * 100);
-  if (raw <= 10) return Math.round(raw * 10);
   return Math.round(raw);
 }
 
@@ -159,7 +157,7 @@ export function HistoryPage() {
                 : 'Try a different filter or start a new session.'}
             </p>
             <Button
-              onClick={() => navigate('/dashboard/mock-interview')}
+              onClick={() => navigate('/personalized-practice')}
               className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white"
             >
               Start Mock Interview
