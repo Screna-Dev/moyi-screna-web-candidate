@@ -505,9 +505,6 @@ export function LiveInterview({
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* ── Caption overlay ── */}
-        <CaptionDisplay displayState={captionDisplayState} visible={captionVisible} />
       </div>
 
       {/* ── Bottom controls ── */}
@@ -645,10 +642,7 @@ export function LiveInterview({
               </button>
             )}
           </div>
-
-          {/* Caption toggle */}
-          <CaptionToggleButton visible={captionVisible} onToggle={() => setCaptionVisible((v) => !v)} isDark={isDark} />
-        </div>
+          </div>
       </div>
     </div>
   );
