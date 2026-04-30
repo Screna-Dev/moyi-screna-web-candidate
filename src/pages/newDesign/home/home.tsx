@@ -937,13 +937,10 @@ function Pricing() {
               <span className="text-[16px] text-[#4a4d57] font-[500]">no recurring charge</span>
             </div>
             <p className="text-[12.5px] text-[#8a8f9a] mt-1.5 mb-6">Pay only for the credits you use</p>
-            <div className="relative mb-7">
-              <button disabled className="block w-full h-[52px] rounded-full border-2 border-[#E8E8EA] text-[#4a4d57] text-[14.5px] font-[500] opacity-60 cursor-not-allowed">
+            <div className="mb-7">
+              <Link to="/auth" className="flex items-center justify-center w-full h-[52px] rounded-full border-2 border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] text-[14.5px] font-[500] hover:bg-[hsl(221,91%,60%)] hover:text-white transition-colors duration-200">
                 Get started free
-              </button>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[hsl(221,91%,60%)] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
-                Coming soon
-              </span>
+              </Link>
             </div>
             <p className="text-[13px] font-[500] text-[hsl(221,91%,60%)] mb-5">What's included</p>
             <ul className="space-y-3 flex-1">

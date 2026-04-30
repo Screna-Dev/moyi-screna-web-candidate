@@ -480,6 +480,7 @@ interface ApiReportData {
   }[];
   video_url?: string;
   generated_at?: string;
+  updated_at?: string;
   job_id?: number;
   attempts?: number;
 }
@@ -709,8 +710,8 @@ export function EvaluationPage() {
                 <MetaChip icon={<Mic className="w-3 h-3" />} label={SESSION_META.type} />
                 {(navState?.jobTitle) && <MetaChip icon={<Target className="w-3 h-3" />} label={navState.jobTitle} />}
                 <MetaChip icon={<Clock className="w-3 h-3" />} label={SESSION_META.duration} />
-                {apiData?.generated_at
-                  ? <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={new Date(apiData.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+                {(apiData?.updated_at ?? apiData?.generated_at)
+                  ? <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={new Date(apiData.updated_at ?? apiData.generated_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
                   : <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={SESSION_META.completedAt} />
                 }
               </div>
