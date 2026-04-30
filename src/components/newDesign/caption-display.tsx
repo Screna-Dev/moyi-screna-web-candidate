@@ -230,19 +230,6 @@ export function CaptionDisplay({
           className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-2xl px-6"
         >
           <div className="flex flex-col items-center gap-0.5">
-            {/* Top line: erasing from left using visibility:hidden to preserve layout */}
-            {hasTop && (
-              <p className="text-[13px] text-white/60 text-center leading-relaxed font-medium">
-                {topText.split('').map((char, i) => (
-                  <span
-                    key={i}
-                    style={{ visibility: i < topErasedCount ? 'hidden' : 'visible' }}
-                  >
-                    {char}
-                  </span>
-                ))}
-              </p>
-            )}
             {/* Bottom line: typing in */}
             {hasBottom && (
               <p className="text-[13.5px] text-white/90 text-center leading-relaxed font-medium drop-shadow-lg"

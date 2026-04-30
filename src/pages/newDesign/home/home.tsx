@@ -38,24 +38,93 @@ function creditPrice(q: number): number {
   return Math.max(rounded, 19.99);
 }
 
-// ── Styled logo wordmarks ─────────────────────────────────────────────────────
-const LOGO_STYLES: Record<string, React.CSSProperties> = {
-  Google:     { fontFamily: "'Playfair Display', serif", fontSize: 22, fontStyle: 'italic', letterSpacing: '-0.02em' },
-  Meta:       { fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 600 },
-  Stripe:     { fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 600, letterSpacing: '-0.04em' },
-  Airbnb:     { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600 },
-  Linear:     { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 500, letterSpacing: '-0.02em' },
-  Anthropic:  { fontFamily: "'Playfair Display', serif", fontSize: 18, letterSpacing: '-0.01em' },
-  Figma:      { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' },
-  Netflix:    { fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' },
-  Shopify:    { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 600 },
-  Databricks: { fontFamily: "'Inter', sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' },
-};
-function LogoWordmark({ name }: { name: string }) {
+// ── Company logo list for hero + social proof ─────────────────────────────────
+interface LogoEntry {
+  name: string;
+  src: string;   // URL — CDN or /public path
+  h?: number;    // display height in px
+}
+
+// Hero marquee — tech companies (local seeklogo files in /public/logos/companies/)
+const HERO_LOGOS: LogoEntry[] = [
+  { name: 'Apple',     src: '/logos/companies/apple.svg',     h: 32 },
+  { name: 'Microsoft', src: '/logos/companies/microsoft.png', h: 28 },
+  { name: 'Google',    src: '/logos/companies/google.png',    h: 32 },
+  { name: 'Walmart',   src: '/logos/companies/walmart.png',   h: 32 },
+  { name: 'Amazon',    src: '/logos/companies/amazon.png',    h: 32 },
+  { name: 'Disney',    src: '/logos/companies/disney.png',    h: 32 },
+  { name: 'Hulu',      src: '/logos/companies/hulu.png',      h: 30 },
+  { name: 'Meta',      src: '/logos/companies/meta.png',      h: 28 },
+  { name: 'TikTok',    src: '/logos/companies/tiktok.svg',    h: 30 },
+  { name: 'Nvidia',    src: '/logos/companies/nvidia.svg',    h: 26 },
+];
+
+// Social proof marquee — universities (local seeklogo files + clearbit for NYU/Columbia)
+const cb = (domain: string) => `https://logo.clearbit.com/${domain}?size=200`;
+
+const UNIVERSITY_LOGOS: LogoEntry[] = [
+  { name: 'Stanford',        src: '/logos/universities/stanford.png', h: 36 },
+  { name: 'UC Berkeley',     src: '/logos/universities/ucb.png',      h: 36 },
+  { name: 'Carnegie Mellon', src: '/logos/universities/cmu.svg',      h: 36 },
+  { name: 'MIT',             src: '/logos/universities/mit.png',      h: 36 },
+  { name: 'U of Michigan',   src: '/logos/universities/umich.svg',    h: 36 },
+  { name: 'NYU',             src: '/logos/universities/nyu.png',      h: 36 },
+  { name: 'Cornell',         src: '/logos/universities/cornell.svg',  h: 36 },
+  { name: 'Columbia',        src: '/logos/universities/columbia.png', h: 36 },
+  { name: 'UW',              src: '/logos/universities/uw.png',       h: 36 },
+  { name: 'UIUC',            src: '/logos/universities/uiuc.png',     h: 36 },
+];
+
+// ── Infinite horizontal logo marquee ─────────────────────────────────────────
+// Each slot is 200px → exactly 5 visible at a time
+const SLOT_W = 200;
+
+function LogoMarquee({ logos, speed = 30 }: { logos: LogoEntry[]; speed?: number }) {
+  const trackW = logos.length * 2 * SLOT_W;
   return (
-    <span style={{ color: '#9ea3ad', opacity: 0.75, whiteSpace: 'nowrap', ...(LOGO_STYLES[name] ?? {}) }}>
-      {name}
-    </span>
+    <div
+      className="relative overflow-hidden"
+      style={{
+        maskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+      }}
+    >
+      <style>{`
+        @keyframes logo-scroll {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .logo-marquee-track { display: flex; align-items: center; will-change: transform; }
+        .logo-marquee-track:hover { animation-play-state: paused; }
+      `}</style>
+      <div
+        className="logo-marquee-track py-2"
+        style={{ width: trackW, animation: `logo-scroll ${speed}s linear infinite` }}
+      >
+        {[...logos, ...logos].map((logo, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-center flex-shrink-0"
+            style={{ width: SLOT_W, height: 56 }}
+          >
+            <img
+              src={logo.src}
+              alt={logo.name}
+              style={{ height: logo.h ?? 32, width: 'auto', maxWidth: 120, objectFit: 'contain', userSelect: 'none' }}
+              draggable={false}
+              onError={(e) => {
+                const img = e.currentTarget;
+                img.style.display = 'none';
+                const span = document.createElement('span');
+                span.textContent = logo.name;
+                span.style.cssText = 'font-size:13px;font-weight:600;color:#4a4d57;white-space:nowrap;';
+                img.parentNode?.appendChild(span);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -361,12 +430,12 @@ function StatItem({ num, suf, label }: { num: number; suf: string; label: string
   }, [num]);
 
   return (
-    <div>
-      <div className="flex items-baseline justify-center gap-0.5 mb-1">
-        <span ref={ref} style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] leading-none text-slate-900 tracking-tight">0</span>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[28px] font-medium text-[hsl(221,91%,60%)]">{suf}</span>
+    <div className="flex flex-col items-center text-center gap-2.5 px-5">
+      <div style={{ fontFamily: "'Playfair Display', serif" }} className="flex items-baseline leading-none tracking-[-0.03em]">
+        <span ref={ref} className="text-[52px] font-[400] text-slate-900">0</span>
+        <span className="text-[36px] font-[400] text-[hsl(221,91%,60%)] ml-0.5">{suf}</span>
       </div>
-      <p className="text-[13px] text-slate-500">{label}</p>
+      <p className="text-[13px] text-slate-500 leading-snug max-w-[24ch]">{label}</p>
     </div>
   );
 }
@@ -376,13 +445,12 @@ function StatItem({ num, suf, label }: { num: number; suf: string; label: string
 // ─────────────────────────────────────────────────────────────────────────────
 function Hero() {
   return (
-    <section className="relative pt-36 pb-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
-      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
+    <section className="relative pt-36 pb-24" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
+      </div>
 
       <div className="relative max-w-5xl mx-auto px-6 text-center">
-        <div className="flex justify-center mb-8">
-          <img src="/landing/logo-full.png" alt="Screna" className="h-9 w-auto" />
-        </div>
         <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)] mb-5 font-medium">
           AI · COMMUNITY · CAREER SUPPORT
         </p>
@@ -420,20 +488,33 @@ function Hero() {
             <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6</span>
             <span className="text-slate-400 text-[11px]">mocks done this week</span>
           </div>
-          <HeroTracker />
+          {/* Scale tracker to fit container on all screen sizes */}
+          <style>{`
+            .tracker-outer { overflow: hidden; border-radius: 20px; height: 600px; }
+            .tracker-inner { transform-origin: top left; }
+            @media (max-width: 1024px) {
+              .tracker-outer { height: 468px; }
+              .tracker-inner { transform: scale(0.78); width: calc(100% / 0.78); }
+            }
+            @media (max-width: 640px) {
+              .tracker-outer { height: 300px; }
+              .tracker-inner { transform: scale(0.5); width: calc(100% / 0.5); }
+            }
+          `}</style>
+          <div className="tracker-outer">
+            <div className="tracker-inner">
+              <HeroTracker />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Company logos */}
-      <div className="relative max-w-4xl mx-auto px-6 mt-20 text-center">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6">
+      {/* Company logos marquee */}
+      <div className="relative mt-20">
+        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center">
           Members have landed roles at
         </p>
-        <div className="flex items-center justify-center gap-8 flex-wrap">
-          {['Google', 'Meta', 'Stripe', 'Airbnb', 'Linear', 'Anthropic'].map((co) => (
-            <LogoWordmark key={co} name={co} />
-          ))}
-        </div>
+        <LogoMarquee logos={HERO_LOGOS} />
       </div>
     </section>
   );
@@ -449,10 +530,20 @@ function StatsBar() {
     { num: 140, suf: '+', label: 'Targeted applications per week' },
   ];
   return (
-    <section className="py-16 bg-white border-t border-b" style={{ borderColor: '#F0F0F2' }}>
+    <section className="bg-white py-16" style={{ borderTop: '1px solid #F0F0F2', borderBottom: '1px solid #F0F0F2' }}>
       <div className="max-w-5xl mx-auto px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-          {stats.map((s) => <StatItem key={s.label} {...s} />)}
+        <div className="grid grid-cols-1 sm:grid-cols-3" style={{ maxWidth: 980, margin: '0 auto' }}>
+          {stats.map((s, i) => (
+            <div key={s.label} className="relative">
+              {i > 0 && (
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 hidden sm:block"
+                  style={{ width: 1, height: 64, background: '#E8E8EA' }}
+                />
+              )}
+              <StatItem {...s} />
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -637,10 +728,6 @@ function ComparisonTable() {
           </p>
         </div>
 
-        <div className="mb-10 rounded-2xl overflow-hidden border border-slate-200 shadow-md max-w-3xl mx-auto">
-          <img src="/landing/comparison-alt.png" alt="How Screna compares" className="w-full block" />
-        </div>
-
         <div className="overflow-x-auto">
           <div className="min-w-[720px]">
             <div className="grid gap-0 mb-1" style={{ gridTemplateColumns: '1fr repeat(5, 100px)' }}>
@@ -698,42 +785,51 @@ function Journey() {
   return (
     <section className="py-24" style={{ background: 'linear-gradient(180deg, #FAFBFF 0%, #F7F9FF 100%)' }}>
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">
+        <div className="text-center mb-16">
+          <p style={{ fontFamily: "'Inter', sans-serif" }} className="text-[11px] uppercase tracking-[0.14em] text-[hsl(221,91%,60%)] mb-5 font-semibold inline-flex items-center gap-2.5 before:content-[''] before:w-6 before:h-px before:bg-[hsl(221,91%,60%)] before:block">
             Your full job search
           </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(26px,3.2vw,40px)] font-[500] leading-[1.2] text-slate-900 mb-3">
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.1] tracking-[-0.02em] text-slate-900 mb-4 max-w-[22ch] mx-auto">
             From first application to first offer{' '}
-            <em className="italic text-slate-600">— stage by stage.</em>
+            <em className="italic text-slate-500">— stage by stage.</em>
           </h2>
-          <p className="text-[15px] text-slate-500 max-w-xl mx-auto">
+          <p className="text-[17px] text-slate-500 leading-relaxed max-w-[54ch] mx-auto">
             Screna guides you from figuring out where you stand to celebrating your offer. Unlock more support as you go.
           </p>
         </div>
-        <div className="hidden lg:flex items-start gap-0 relative">
-          <div className="absolute top-8 left-[calc(10%+20px)] right-[calc(10%+20px)] h-px bg-slate-200" />
-          {STAGES.map(({ num, name, desc }) => (
-            <div key={num} className="flex-1 px-4 text-center relative">
-              <div className="w-16 h-16 rounded-full border-2 border-[hsl(221,91%,60%)] bg-white flex items-center justify-center mx-auto mb-4 relative z-10">
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[13px] font-medium text-[hsl(221,91%,60%)]">{num}</span>
+
+        {/* Desktop: 5-column grid with dashed line */}
+        <div className="hidden lg:block relative mt-10">
+          <div className="absolute left-[10%] right-[10%]" style={{ top: 28, height: 1, background: 'repeating-linear-gradient(to right, rgba(46,91,255,0.45) 0 6px, transparent 6px 12px)' }} />
+          <div className="grid grid-cols-5 gap-5">
+            {STAGES.map(({ num, name, desc }) => (
+              <div key={num} className="text-center px-2 group">
+                <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[48px] font-[400] leading-none text-[hsl(221,91%,60%)] tracking-[-0.03em] mb-4 relative z-10 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:text-[hsl(221,91%,48%)]">
+                  {num}
+                </div>
+                <h4 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[22px] font-[400] text-slate-900 mb-2 tracking-[-0.015em]">{name}</h4>
+                <p className="text-[14px] text-slate-500 leading-relaxed">{desc}</p>
               </div>
-              <h4 className="text-[14px] font-semibold text-slate-900 mb-1.5">{name}</h4>
-              <p className="text-[12px] text-slate-500 leading-relaxed">{desc}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        <div className="lg:hidden space-y-6">
-          {STAGES.map(({ num, name, desc }) => (
-            <div key={num} className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-full border-2 border-[hsl(221,91%,60%)] bg-white flex items-center justify-center shrink-0 mt-0.5">
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[12px] font-medium text-[hsl(221,91%,60%)]">{num}</span>
+
+        {/* Mobile: single column with vertical line */}
+        <div className="lg:hidden relative pl-10">
+          <div className="absolute left-[18px] top-0 bottom-0" style={{ width: 1, background: 'repeating-linear-gradient(to bottom, rgba(46,91,255,0.45) 0 6px, transparent 6px 12px)' }} />
+          <div className="space-y-8">
+            {STAGES.map(({ num, name, desc }) => (
+              <div key={num} className="grid grid-cols-[36px_1fr] gap-5 items-start">
+                <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[400] leading-none text-[hsl(221,91%,60%)] tracking-[-0.03em]">
+                  {num}
+                </div>
+                <div className="pt-1">
+                  <h4 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[20px] font-[400] text-slate-900 mb-1.5 tracking-[-0.01em]">{name}</h4>
+                  <p className="text-[14px] text-slate-500 leading-relaxed">{desc}</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-[15px] font-semibold text-slate-900 mb-1">{name}</h4>
-                <p className="text-[13px] text-slate-500 leading-relaxed">{desc}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -784,67 +880,79 @@ function Pricing() {
   const { price, note } = PRICES[cycle];
 
   return (
-    <section id="pricing" className="py-24 bg-slate-50/60">
+    <section id="pricing" className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-5xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)]">Pricing</p>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">Coming soon</span>
+        {/* Step 01 block header */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-12 mb-12">
+          <div>
+            <div className="flex items-center gap-5 mb-3">
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[13px] font-[500] tracking-[0.04em] text-[hsl(221,91%,60%)] bg-[#F0F3FF] px-3 py-1 rounded-full">01</span>
+              <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)]">Membership</span>
+            </div>
+            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(28px,3vw,36px)] font-[500] leading-[1.15] text-[#0A0A0A] tracking-[-0.01em]">
+              Plans for every stage of your{' '}
+              <em className="italic text-slate-500">job search.</em>
+            </h2>
           </div>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(26px,3.2vw,40px)] font-[500] leading-[1.2] text-slate-900 mb-3">
-            Plans for every stage of your{' '}
-            <em className="italic text-slate-600">job search.</em>
-          </h2>
-          <p className="text-[15px] text-slate-500 max-w-xl mx-auto">
+          <p className="text-[16px] text-[#4a4d57] leading-[1.55] md:self-end">
             Start with self-serve AI practice, or upgrade to guided career support with mentorship and managed job search help.
           </p>
         </div>
 
         {/* Billing toggle */}
-        <div className="flex items-center justify-center gap-1 bg-slate-100 rounded-full p-1 w-fit mx-auto mb-10">
-          {(['monthly', 'quarterly', 'annual'] as BillingCycle[]).map((c) => (
-            <button
-              key={c}
-              onClick={() => setCycle(c)}
-              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-200 flex items-center gap-1.5 ${
-                cycle === c ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {c.charAt(0).toUpperCase() + c.slice(1)}
-              {c === 'quarterly' && <span className="text-[10px] text-[hsl(221,91%,60%)] font-semibold">-19%</span>}
-              {c === 'annual' && <span className="text-[10px] text-[hsl(221,91%,60%)] font-semibold">-38%</span>}
-            </button>
-          ))}
+        <div className="flex justify-center mb-10">
+          <div className="inline-flex items-stretch bg-[#F0F0F2] border border-[#E8E8EA] rounded-full p-1 gap-0.5">
+            {(['monthly', 'quarterly', 'annual'] as BillingCycle[]).map((c) => (
+              <button
+                key={c}
+                onClick={() => setCycle(c)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-[500] transition-all duration-200 ${
+                  cycle === c ? 'bg-white text-[#0A0A0A] shadow-sm' : 'text-[#8a8f9a] hover:text-[#0A0A0A]'
+                }`}
+              >
+                {c.charAt(0).toUpperCase() + c.slice(1)}
+                {c === 'quarterly' && (
+                  <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
+                    cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
+                  }`}>Save 19%</span>
+                )}
+                {c === 'annual' && (
+                  <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
+                    cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
+                  }`}>Save 38%</span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tier cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Limited Access */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-8">
-            <h3 className="text-[17px] font-semibold text-slate-900 mb-1">Limited Access</h3>
-            <p className="text-[13px] text-slate-500 mb-6">Practice on your own schedule. No subscription required — buy credits when you need them.</p>
-            <div className="flex items-baseline gap-2 mb-1">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] text-slate-900 leading-none">$0</span>
-              <span className="text-[14px] text-slate-400">no recurring charge</span>
+          <div className="bg-white border border-[#E8E8EA] rounded-3xl p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-xl hover:shadow-blue-900/[0.08]">
+            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[32px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.01em]">Limited Access</h3>
+            <p className="text-[14.5px] text-[#4a4d57] mt-3 mb-0 max-w-[36ch] leading-[1.5]">Practice on your own schedule. No subscription required — buy credits when you need them.</p>
+            <div className="flex items-baseline gap-2 mt-6">
+              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[64px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.02em]">$0</span>
+              <span className="text-[16px] text-[#4a4d57] font-[500]">no recurring charge</span>
             </div>
-            <p className="text-[12px] text-slate-400 mb-6">Pay only for the credits you use</p>
-            <div className="relative">
-              <div className="block w-full h-11 rounded-full border-2 border-slate-100 bg-slate-50 text-slate-300 text-[14px] font-medium text-center leading-[44px] cursor-not-allowed select-none">
+            <p className="text-[12.5px] text-[#8a8f9a] mt-1.5 mb-6">Pay only for the credits you use</p>
+            <div className="mb-7">
+              <Link to="/auth" className="flex items-center justify-center w-full h-[52px] rounded-full border-2 border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] text-[14.5px] font-[500] hover:bg-[hsl(221,91%,60%)] hover:text-white transition-colors duration-200">
                 Get started free
-              </div>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+              </Link>
             </div>
-            <p className="text-[12px] text-slate-400 mt-6 mb-3 font-medium">What's included</p>
-            <ul className="space-y-2.5">
+            <p className="text-[13px] font-[500] text-[hsl(221,91%,60%)] mb-5">What's included</p>
+            <ul className="space-y-3 flex-1">
               {LIMITED_FEATURES.map(({ ok, text }) => (
-                <li key={text} className={`flex items-center gap-2.5 text-[13px] ${ok ? 'text-slate-700' : 'text-slate-300'}`}>
+                <li key={text} className={`flex items-center gap-3 text-[14.5px] ${ok ? 'text-[#2A2A2A]' : 'text-[#c0c4cc]'}`}>
                   {ok ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] shrink-0">
-                      <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+                    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.4px] border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] shrink-0">
+                      <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-slate-200 text-slate-300 shrink-0">
-                      <svg width="7" height="7" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.4px] border-[#E8E8EA] text-[#c0c4cc] shrink-0">
+                      <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
                     </span>
                   )}
                   {text}
@@ -853,33 +961,37 @@ function Pricing() {
             </ul>
           </div>
 
-          {/* Full Access */}
-          <div className="relative bg-gradient-to-b from-[hsl(221,91%,60%)] to-[hsl(221,91%,48%)] rounded-3xl p-8 text-white overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-white/10 translate-x-16 -translate-y-16" />
-            <span className="relative inline-block bg-white/20 text-white text-[11px] font-semibold px-3 py-1 rounded-full mb-4">Recommended</span>
-            <h3 className="relative text-[17px] font-semibold mb-1">Full Access</h3>
-            <p className="relative text-[13px] text-white/70 mb-6">The complete job search platform. Every feature, every service, one subscription.</p>
-            <div className="relative flex items-baseline gap-2 mb-1">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[52px] font-[600] leading-none">{price}</span>
-              <span className="text-[14px] text-white/70">/ month</span>
+          {/* Full Access — light blue gradient */}
+          <div
+            className="relative rounded-3xl p-8 border border-[#D9E1FF] flex flex-col overflow-visible transition-all duration-300 hover:-translate-y-1"
+            style={{ background: 'linear-gradient(172deg, #fbfcff 0%, #F7F9FF 100%)', boxShadow: '0 24px 60px -32px rgba(46,91,255,0.35)' }}
+          >
+            <span className="absolute top-[-13px] left-9 bg-[hsl(221,91%,60%)] text-white text-[11px] font-[600] px-4 py-1.5 rounded-full tracking-[0.03em]">Recommended</span>
+            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[32px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.01em] mt-3">Full Access</h3>
+            <p className="text-[14.5px] text-[#4a4d57] mt-3 mb-0 max-w-[36ch] leading-[1.5]">The complete job search platform. Every feature, every service, one subscription.</p>
+            <div className="flex items-baseline gap-2 mt-6">
+              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[64px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.02em]">{price}</span>
+              <span className="text-[16px] text-[#4a4d57] font-[500]">/ month</span>
             </div>
-            <p className="relative text-[12px] text-white/60 mb-6">{note}</p>
-            <div className="relative">
-              <div className="relative block w-full h-11 rounded-full bg-white/40 text-white/40 text-[14px] font-semibold text-center leading-[44px] cursor-not-allowed select-none">
+            <p className="text-[12.5px] text-[#8a8f9a] mt-1.5 mb-6">{note}</p>
+            <div className="relative mb-7">
+              <button disabled className="block w-full h-[52px] rounded-full bg-[hsl(221,91%,60%)] text-white text-[14.5px] font-[500] opacity-60 cursor-not-allowed">
                 Start Premium
-              </div>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+              </button>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[hsl(221,91%,60%)] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
+                Coming soon
+              </span>
             </div>
-            <p className="relative text-[12px] text-white/70 mt-6 mb-3 font-medium">Everything in Limited Access, plus:</p>
-            <div className="relative space-y-5">
+            <p className="text-[13px] font-[500] text-[hsl(221,91%,60%)] mb-5">Everything in Limited Access, plus:</p>
+            <div className="space-y-5 flex-1">
               {FULL_GROUPS.map(({ title, items }) => (
                 <div key={title}>
-                  <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-2">{title}</p>
-                  <ul className="space-y-1.5">
+                  <p className="text-[10.5px] font-[600] text-[#8a8f9a] uppercase tracking-[0.08em] mb-2.5">{title}</p>
+                  <ul className="space-y-2">
                     {items.map((item) => (
-                      <li key={item} className="flex items-center gap-2 text-[13px] text-white/90">
-                        <span className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                          <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+                      <li key={item} className="flex items-center gap-3 text-[14.5px] text-[#2A2A2A]">
+                        <span className="w-[18px] h-[18px] rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shrink-0">
+                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
                         </span>
                         {item}
                       </li>
@@ -888,9 +1000,10 @@ function Pricing() {
                 </div>
               ))}
             </div>
-            <div className="relative mt-6 pt-4 border-t border-white/20 flex justify-between text-[12px]">
-              <span className="text-white/60">Included each month</span>
-              <span className="font-semibold">300 credits / mo</span>
+            <div className="mt-6 bg-white/70 border border-[#D9E1FF] rounded-xl p-4 flex flex-col gap-1">
+              <p className="text-[10.5px] font-[500] text-[#4a4d57] uppercase tracking-[0.08em]">Included each month</p>
+              <p style={{ fontFamily: "'Playfair Display', serif" }} className="text-[18px] font-[500] text-[#0A0A0A] tracking-[-0.01em]">300 credits / mo</p>
+              <p className="text-[12px] text-[#8a8f9a]">Use toward AI mocks and mentor sessions</p>
             </div>
           </div>
         </div>
@@ -909,15 +1022,21 @@ function CreditPacks() {
   const pct = ((credits - 150) / (1000 - 150)) * 100;
 
   return (
-    <section className="py-24 bg-white">
+    <section className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-5xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">Credit packs</p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(26px,3.2vw,40px)] font-[500] leading-[1.2] text-slate-900 mb-3">
-            Pay only for what you use.{' '}
-            <em className="italic text-slate-600">Refund after the mock.</em>
-          </h2>
-          <p className="text-[15px] text-slate-500 max-w-xl mx-auto">
+        {/* Step 02 block header */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-12 mb-12">
+          <div>
+            <div className="flex items-center gap-5 mb-3">
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[13px] font-[500] tracking-[0.04em] text-[#4a4d57] bg-[#F7F7F7] border border-[#E8E8EA] px-3 py-1 rounded-full">02</span>
+              <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[#4a4d57]">Credit packs</span>
+            </div>
+            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(28px,3vw,36px)] font-[500] leading-[1.15] text-[#0A0A0A] tracking-[-0.01em]">
+              Pay only for what you use.{' '}
+              <em className="italic text-slate-500">Refund after the mock.</em>
+            </h2>
+          </div>
+          <p className="text-[16px] text-[#4a4d57] leading-[1.55] md:self-end">
             Flexible, controllable, low-commitment — perfect for "just a few sessions."
           </p>
         </div>
@@ -1011,24 +1130,37 @@ function CallbackCTA() {
   const [phone, setPhone] = useState('');
 
   return (
-    <section className="py-12 bg-slate-50/60">
+    <section className="py-16 bg-white">
       <div className="max-w-4xl mx-auto px-6">
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-lg shadow-slate-900/[0.05] p-10 flex flex-col md:flex-row gap-10 items-center">
-          <div className="flex-1">
-            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-3 block">Free consultation</span>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(22px,2.8vw,34px)] font-[500] text-slate-900 mb-2">Want us to call you?</h2>
-            <p className="text-[14px] text-slate-500 mb-6 max-w-sm">
+        <div
+          className="relative rounded-3xl overflow-hidden grid grid-cols-1 md:grid-cols-[1fr_auto] gap-10 p-10 md:p-12"
+          style={{
+            background: 'linear-gradient(135deg, #2E5BFF 0%, #1231B8 100%)',
+            boxShadow: '0 1px 0 rgba(255,255,255,0.5) inset, 0 24px 60px -28px rgba(18,49,184,0.55)',
+          }}
+        >
+          {/* Decorative radial highlight */}
+          <div className="pointer-events-none absolute" style={{ inset: '-40% -20% auto auto', width: '60%', paddingTop: '60%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)' }} />
+
+          <div className="relative z-10">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-[600] tracking-[0.1em] uppercase text-white/85 bg-white/15 border border-white/20 px-3 py-1.5 rounded-full mb-5">
+              Free consultation
+            </span>
+            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[500] text-white leading-[1.15] tracking-[-0.01em] mb-3 text-wrap-pretty">
+              Want us to call you?
+            </h2>
+            <p className="text-[15.5px] text-white/75 mb-7 max-w-[48ch] leading-[1.55]">
               Leave your number and a Screna advisor will reach out within one business day. No sales pressure — just a quick chat about your goals.
             </p>
             {sent ? (
-              <p className="text-[14px] font-medium text-emerald-600 bg-emerald-50 px-4 py-3 rounded-xl">
+              <p className="text-[14px] font-[500] text-white bg-white/15 px-4 py-3 rounded-xl inline-block">
                 Thanks — we'll call you within one business day.
               </p>
             ) : (
               <form onSubmit={(e) => { e.preventDefault(); setSent(true); }}>
-                <div className="flex items-center gap-0 border-2 border-slate-200 rounded-full overflow-hidden focus-within:border-[hsl(221,91%,60%)] transition-colors pr-1.5">
-                  <span className="flex items-center gap-1.5 px-4 text-[13px] text-slate-500 shrink-0">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                <div className="flex items-stretch bg-white rounded-full overflow-hidden max-w-[520px]" style={{ boxShadow: '0 8px 24px -12px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.6) inset' }}>
+                  <span className="flex items-center gap-1.5 px-4 text-[13px] text-slate-500 shrink-0 border-r border-[#E8E8EA]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 opacity-60">
                       <path d="M22 16.92V21a1 1 0 0 1-1.09 1 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 3.21 4.09 1 1 0 0 1 4.2 3h4.09a1 1 0 0 1 1 .75 12 12 0 0 0 .66 2.65 1 1 0 0 1-.23 1l-1.73 1.73a16 16 0 0 0 6 6l1.73-1.73a1 1 0 0 1 1-.23 12 12 0 0 0 2.65.66 1 1 0 0 1 .75 1z"/>
                     </svg>
                     +1
@@ -1039,14 +1171,14 @@ function CallbackCTA() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     required
-                    className="flex-1 h-12 bg-transparent text-[14px] text-slate-800 placeholder-slate-400 outline-none"
+                    className="flex-1 min-w-0 h-14 bg-transparent text-[14px] text-[#0A0A0A] placeholder-[#9aa0ad] outline-none px-3"
                   />
-                  <button type="submit" className="h-9 px-5 rounded-full bg-[hsl(221,91%,60%)] text-white text-[13px] font-medium hover:bg-[hsl(221,91%,52%)] transition-colors shrink-0">
+                  <button type="submit" className="shrink-0 m-1.5 px-5 rounded-full bg-[#0A0A0A] text-white text-[13px] font-[500] hover:bg-[#1a1a1a] transition-colors" style={{ boxShadow: '0 6px 14px -4px rgba(0,0,0,0.22)' }}>
                     Call me back
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <p className="text-[12.5px] text-white/70 mt-3 flex items-center gap-1.5">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
                     <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/>
                   </svg>
                   Your number is 100% private and will never be shared.
@@ -1054,19 +1186,24 @@ function CallbackCTA() {
               </form>
             )}
           </div>
-          <div className="hidden md:flex flex-col items-center gap-3 shrink-0">
-            <div className="relative">
-              <div className="absolute inset-[-18px] rounded-full border border-[hsl(221,91%,60%)]/15 animate-ping" style={{ animationDuration: '2.8s' }} />
-              <div className="absolute inset-[-36px] rounded-full border border-[hsl(221,91%,60%)]/10 animate-ping" style={{ animationDuration: '2.8s', animationDelay: '0.5s' }} />
-              <img
-                src="/landing/cta-agent.png"
-                alt="Screna advisor"
-                className="relative w-28 h-28 rounded-full object-cover object-top shadow-xl border-4 border-white"
-              />
+
+          <div className="hidden md:flex flex-col items-center justify-center gap-4 shrink-0 relative z-10">
+            <div className="relative flex items-center justify-center w-[180px] h-[180px]">
+              <div className="absolute w-[220px] h-[220px] rounded-full border border-white/60 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '0s' }} />
+              <div className="absolute w-[280px] h-[280px] rounded-full border border-white/40 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '0.6s' }} />
+              <div className="absolute w-[340px] h-[340px] rounded-full border border-white/25 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '1.2s' }} />
+              <div className="relative z-10 w-[180px] h-[180px] rounded-full overflow-hidden border-4 border-white/30 shadow-xl bg-gradient-to-b from-[#EEF2FF] to-[#DCE4FF] flex items-end justify-center">
+                <img
+                  src="/landing/cta-agent.png"
+                  alt="Screna advisor"
+                  className="w-[106%] max-h-[112%] object-cover"
+                  style={{ transform: 'translateY(4%)' }}
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5 mt-2">
+            <div className="flex flex-col gap-2 mt-2">
               {['1:1 advisor', 'No obligation', '~15 min'].map((chip) => (
-                <span key={chip} className="bg-white border border-slate-200 text-[11px] font-medium text-slate-600 px-3 py-1 rounded-full text-center shadow-sm">
+                <span key={chip} className="bg-white/15 border border-white/20 text-white text-[11px] font-[500] px-3 py-1.5 rounded-full text-center">
                   {chip}
                 </span>
               ))}
@@ -1106,20 +1243,14 @@ const TESTIMONIALS = [
 ];
 
 function SocialProof() {
-  const companies = ['Google', 'Meta', 'Stripe', 'Airbnb', 'Linear', 'Anthropic', 'Figma', 'Netflix', 'Shopify', 'Databricks'];
-
   return (
     <section className="py-24 bg-slate-50/60">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6">
-            Trusted by job hunters who landed roles at
+        <div className="mb-14">
+          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center">
+            Trusted by candidates accepted to
           </p>
-          <div className="flex items-center justify-center gap-6 flex-wrap">
-            {companies.map((co) => (
-              <LogoWordmark key={co} name={co} />
-            ))}
-          </div>
+          <LogoMarquee logos={UNIVERSITY_LOGOS} speed={22} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {TESTIMONIALS.map(({ quote, name, role, initials, bg }) => (
@@ -1184,7 +1315,7 @@ function FAQ() {
         <div className="flex flex-col lg:flex-row gap-16">
           <div className="lg:w-64 shrink-0">
             <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">FAQ</p>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(24px,2.8vw,36px)] font-[500] text-slate-900 leading-[1.2]">
+            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[500] text-[#0A0A0A] leading-[1.15] max-w-[12ch]">
               Questions people ask before signing up.
             </h2>
           </div>
@@ -1195,7 +1326,7 @@ function FAQ() {
                   onClick={() => setOpen(open === i ? null : i)}
                   className="flex items-center justify-between w-full text-left gap-4 group"
                 >
-                  <span className={`text-[15px] font-medium transition-colors ${open === i ? 'text-[hsl(221,91%,60%)]' : 'text-slate-800 group-hover:text-slate-900'}`}>
+                  <span className={`text-[18px] font-[500] transition-colors leading-[1.4] ${open === i ? 'text-[hsl(221,91%,60%)]' : 'text-[#0A0A0A] group-hover:text-[hsl(221,91%,60%)]'}`}>
                     {q}
                   </span>
                   <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${open === i ? 'border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] rotate-45' : 'border-slate-200 text-slate-400'}`}>
@@ -1221,29 +1352,44 @@ function FAQ() {
 // ─────────────────────────────────────────────────────────────────────────────
 function FinalCTA() {
   return (
-    <section className="py-28 bg-gradient-to-br from-slate-900 to-[hsl(221,91%,15%)] text-white overflow-hidden relative">
-      <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-[hsl(221,91%,60%)]/10 translate-x-32 -translate-y-32 blur-3xl" />
-      <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-[hsl(221,91%,60%)]/10 -translate-x-16 translate-y-16 blur-3xl" />
-      <div className="relative max-w-3xl mx-auto px-6 text-center">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.14em] text-white/50 mb-5">
+    <section
+      className="relative overflow-hidden text-white text-center"
+      style={{
+        padding: 'clamp(112px, 14vw, 180px) 0',
+        background: 'radial-gradient(ellipse 800px 500px at 50% 120%, rgba(255,255,255,0.22), transparent 60%), radial-gradient(ellipse 600px 400px at 20% 10%, rgba(255,255,255,0.14), transparent 60%), linear-gradient(160deg, #1231B8 0%, #2E5BFF 50%, #4A7BFF 100%)',
+      }}
+    >
+      {/* Dot grid overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.4) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+          opacity: 0.08,
+        }}
+      />
+      <div className="relative max-w-3xl mx-auto px-6">
+        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.14em] text-white/55 mb-5">
           Get started
         </p>
-        <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,5vw,60px)] font-[500] leading-[1.1] tracking-[-0.02em] mb-4">
+        <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,6.5vw,84px)] font-[500] leading-[1.05] tracking-[-0.02em] text-white max-w-[18ch] mx-auto mb-6">
           Ready to run a smarter{' '}
-          <em className="italic text-[hsl(221,91%,70%)]">job search?</em>
+          <em className="italic" style={{ color: 'rgba(255,255,255,0.72)' }}>job search?</em>
         </h2>
-        <p className="text-[17px] text-white/60 mb-10">Start free in under 2 minutes.</p>
-        <div className="flex items-center justify-center gap-4 flex-wrap">
-          <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-8 rounded-full bg-white text-[hsl(221,91%,55%)] text-[15px] font-semibold hover:bg-white/90 shadow-xl shadow-black/20 transition-all duration-200">
+        <p className="text-[18px] mb-11 max-w-[44ch] mx-auto" style={{ color: 'rgba(255,255,255,0.82)' }}>Start free in under 2 minutes.</p>
+        <div className="inline-flex items-center justify-center gap-4 flex-wrap">
+          <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-8 rounded-full bg-white text-[hsl(221,91%,55%)] text-[15px] font-semibold hover:bg-white/90 transition-all duration-200" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-[hsl(221,91%,60%)]"></span>
             Start free
           </Link>
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 h-12 px-8 rounded-full border border-white/10 text-white/30 text-[15px] font-medium cursor-not-allowed select-none">
+          <div className="relative inline-flex">
+            <a href="#" className="inline-flex items-center gap-2 h-12 px-8 rounded-full border border-white/25 text-white/85 text-[15px] font-[500] cursor-not-allowed opacity-60">
               Book a consult
               <ArrowRight />
-            </div>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.1em] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">Coming soon</span>
+            </a>
+            <span className="absolute -top-2.5 -right-2.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-[600] tracking-wide bg-white text-[#2E5BFF]">
+              Coming soon
+            </span>
           </div>
         </div>
       </div>

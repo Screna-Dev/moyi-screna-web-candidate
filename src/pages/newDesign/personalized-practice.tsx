@@ -362,7 +362,7 @@ function TargetJobModal({
   const [jobDescription, setJobDescription] = useState('');
   const [interviewDate, setInterviewDate] = useState('');
   const [dailyPrepTime, setDailyPrepTime] = useState('2');
-  const { recommendations: recommendedJobs, isLoading, fetchRecommendations } = useRecommendedJobs();
+  const { recommendations: recommendedJobs, isLoading, error: recError, fetchRecommendations, invalidate } = useRecommendedJobs();
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -372,6 +372,7 @@ function TargetJobModal({
       setSelectedJobData(null);
       setTab('quick');
       setApiError(null);
+      invalidate();
       fetchRecommendations();
     }
   }, [open]);
@@ -471,9 +472,18 @@ function TargetJobModal({
                 <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
               </div>
             ) : recommendedJobs.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">
-                No recommendations found. Use &ldquo;Paste JD&rdquo; to enter a custom role.
-              </p>
+              <div className="text-center py-4 space-y-3">
+                <p className="text-sm text-slate-400">
+                  {recError || 'No recommendations found yet. Your profile may still be processing.'}
+                </p>
+                <button
+                  onClick={() => { invalidate(); fetchRecommendations(); }}
+                  className="text-xs text-blue-500 hover:text-blue-600 underline"
+                >
+                  Retry
+                </button>
+                <p className="text-xs text-slate-400">Or use &ldquo;Paste JD&rdquo; to enter a custom role.</p>
+              </div>
             ) : (
               <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
                 {recommendedJobs.map((role) => {
@@ -688,6 +698,7 @@ export function PersonalizedPracticePage() {
   const navigate = useNavigate();
   const { isAuthenticated: isLoggedIn, user } = useAuth();
   const { planData } = useUserPlan();
+  const { fetchRecommendations: prefetchRecommendations } = useRecommendedJobs();
   const userBalance = planData?.permanentCreditBalance;
   const userData = user ? { role: user.role } : null;
   const hasProfile = !!userData?.role;
@@ -712,6 +723,7 @@ export function PersonalizedPracticePage() {
       return;
     }
     refetchProfile();
+    prefetchRecommendations();
   }, [isLoggedIn]);
 
   // ── All state declarations ──

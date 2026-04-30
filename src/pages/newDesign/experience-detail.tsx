@@ -626,14 +626,6 @@ export function ExperienceDetailPage() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedQuestions.size > 0 && (
-                      <Link to={`/mock-interview?questions=${Array.from(selectedQuestions).join(',')}`}>
-                        <Button variant="outline" className="rounded-xl h-9 text-xs gap-1.5 border-[hsl(221,91%,60%)]/30 text-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,60%)]/5">
-                          <Play className="w-3 h-3" />
-                          Practice {selectedQuestions.size} selected
-                        </Button>
-                      </Link>
-                    )}
                   </div>
                 </div>
               </div>
@@ -679,22 +671,9 @@ export function ExperienceDetailPage() {
                       <div
                         key={q.id}
                         id={`question-${q.id}`}
-                        className={`bg-white rounded-2xl border transition-all duration-200 ${
-                          isSelected ? 'border-[hsl(221,91%,60%)]/40 ring-1 ring-[hsl(221,91%,60%)]/20' : 'border-[hsl(220,16%,90%)]'
-                        }`}
+                        className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] transition-all duration-200"
                       >
                         <div className="flex items-start gap-3 p-5 md:p-6">
-                          <button
-                            onClick={() => toggleSelect(q.id)}
-                            className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${
-                              isSelected
-                                ? 'bg-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)] text-white'
-                                : 'border-[hsl(220,16%,85%)] hover:border-[hsl(221,91%,60%)]'
-                            }`}
-                          >
-                            {isSelected && <Check className="w-3 h-3" />}
-                          </button>
-
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1">
