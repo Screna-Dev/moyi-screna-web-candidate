@@ -842,9 +842,9 @@ function Journey() {
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$159', note: 'Billed $159 / month · cancel anytime' },
-  quarterly: { price: '$129', note: 'Billed $387 / quarter · cancel anytime' },
-  annual:    { price: '$99',  note: 'Billed $1,188 / year · cancel anytime' },
+  monthly:   { price: '$199', note: 'Billed $199 / month · cancel anytime' },
+  quarterly: { price: '$159', note: 'Billed $477 / quarter · cancel anytime' },
+  annual:    { price: '$129',  note: 'Billed $1,548 / year · cancel anytime' },
 };
 
 const LIMITED_FEATURES = [
@@ -914,12 +914,12 @@ function Pricing() {
                 {c === 'quarterly' && (
                   <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
                     cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 19%</span>
+                  }`}>Save 20%</span>
                 )}
                 {c === 'annual' && (
                   <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
                     cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 38%</span>
+                  }`}>Save 35%</span>
                 )}
               </button>
             ))}
