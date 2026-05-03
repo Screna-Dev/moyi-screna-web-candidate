@@ -914,12 +914,12 @@ function Pricing() {
                 {c === 'quarterly' && (
                   <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
                     cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 19%</span>
+                  }`}>Save 20%</span>
                 )}
                 {c === 'annual' && (
                   <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
                     cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 38%</span>
+                  }`}>Save 35%</span>
                 )}
               </button>
             ))}
