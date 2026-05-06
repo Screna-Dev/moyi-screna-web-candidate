@@ -90,7 +90,7 @@ const SORT_TO_API: Record<SortOption, string> = {
 const TIME_TO_API: Record<string, string> = {
   'Past week': 'PAST_WEEK',
   'Past month': 'PAST_MONTH',
-  'Past 3 months': 'PAST_3_MONTHS',
+  'Past 3 months': 'PAST_3_MONTH',
   'Past year': 'PAST_YEAR',
 };
 
@@ -453,7 +453,7 @@ export function InterviewInsightsPage() {
   const toggleTempFilter = (filter: string, option: string) => {
     setTempFilters(prev => {
       const current = prev[filter] || [];
-      return { ...prev, [filter]: current.includes(option) ? current.filter(o => o !== option) : [...current, option] };
+      return { ...prev, [filter]: current.includes(option) ? [] : [option] };
     });
   };
 
@@ -635,11 +635,11 @@ export function InterviewInsightsPage() {
                                 </div>
                                 <div className="max-h-56 overflow-y-auto">
                                   <div className="p-2 space-y-0.5">
-                                    {ALL_COMPANIES.filter(c => 
+                                    {(companySizeChip ? COMPANY_BY_SIZE[companySizeChip] : ALL_COMPANIES).filter(c =>
                                       companySearch ? c.toLowerCase().includes(companySearch.toLowerCase()) : true
                                     ).slice(0, 50).map(option => (
                                       <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
-                                        <input type="checkbox" checked={(tempFilters['Company'] || []).includes(option)} onChange={() => toggleTempFilter('Company', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
+                                        <input type="radio" name="company-filter" checked={(tempFilters['Company'] || []).includes(option)} onChange={() => toggleTempFilter('Company', option)} className="w-3.5 h-3.5 border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
                                         <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                       </label>
                                     ))}
@@ -685,11 +685,11 @@ export function InterviewInsightsPage() {
                                 </div>
                                 <div className="max-h-56 overflow-y-auto">
                                   <div className="p-2 space-y-0.5">
-                                    {ALL_ROLES.filter(r => 
+                                    {(roleCategoryChip ? ROLE_BY_CATEGORY[roleCategoryChip] : ALL_ROLES).filter(r =>
                                       roleSearch ? r.toLowerCase().includes(roleSearch.toLowerCase()) : true
                                     ).slice(0, 50).map(option => (
                                       <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
-                                        <input type="checkbox" checked={(tempFilters['Role'] || []).includes(option)} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
+                                        <input type="radio" name="role-filter" checked={(tempFilters['Role'] || []).includes(option)} onChange={() => toggleTempFilter('Role', option)} className="w-3.5 h-3.5 border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]" />
                                         <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                       </label>
                                     ))}
@@ -747,10 +747,11 @@ export function InterviewInsightsPage() {
                                   {FILTER_OPTIONS.Level.map(option => (
                                     <label key={option} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
                                       <input
-                                        type="checkbox"
+                                        type="radio"
+                                        name="level-filter"
                                         checked={(tempFilters['Level'] || []).includes(option)}
                                         onChange={() => toggleTempFilter('Level', option)}
-                                        className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]"
+                                        className="w-3.5 h-3.5 border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]"
                                       />
                                       <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                     </label>
@@ -770,10 +771,11 @@ export function InterviewInsightsPage() {
                                   {FILTER_OPTIONS.Time.map(option => (
                                     <label key={option} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
                                       <input
-                                        type="checkbox"
+                                        type="radio"
+                                        name="time-filter"
                                         checked={(tempFilters['Time'] || []).includes(option)}
                                         onChange={() => toggleTempFilter('Time', option)}
-                                        className="w-3.5 h-3.5 rounded border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]"
+                                        className="w-3.5 h-3.5 border-[hsl(220,16%,90%)] accent-[hsl(221,91%,60%)]"
                                       />
                                       <span className="text-sm text-[hsl(222,22%,15%)]">{option}</span>
                                     </label>
