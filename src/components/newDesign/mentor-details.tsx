@@ -6,7 +6,11 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+<<<<<<< HEAD
 import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
+=======
+import { getMentor, getMentorSlots } from '../../services/MentorService';
+>>>>>>> 5214902 (merge confilict)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +69,11 @@ function topicToPlan(t: MentorData['topics'][0]): CoachingPlan {
     id: t.id,
     name: t.title,
     description: t.description,
+<<<<<<< HEAD
     pricing: { '30min': t.price30min / 100, '1hr': t.price60min / 100 },
+=======
+    pricing: { '30min': t.price30min, '1hr': t.price60min },
+>>>>>>> 5214902 (merge confilict)
     icon: Video,
   };
 }
@@ -708,7 +716,11 @@ export function MentorDetailsPage() {
 
             <div className="flex flex-wrap gap-2 mt-4">
               {(mentor?.expertiseTags ?? []).map(tag => (
+<<<<<<< HEAD
                 <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
+=======
+                <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">{tag}</span>
+>>>>>>> 5214902 (merge confilict)
               ))}
             </div>
 

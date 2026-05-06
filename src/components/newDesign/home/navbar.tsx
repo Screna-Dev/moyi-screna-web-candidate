@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import logoImg from '../../../assets/Navbar.png';
+import { Button } from '../ui/button';
 import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -37,9 +39,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
 
   const nameParts = (user?.name || '').trim().split(' ');
   const firstName = nameParts[0] || '';
@@ -67,15 +69,15 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setAvatarOpen(false);
-    await logout();
+    logout();
   };
 
-  const navLinks = [
-    { name: 'Service', path: '#service', hasDropdown: true },
-    { name: 'Practice', path: '#practice', hasDropdown: true },
-    { name: 'Community', path: '#community', hasDropdown: true },
+  const mobileLinks = [
+    { name: 'Service', path: '/marketplace' },
+    { name: 'Interview', path: '/mock-interview' },
+    { name: 'Community', path: '/interview-insights' },
     { name: 'Pricing', path: '/pricing' },
   ];
 
@@ -84,12 +86,13 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed top-[calc(var(--topbar-h)+1.25rem)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[960px]"
+      className="fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
+      style={{ top: 'calc(var(--topbar-h, 0px) + 20px)' }}
     >
       <div
         className={`
-          relative grid grid-cols-[auto_1fr_auto] items-center
-          h-[58px] rounded-[999px] px-8
+          pointer-events-auto relative flex items-center justify-between
+          w-full max-w-[960px] h-[58px] rounded-[999px] px-8
           border transition-all duration-500 ease-in-out
           ${scrolled
             ? 'bg-white/80 border-slate-200/60 shadow-lg shadow-blue-900/[0.04] backdrop-blur-2xl'
@@ -99,7 +102,7 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
       >
         {/* ── Left: Logo + Wordmark ── */}
         <Link to="/" className="flex items-center gap-3 shrink-0">
-          <img src={logoImg} alt="Screna" className="h-8 w-auto" />
+          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
         </Link>
 
         {/* Center nav — absolutely centered */}
@@ -219,16 +222,25 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
           </Link>
         </nav>
 
-        {/* ── Right: Auth Area + Mobile Toggle ── */}
-        <div className="flex items-center justify-end gap-4">
+
+        {/* ── Right: Auth Area ── */}
+        <div className="hidden md:flex items-center gap-4 shrink-0">
           {isLoggedIn ? (
             <>
-              <div className="hidden md:block relative" ref={avatarRef}>
+              <div className="relative" ref={avatarRef}>
                 <button
                   onClick={() => setAvatarOpen((v) => !v)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-[13px] transition-all duration-200 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80"
+                  className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
+                    user?.role === 'ADMIN'
+                      ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
+                      : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
+                  }`}
                 >
-                  {initials}
+                  {user?.avatar ? (
+                    <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
                 </button>
 
                 {/* User Dropdown */}
@@ -245,7 +257,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                         <p className="text-sm font-semibold text-slate-900 truncate">
                           {user?.name || 'My Account'}
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5">12 Credits remaining</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {isPlanLoading ? 'Loading…' : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
+                        </p>
                       </div>
                       <Link
                         to="/dashboard"
@@ -255,22 +269,22 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                         <LayoutDashboard className="w-4 h-4 opacity-50" />
                         Personal Center
                       </Link>
-                      <Link
+                      {/* <Link
                         to="/messages"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <MessageSquare className="w-4 h-4 opacity-50" />
                         Messages
-                      </Link>
-                      <Link
+                      </Link> */}
+                      {/* <Link
                         to="/refer"
                         onClick={() => setAvatarOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
                       >
                         <Gift className="w-4 h-4 opacity-50" />
                         Refer & Earn
-                      </Link>
+                      </Link> */}
                       <div className="border-t border-slate-100/60 mt-1 pt-1">
                         <button
                           onClick={handleSignOut}
@@ -286,8 +300,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </div>
             </>
           ) : (
-            <div className="hidden md:flex items-center gap-4">
-              <Link to="/auth">
+            <>
+              <Link to="/auth?login=true">
                 <button className="text-[14px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200 px-1">
                   Log in
                 </button>
@@ -299,17 +313,17 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               >
                 Start free
               </Link>
-            </div>
+            </>
           )}
-
-          {/* ── Mobile: Menu Toggle ── */}
-          <button
-            className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
-          </button>
         </div>
+
+        {/* ── Mobile: Menu Toggle ── */}
+        <button 
+          className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
+        </button>
       </div>
 
       {/* Mobile menu */}
@@ -366,7 +380,7 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             </div>
             {!isLoggedIn && (
               <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
-                <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
+                <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
                   <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     Log in
                   </button>
