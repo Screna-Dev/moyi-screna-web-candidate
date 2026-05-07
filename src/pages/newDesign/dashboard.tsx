@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,11 +39,8 @@ import {
   SlidersHorizontal,
   Award,
 } from 'lucide-react';
-import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
-import { EditProfileModal, type EditProfileData } from '@/components/newDesign/edit-profile-modal';
-import { getPersonalInfo, getProfile, updateProfile, uploadResume } from '@/services/ProfileServices';
-import { getTrainingPlans } from '@/services/InterviewServices';
-import { useUserPlan } from '@/hooks/useUserPlan';
+import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
+import { EditProfileModal, type EditProfileData } from '../../components/newDesign/edit-profile-modal';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,80 +50,10 @@ type UserData = {
   role?: string;
   experienceLevel?: string;
   targetCompanies?: string[];
-  companyTypes?: string[];
   jobStatus?: string;
-  resumeFileName?: string;
-  resumeUploadedAt?: string;
-  resumePath?: string;
 };
 
 type StageStatus = 'completed' | 'active' | 'next' | 'locked';
-
-type RecentSession = {
-  id: number | string;
-  title: string;
-  score: number;
-  tag: string;
-  date: string;
-};
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'today';
-  if (diffDays === 1) return '1d ago';
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths === 1) return '1mo ago';
-  return `${diffMonths}mo ago`;
-}
-
-function mapPlansToRecentSessions(plans: any[]): RecentSession[] {
-  const sessions: RecentSession[] = [];
-  for (const plan of plans) {
-    const modules: any[] = plan.modules || [];
-    for (const mod of modules) {
-      if (mod.status === 'completed' && mod.interviewSessionId) {
-        sessions.push({
-          id: mod.interviewSessionId,
-          title: mod.title || plan.jobTitle || 'Mock Interview',
-          score: typeof mod.overallScore === 'number' ? mod.overallScore : 0,
-          tag: mod.interviewType || 'General',
-          date: mod.completedAt ? formatRelativeTime(mod.completedAt) : '',
-        });
-      }
-    }
-  }
-  return sessions.slice(0, 5);
-}
-
-function deriveExperienceLevel(totalYears?: number): string | undefined {
-  if (totalYears == null) return undefined;
-  if (totalYears >= 8) return 'Senior';
-  if (totalYears >= 4) return 'Mid-level';
-  return 'Entry-level';
-}
-
-function mapJobSearchStage(stage?: string): string | undefined {
-  if (!stage) return undefined;
-  const map: Record<string, string> = {
-    JUST_EXPLORING: 'Exploring',
-    ACTIVELY_APPLYING: 'Actively applying',
-    INTERVIEWING: 'Interviewing',
-    FINAL_ROUNDS: 'Final rounds',
-    URGENT_ASSISTANCE: 'Urgent',
-  };
-  return map[stage] ?? stage;
-}
-
-function filenameFromPath(path?: string): string | undefined {
-  if (!path) return undefined;
-  const seg = path.split('/').filter(Boolean).pop();
-  return seg || undefined;
-}
 
 // ─── Career Stage Data ──────────────────────────────────────────────────────
 
@@ -1958,8 +1885,7 @@ function ApplicationCommandCenter() {
 
 // ─── Personalized Practice ──────────────────────────────────────────────────
 
-function PersonalizedPractice({ sessions }: { sessions?: RecentSession[] }) {
-  const displaySessions = sessions && sessions.length > 0 ? sessions : RECENT_SESSIONS;
+function PersonalizedPractice() {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
       <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between">
@@ -1987,8 +1913,8 @@ function PersonalizedPractice({ sessions }: { sessions?: RecentSession[] }) {
         {/* Recent sessions */}
         <SectionLabel>Recent Sessions</SectionLabel>
         <div className="space-y-1 mb-4">
-          {displaySessions.map((session, i) => (
-            <div key={session.id} className={`flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${i < displaySessions.length - 1 ? 'border-b border-slate-50' : ''}`}>
+          {RECENT_SESSIONS.map((session, i) => (
+            <div key={session.id} className={`flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${i < RECENT_SESSIONS.length - 1 ? 'border-b border-slate-50' : ''}`}>
               <ScoreRing score={session.score} />
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium text-slate-900 truncate">{session.title}</p>
@@ -2211,11 +2137,11 @@ function CareerProfileCard({ userData, loading, onEdit, onUploadResume }: { user
         {/* Info rows */}
         <div className="space-y-2.5 pt-1">
           {[
-            { icon: Briefcase,  label: 'Target Role',  value: userData?.role || '—' },
-            { icon: TrendingUp, label: 'Experience',   value: userData?.experienceLevel || '—' },
-            { icon: Building2,  label: 'Company Type', value: companyTypeLabel },
-            { icon: Target,     label: 'Job Status',   value: userData?.jobStatus || '—' },
-            { icon: FileText,   label: 'Resume',       value: resumeValue },
+            { icon: Briefcase,  label: 'Target Role',  value: userData?.role || 'Product Manager' },
+            { icon: TrendingUp, label: 'Experience',   value: userData?.experienceLevel || 'Intermediate' },
+            { icon: Building2,  label: 'Company Type', value: 'FAANG & Tier-1' },
+            { icon: Target,     label: 'Job Status',   value: userData?.jobStatus || 'Actively hunting' },
+            { icon: FileText,   label: 'Resume',       value: 'Resume.pdf · 2d ago' },
           ].map((row) => {
             const RowIcon = row.icon;
             return (
@@ -2235,10 +2161,7 @@ function CareerProfileCard({ userData, loading, onEdit, onUploadResume }: { user
         </div>
 
         {/* Upload resume */}
-        <button
-          onClick={onUploadResume}
-          className="w-full py-2 rounded-lg border border-dashed border-slate-200 text-[12px] text-slate-400 hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/3 transition-colors flex items-center justify-center gap-1.5 mt-1"
-        >
+        <button className="w-full py-2 rounded-lg border border-dashed border-slate-200 text-[12px] text-slate-400 hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/3 transition-colors flex items-center justify-center gap-1.5 mt-1">
           <Upload className="w-3.5 h-3.5" /> Update Resume
         </button>
       </div>
@@ -2248,7 +2171,7 @@ function CareerProfileCard({ userData, loading, onEdit, onUploadResume }: { user
 
 // ─── Welcome Header ──────────────────────────────────────────────────────────
 
-function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserData | null; isMember: boolean; creditBalance: number }) {
+function WelcomeHeader({ userData, isMember }: { userData: UserData | null; isMember: boolean }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const firstName = userData?.firstName || 'Alex';
@@ -2269,14 +2192,12 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
       <div className="flex flex-wrap items-center gap-2 shrink-0">
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Target className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
-          <span className="font-medium">{userData?.role || '—'}</span>
+          <span className="font-medium">Product Manager</span>
         </div>
-        {(userData?.targetCompanies?.[0] || userData?.companyTypes?.[0]) && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Building2 className="w-3.5 h-3.5 text-slate-400" />
-          <span>{userData?.targetCompanies?.[0] || userData?.companyTypes?.[0]}</span>
+          <span>FAANG</span>
         </div>
-        )}
         {isMember ? (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 text-[12px] text-[hsl(221,91%,55%)] font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
@@ -2292,7 +2213,7 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
         )}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Layers className="w-3.5 h-3.5 text-slate-400" />
-          <span>{creditBalance} credit{creditBalance !== 1 ? 's' : ''}</span>
+          <span>12 credits</span>
         </div>
       </div>
     </div>
@@ -2306,10 +2227,6 @@ export function DashboardPage() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [isMember] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  const { planData } = useUserPlan();
-  const creditBalance = planData.permanentCreditBalance;
-  const resumeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -2391,53 +2308,13 @@ export function DashboardPage() {
     });
   };
 
-  const handleUploadResume = async (file: File) => {
-    try {
-      const uploadRes = await uploadResume(file);
-      const respData = uploadRes.data?.data ?? uploadRes.data;
-      const sr: any = respData?.structured_resume ?? respData;
-      const resumePath: string = respData?.resume_path || '';
-      const newResumeData: Partial<UserData> = {
-        resumeFileName: file.name,
-        resumeUploadedAt: new Date().toISOString(),
-        resumePath: resumePath || undefined,
-      };
-      if (sr) {
-        newResumeData.role = sr.job_titles?.[0] || sr.targetRole || userData?.role;
-        newResumeData.experienceLevel = deriveExperienceLevel(sr.profile?.total_years_experience) || userData?.experienceLevel;
-      }
-      const updated: UserData = { ...(userData || {}), ...newResumeData };
-      setUserData(updated);
-      localStorage.setItem('screnaUserData', JSON.stringify(updated));
-      // Fire-and-forget profile save
-      if (sr) updateProfile(sr).catch(() => {});
-    } catch (err) {
-      console.error('Resume upload failed', err);
-    }
-  };
-
-  const triggerResumeInput = () => {
-    resumeInputRef.current?.click();
-  };
-
   return (
     <DashboardLayout>
-      <input
-        ref={resumeInputRef}
-        type="file"
-        accept=".pdf,.doc,.docx"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleUploadResume(file);
-          e.target.value = '';
-        }}
-      />
       <div className="space-y-7">
 
         {/* ── Welcome Header ── */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <WelcomeHeader userData={userData} isMember={isMember} creditBalance={creditBalance} />
+          <WelcomeHeader userData={userData} isMember={isMember} />
         </motion.div>
 
         {/* ── Career Command Center ── */}
@@ -2460,7 +2337,7 @@ export function DashboardPage() {
           {/* Left column (2/3) */}
           <div className="xl:col-span-2 flex flex-col gap-5">
             <ApplicationCommandCenter />
-            <PersonalizedPractice sessions={recentSessions} />
+            <PersonalizedPractice />
           </div>
 
           {/* Right column (1/3) */}

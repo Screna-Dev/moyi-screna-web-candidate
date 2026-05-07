@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
-import logoImg from '../../../assets/Navbar.png';
-import { Button } from '../ui/button';
-import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target, Users } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Link } from 'react-router';
+import { AnimatePresence, motion } from 'motion/react';
+import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
 
@@ -74,35 +72,28 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     logout();
   };
 
-  const mobileLinks = [
-    { name: 'Service', path: '/marketplace' },
-    { name: 'Interview', path: '/mock-interview' },
-    { name: 'Community', path: '/interview-insights' },
-    { name: 'Pricing', path: '/pricing' },
-  ];
-
   return (
     <motion.header
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
-      style={{ top: 'calc(var(--topbar-h, 0px) + 20px)' }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="fixed inset-x-0 z-50"
+      style={{
+        top: 'var(--topbar-h, 0px)',
+        backdropFilter: 'saturate(180%) blur(14px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(14px)',
+        background: 'rgba(255,255,255,0.72)',
+        borderBottom: `1px solid ${scrolled ? '#E8E8EA' : 'transparent'}`,
+        transition: 'border-color 200ms cubic-bezier(0.4,0,0.2,1)',
+      }}
     >
       <div
-        className={`
-          pointer-events-auto relative flex items-center justify-between
-          w-full max-w-[960px] h-[58px] rounded-[999px] px-8
-          border transition-all duration-500 ease-in-out
-          ${scrolled
-            ? 'bg-white/80 border-slate-200/60 shadow-lg shadow-blue-900/[0.04] backdrop-blur-2xl'
-            : 'bg-white/60 border-white/60 shadow-md shadow-blue-900/[0.02] backdrop-blur-xl'
-          }
-        `}
+        className="flex items-center justify-between h-16 mx-auto"
+        style={{ maxWidth: '1320px', padding: '0 clamp(20px, 4vw, 40px)' }}
       >
-        {/* ── Left: Logo + Wordmark ── */}
-        <Link to="/" className="flex items-center gap-3 shrink-0">
-          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+        {/* Logo */}
+        <Link to="/" className="flex items-center shrink-0">
+          <img src="/landing/logo-full.png" alt="Screna" className="h-[22px] w-auto" />
         </Link>
 
         {/* Center nav — absolutely centered */}
@@ -222,89 +213,73 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
           </Link>
         </nav>
 
-
-        {/* ── Right: Auth Area ── */}
+        {/* Right: auth */}
         <div className="hidden md:flex items-center gap-4 shrink-0">
           {isLoggedIn ? (
-            <>
-              <div className="relative" ref={avatarRef}>
-                <button
-                  onClick={() => setAvatarOpen((v) => !v)}
-                  className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
-                    user?.role === 'ADMIN'
-                      ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
-                      : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
-                  }`}
-                >
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
-                  ) : (
-                    initials
-                  )}
-                </button>
-
-                {/* User Dropdown */}
-                <AnimatePresence>
-                  {avatarOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                      transition={{ duration: 0.18 }}
-                      className="absolute top-full right-0 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden z-50 p-1.5 origin-top-right"
+            <div className="relative" ref={avatarRef}>
+              <button
+                onClick={() => setAvatarOpen((v) => !v)}
+                className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
+                  user?.role === 'ADMIN'
+                    ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
+                    : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
+                }`}
+              >
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
+                ) : (
+                  initials
+                )}
+              </button>
+              <AnimatePresence>
+                {avatarOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.18 }}
+                    className="absolute top-full right-0 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-2xl border border-[#F0F0F2] overflow-hidden z-50 p-1.5 origin-top-right"
+                    style={{ boxShadow: '0 16px 48px -12px rgba(10,10,10,0.12)' }}
+                  >
+                    <div className="px-3 py-2.5 border-b border-[#F0F0F2] mb-1">
+                      <p className="text-sm font-semibold text-[#0A0A0A] truncate">
+                        {user?.name || 'My Account'}
+                      </p>
+                      <p className="text-xs text-[#8a8f9a] mt-0.5">
+                        {isPlanLoading
+                          ? 'Loading…'
+                          : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
+                      </p>
+                    </div>
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors"
                     >
-                      <div className="px-3 py-2.5 border-b border-slate-100/60 mb-1">
-                        <p className="text-sm font-semibold text-slate-900 truncate">
-                          {user?.name || 'My Account'}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {isPlanLoading ? 'Loading…' : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
-                        </p>
-                      </div>
-                      <Link
-                        to="/dashboard"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
+                      <LayoutDashboard className="w-4 h-4 opacity-50" />
+                      Personal Center
+                    </Link>
+                    <div className="border-t border-[#F0F0F2] mt-1 pt-1">
+                      <button
+                        onClick={handleSignOut}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors"
                       >
-                        <LayoutDashboard className="w-4 h-4 opacity-50" />
-                        Personal Center
-                      </Link>
-                      {/* <Link
-                        to="/messages"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                      >
-                        <MessageSquare className="w-4 h-4 opacity-50" />
-                        Messages
-                      </Link> */}
-                      {/* <Link
-                        to="/refer"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                      >
-                        <Gift className="w-4 h-4 opacity-50" />
-                        Refer & Earn
-                      </Link> */}
-                      <div className="border-t border-slate-100/60 mt-1 pt-1">
-                        <button
-                          onClick={handleSignOut}
-                          className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors"
-                        >
-                          <LogOut className="w-4 h-4 opacity-60" />
-                          Sign Out
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
+                        <LogOut className="w-4 h-4 opacity-60" />
+                        Sign Out
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           ) : (
             <>
-              <Link to="/auth?login=true">
-                <button className="text-[14px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200 px-1">
-                  Log in
-                </button>
+              <Link
+                to="/auth?login=true"
+                className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
+                style={{ fontWeight: 450 }}
+              >
+                Sign in
               </Link>
               <Link
                 to="/auth"
@@ -317,9 +292,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
           )}
         </div>
 
-        {/* ── Mobile: Menu Toggle ── */}
-        <button 
-          className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
+        {/* Mobile toggle */}
+        <button
+          className="md:hidden w-9 h-9 flex items-center justify-center text-[#4a4d57] hover:text-[#0A0A0A] rounded-full hover:bg-[#F7F7F7] transition-colors"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
@@ -379,10 +354,10 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </Link>
             </div>
             {!isLoggedIn && (
-              <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
-                  <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                    Log in
+                  <button className="w-full h-[42px] rounded-xl text-[14px] font-[500] text-[#2A2A2A] hover:bg-[#F7F7F7] transition-colors">
+                    Sign in
                   </button>
                 </Link>
                 <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
