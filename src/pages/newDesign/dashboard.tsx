@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,11 +39,8 @@ import {
   SlidersHorizontal,
   Award,
 } from 'lucide-react';
-import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
-import { EditProfileModal, type EditProfileData } from '@/components/newDesign/edit-profile-modal';
-import { getPersonalInfo, getProfile, updateProfile, uploadResume } from '@/services/ProfileServices';
-import { getTrainingPlans } from '@/services/InterviewServices';
-import { useUserPlan } from '@/hooks/useUserPlan';
+import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
+import { EditProfileModal, type EditProfileData } from '../../components/newDesign/edit-profile-modal';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,80 +50,10 @@ type UserData = {
   role?: string;
   experienceLevel?: string;
   targetCompanies?: string[];
-  companyTypes?: string[];
   jobStatus?: string;
-  resumeFileName?: string;
-  resumeUploadedAt?: string;
-  resumePath?: string;
 };
 
 type StageStatus = 'completed' | 'active' | 'next' | 'locked';
-
-type RecentSession = {
-  id: number | string;
-  title: string;
-  score: number;
-  tag: string;
-  date: string;
-};
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'today';
-  if (diffDays === 1) return '1d ago';
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths === 1) return '1mo ago';
-  return `${diffMonths}mo ago`;
-}
-
-function mapPlansToRecentSessions(plans: any[]): RecentSession[] {
-  const sessions: RecentSession[] = [];
-  for (const plan of plans) {
-    const modules: any[] = plan.modules || [];
-    for (const mod of modules) {
-      if (mod.status === 'completed' && mod.interviewSessionId) {
-        sessions.push({
-          id: mod.interviewSessionId,
-          title: mod.title || plan.jobTitle || 'Mock Interview',
-          score: typeof mod.overallScore === 'number' ? mod.overallScore : 0,
-          tag: mod.interviewType || 'General',
-          date: mod.completedAt ? formatRelativeTime(mod.completedAt) : '',
-        });
-      }
-    }
-  }
-  return sessions.slice(0, 5);
-}
-
-function deriveExperienceLevel(totalYears?: number): string | undefined {
-  if (totalYears == null) return undefined;
-  if (totalYears >= 8) return 'Senior';
-  if (totalYears >= 4) return 'Mid-level';
-  return 'Entry-level';
-}
-
-function mapJobSearchStage(stage?: string): string | undefined {
-  if (!stage) return undefined;
-  const map: Record<string, string> = {
-    JUST_EXPLORING: 'Exploring',
-    ACTIVELY_APPLYING: 'Actively applying',
-    INTERVIEWING: 'Interviewing',
-    FINAL_ROUNDS: 'Final rounds',
-    URGENT_ASSISTANCE: 'Urgent',
-  };
-  return map[stage] ?? stage;
-}
-
-function filenameFromPath(path?: string): string | undefined {
-  if (!path) return undefined;
-  const seg = path.split('/').filter(Boolean).pop();
-  return seg || undefined;
-}
 
 // ─── Career Stage Data ──────────────────────────────────────────────────────
 
@@ -1652,53 +1579,96 @@ function OfferGrowPanel() {
           </div>
         </div>
 
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              {sessionsLoading ? (
-                [0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center gap-4 px-5 py-4 animate-pulse ${i < 2 ? 'border-b border-[hsl(220,16%,92%)]' : ''}`}
-                  >
-                    <div className="w-16 h-16 rounded-full bg-gray-100 shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3.5 w-40 bg-gray-100 rounded" />
-                      <div className="h-3 w-28 bg-gray-100 rounded" />
-                    </div>
-                    <div className="h-3 w-14 bg-gray-100 rounded" />
-                  </div>
-                ))
-              ) : recentSessions.length === 0 ? (
-                <div className="py-10 text-center text-sm text-[hsl(222,12%,55%)]">
-                  No sessions yet.{' '}
-                  <Link to="/dashboard/mock-interview" className="text-[hsl(221,91%,60%)] hover:underline font-medium">
-                    Start your first mock interview
-                  </Link>
-                </div>
-              ) : (
-                recentSessions.map((session, i) => (
-                  <Link
-                    key={session.id}
-                    to={`/evaluation?interviewId=${session.id}`}
-                    state={{ from: '/dashboard', jobTitle: session.title }}
-                    className={`flex items-center gap-4 px-5 py-4 hover:bg-[hsl(220,18%,98%)] transition-colors ${
-                      i < recentSessions.length - 1 ? 'border-b border-[hsl(220,16%,92%)]' : ''
-                    }`}
-                  >
-                    <ScoreRing score={session.score} />
+        {/* Divider */}
+        <div className="hidden md:block w-px bg-slate-100" />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-sm font-medium text-[hsl(222,22%,15%)] truncate">
-                          {session.title}
-                        </p>
-                        <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,55%)]">
-                          {session.tag}
-                        </span>
+        {/* ── RIGHT: Negotiation Coaching + 90-Day Roadmap ── */}
+        <div className="flex-1 flex flex-col gap-5">
+
+          {/* Negotiation coaching tasks */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.9px] text-slate-400">
+                Negotiation Coaching
+              </p>
+              <span className="text-[10px] font-semibold text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-full">
+                1 expiring
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {COACHING_TASKS.map((task, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl border-[0.5px] border-l-2 p-3.5 transition-colors ${
+                    task.urgencyColor === 'rose'
+                      ? 'border-rose-100 border-l-rose-400 bg-rose-50/20'
+                      : task.urgencyColor === 'amber'
+                      ? 'border-amber-100 border-l-amber-400 bg-amber-50/10'
+                      : 'border-slate-100 border-l-slate-100 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-[12.5px] font-semibold text-slate-900 leading-snug">{task.title}</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0 ${
+                      task.urgencyColor === 'rose'   ? 'text-rose-600 bg-rose-100 border border-rose-200'
+                      : task.urgencyColor === 'amber' ? 'text-amber-600 bg-amber-50 border border-amber-100'
+                      : 'text-slate-400 bg-slate-100'
+                    }`}>
+                      {task.urgency}
+                    </span>
+                  </div>
+                  <p className="text-[11.5px] text-slate-500 leading-snug mb-2.5 flex items-start gap-1.5">
+                    <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-violet-400" />
+                    {task.context}
+                  </p>
+                  <button className={`text-[11.5px] font-semibold px-3 py-1 rounded-lg transition-all ${
+                    task.urgencyColor === 'rose'
+                      ? 'bg-[hsl(221,91%,60%)] text-white hover:bg-[hsl(221,91%,55%)] shadow-[0_1px_4px_hsl(221,91%,60%)/20]'
+                      : 'text-[hsl(221,91%,55%)] bg-blue-50 hover:bg-blue-100 border border-blue-100'
+                  }`}>
+                    {task.cta} →
+                  </button>
+                  {task.urgencyColor === 'rose' && (
+                    <p className="text-[10.5px] text-rose-400 mt-2">Will be skipped if no action taken.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 90-day growth roadmap */}
+          <div>
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.9px] text-slate-400 mb-2.5">
+              90-Day Growth Roadmap
+            </p>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+              <div className="flex flex-col gap-3">
+                {ROADMAP.map((milestone, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="flex flex-col items-center gap-1 shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center">
+                        <span className="text-[9px] font-bold text-slate-400">{i + 1}</span>
                       </div>
-                      <p className="text-xs text-[hsl(222,12%,50%)]">
-                        {session.company} · {session.duration}
-                      </p>
+                      {i < ROADMAP.length - 1 && (
+                        <div className="w-px flex-1 bg-slate-100 min-h-[12px]" />
+                      )}
                     </div>
+                    <div className="pb-2">
+                      <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-full">
+                        {milestone.days}
+                      </span>
+                      <p className="text-[12.5px] font-semibold text-slate-800 mt-1.5">{milestone.title}</p>
+                      <p className="text-[11.5px] text-slate-500 leading-snug mt-0.5">{milestone.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="mt-3 w-full py-2 rounded-lg border border-slate-200 text-slate-600 text-[12px] font-medium hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5">
+                <Target className="w-3.5 h-3.5 text-slate-400" />
+                Customize Roadmap
+              </button>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -1915,8 +1885,7 @@ function ApplicationCommandCenter() {
 
 // ─── Personalized Practice ──────────────────────────────────────────────────
 
-function PersonalizedPractice({ sessions }: { sessions?: RecentSession[] }) {
-  const displaySessions = sessions && sessions.length > 0 ? sessions : RECENT_SESSIONS;
+function PersonalizedPractice() {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
       <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between">
@@ -1944,8 +1913,8 @@ function PersonalizedPractice({ sessions }: { sessions?: RecentSession[] }) {
         {/* Recent sessions */}
         <SectionLabel>Recent Sessions</SectionLabel>
         <div className="space-y-1 mb-4">
-          {displaySessions.map((session, i) => (
-            <div key={session.id} className={`flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${i < displaySessions.length - 1 ? 'border-b border-slate-50' : ''}`}>
+          {RECENT_SESSIONS.map((session, i) => (
+            <div key={session.id} className={`flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer ${i < RECENT_SESSIONS.length - 1 ? 'border-b border-slate-50' : ''}`}>
               <ScoreRing score={session.score} />
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium text-slate-900 truncate">{session.title}</p>
@@ -2107,27 +2076,8 @@ function ProgressMomentum() {
 
 // ─── Career Profile Card ─────────────────────────────────────────────────────
 
-function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: UserData | null; onEdit: () => void; onUploadResume?: () => void }) {
-  const fields = [
-    !!(userData?.firstName || userData?.lastName),
-    !!userData?.role,
-    !!userData?.experienceLevel,
-    !!userData?.resumeFileName || !!userData?.resumePath,
-    !!userData?.jobStatus,
-  ];
-  const completion = Math.round((fields.filter(Boolean).length / fields.length) * 100);
-
-  const resumeValue = userData?.resumeFileName
-    ? `${userData.resumeFileName}${userData.resumeUploadedAt ? ' · ' + formatRelativeTime(userData.resumeUploadedAt) : ''}`
-    : userData?.resumePath
-    ? filenameFromPath(userData.resumePath) || 'Uploaded'
-    : 'No resume yet';
-
-  const companyTypeLabel = userData?.companyTypes?.length
-    ? userData.companyTypes.join(', ')
-    : userData?.targetCompanies?.length
-    ? userData.targetCompanies.slice(0, 2).join(', ') + (userData.targetCompanies.length > 2 ? ` +${userData.targetCompanies.length - 2}` : '')
-    : '—';
+function CareerProfileCard({ userData, onEdit }: { userData: UserData | null; onEdit: () => void }) {
+  const completion = 85;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
@@ -2156,11 +2106,11 @@ function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: Use
         {/* Info rows */}
         <div className="space-y-2.5 pt-1">
           {[
-            { icon: Briefcase,  label: 'Target Role',  value: userData?.role || '—' },
-            { icon: TrendingUp, label: 'Experience',   value: userData?.experienceLevel || '—' },
-            { icon: Building2,  label: 'Company Type', value: companyTypeLabel },
-            { icon: Target,     label: 'Job Status',   value: userData?.jobStatus || '—' },
-            { icon: FileText,   label: 'Resume',       value: resumeValue },
+            { icon: Briefcase,  label: 'Target Role',  value: userData?.role || 'Product Manager' },
+            { icon: TrendingUp, label: 'Experience',   value: userData?.experienceLevel || 'Intermediate' },
+            { icon: Building2,  label: 'Company Type', value: 'FAANG & Tier-1' },
+            { icon: Target,     label: 'Job Status',   value: userData?.jobStatus || 'Actively hunting' },
+            { icon: FileText,   label: 'Resume',       value: 'Resume.pdf · 2d ago' },
           ].map((row) => {
             const RowIcon = row.icon;
             return (
@@ -2176,10 +2126,7 @@ function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: Use
         </div>
 
         {/* Upload resume */}
-        <button
-          onClick={onUploadResume}
-          className="w-full py-2 rounded-lg border border-dashed border-slate-200 text-[12px] text-slate-400 hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/3 transition-colors flex items-center justify-center gap-1.5 mt-1"
-        >
+        <button className="w-full py-2 rounded-lg border border-dashed border-slate-200 text-[12px] text-slate-400 hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/3 transition-colors flex items-center justify-center gap-1.5 mt-1">
           <Upload className="w-3.5 h-3.5" /> Update Resume
         </button>
       </div>
@@ -2189,7 +2136,7 @@ function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: Use
 
 // ─── Welcome Header ──────────────────────────────────────────────────────────
 
-function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserData | null; isMember: boolean; creditBalance: number }) {
+function WelcomeHeader({ userData, isMember }: { userData: UserData | null; isMember: boolean }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const firstName = userData?.firstName || 'Alex';
@@ -2210,14 +2157,12 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
       <div className="flex flex-wrap items-center gap-2 shrink-0">
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Target className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
-          <span className="font-medium">{userData?.role || '—'}</span>
+          <span className="font-medium">Product Manager</span>
         </div>
-        {(userData?.targetCompanies?.[0] || userData?.companyTypes?.[0]) && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Building2 className="w-3.5 h-3.5 text-slate-400" />
-          <span>{userData?.targetCompanies?.[0] || userData?.companyTypes?.[0]}</span>
+          <span>FAANG</span>
         </div>
-        )}
         {isMember ? (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 text-[12px] text-[hsl(221,91%,55%)] font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
@@ -2233,7 +2178,7 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
         )}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[12px] text-slate-600">
           <Layers className="w-3.5 h-3.5 text-slate-400" />
-          <span>{creditBalance} credit{creditBalance !== 1 ? 's' : ''}</span>
+          <span>12 credits</span>
         </div>
       </div>
     </div>
@@ -2246,10 +2191,6 @@ export function DashboardPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isMember] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  const { planData } = useUserPlan();
-  const creditBalance = planData.permanentCreditBalance;
-  const resumeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -2258,58 +2199,6 @@ export function DashboardPage() {
     } catch {
       setUserData(null);
     }
-
-    // Fetch personal info + profile from API
-    Promise.allSettled([getPersonalInfo(), getProfile(), getTrainingPlans()]).then(([piResult, profileResult, plansResult]) => {
-      setUserData((prev) => {
-        let merged: UserData = { ...(prev || {}) };
-
-        if (piResult.status === 'fulfilled') {
-          const piData = piResult.value.data?.data ?? piResult.value.data;
-          if (piData) {
-            const nameParts = (piData.name || '').trim().split(' ');
-            merged.firstName = nameParts[0] || merged.firstName;
-            merged.lastName = nameParts.slice(1).join(' ') || merged.lastName;
-          }
-        }
-
-        if (profileResult.status === 'fulfilled') {
-          const profData = profileResult.value.data?.data ?? profileResult.value.data;
-          if (profData) {
-            const sr: any = profData.structured_resume;
-            // Role: prefer insights-saved role, then first parsed job title
-            merged.role = profData.role || sr?.job_titles?.[0] || merged.role;
-            // Experience: prefer insights value, then derive from total years
-            merged.experienceLevel = profData.experienceLevel
-              || deriveExperienceLevel(sr?.profile?.total_years_experience)
-              || merged.experienceLevel;
-            // Company types from insights
-            if (profData.companyTypes?.length) merged.companyTypes = profData.companyTypes;
-            // Specific companies from insights
-            if (profData.companies?.length) merged.targetCompanies = profData.companies;
-            // Job search stage from insights
-            const mappedStage = mapJobSearchStage(profData.jobSearchStage);
-            if (mappedStage) merged.jobStatus = mappedStage;
-            // Resume file info
-            if (profData.resume_path) {
-              merged.resumePath = profData.resume_path;
-              if (!merged.resumeFileName) {
-                merged.resumeFileName = filenameFromPath(profData.resume_path);
-              }
-            }
-            if (profData.updatedAt) merged.resumeUploadedAt = profData.updatedAt;
-          }
-        }
-
-        return merged;
-      });
-
-      if (plansResult.status === 'fulfilled') {
-        const plansData = plansResult.value.data?.data ?? plansResult.value.data;
-        const plans: any[] = Array.isArray(plansData) ? plansData : [];
-        setRecentSessions(mapPlansToRecentSessions(plans));
-      }
-    });
   }, []);
 
   const handleUpdateProfile = (newData: UserData) => {
@@ -2328,53 +2217,13 @@ export function DashboardPage() {
     });
   };
 
-  const handleUploadResume = async (file: File) => {
-    try {
-      const uploadRes = await uploadResume(file);
-      const respData = uploadRes.data?.data ?? uploadRes.data;
-      const sr: any = respData?.structured_resume ?? respData;
-      const resumePath: string = respData?.resume_path || '';
-      const newResumeData: Partial<UserData> = {
-        resumeFileName: file.name,
-        resumeUploadedAt: new Date().toISOString(),
-        resumePath: resumePath || undefined,
-      };
-      if (sr) {
-        newResumeData.role = sr.job_titles?.[0] || sr.targetRole || userData?.role;
-        newResumeData.experienceLevel = deriveExperienceLevel(sr.profile?.total_years_experience) || userData?.experienceLevel;
-      }
-      const updated: UserData = { ...(userData || {}), ...newResumeData };
-      setUserData(updated);
-      localStorage.setItem('screnaUserData', JSON.stringify(updated));
-      // Fire-and-forget profile save
-      if (sr) updateProfile(sr).catch(() => {});
-    } catch (err) {
-      console.error('Resume upload failed', err);
-    }
-  };
-
-  const triggerResumeInput = () => {
-    resumeInputRef.current?.click();
-  };
-
   return (
     <DashboardLayout>
-      <input
-        ref={resumeInputRef}
-        type="file"
-        accept=".pdf,.doc,.docx"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleUploadResume(file);
-          e.target.value = '';
-        }}
-      />
       <div className="space-y-7">
 
         {/* ── Welcome Header ── */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <WelcomeHeader userData={userData} isMember={isMember} creditBalance={creditBalance} />
+          <WelcomeHeader userData={userData} isMember={isMember} />
         </motion.div>
 
         {/* ── Career Command Center ── */}
@@ -2397,14 +2246,14 @@ export function DashboardPage() {
           {/* Left column (2/3) */}
           <div className="xl:col-span-2 flex flex-col gap-5">
             <ApplicationCommandCenter />
-            <PersonalizedPractice sessions={recentSessions} />
+            <PersonalizedPractice />
           </div>
 
           {/* Right column (1/3) */}
           <div className="flex flex-col gap-5">
             <MentorshipSessions />
             <ProgressMomentum />
-            <CareerProfileCard userData={userData} onEdit={() => setEditOpen(true)} onUploadResume={triggerResumeInput} />
+            <CareerProfileCard userData={userData} onEdit={() => setEditOpen(true)} />
           </div>
         </motion.div>
 

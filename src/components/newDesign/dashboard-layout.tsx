@@ -211,6 +211,29 @@ function GlobalTopHeader({
     return currentPath === path;
   };
 
+  // Shared dropdown item style — Navbar-style: serif title, no icon
+  const dropdownPanelClass = 'absolute top-full left-1/2 -translate-x-1/2 mt-3 w-64 bg-card border border-border rounded-xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5';
+  const dropdownItem = (to: string, title: string, desc: string, badge?: string) => (
+    <Link
+      key={to}
+      to={to}
+      className="flex flex-col gap-0.5 px-3.5 py-3 rounded-lg hover:bg-secondary transition-colors"
+    >
+      <span className="flex items-center gap-2">
+        <span
+          className="text-[15px] font-medium text-foreground leading-snug"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
+          {title}
+        </span>
+        {badge && (
+          <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-medium">{badge}</span>
+        )}
+      </span>
+      <span className="text-xs text-muted-foreground leading-relaxed">{desc}</span>
+    </Link>
+  );
+
   return (
     <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
       {/* Left: Logo + Home */}
@@ -231,106 +254,47 @@ function GlobalTopHeader({
 
       {/* Center: Global Nav Links */}
       <nav className="hidden md:flex items-center gap-5 mx-auto">
-        {/* Jobs dropdown */}
-        <div className="relative group">
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-card border border-border rounded-md overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1">
-            <Link
-              to="/job-board"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary transition-colors"
-            >
-              <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Briefcase className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">Find Jobs</div>
-                <div className="text-xs text-muted-foreground">Browse open positions</div>
-              </div>
-            </Link>
-          </div>
-        </div>
 
         {/* Interview dropdown */}
         <div className="relative group">
           <button
-            className={`flex items-center gap-1 text-sm font-medium transition-colors ${
-              isLinkActive('/mock-interview')
-                ? 'text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
           >
-            Interview
+            Practice
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-card border border-border rounded-md overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1">
-            <Link
-              to="/mock-interview"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary transition-colors"
-            >
-              <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">Trending Mocks</div>
-                <div className="text-xs text-muted-foreground">Trending mock interviews</div>
-              </div>
-            </Link>
-            <Link
-              to="/personalized-practice"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary transition-colors"
-            >
-              <div className="w-7 h-7 rounded-md bg-secondary text-muted-foreground flex items-center justify-center shrink-0">
-                <Target className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">Personalized Practice</div>
-                <div className="text-xs text-muted-foreground">AI-tailored mock sessions</div>
-              </div>
-            </Link>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/personalized-practice', 'Personalized Mock', 'AI-powered mock interviews tailored to your role and goals.')}
           </div>
         </div>
 
         {/* Community dropdown */}
         <div className="relative group">
           <button
-            className={`flex items-center gap-1 text-sm font-medium transition-colors ${
-              isLinkActive('/question-bank')
-                ? 'text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: isLinkActive('/question-bank') ? '#2E5BFF' : '#2A2A2A' }}
           >
             Community
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-card border border-border rounded-md overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1">
-            <Link
-              to="/interview-insights"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary transition-colors"
-            >
-              <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">Interview Insights</div>
-                <div className="text-xs text-muted-foreground">Real interview experiences</div>
-              </div>
-            </Link>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/interview-insights', 'Interview Insights', 'Learn from real interview experiences shared by other candidates.')}
           </div>
         </div>
 
         <Link
-          to="/faq"
-          className={`text-sm font-medium transition-colors ${
-            isLinkActive('/faq') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-          }`}
+          to="/help"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/faq') ? '#2E5BFF' : '#2A2A2A' }}
         >
           FAQ
         </Link>
 
         <Link
           to="/pricing"
-          className={`text-sm font-medium transition-colors ${
-            isLinkActive('/pricing') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-          }`}
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/pricing') ? '#2E5BFF' : '#2A2A2A' }}
         >
           Pricing
         </Link>
@@ -338,37 +302,20 @@ function GlobalTopHeader({
         {/* Service dropdown */}
         <div className="relative group">
           <button
-            className={`flex items-center gap-1 text-sm font-medium transition-colors ${
-              currentPath === '/marketplace' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
           >
             Service
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-60 bg-card border border-border rounded-md overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1">
-            <Link
-              to="/marketplace"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary transition-colors"
-            >
-              <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-foreground">Mentorship</span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-medium">Pro</span>
-                </div>
-                <div className="text-xs text-muted-foreground">Book 1:1 sessions with mentors</div>
-              </div>
-            </Link>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/marketplace', 'Mentorship Marketplace', 'Connect with mentors for mock interviews, resume review, and career support.')}
           </div>
         </div>
       </nav>
 
       {/* Right: Avatar */}
       <div className="flex items-center gap-3 shrink-0 ml-auto md:ml-0">
-        <Link to="/pricing" />
-
         <div className="relative" ref={avatarRef}>
           <button
             onClick={() => setAvatarOpen((v) => !v)}
@@ -386,51 +333,27 @@ function GlobalTopHeader({
                 transition={{ duration: 0.15 }}
                 className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-md overflow-hidden z-50 p-1 origin-top-right"
               >
-                {/* User Info */}
                 <div className="px-3 py-2.5 border-b border-border mb-1">
                   <p className="text-sm font-medium text-foreground truncate">
-                    {userData?.firstName
-                      ? `${userData.firstName} ${userData.lastName || ''}`
-                      : 'My Account'}
+                    {userData?.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'My Account'}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <Coins className="w-3 h-3 text-primary" />
                     <span className="text-xs text-muted-foreground">{`${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}</span>
                   </div>
                 </div>
-
-                <Link
-                  to="/dashboard"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors"
-                >
-                  <LayoutDashboard className="w-4 h-4 text-muted-foreground" />
-                  Dashboard
+                <Link to="/dashboard" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <LayoutDashboard className="w-4 h-4 text-muted-foreground" /> Dashboard
                 </Link>
-                <Link
-                  to="/messages"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors"
-                >
-                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                  Messages
+                <Link to="/messages" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" /> Messages
                 </Link>
-                <Link
-                  to="/settings"
-                  onClick={() => setAvatarOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors"
-                >
-                  <Settings className="w-4 h-4 text-muted-foreground" />
-                  Settings
+                <Link to="/settings" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <Settings className="w-4 h-4 text-muted-foreground" /> Settings
                 </Link>
-
                 <div className="border-t border-border mt-1 pt-1">
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
+                  <button onClick={handleSignOut} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors">
+                    <LogOut className="w-4 h-4" /> Sign Out
                   </button>
                 </div>
               </motion.div>
@@ -1282,15 +1205,11 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false }: Da
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* ── Global Top Header ── */}
-      {location.pathname === '/marketplace' || location.pathname === '/mentor-details' ? (
-        <Navbar />
-      ) : (
-        <GlobalTopHeader
-          firstName={firstName}
-          userData={userData}
-          currentPath={location.pathname}
-        />
-      )}
+      <GlobalTopHeader
+        firstName={firstName}
+        userData={userData}
+        currentPath={location.pathname}
+      />
 
       {/* ── Below header: Sidebar + Content ── */}
       <div className="flex flex-1 min-h-0">
