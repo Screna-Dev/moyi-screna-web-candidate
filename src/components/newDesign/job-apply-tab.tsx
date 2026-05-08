@@ -5,8 +5,10 @@ import {
   Sparkles, FileText, MessageSquare, Zap, Target, Send,
   ChevronUp, User, Globe, Eye, Download, Plus, Trash2,
   XCircle, RotateCcw, Bot, Star, Archive, Copy, Upload,
-  Briefcase, X, ChevronRight, Lock, BarChart2, RefreshCw
+  Briefcase, X, ChevronRight, Lock, BarChart2, RefreshCw, Loader2
 } from 'lucide-react';
+import { JobService, ProfileService } from '@/services';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -113,6 +115,57 @@ Requirements:
     positiveSkills: ['Product Management'],
   },
 ];
+
+// ─── API Types & Helpers ──────────────────────────────────────────────────
+type ApiJob = {
+  score: number;
+  id: string;
+  url: string;
+  job_title: string;
+  job_description: string;
+  job_description_formatted: string;
+  job_type: string[];
+  company_name: string;
+  company_url: string;
+  apply_link: string;
+  posted_date: string;
+  location: string;
+  source: string;
+};
+
+function formatRelativeDate(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return '1 day ago';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  return `${Math.floor(diffDays / 30)} months ago`;
+}
+
+function mapApiJobToJob(apiJob: ApiJob): Job {
+  const letter = (apiJob.company_name || 'J')[0].toUpperCase();
+  const score = Math.round((apiJob.score || 0) * 100);
+  return {
+    id: apiJob.id,
+    company: apiJob.company_name || '',
+    logoLetter: letter,
+    logoColor: 'bg-primary text-primary-foreground',
+    title: apiJob.job_title || '',
+    location: apiJob.location || '',
+    timeAgo: apiJob.posted_date ? formatRelativeDate(apiJob.posted_date) : '',
+    matchScore: score,
+    type: apiJob.job_type?.[0] || 'Full-time',
+    remoteType: (apiJob.location || '').toLowerCase().includes('remote') ? 'Remote' : 'On-site',
+    years: '',
+    salary: '',
+    isPositiveMatch: score >= 70,
+    description: apiJob.job_description_formatted || apiJob.job_description || '',
+    skills: [],
+    positiveSkills: [],
+  };
+}
 
 type SavedJob = { id: string; title: string; company: string; logoLetter: string; location: string; savedAgo: string; };
 type DeletedSavedJob = SavedJob & { trashedAgo: string };
@@ -1351,6 +1404,79 @@ function FilterSwitcher({
   );
 }
 
+// ─── Profile Title Switcher (Search tab) ─────────────────────────────────
+function ProfileTitleSwitcher({
+  titles,
+  activeTitle,
+  onSelect,
+  isLoading,
+}: {
+  titles: string[];
+  activeTitle: string;
+  onSelect: (title: string) => void;
+  isLoading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={isLoading || titles.length === 0}
+        className="flex items-center gap-1.5 bg-muted/50 border border-border rounded-full px-3 py-1.5 hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {isLoading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+        ) : (
+          <span className="text-sm font-medium text-foreground">
+            {activeTitle || 'No title found'}
+          </span>
+        )}
+        {!isLoading && titles.length > 1 && (
+          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {open && titles.length > 1 && (
+        <div className="absolute top-full left-0 mt-1 w-72 bg-card border border-border rounded-lg shadow-md z-20 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-muted/30">
+            <p className="text-xs font-medium text-muted-foreground">Job titles from your profile</p>
+          </div>
+          <div className="py-1">
+            {titles.map((title) => {
+              const isActive = title === activeTitle;
+              return (
+                <button
+                  key={title}
+                  onClick={() => { onSelect(title); setOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                    isActive ? 'bg-primary/5 text-foreground font-medium' : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                    isActive ? 'border-primary bg-primary' : 'border-border'
+                  }`}>
+                    {isActive && <CheckCircle2 className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+                  </div>
+                  {title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Saved / Delegated / Applied Tabs ─────────────────────────────────────
 function SavedTab({ onView, onAdd, onTrash }: { onView: (job: Job, ctx: DetailContext) => void; onAdd: () => void; onTrash: (jobs: SavedJob[]) => void }) {
   const [items, setItems] = useState(SAVED_JOBS);
@@ -1871,6 +1997,7 @@ function AppliedTab({
 
 // ─── Main Component ───────────────────────────────────────────────────────
 export function JobApplyTab() {
+  const { canAccessJobs } = useUserPlan();
   const [activeTab, setActiveTab] = useState('search');
   const [showDeletedView, setShowDeletedView] = useState(false);
   const [deletedSavedJobs, setDeletedSavedJobs] = useState<DeletedSavedJob[]>([]);
@@ -1902,6 +2029,89 @@ export function JobApplyTab() {
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [filterDrawerMode, setFilterDrawerMode] = useState<'create' | 'edit'>('create');
   const [filterDrawerInitial, setFilterDrawerInitial] = useState<JobFilter | null>(null);
+
+  // ─── Search tab API state ───────────────────────────────────────────────
+  const [profileTitles, setProfileTitles] = useState<string[]>([]);
+  const [activeProfileTitle, setActiveProfileTitle] = useState('');
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      setProfileLoading(true);
+      try {
+        const response = await ProfileService.getProfile();
+        const profileData = response.data?.data || response.data;
+        const titles: string[] = profileData?.structured_resume?.job_titles || [];
+        setProfileTitles(titles);
+        if (titles.length > 0) setActiveProfileTitle(titles[0]);
+      } catch {
+        // profile fetch failure is non-fatal; search will run with empty query
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const [apiJobs, setApiJobs] = useState<Job[]>([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiPage, setApiPage] = useState(1);
+  const [apiHasMore, setApiHasMore] = useState(true);
+
+  const timeframeToPostedDate = (tf: string) => {
+    if (tf === 'Last 24 Hours') return 'TODAY';
+    if (tf === 'Last 7 Days') return 'DAYS_7';
+    return undefined;
+  };
+
+  useEffect(() => {
+    setApiPage(1);
+    setApiJobs([]);
+    setApiHasMore(true);
+  }, [activeProfileTitle, timeframe]);
+
+  useEffect(() => {
+    if (profileLoading || !canAccessJobs) return;
+    const fetchSearchJobs = async () => {
+      setApiLoading(true);
+      try {
+        const response = await JobService.searchJobs({
+          query: activeProfileTitle || undefined,
+          postedDate: timeframeToPostedDate(timeframe),
+          page: apiPage,
+        });
+        if (response.data?.status === 'SUCCESS' && Array.isArray(response.data?.data)) {
+          const mapped = (response.data.data as ApiJob[]).map(mapApiJobToJob);
+          setApiJobs((prev) => (apiPage === 1 ? mapped : [...prev, ...mapped]));
+          if (response.data.data.length < 10) setApiHasMore(false);
+        } else {
+          if (apiPage === 1) setApiJobs([]);
+          setApiHasMore(false);
+        }
+      } catch {
+        if (apiPage === 1) setApiJobs([]);
+        setApiHasMore(false);
+      } finally {
+        setApiLoading(false);
+      }
+    };
+    fetchSearchJobs();
+  }, [activeProfileTitle, timeframe, apiPage, profileLoading, canAccessJobs]);
+
+  useEffect(() => {
+    if (apiJobs.length > 0 && !apiJobs.find((j) => j.id === selectedJobId)) {
+      setSelectedJobId(apiJobs[0].id);
+    }
+  }, [apiJobs]);
+
+  const handleSearchScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (apiLoading || !apiHasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+      setApiPage((prev) => prev + 1);
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────
 
   const openCreateFilter = () => {
     setFilterDrawerMode('create');
@@ -1944,10 +2154,11 @@ export function JobApplyTab() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const selectedJob = JOB_RECOMMENDATIONS.find((j) => j.id === selectedJobId) || JOB_RECOMMENDATIONS[0];
+  const selectedJob = apiJobs.find((j) => j.id === selectedJobId) ?? apiJobs[0];
 
   const handleApplyClick = () => setIsApplyModalOpen(true);
   const handleConfirmApply = () => {
+    if (!selectedJob) return;
     setIsApplyModalOpen(false);
     setAppliedJobs((prev) => [
       {
@@ -2013,12 +2224,11 @@ export function JobApplyTab() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">Showing Results For</span>
-                <FilterSwitcher
-                  filters={filters}
-                  activeId={activeFilterId}
-                  onSelect={setActiveFilterId}
-                  onEdit={openEditFilter}
-                  onCreate={openCreateFilter}
+                <ProfileTitleSwitcher
+                  titles={profileTitles}
+                  activeTitle={activeProfileTitle}
+                  onSelect={setActiveProfileTitle}
+                  isLoading={profileLoading}
                 />
               </div>
 
@@ -2055,49 +2265,83 @@ export function JobApplyTab() {
 
             {/* Two Column Layout */}
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
-              <div className="w-[30%] shrink-0 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
-                {JOB_RECOMMENDATIONS.map((job) => (
-                  <div
-                    key={job.id}
-                    onClick={() => setSelectedJobId(job.id)}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      selectedJobId === job.id
-                        ? 'bg-card border-primary/50 shadow-sm ring-1 ring-primary/20'
-                        : 'bg-card border-border hover:border-border/80 hover:shadow-sm'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3 mb-2">
-                      <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
-                        {job.logoLetter}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
-                        <p className="text-xs text-muted-foreground">{job.company}</p>
-                      </div>
-                      <div className="flex flex-col items-end shrink-0 gap-1">
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">{job.timeAgo}</span>
-                        <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
-                          {job.matchScore}% Match
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span className="truncate">{job.location}</span>
-                    </div>
+              <div
+                className="w-[30%] shrink-0 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar"
+                onScroll={handleSearchScroll}
+              >
+                {apiLoading && apiPage === 1 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                    <p className="text-sm text-muted-foreground">Loading jobs...</p>
                   </div>
-                ))}
+                ) : apiJobs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                    <Briefcase className="w-10 h-10 text-muted-foreground opacity-40" />
+                    <p className="text-sm font-medium text-foreground">No jobs found</p>
+                    <p className="text-xs text-muted-foreground">Try changing your filter or timeframe</p>
+                  </div>
+                ) : (
+                  <>
+                    {apiJobs.map((job) => (
+                      <div
+                        key={job.id}
+                        onClick={() => setSelectedJobId(job.id)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                          selectedJobId === job.id
+                            ? 'bg-card border-primary/50 shadow-sm ring-1 ring-primary/20'
+                            : 'bg-card border-border hover:border-border/80 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 mb-2">
+                          <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+                            {job.logoLetter}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
+                            <p className="text-xs text-muted-foreground">{job.company}</p>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0 gap-1">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{job.timeAgo}</span>
+                            <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                              {job.matchScore}% Match
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span className="truncate">{job.location}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {apiLoading && (
+                      <div className="flex items-center justify-center py-4 gap-2">
+                        <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                        <span className="text-xs text-muted-foreground">Loading more...</span>
+                      </div>
+                    )}
+                    {!apiHasMore && !apiLoading && (
+                      <p className="text-center text-xs text-muted-foreground py-4">End of results</p>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="flex-1 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
-                <JobDetailPanel
-                  job={selectedJob}
-                  onApplyClick={handleApplyClick}
-                  aiInput={aiInput}
-                  setAiInput={setAiInput}
-                  isCommentsOpen={isCommentsOpen}
-                  setIsCommentsOpen={setIsCommentsOpen}
-                />
+                {selectedJob ? (
+                  <JobDetailPanel
+                    job={selectedJob}
+                    onApplyClick={handleApplyClick}
+                    aiInput={aiInput}
+                    setAiInput={setAiInput}
+                    isCommentsOpen={isCommentsOpen}
+                    setIsCommentsOpen={setIsCommentsOpen}
+                  />
+                ) : !apiLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+                    <Briefcase className="w-12 h-12 text-muted-foreground opacity-30" />
+                    <p className="text-sm text-muted-foreground">Select a job to view details</p>
+                  </div>
+                ) : null}
               </div>
             </div>
           </>
@@ -2170,15 +2414,17 @@ export function JobApplyTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="bg-muted/40 p-4 rounded-lg my-2 flex items-center gap-3 border border-border">
-            <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold ${selectedJob.logoColor}`}>
-              {selectedJob.logoLetter}
+          {selectedJob && (
+            <div className="bg-muted/40 p-4 rounded-lg my-2 flex items-center gap-3 border border-border">
+              <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold ${selectedJob.logoColor}`}>
+                {selectedJob.logoLetter}
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-sm">{selectedJob.title}</p>
+                <p className="text-muted-foreground text-xs">{selectedJob.company}</p>
+              </div>
             </div>
-            <div>
-              <p className="font-medium text-foreground text-sm">{selectedJob.title}</p>
-              <p className="text-muted-foreground text-xs">{selectedJob.company}</p>
-            </div>
-          </div>
+          )}
 
           <DialogFooter className="mt-4 gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsApplyModalOpen(false)}>Not yet</Button>

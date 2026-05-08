@@ -16,11 +16,11 @@ import { OnboardingPage } from './pages/newDesign/onboarding';
 
 // Dashboard / post-login pages
 import { DashboardPage } from './pages/newDesign/dashboard';
+import { DashboardHomePage } from './pages/newDesign/dashboard-home';
 import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
 import { AIMockPage } from './pages/newDesign/ai-mock';
 import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
 import { HistoryPage } from './pages/newDesign/history';
-import { JobsPage } from './pages/newDesign/jobs';
 import { ReferEarnPage } from './pages/newDesign/refer-earn';
 import { SettingsPage } from './pages/newDesign/settings';
 import { BillingPage } from './pages/newDesign/billing';
@@ -110,12 +110,11 @@ export const router = createBrowserRouter([
       { path: '/session-confirm', element: <SessionConfirmPage /> },
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
-      { path: '/dashboard', element: <DashboardPage /> },
+      { path: '/dashboard', element: <DashboardHomePage /> },
       { path: '/profile', element: <DashboardPage /> },
       { path: '/applications', element: <DashboardPage /> },
       { path: '/dashboard/contributions', element: <DashboardPage /> },
       { path: '/contributions', element: <MyContributionsPage /> },
-      { path: '/jobs', element: <JobsPage /> },
       { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
       { path: '/history', element: <HistoryPage /> },

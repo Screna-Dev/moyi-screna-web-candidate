@@ -1,15 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-<<<<<<< HEAD
 import { Link } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
-=======
-import { Link, useLocation, useNavigate } from 'react-router';
-import logoImg from '../../../assets/Navbar.png';
-import { Button } from '../ui/button';
-import { LayoutDashboard, LogOut, Zap, Gift, ChevronDown, Menu, X, Bot, Briefcase, MessageSquare, Target, Users } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
->>>>>>> 6633cbd (change)
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
 
@@ -90,21 +82,10 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     logout();
   };
 
-<<<<<<< HEAD
-=======
-  const mobileLinks = [
-    { name: 'Service', path: '/marketplace' },
-    { name: 'Interview', path: '/mock-interview' },
-    { name: 'Community', path: '/interview-insights' },
-    { name: 'Pricing', path: '/pricing' },
-  ];
-
->>>>>>> 6633cbd (change)
   return (
     <motion.header
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-<<<<<<< HEAD
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       className="fixed inset-x-0 z-50"
       style={{
@@ -115,14 +96,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
         borderBottom: `1px solid ${scrolled ? '#E8E8EA' : 'transparent'}`,
         transition: 'border-color 200ms cubic-bezier(0.4,0,0.2,1)',
       }}
-=======
-      transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-x-0 z-50 flex justify-center px-4 pointer-events-none"
-      style={{ top: 'calc(var(--topbar-h, 0px) + 20px)' }}
->>>>>>> 6633cbd (change)
     >
       <div
-<<<<<<< HEAD
         className="flex items-center justify-between h-16 mx-auto"
         style={{ maxWidth: '1320px', padding: '0 clamp(20px, 4vw, 40px)' }}
       >
@@ -169,105 +144,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                   ))}
                 </div>
               </div>
-=======
-        className={`
-          pointer-events-auto relative flex items-center justify-between
-          w-full max-w-[960px] h-[58px] rounded-[999px] px-8
-          border transition-all duration-500 ease-in-out
-          ${scrolled
-            ? 'bg-white/80 border-slate-200/60 shadow-lg shadow-blue-900/[0.04] backdrop-blur-2xl'
-            : 'bg-white/60 border-white/60 shadow-md shadow-blue-900/[0.02] backdrop-blur-xl'
-          }
-        `}
-      >
-        {/* ── Left: Logo + Wordmark ── */}
-        <Link to="/" className="flex items-center gap-3 shrink-0">
-          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
-        </Link>
-
-        {/* ── Center: Nav Links ── */}
-        <div className="hidden md:flex items-center gap-7">
-          {/* Service */}
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Service
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-              <Link
-                to="/marketplace"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <Users className="w-[18px] h-[18px]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-slate-900">Mentorship Marketplace</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] text-[10px] font-semibold">Pro</span>
-                  </div>
-                  <div className="text-xs text-slate-500">Book 1:1 sessions with mentors</div>
-                </div>
-              </Link>
->>>>>>> 6633cbd (change)
             </div>
-          </div>
-
-          {/* Interview */}
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Interview
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-              {/* <Link
-                to="/mock-interview"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <Bot className="w-[18px] h-[18px]" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
-                  <div className="text-xs text-slate-500">Practice for popular roles</div>
-                </div>
-              </Link> */}
-              <Link
-                to="/personalized-practice"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                  <Target className="w-[18px] h-[18px]" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
-                  <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
-                </div>
-              </Link>
-            </div>
-          </div>
-
-          {/* Community */}
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
-              Community
-              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-            </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-              <Link
-                to="/interview-insights"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
-              >
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
-                  <div className="text-xs text-slate-500">Real interview experiences</div>
-                </div>
-              </Link>
-            </div>
-          </div>
+          ))}
 
           {/* Pricing */}
           <Link
@@ -279,7 +157,6 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
           </Link>
         </nav>
 
-<<<<<<< HEAD
         {/* Right: auth */}
         <div className="hidden md:flex items-center gap-4 shrink-0">
           {isLoggedIn ? (
@@ -347,91 +224,6 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                 style={{ fontWeight: 450 }}
               >
                 Sign in
-=======
-
-        {/* ── Right: Auth Area ── */}
-        <div className="hidden md:flex items-center gap-4 shrink-0">
-          {isLoggedIn ? (
-            <>
-              <div className="relative" ref={avatarRef}>
-                <button
-                  onClick={() => setAvatarOpen((v) => !v)}
-                  className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
-                    user?.role === 'ADMIN'
-                      ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
-                      : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
-                  }`}
-                >
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
-                  ) : (
-                    initials
-                  )}
-                </button>
-
-                {/* User Dropdown */}
-                <AnimatePresence>
-                  {avatarOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                      transition={{ duration: 0.18 }}
-                      className="absolute top-full right-0 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden z-50 p-1.5 origin-top-right"
-                    >
-                      <div className="px-3 py-2.5 border-b border-slate-100/60 mb-1">
-                        <p className="text-sm font-semibold text-slate-900 truncate">
-                          {user?.name || 'My Account'}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {isPlanLoading ? 'Loading…' : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
-                        </p>
-                      </div>
-                      <Link
-                        to="/dashboard"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                      >
-                        <LayoutDashboard className="w-4 h-4 opacity-50" />
-                        Personal Center
-                      </Link>
-                      {/* <Link
-                        to="/messages"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                      >
-                        <MessageSquare className="w-4 h-4 opacity-50" />
-                        Messages
-                      </Link> */}
-                      {/* <Link
-                        to="/refer"
-                        onClick={() => setAvatarOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                      >
-                        <Gift className="w-4 h-4 opacity-50" />
-                        Refer & Earn
-                      </Link> */}
-                      <div className="border-t border-slate-100/60 mt-1 pt-1">
-                        <button
-                          onClick={handleSignOut}
-                          className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors"
-                        >
-                          <LogOut className="w-4 h-4 opacity-60" />
-                          Sign Out
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-          ) : (
-            <>
-              <Link to="/auth?login=true">
-                <button className="text-[14px] font-medium text-slate-500 hover:text-slate-900 transition-colors duration-200 px-1">
-                  Log in
-                </button>
->>>>>>> 6633cbd (change)
               </Link>
               <Link
                 to="/auth"
@@ -442,18 +234,11 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </Link>
             </>
           )}
-<<<<<<< HEAD
+        </div>
 
         {/* Mobile toggle */}
         <button
           className="md:hidden w-9 h-9 flex items-center justify-center text-[#4a4d57] hover:text-[#0A0A0A] rounded-full hover:bg-[#F7F7F7] transition-colors"
-=======
-        </div>
-
-        {/* ── Mobile: Menu Toggle ── */}
-        <button 
-          className="md:hidden w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/50 rounded-full transition-colors"
->>>>>>> 6633cbd (change)
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="w-[18px] h-[18px]" /> : <Menu className="w-[18px] h-[18px]" />}
@@ -470,7 +255,6 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             transition={{ duration: 0.18 }}
             className="md:hidden bg-white/95 backdrop-blur-xl border-t border-[#E8E8EA] px-4 pb-4"
           >
-<<<<<<< HEAD
             {NAV_ITEMS.map(({ label, items }) => (
               <div key={label}>
                 <p
@@ -489,17 +273,6 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                   </Link>
                 ))}
               </div>
-=======
-            {mobileLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
-                className="block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {link.name}
-              </Link>
->>>>>>> 6633cbd (change)
             ))}
             <div className="border-t border-[#E8E8EA] mt-3 pt-1">
               <Link
@@ -511,17 +284,10 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </Link>
             </div>
             {!isLoggedIn && (
-<<<<<<< HEAD
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
                   <button className="w-full h-[42px] rounded-xl text-[14px] font-[500] text-[#2A2A2A] hover:bg-[#F7F7F7] transition-colors">
                     Sign in
-=======
-              <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
-                <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
-                  <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                    Log in
->>>>>>> 6633cbd (change)
                   </button>
                 </Link>
                 <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
