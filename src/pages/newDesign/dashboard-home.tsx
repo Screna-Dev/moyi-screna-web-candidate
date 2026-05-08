@@ -1,1703 +1,795 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { CSSProperties } from 'react';
+import { useState, useRef } from 'react';
+import {
+  Clock, CheckCircle2, Send, Inbox,
+  ChevronRight, Star, Lock, Calendar, MessageCircle, Eye,
+  TrendingUp, Sparkles, Target, Users,
+} from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
-import { T } from '@/lib/design-tokens';
-import { listMyBookings } from '@/services/MentorService';
-import { getProfilePreferences } from '@/services/ProfileServices';
-import { getPosts } from '@/services/CommunityService';
-import { getDashboardStats } from '@/services/DashboardService';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-type Plan = 'free' | 'starter' | 'premium';
-type ChartTab = 'applications' | 'learning' | 'sessions';
+// ─── Brand blue palette — uses design-system tokens only ──────────────────────
+const BLUES = {
+  royal: 'hsl(var(--primary))',   // --primary:  hsl(221 91% 60%) — brand blue
+  sky:   'hsl(var(--chart-4))',   // --chart-4:  hsl(200 70% 55%) — sky / teal-blue
+  deep:  'hsl(var(--chart-3))',   // --chart-3:  hsl(220 25% 35%) — deep navy blue
+} as const;
+
+const CHART_COLORS = {
+  applications: BLUES.royal,
+  learning:     BLUES.sky,
+  sessions:     BLUES.deep,
+} as const;
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+type Plan      = 'starter' | 'premium';
+type ChartTab  = 'applications' | 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
 
-export type DashboardStats = {
-  totalLearningTime?: string;
-  sessionsCompleted?: number | string;
-  applicationsThisPeriod?: number | string;
-  applicationsDelta?: string;
-  avgDailyApplications?: number | string;
-};
-
-type DailyEntry = { date: string; value: number };
-
-type InterviewInsights = {
-  averageScore: number;
-  bestScore: number;
-  lowestScore: number;
-  categoryScores: Array<{ category: string; averageScore: number }>;
-};
-
-type DashboardStatsApi = {
-  totalLearningTimeMinutes: number;
-  sessionCompletedCount: number;
-  interviewPracticeInsights?: InterviewInsights | null;
-  dailyLearningTimeMinutes?: DailyEntry[];
-  dailySessionCount?: DailyEntry[];
-};
-
-function formatMinutesAsHm(mins: number): string {
-  if (!Number.isFinite(mins) || mins <= 0) return '0h 0m';
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  return `${h}h ${m}m`;
-}
-
-type UserData = {
-  firstName?: string;
-  lastName?: string;
-  role?: string;
-};
-
-const EMPTY_STATS: DashboardStats = {
-  totalLearningTime: '—',
-  sessionsCompleted: '—',
-  applicationsThisPeriod: '—',
-  applicationsDelta: '—',
-  avgDailyApplications: '—',
-};
-
-// ─── Skeleton primitive ──────────────────────────────────────────────────────
-function Skeleton({
-  width = '100%',
-  height = 12,
-  radius = 6,
-  style,
-}: { width?: number | string; height?: number | string; radius?: number; style?: CSSProperties }) {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width,
-        height,
-        borderRadius: radius,
-        background: `linear-gradient(90deg, ${T.bgSecondary} 0%, #EEF2F7 50%, ${T.bgSecondary} 100%)`,
-        backgroundSize: '200% 100%',
-        animation: 'dh-skeleton 1.2s ease-in-out infinite',
-        ...style,
-      }}
-    />
+// ─── Deterministic series generator ───────────────────────────────────────────
+function makeSeries(n: number, base: number, variance: number, seed: number): number[] {
+  return Array.from({ length: n }, (_, i) =>
+    Math.max(0, +(base + Math.sin(i * seed + 1.37) * variance).toFixed(1))
   );
 }
 
-function planFromUserPlan(pt: PlanType): Plan {
-  if (pt === 'Elite') return 'premium';
-  if (pt === 'Pro') return 'starter';
-  return 'free';
+const CHART_DATA: Record<ChartTab, Record<TimeRange, number[]>> = {
+  applications: {
+    '7d':  makeSeries(7,  3.2, 1.8, 3.7),
+    '30d': makeSeries(30, 3.5, 2.4, 2.3),
+    '3m':  makeSeries(90, 3.0, 2.8, 1.8),
+  },
+  learning: {
+    '7d':  makeSeries(7,  48, 24, 4.1),
+    '30d': makeSeries(30, 42, 20, 3.2),
+    '3m':  makeSeries(90, 38, 18, 2.7),
+  },
+  sessions: {
+    '7d':  makeSeries(7,  1.5, 0.8, 5.1),
+    '30d': makeSeries(30, 1.3, 0.7, 4.4),
+    '3m':  makeSeries(90, 1.1, 0.6, 3.8),
+  },
+};
+
+// ─── Radar data ────────────────────────────────────────────────────────────────
+const RADAR_DIMS = [
+  { label: 'Problem Solving', value: 82 },
+  { label: 'Communication',   value: 75 },
+  { label: 'Collaboration',   value: 68 },
+  { label: 'Ownership',       value: 88 },
+  { label: 'Self-awareness',  value: 72 },
+  { label: 'Decision Making', value: 65 },
+  { label: 'Leadership',      value: 79 },
+];
+
+// ─── Community posts ───────────────────────────────────────────────────────────
+const COMMUNITY_POSTS = [
+  {
+    id: 'cp-1', role: 'Product Manager', company: 'Google', status: 'Hired' as const,
+    title: 'Cracked Google PM L5 after 4 months of prep — full breakdown',
+    month: 'Mar 2025', views: 2847, comments: 43,
+  },
+  {
+    id: 'cp-2', role: 'Product Manager', company: 'Meta', status: 'In progress' as const,
+    title: 'Meta PM behavioral loop — what surprised me and how I prepared',
+    month: 'Apr 2025', views: 1204, comments: 18,
+  },
+  {
+    id: 'cp-3', role: 'Senior PM', company: 'Stripe', status: 'Hired' as const,
+    title: 'How I answered the payment product for emerging markets question',
+    month: 'Feb 2025', views: 891, comments: 12,
+  },
+];
+
+const PAST_SESSIONS = [
+  { id: 1, initials: 'RK', name: 'Riya Kapoor',  type: 'Career Strategy', date: 'Apr 8',  reviewed: true,  rating: 5 },
+  { id: 2, initials: 'TN', name: 'Tom Nakamura', type: 'Resume Review',   date: 'Mar 29', reviewed: false, rating: 0 },
+  { id: 3, initials: 'AL', name: 'Amy Liu',      type: 'Mock Interview',  date: 'Mar 20', reviewed: true,  rating: 4 },
+];
+
+// ─── Quality badge ─────────────────────────────────────────────────────────────
+function qualityBadge(v: number) {
+  if (v >= 85) return { label: 'Strong',       cls: 'bg-accent/15 text-accent-foreground' };
+  if (v >= 75) return { label: 'Developing',   cls: 'bg-primary/10 text-primary' };
+  if (v >= 65) return { label: 'Inconsistent', cls: 'bg-amber-400/15 text-amber-700 dark:text-amber-400' };
+  return              { label: 'Needs work',   cls: 'bg-destructive/10 text-destructive' };
 }
 
-// ─── Stat card ───────────────────────────────────────────────────────────────
-type StatVariant = 'default' | 'soft' | 'warning';
+// ─── Custom Area Chart ─────────────────────────────────────────────────────────
+const CHART_VW = 400;
+const CHART_VH = 100;
+const CHART_PADX = 4;
+const CHART_PADY = 8;
 
-function StatCard({
-  label,
-  value,
-  sub,
-  icon,
-  variant = 'default',
+function CustomAreaChart({
+  data, color, formatValue,
 }: {
-  label: string;
-  value: string | number;
-  sub: string;
-  icon: React.ReactNode;
-  variant?: StatVariant;
+  data: number[];
+  color: string;
+  formatValue?: (v: number) => string;
 }) {
-  const [hover, setHover] = useState(false);
+  const [hovIdx, setHovIdx] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  const valueColor =
-    variant === 'warning' ? T.warning :
-    variant === 'soft' ? T.blue500 :
-    T.blue600;
+  const max = Math.max(...data, 0.01);
+  const innerW = CHART_VW - CHART_PADX * 2;
+  const innerH = CHART_VH - CHART_PADY * 2;
 
-  const iconColor =
-    variant === 'warning' ? T.warning :
-    T.blue500;
+  const pts = data.map((v, i) => ({
+    x: CHART_PADX + (i / (data.length - 1)) * innerW,
+    y: CHART_PADX + (1 - v / max) * innerH,
+  }));
 
-  const iconBg =
-    variant === 'warning' ? 'rgba(245, 158, 11, 0.10)' :
-    'rgba(37, 99, 235, 0.08)';
+  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `${linePath} L ${pts[pts.length - 1].x.toFixed(1)} ${(CHART_VH - CHART_PADY).toFixed(1)} L ${CHART_PADX} ${(CHART_VH - CHART_PADY).toFixed(1)} Z`;
+
+  const gradId = `ag-${color.replace(/[^a-z0-9]/gi, '').slice(0, 10)}`;
+
+  const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct  = (e.clientX - rect.left) / rect.width;
+    setHovIdx(Math.max(0, Math.min(data.length - 1, Math.round(pct * (data.length - 1)))));
+  };
+
+  const hPt  = hovIdx !== null ? pts[hovIdx] : null;
+  const hPct = hovIdx !== null ? (hovIdx / (data.length - 1)) * 100 : null;
+  const fmtV = formatValue ?? ((v: number) => v.toFixed(1));
 
   return (
-    <div
-      tabIndex={0}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        background: '#fff',
-        border: `1px solid ${T.border}`,
-        borderRadius: 8,
-        padding: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-        minWidth: 0,
-        position: 'relative',
-        cursor: 'pointer',
-        transition: 'transform 200ms cubic-bezier(.4,0,.2,1), box-shadow 200ms cubic-bezier(.4,0,.2,1)',
-        boxShadow: hover ? T.shadowHover : 'none',
-        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
-        outline: 'none',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: T.textSecondary, lineHeight: 1.4 }}>{label}</div>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8,
-          display: 'grid', placeItems: 'center',
-          color: iconColor, background: iconBg,
-          flex: 'none',
-        }}>
-          {icon}
+    <div className="relative w-full" style={{ height: 100 }}>
+      {/* Tooltip */}
+      {hPt && hovIdx !== null && (
+        <div
+          className="absolute z-20 bg-card border border-border rounded-md shadow-sm px-2.5 py-1 text-xs pointer-events-none whitespace-nowrap"
+          style={{
+            bottom: '100%',
+            marginBottom: 6,
+            left: `clamp(32px, ${hPct}%, calc(100% - 32px))`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <span className="text-foreground font-medium">{fmtV(data[hovIdx])}</span>
         </div>
-      </div>
-      <div style={{
-        fontSize: 26, fontWeight: 600, color: valueColor,
-        lineHeight: 1.1, letterSpacing: '-0.01em',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 12, color: T.textSecondary }}>{sub}</div>
+      )}
+
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${CHART_VW} ${CHART_VH}`}
+        preserveAspectRatio="none"
+        className="w-full h-full"
+        onMouseMove={onMouseMove}
+        onMouseLeave={() => setHovIdx(null)}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={color} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={color} stopOpacity={0}    />
+          </linearGradient>
+        </defs>
+
+        {/* Baseline */}
+        <line
+          x1={CHART_PADX} y1={CHART_VH - CHART_PADY}
+          x2={CHART_VW - CHART_PADX} y2={CHART_VH - CHART_PADY}
+          style={{ stroke: 'hsl(var(--border))', strokeWidth: 0.5 }}
+        />
+
+        {/* Area + line */}
+        <path d={areaPath} fill={`url(#${gradId})`} />
+        <path d={linePath} fill="none" stroke={color} strokeWidth={1.5}
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+
+        {/* Hover elements */}
+        {hPt && (
+          <>
+            <line
+              x1={hPt.x} y1={CHART_PADY}
+              x2={hPt.x} y2={CHART_VH - CHART_PADY}
+              stroke={color} strokeWidth={1}
+              strokeDasharray="3 2" opacity={0.5}
+            />
+            <circle cx={hPt.x} cy={hPt.y} r={3} fill={color} />
+          </>
+        )}
+      </svg>
     </div>
   );
 }
 
-// ─── Icons ───────────────────────────────────────────────────────────────────
-function IconClock() {
-  return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>;
-}
-function IconCheck() {
-  return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5.5 8l2 2 3-4"/></svg>;
-}
-function IconSend() {
-  return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2L7.5 9"/><path d="M14 2l-5 12-2.5-5L1.5 6.5z"/></svg>;
-}
-function IconTrend() {
-  return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><polyline points="2,11 6,7 9,9 14,3"/><polyline points="14,3 14,7"/><polyline points="14,3 10,3"/></svg>;
-}
-function IconLock() {
-  return <svg viewBox="0 0 12 12" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5.5" width="6" height="4" rx="1"/><path d="M4.5 5.5V4a1.5 1.5 0 0 1 3 0v1.5"/></svg>;
-}
-function IconArrow() {
-  return <svg viewBox="0 0 10 10" width={10} height={10} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M3 7L7 3M4 3h3v3"/></svg>;
-}
-function IconLockLarge() {
-  return <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>;
-}
-function IconStar({ filled }: { filled: boolean }) {
-  return <svg viewBox="0 0 11 11" width={11} height={11} fill={filled ? T.warning : T.textMuted} aria-hidden><polygon points="5.5,1 6.7,4 10,4.2 7.4,6.4 8.3,9.6 5.5,7.8 2.7,9.6 3.6,6.4 1,4.2 4.3,4" /></svg>;
-}
-function IconEye() {
-  return <svg viewBox="0 0 12 12" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.4}><ellipse cx="6" cy="6" rx="5" ry="3"/><circle cx="6" cy="6" r="1.5"/></svg>;
-}
-function IconMsg() {
-  return <svg viewBox="0 0 12 12" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.4}><path d="M2 4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 10 4v3a1.5 1.5 0 0 1-1.5 1.5H5L3 10V8.5a1.5 1.5 0 0 1-1-1.5z"/></svg>;
-}
+// ─── Custom Radar / Spider Chart ───────────────────────────────────────────────
+const RCX = 130, RCY = 130, RR = 82;
+const RVW = 260, RVH = 260;
 
-// ─── Stats Row ───────────────────────────────────────────────────────────────
-function StatCardSkeleton() {
+function CustomRadar({ data, color }: { data: { label: string; value: number }[]; color: string }) {
+  const [hovIdx, setHovIdx] = useState<number | null>(null);
+  const n = data.length;
+  const ang = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
+  const pt  = (i: number, ratio: number) => ({
+    x: RCX + RR * ratio * Math.cos(ang(i)),
+    y: RCY + RR * ratio * Math.sin(ang(i)),
+  });
+
+  const rings = [0.25, 0.5, 0.75, 1.0];
+  const ringPaths = rings.map(r =>
+    data.map((_, i) => { const p = pt(i, r); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; }).join(' ') + ' Z'
+  );
+
+  const dataPath = data
+    .map((d, i) => { const p = pt(i, d.value / 100); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; })
+    .join(' ') + ' Z';
+
+  const dataPts = data.map((d, i) => pt(i, d.value / 100));
+
   return (
-    <div style={{
-      background: '#fff',
-      border: `1px solid ${T.border}`,
-      borderRadius: 8,
-      padding: 16,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 10,
-      minHeight: 96,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Skeleton width={110} height={10} />
-        <Skeleton width={28} height={28} radius={8} />
-      </div>
-      <Skeleton width={70} height={22} />
-      <Skeleton width="80%" height={10} />
+    <div className="relative w-full" style={{ paddingBottom: '100%' }}>
+      <svg viewBox={`0 0 ${RVW} ${RVH}`} className="absolute inset-0 w-full h-full">
+        {/* Grid rings */}
+        {ringPaths.map((p, i) => (
+          <path key={i} d={p} fill="none" style={{ stroke: 'hsl(var(--border))', strokeWidth: 0.7 }} />
+        ))}
+        {/* Spokes */}
+        {data.map((_, i) => {
+          const tip = pt(i, 1);
+          return (
+            <line key={i} x1={RCX} y1={RCY} x2={tip.x} y2={tip.y}
+              style={{ stroke: 'hsl(var(--border))', strokeWidth: 0.7 }} />
+          );
+        })}
+        {/* Data fill */}
+        <path d={dataPath} fill={color} fillOpacity={0.14} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+        {/* Dots */}
+        {dataPts.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x} cy={p.y} r={hovIdx === i ? 4.5 : 2.5}
+            fill={color}
+            style={{ cursor: 'pointer', transition: 'r 0.12s' }}
+            onMouseEnter={() => setHovIdx(i)}
+            onMouseLeave={() => setHovIdx(null)}
+          />
+        ))}
+        {/* Labels */}
+        {data.map((d, i) => {
+          const LR  = RR + 20;
+          const lx  = RCX + LR * Math.cos(ang(i));
+          const ly  = RCY + LR * Math.sin(ang(i));
+          const cos = Math.cos(ang(i));
+          const sin = Math.sin(ang(i));
+          return (
+            <text
+              key={i}
+              x={lx} y={ly}
+              textAnchor={cos > 0.25 ? 'start' : cos < -0.25 ? 'end' : 'middle'}
+              dominantBaseline={sin > 0.25 ? 'hanging' : sin < -0.25 ? 'auto' : 'middle'}
+              onMouseEnter={() => setHovIdx(i)}
+              onMouseLeave={() => setHovIdx(null)}
+              style={{
+                fontSize: 9,
+                fill: hovIdx === i ? color : 'hsl(var(--muted-foreground))',
+                fontFamily: 'inherit',
+                fontWeight: hovIdx === i ? 600 : 400,
+                transition: 'fill 0.12s',
+                cursor: 'default',
+              }}
+            >
+              {d.label}
+            </text>
+          );
+        })}
+      </svg>
+      {/* Hover tooltip */}
+      {hovIdx !== null && (() => {
+        const d   = data[hovIdx];
+        const p   = dataPts[hovIdx];
+        const bdg = qualityBadge(d.value);
+        return (
+          <div
+            className="absolute z-20 bg-card border border-border rounded-md shadow-sm px-2.5 py-1.5 text-xs pointer-events-none"
+            style={{
+              left: `${(p.x / RVW) * 100}%`,
+              top:  `${(p.y / RVH) * 100}%`,
+              transform: 'translate(-50%, -120%)',
+            }}
+          >
+            <div className="font-medium text-foreground mb-1">{d.label}</div>
+            <div className="flex items-center gap-1.5">
+              <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${bdg.cls}`}>{bdg.label}</span>
+              <span className="text-muted-foreground">{d.value}/100</span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
-function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
+// ─── Stats Row ─────────────────────────────────────────────────────────────────
+function StatsRow({ plan }: { plan: Plan }) {
   const isPremium = plan === 'premium';
-  const colCount = isPremium ? 4 : 2;
-  const learningSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
-  const sessionsSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
-
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${colCount}, 1fr)`,
-        gap: 12,
-        marginBottom: 20,
-        transition: 'grid-template-columns 320ms cubic-bezier(.4,0,.2,1)',
-      }}
-    >
-      {isLoading ? (
-        Array.from({ length: colCount }).map((_, i) => <StatCardSkeleton key={i} />)
-      ) : (
+    <div className={`grid gap-3 ${isPremium ? 'grid-cols-5' : 'grid-cols-2'}`}>
+      <div className="bg-secondary rounded-md p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Total Learning Time</span>
+          <Clock className="w-3.5 h-3.5" style={{ color: BLUES.sky }} />
+        </div>
+        <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.sky }}>14h 20m</div>
+        <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
+      </div>
+
+      <div className="bg-secondary rounded-md p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">Sessions Completed</span>
+          <CheckCircle2 className="w-3.5 h-3.5" style={{ color: BLUES.deep }} />
+        </div>
+        <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.deep }}>23</div>
+        <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
+      </div>
+
+      {isPremium && (
         <>
-          <StatCard label="Total Learning Time" value={stats.totalLearningTime ?? '—'} sub={learningSub} icon={<IconClock />} />
-          <StatCard label="Sessions Completed" value={stats.sessionsCompleted ?? '—'} sub={sessionsSub} icon={<IconCheck />} />
-          {isPremium && (
-            <>
-              <StatCard
-                label="Applications This Period"
-                value={stats.applicationsThisPeriod ?? '—'}
-                sub={`↗ ${stats.applicationsDelta ?? '—'} vs prior period`}
-                icon={<IconSend />}
-              />
-              <StatCard
-                label="Avg. Daily Applications"
-                value={stats.avgDailyApplications ?? '—'}
-                sub="Rolling 30-day avg"
-                icon={<IconTrend />}
-                variant="soft"
-              />
-            </>
-          )}
+          <div className="bg-secondary rounded-md p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Applications This Period</span>
+              <Send className="w-3.5 h-3.5" style={{ color: BLUES.royal }} />
+            </div>
+            <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.royal }}>47</div>
+            <div className="flex items-center gap-1 text-xs">
+              <TrendingUp className="w-3 h-3" style={{ color: BLUES.royal }} />
+              <span style={{ color: BLUES.royal }} className="font-medium">+18%</span>
+              <span className="text-muted-foreground">vs prior period</span>
+            </div>
+          </div>
+
+          <div className="bg-secondary rounded-md p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Avg. Daily Applications</span>
+              <TrendingUp className="w-3.5 h-3.5" style={{ color: BLUES.sky }} />
+            </div>
+            <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.sky }}>3.2</div>
+            <div className="text-xs text-muted-foreground">Rolling 30-day avg</div>
+          </div>
+
+          <div className="bg-secondary rounded-md p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Pending Review</span>
+              <Inbox className="w-3.5 h-3.5 text-amber-500" />
+            </div>
+            <div className="text-2xl font-semibold text-amber-600 tracking-tight mb-1">12</div>
+            <div className="text-xs text-muted-foreground">Ready for your approval</div>
+          </div>
         </>
       )}
     </div>
   );
 }
 
-// ─── Trend chart series ──────────────────────────────────────────────────────
-type Series = {
-  data: number[];
-  dates?: string[];
-  summaryA: { label: string; value: string };
-  summaryB: { label: string; value: string };
-  legend: string;
-};
-// TODO: swap for real timeseries endpoint when available.
-const MOCK_SERIES: Record<ChartTab, Series> = {
-  applications: {
-    data: [3,4,3,3,4,3,4,3,3,4,3,4,3,3,4,3,3,4,3,4,3,3,4,3,4,7,5,4,3,4],
-    summaryA: { label: 'Total Applications', value: '107' },
-    summaryB: { label: 'Daily Average', value: '3.6' },
-    legend: 'Applications submitted',
-  },
-  learning: {
-    data: [42,45,40,48,44,46,43,50,42,38,46,44,48,52,46,44,50,46,44,48,42,46,50,84,52,46,44,48,46,44],
-    summaryA: { label: 'Total Learning Time', value: '21h 9m' },
-    summaryB: { label: 'Avg per Session', value: '42m' },
-    legend: 'Learning time per day (min)',
-  },
-  sessions: {
-    data: [1,2,1,2,2,1,2,1,2,2,1,2,2,1,3,2,1,2,2,1,2,2,1,2,3,2,1,2,1,2],
-    summaryA: { label: 'Total Sessions', value: '52' },
-    summaryB: { label: 'Avg per Day', value: '1.7' },
-    legend: 'Sessions per day',
-  },
-};
-
-function formatValue(tab: ChartTab, v: number): string {
-  if (tab === 'learning') {
-    const h = Math.floor(v / 60), m = v % 60;
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-  }
-  if (tab === 'sessions') return `${v} session${v === 1 ? '' : 's'}`;
-  return `${v} application${v === 1 ? '' : 's'}`;
-}
-function formatDate(i: number, total: number): string {
-  const end = new Date(2026, 4, 7);
-  const d = new Date(end);
-  d.setDate(end.getDate() - (total - 1 - i));
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
-}
-
-// ─── Trend Chart ─────────────────────────────────────────────────────────────
-function TrendChartSkeleton() {
-  return (
-    <section style={{
-      background: '#fff',
-      border: `1px solid ${T.border}`,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 20,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Skeleton width={260} height={32} radius={9999} />
-        <Skeleton width={280} height={24} />
-      </div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-        <Skeleton width={140} height={48} radius={8} />
-        <Skeleton width={140} height={48} radius={8} />
-      </div>
-      <Skeleton width="100%" height={180} radius={8} />
-    </section>
-  );
-}
-
-function TrendChart({
-  plan,
-  isLoading,
-  learningDaily,
-  sessionsDaily,
-}: {
-  plan: Plan;
-  isLoading: boolean;
-  learningDaily?: DailyEntry[];
-  sessionsDaily?: DailyEntry[];
-}) {
-  const isPremium = plan === 'premium';
-  const [activeTab, setActiveTab] = useState<ChartTab>('learning');
-  const [range, setRange] = useState<TimeRange>('30d');
-  const [hover, setHover] = useState<{ x: number; y: number; i: number; v: number } | null>(null);
-
-  // Free/Starter: applications tab is locked
-  const effectiveTab: ChartTab = !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
-
-  const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const series: Series = useMemo(() => {
-    if (effectiveTab === 'learning' && Array.isArray(learningDaily)) {
-      const sliced = learningDaily.slice(-rangeDays);
-      const data = sliced.map((d) => Number(d?.value) || 0);
-      const dates = sliced.map((d) => d?.date ?? '');
-      const total = data.reduce((a, b) => a + b, 0);
-      const avg = data.length ? Math.round(total / data.length) : 0;
-      return {
-        data,
-        dates,
-        summaryA: { label: 'Total Learning Time', value: formatMinutesAsHm(total) },
-        summaryB: { label: 'Daily Average', value: `${avg}m` },
-        legend: 'Learning time per day (min)',
-      };
-    }
-    if (effectiveTab === 'sessions' && Array.isArray(sessionsDaily)) {
-      const sliced = sessionsDaily.slice(-rangeDays);
-      const data = sliced.map((d) => Number(d?.value) || 0);
-      const dates = sliced.map((d) => d?.date ?? '');
-      const total = data.reduce((a, b) => a + b, 0);
-      const avg = data.length ? (total / data.length).toFixed(1) : '0';
-      return {
-        data,
-        dates,
-        summaryA: { label: 'Total Sessions', value: String(total) },
-        summaryB: { label: 'Avg per Day', value: avg },
-        legend: 'Sessions per day',
-      };
-    }
-    return MOCK_SERIES[effectiveTab];
-  }, [effectiveTab, learningDaily, sessionsDaily, rangeDays]);
-
-  const hasData = series.data.length > 0;
-
-  const svgRef = useRef<SVGSVGElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  const W = 800, H = 180;
-  const PAD_T = 16, PAD_B = 16;
-  const innerH = H - PAD_T - PAD_B;
-  const innerW = W;
-  const data = series.data;
-  const dMin = data.length ? Math.min(...data) : 0;
-  const dMax = data.length ? Math.max(...data) : 0;
-  const dRange = dMax - dMin;
-  const minV = Math.max(0, dMin - dRange * 0.3);
-  const maxV = dMax + dRange * 0.25;
-
-  const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
-  const points = data.map((v, i) => ({
-    x: stepX * i,
-    y: PAD_T + innerH - ((v - minV) / (maxV - minV || 1)) * innerH,
-    v, i,
-  }));
-
-  const linePath = points.length
-    ? `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
-    : '';
-  const areaPath = points.length
-    ? `${linePath} L ${points[points.length - 1].x} ${PAD_T + innerH} L ${points[0].x} ${PAD_T + innerH} Z`
-    : '';
-
-  const handleMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!points.length) return;
-    const rect = svgRef.current!.getBoundingClientRect();
-    const xViewbox = ((e.clientX - rect.left) / rect.width) * W;
-    let nearest = points[0];
-    let bestDx = Math.abs(points[0].x - xViewbox);
-    for (const p of points) {
-      const dx = Math.abs(p.x - xViewbox);
-      if (dx < bestDx) { bestDx = dx; nearest = p; }
-    }
-    setHover(nearest);
-  }, [points]);
-
-  const tabs: Array<{ key: ChartTab; label: string }> = [
-    { key: 'applications', label: 'Applications' },
-    { key: 'learning', label: 'Learning Time' },
-    { key: 'sessions', label: 'Sessions' },
-  ];
-  const ranges: Array<{ key: TimeRange; label: string }> = [
-    { key: '7d', label: 'Last 7 Days' },
-    { key: '30d', label: 'Last 30 Days' },
-    { key: '3m', label: 'Last 3 Months' },
-  ];
-
-  // Tooltip / hover-point positioning in card-pixel-space
-  const hoverPxRef = useRef<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!hover || !svgRef.current || !cardRef.current) {
-      hoverPxRef.current = null;
-      return;
-    }
-    const svgRect = svgRef.current.getBoundingClientRect();
-    const cardRect = cardRef.current.getBoundingClientRect();
-    const left = (svgRect.left - cardRect.left) + (hover.x / W) * svgRect.width;
-    const top = (svgRect.top - cardRect.top) + (hover.y / H) * svgRect.height;
-    hoverPxRef.current = { left, top };
-  }, [hover]);
-
-  if (isLoading) return <TrendChartSkeleton />;
-
-  if (!hasData) {
-    return (
-      <section style={{
-        background: '#fff',
-        border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 20,
-      }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: T.textPrimary, marginBottom: 14 }}>
-          Activity Trend
-        </div>
-        <EmptyState message="No activity to chart yet" />
-      </section>
-    );
-  }
-
-  return (
-    <section
-      ref={cardRef}
-      style={{
-        background: '#fff',
-        border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 20,
-        position: 'relative',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-        {/* Tabs */}
-        <div role="tablist" style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          background: T.bgSecondary, borderRadius: 9999, padding: 3,
-        }}>
-          {tabs.map((t) => {
-            const locked = t.key === 'applications' && !isPremium;
-            const selected = effectiveTab === t.key;
-            return (
-              <button
-                key={t.key}
-                role="tab"
-                aria-selected={selected}
-                aria-disabled={locked}
-                disabled={locked}
-                onClick={() => !locked && setActiveTab(t.key)}
-                style={{
-                  fontSize: 13, fontWeight: 500,
-                  padding: '6px 14px', borderRadius: 9999,
-                  color: locked ? T.textMuted : selected ? T.blue600 : T.textSecondary,
-                  background: selected ? '#fff' : 'transparent',
-                  boxShadow: selected ? T.shadowCard : 'none',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  cursor: locked ? 'not-allowed' : 'pointer',
-                  pointerEvents: locked ? 'none' : 'auto',
-                  border: 'none',
-                  fontFamily: 'inherit',
-                  transition: 'all 160ms cubic-bezier(.4,0,.2,1)',
-                }}
-              >
-                {locked && <IconLock />}
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* Ranges */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {ranges.map((r) => {
-            const active = range === r.key;
-            return (
-              <button
-                key={r.key}
-                aria-pressed={active}
-                onClick={() => setRange(r.key)}
-                style={{
-                  fontSize: 13, padding: '4px 10px', borderRadius: 6,
-                  color: active ? T.blue600 : T.textSecondary, fontWeight: 500,
-                  background: active ? T.bgSecondary : 'transparent',
-                  border: 'none', cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  transition: 'all 120ms',
-                }}
-              >
-                {r.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Summary cells */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-        <div style={summaryCellStyle}>
-          <div style={{ fontSize: 12, color: T.textSecondary }}>{series.summaryA.label}</div>
-          <div style={summaryValueStyle}>{series.summaryA.value}</div>
-        </div>
-        <div style={summaryCellStyle}>
-          <div style={{ fontSize: 12, color: T.textSecondary }}>{series.summaryB.label}</div>
-          <div style={summaryValueStyle}>{series.summaryB.value}</div>
-        </div>
-      </div>
-
-      {/* SVG chart */}
-      {hasData ? (
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          width="100%"
-          height={180}
-          style={{ display: 'block' }}
-          onMouseMove={handleMove}
-          onMouseLeave={() => setHover(null)}
-        >
-          <defs>
-            <linearGradient id="dh-line-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={T.blue500} stopOpacity="0.10" />
-              <stop offset="100%" stopColor={T.blue500} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          {[0, 1, 2, 3].map((i) => {
-            const y = PAD_T + (innerH / 3) * i;
-            return (
-              <line key={i} x1={0} y1={y} x2={W} y2={y} stroke="rgba(0,0,0,0.06)" strokeWidth={0.5} />
-            );
-          })}
-          <path d={areaPath} fill="url(#dh-line-fill)" />
-          <path d={linePath} fill="none" stroke={T.blue500} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
-          {hover && (
-            <line x1={hover.x} y1={PAD_T} x2={hover.x} y2={PAD_T + innerH} stroke="rgba(37,99,235,0.25)" strokeWidth={1} strokeDasharray="3 3" />
-          )}
-        </svg>
-      ) : (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          height: 180, color: T.textMuted, fontSize: 13,
-          background: T.bgSecondary, borderRadius: 8,
-        }}>
-          No activity yet
-        </div>
-      )}
-
-      {/* Hover point (overlay) */}
-      {hasData && hover && hoverPxRef.current && (
-        <div
-          aria-hidden
-          style={{
-            pointerEvents: 'none',
-            position: 'absolute',
-            left: hoverPxRef.current.left,
-            top: hoverPxRef.current.top,
-            width: 10, height: 10,
-            borderRadius: '50%',
-            background: '#fff',
-            border: `2px solid ${T.blue500}`,
-            boxShadow: '0 0 0 3px rgba(37,99,235,0.12)',
-            transform: 'translate(-50%, -50%)',
-            transition: 'opacity 120ms',
-            zIndex: 3,
-          }}
-        />
-      )}
-
-      {/* Tooltip */}
-      {hasData && hover && hoverPxRef.current && (
-        <div
-          role="status"
-          style={{
-            position: 'absolute',
-            pointerEvents: 'none',
-            left: hoverPxRef.current.left,
-            top: hoverPxRef.current.top - 12,
-            transform: 'translate(-50%, -100%)',
-            background: '#fff',
-            border: `1px solid ${T.border}`,
-            borderRadius: 8,
-            boxShadow: '0 4px 12px rgba(15,23,42,0.10), 0 1px 3px rgba(15,23,42,0.06)',
-            padding: '8px 10px',
-            fontSize: 12,
-            minWidth: 130,
-            zIndex: 5,
-          }}
-        >
-          <div style={{ fontSize: 11, color: T.textSecondary, fontWeight: 500, marginBottom: 2 }}>
-            {series.dates && series.dates[hover.i]
-              ? new Date(series.dates[hover.i]).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-              : formatDate(hover.i, points.length)}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textPrimary, fontWeight: 500 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.blue500, flex: 'none' }} />
-            <span style={{ fontVariantNumeric: 'tabular-nums', color: T.blue600, fontWeight: 600 }}>
-              {formatValue(effectiveTab, hover.v)}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Legend */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginTop: 8 }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.blue500 }} />
-        <span>{series.legend}</span>
-      </div>
-    </section>
-  );
-}
-
-const summaryCellStyle: CSSProperties = {
-  background: T.bgSecondary,
-  borderRadius: 8,
-  padding: '10px 14px',
-  minWidth: 130,
-};
-const summaryValueStyle: CSSProperties = {
-  fontSize: 20, fontWeight: 600,
-  color: '#121621',
-  marginTop: 2,
-  fontVariantNumeric: 'tabular-nums',
-};
-
-// ─── Panel scaffold ──────────────────────────────────────────────────────────
-function Panel({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
-  return (
-    <section style={{
-      background: '#fff', border: `1px solid ${T.border}`,
-      borderRadius: 12, padding: 16, ...style,
-    }}>
-      {children}
-    </section>
-  );
-}
-
-function PanelHead({ title, linkLabel, onLink }: { title: string; linkLabel?: string; onLink?: () => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-      <div style={{ fontSize: 15, fontWeight: 600, color: T.textPrimary }}>{title}</div>
-      {linkLabel && (
-        <button
-          onClick={onLink}
-          style={{
-            fontSize: 12, color: T.blue500, fontWeight: 500,
-            display: 'flex', alignItems: 'center', gap: 3,
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontFamily: 'inherit',
-            transition: 'color 160ms',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = T.blue600)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = T.blue500)}
-        >
-          {linkLabel} <IconArrow />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Mentorship card ─────────────────────────────────────────────────────────
-type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'COMPLETED';
-
-type Booking = {
-  id: string;
-  mentorId: string;
-  mentorName: string;
-  mentorAvatarUrl?: string;
-  topicTitle: string;
-  durationMinutes: number;
-  startTime: string;
-  endTime: string;
-  status: BookingStatus;
-  hasReview: boolean;
-  meetingLink?: string;
-  mentorAvgRating?: number;
-  studentNote?: string;
-};
-
-function getInitials(name?: string): string {
-  if (!name) return '?';
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
-}
-
-function formatBookingDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const weekday = d.toLocaleDateString(undefined, { weekday: 'short' });
-  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${weekday} ${date}, ${time}`;
-}
-
-function formatBookingShortDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-}
-
-function timeUntil(iso: string): string {
-  const d = new Date(iso).getTime();
-  if (isNaN(d)) return '';
-  const diffMs = d - Date.now();
-  if (diffMs <= 0) return 'Starting soon';
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 60) return `In ${mins} min — get prepared`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `In ${hours} hour${hours === 1 ? '' : 's'} — get prepared`;
-  const days = Math.round(hours / 24);
-  return `In ${days} day${days === 1 ? '' : 's'} — get prepared`;
-}
-
-function MentorshipCardSkeleton() {
-  return (
-    <Panel>
-      <PanelHead title="Mentorship" />
-      <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Skeleton width={110} height={18} radius={9999} />
-          <Skeleton width={120} height={12} />
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-          <Skeleton width={36} height={36} radius={9999} />
-          <div style={{ flex: 1 }}>
-            <Skeleton width="60%" height={13} style={{ marginBottom: 6 }} />
-            <Skeleton width="40%" height={11} />
-          </div>
-        </div>
-        <Skeleton width="100%" height={50} radius={8} />
-        <div style={{ marginTop: 10 }}>
-          <Skeleton width="100%" height={36} radius={8} />
-        </div>
-      </div>
-      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8 }}>
-            <Skeleton width={30} height={30} radius={9999} />
-            <div style={{ flex: 1 }}>
-              <Skeleton width="55%" height={12} style={{ marginBottom: 4 }} />
-              <Skeleton width="35%" height={10} />
-            </div>
-            <Skeleton width={60} height={16} radius={4} />
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function MentorshipCard({ plan }: { plan: Plan }) {
-  const navigate = useNavigate();
-  const userPlan = useUserPlan();
-  const isFree = plan === 'free';
-  const planLoading = userPlan.isLoading;
-  const [loading, setLoading] = useState(true);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-
-  useEffect(() => {
-    if (planLoading) return;        // Wait until the real plan is known
-    if (isFree) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    let alive = true;
-    (async () => {
-      try {
-        const res = await listMyBookings({ page: 0, size: 20 });
-        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        if (alive) setBookings(Array.isArray(content) ? content : []);
-      } catch {
-        if (alive) setBookings([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [isFree, planLoading]);
-
-  if (planLoading || loading) return <MentorshipCardSkeleton />;
-
-  // Upcoming = CONFIRMED, soonest first
-  const upcoming = bookings
-    .filter((b) => b.status === 'CONFIRMED')
-    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  const nextSession = upcoming[0];
-
-  // Past = COMPLETED, most recent first
-  const past = bookings
-    .filter((b) => b.status === 'COMPLETED')
-    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
-    .slice(0, 3);
-
-  return (
-    <Panel style={{ position: 'relative' }}>
-      <PanelHead title="Mentorship" linkLabel="Browse mentors" onLink={() => navigate('/marketplace')} />
-
-      {isFree && (
-        <div style={{
-          position: 'absolute', inset: '56px 16px 16px 16px',
-          zIndex: 2,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8,
-          textAlign: 'center', padding: '24px 20px',
-          background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)',
-          borderRadius: 10,
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: T.bgSecondary, color: T.blue600,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 4,
-          }}>
-            <IconLockLarge />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>Mentorship is a member benefit</div>
-          <div style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>
-            Book 1:1 sessions with senior mentors and track every session in one place.
-          </div>
-          <button
-            onClick={() => navigate('/pricing')}
-            style={{
-              padding: '9px 16px', borderRadius: 8, border: 0,
-              background: T.blue500, color: '#fff',
-              fontSize: 13, fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 160ms',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
-          >
-            Upgrade to membership
-          </button>
-        </div>
-      )}
-
-      <div style={{ filter: isFree ? 'blur(6px)' : 'none', pointerEvents: isFree ? 'none' : 'auto', userSelect: isFree ? 'none' : 'auto', opacity: isFree ? 0.55 : 1 }}>
-        {/* Upcoming session */}
-        {nextSession ? (
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, background: '#fff' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center',
-                background: T.roleBg, color: T.blue600,
-                fontSize: 11, fontWeight: 500,
-                padding: '2px 8px', borderRadius: 9999,
-              }}>
-                Upcoming session
-              </span>
-              <span style={{ fontSize: 12, color: T.textSecondary, fontWeight: 500 }}>
-                {formatBookingDateTime(nextSession.startTime)}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-              <MentorAvatar initials={getInitials(nextSession.mentorName)} avatarUrl={nextSession.mentorAvatarUrl} />
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{nextSession.mentorName}</div>
-                <div style={{ fontSize: 12, color: T.textSecondary }}>
-                  {nextSession.durationMinutes} min session
-                </div>
-              </div>
-            </div>
-            {nextSession.topicTitle && (
-              <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Session topic</div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary }}>{nextSession.topicTitle}</div>
-              </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginBottom: 10 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue500 }} />
-              {timeUntil(nextSession.startTime)}
-            </div>
-            <button
-              onClick={() => {
-                if (nextSession.meetingLink) window.open(nextSession.meetingLink, '_blank', 'noopener,noreferrer');
-              }}
-              disabled={!nextSession.meetingLink}
-              style={{
-                display: 'block', width: '100%',
-                background: nextSession.meetingLink ? T.blue500 : T.bgSecondary,
-                color: nextSession.meetingLink ? '#fff' : T.textMuted,
-                borderRadius: 8, padding: '9px 12px',
-                fontSize: 13, fontWeight: 500,
-                textAlign: 'center', border: 'none',
-                cursor: nextSession.meetingLink ? 'pointer' : 'not-allowed',
-                fontFamily: 'inherit',
-                transition: 'background 120ms',
-              }}
-              onMouseEnter={(e) => { if (nextSession.meetingLink) e.currentTarget.style.background = T.blue600; }}
-              onMouseLeave={(e) => { if (nextSession.meetingLink) e.currentTarget.style.background = T.blue500; }}
-            >
-              {nextSession.meetingLink ? 'Join Session' : 'Awaiting meeting link'}
-            </button>
-          </div>
-        ) : (
-          <div style={{
-            border: `1px dashed ${T.border}`, borderRadius: 10, padding: 16,
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 13, color: T.textSecondary, marginBottom: 8 }}>
-              No upcoming sessions
-            </div>
-            <button
-              onClick={() => navigate('/marketplace')}
-              style={{
-                padding: '7px 14px', borderRadius: 8, border: 0,
-                background: T.blue500, color: '#fff',
-                fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              Book a mentor
-            </button>
-          </div>
-        )}
-
-        {/* Past sessions */}
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: T.textSecondary }}>Past sessions</div>
-            {past.length > 0 && (
-              <button
-                onClick={() => navigate('/history')}
-                style={{
-                  fontSize: 11, color: T.textMuted,
-                  display: 'flex', alignItems: 'center', gap: 2,
-                  background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                {past.length}
-                <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="3,3 6,5 3,7"/></svg>
-              </button>
-            )}
-          </div>
-          {past.length === 0 ? (
-            <div style={{ fontSize: 12, color: T.textMuted, padding: '8px 0' }}>
-              Completed sessions will appear here.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {past.map((b) => (
-                <PastItem key={b.id} booking={b} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function MentorAvatar({ initials, size = 36, avatarUrl }: { initials: string; size?: number; avatarUrl?: string }) {
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={initials}
-        style={{
-          width: size, height: size, borderRadius: '50%',
-          objectFit: 'cover', flex: 'none',
-        }}
-      />
-    );
-  }
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      display: 'grid', placeItems: 'center',
-      fontSize: size <= 30 ? 11 : 12, fontWeight: 600,
-      color: T.blue700, background: T.roleBg, flex: 'none',
-    }}>
-      {initials}
-    </div>
-  );
-}
-
-function PastItem({ booking }: { booking: Booking }) {
-  const [hover, setHover] = useState(false);
-  const reviewed = booking.hasReview;
-  const rating = Math.round(booking.mentorAvgRating ?? 0);
-  return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: 8, borderRadius: 8,
-        background: hover ? T.bgSecondary : 'transparent',
-        cursor: 'pointer',
-        transition: 'background 160ms',
-      }}
-    >
-      <MentorAvatar initials={getInitials(booking.mentorName)} size={30} avatarUrl={booking.mentorAvatarUrl} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: T.textPrimary }}>{booking.mentorName}</div>
-        <div style={{ fontSize: 11, color: T.textSecondary }}>
-          {booking.topicTitle ? `${booking.topicTitle} · ` : ''}{formatBookingShortDate(booking.startTime)}
-        </div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-        {reviewed ? (
-          <>
-            <span style={statusTagStyle(T.successText, T.successBg)}>Reviewed</span>
-            {rating > 0 && (
-              <div style={{ display: 'flex', gap: 1 }}>
-                {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= rating} />)}
-              </div>
-            )}
-          </>
-        ) : (
-          <span style={statusTagStyle(T.warningText, T.warningBg)}>Review pending</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function statusTagStyle(color: string, bg: string): CSSProperties {
-  return {
-    display: 'inline-flex', alignItems: 'center',
-    fontSize: 11, fontWeight: 500,
-    padding: '2px 8px', borderRadius: 4,
-    color, background: bg,
-  };
-}
-
-// ─── Interview Practice Insights (radar) ─────────────────────────────────────
-type Dim = { label: string; value: number };
-// TODO: swap for real radar endpoint when available.
-const MOCK_DIMS: Dim[] = [
-  { label: 'Domain Knowledge', value: 82 },
-  { label: 'Technical Skills', value: 76 },
-  { label: 'Behavioral Skills', value: 65 },
-  { label: 'Background & Experience', value: 78 },
+// ─── Trend Chart Section ───────────────────────────────────────────────────────
+const TABS: { id: ChartTab; label: string; premiumOnly: boolean }[] = [
+  { id: 'applications', label: 'Applications', premiumOnly: true  },
+  { id: 'learning',     label: 'Learning Time', premiumOnly: false },
+  { id: 'sessions',     label: 'Sessions',      premiumOnly: false },
+];
+const TIME_RANGES: { id: TimeRange; label: string }[] = [
+  { id: '7d',  label: 'Last 7 Days'   },
+  { id: '30d', label: 'Last 30 Days'  },
+  { id: '3m',  label: 'Last 3 Months' },
 ];
 
-function qualitative(v: number): string {
-  if (v >= 80) return 'Strong';
-  if (v >= 70) return 'Developing';
-  if (v >= 60) return 'Inconsistent';
-  return 'Needs work';
-}
+function TrendChartSection({ plan }: { plan: Plan }) {
+  const isPremium = plan === 'premium';
+  const [activeTab, setActiveTab] = useState<ChartTab>('learning');
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
-function Radar({ dims }: { dims: Dim[] }) {
-  const cx = 180, cy = 130, R = 70;
-  const N = dims.length;
-  const start = -Math.PI / 2;
+  const effectiveTab: ChartTab =
+    !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
 
-  const [hover, setHover] = useState<number | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const data  = CHART_DATA[effectiveTab][timeRange];
+  const color = CHART_COLORS[effectiveTab];
 
-  const pt = (i: number, r: number): [number, number] => {
-    const a = start + (Math.PI * 2 * i) / N;
-    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
-  };
+  const total      = data.reduce((s, v) => s + v, 0);
+  const activeDays = data.filter(v => v > 0).length;
 
-  const ringPaths = useMemo(() => {
-    const out: string[] = [];
-    for (let ring = 1; ring <= 4; ring++) {
-      const r = (R * ring) / 4;
-      const corners: Array<[number, number]> = [];
-      for (let i = 0; i < N; i++) corners.push(pt(i, r));
-      out.push(corners.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') + ' Z');
+  const [sumLabel1, sumVal1, sumLabel2, sumVal2] = (() => {
+    if (effectiveTab === 'applications') {
+      return ['Total Applications', Math.round(total).toString(), 'Daily Average', (total / data.length).toFixed(1)];
+    } else if (effectiveTab === 'learning') {
+      const h = Math.floor(total / 60);
+      const m = Math.round(total % 60);
+      const avg = activeDays > 0 ? Math.round(total / activeDays) : 0;
+      return ['Total Learning Time', h > 0 ? `${h}h ${m}m` : `${Math.round(total)}m`, 'Avg per Session', `${avg}m`];
+    } else {
+      return ['Sessions Completed', Math.round(total).toString(), 'Mock Sessions', Math.round(total * 0.7).toString()];
     }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [N]);
+  })();
 
-  const polyPts: Array<[number, number]> = dims.map((d, i) => {
-    const r = (R * d.value) / 100;
-    return pt(i, r);
-  });
-  const polyD = polyPts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') + ' Z';
-
-  // Tooltip pos in wrap-relative pixels
-  const tipPx = useMemo(() => {
-    if (hover === null || !svgRef.current || !wrapRef.current) return null;
-    const svgRect = svgRef.current.getBoundingClientRect();
-    const wrapRect = wrapRef.current.getBoundingClientRect();
-    const sx = svgRect.width / 360;
-    const sy = svgRect.height / 260;
-    const x = (svgRect.left - wrapRect.left) + polyPts[hover][0] * sx;
-    const y = (svgRect.top - wrapRect.top) + polyPts[hover][1] * sy;
-    return { left: x, top: y };
-  }, [hover, polyPts]);
+  const fmtValue = effectiveTab === 'learning'
+    ? (v: number) => { const h = Math.floor(v / 60); const m = Math.round(v % 60); return h > 0 ? `${h}h ${m}m` : `${Math.round(v)}m`; }
+    : (v: number) => v.toFixed(1);
 
   return (
-    <div ref={wrapRef} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 14px', position: 'relative' }}>
-      <svg ref={svgRef} viewBox="0 0 360 260" style={{ width: '100%', maxWidth: 360, height: 'auto', overflow: 'visible' }}>
-        {/* rings */}
-        {ringPaths.map((d, i) => (
-          <path key={`r${i}`} d={d} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={0.75} />
-        ))}
-        {/* spokes */}
-        {dims.map((_, i) => {
-          const [x, y] = pt(i, R);
-          return <line key={`s${i}`} x1={cx} y1={cy} x2={x.toFixed(1)} y2={y.toFixed(1)} stroke="rgba(0,0,0,0.06)" strokeWidth={0.75} />;
-        })}
-        {/* polygon */}
-        <path d={polyD} fill="rgba(37,99,235,0.12)" stroke="rgba(37,99,235,0.75)" strokeWidth={1.25} strokeLinejoin="round" />
-        {/* data points */}
-        {polyPts.map((p, i) => (
-          <circle key={`p${i}`} cx={p[0].toFixed(1)} cy={p[1].toFixed(1)} r={hover === i ? 4 : 2.5} fill={T.blue500} stroke="#fff" strokeWidth={1} />
-        ))}
-        {/* labels */}
-        {dims.map((d, i) => {
-          const LABEL_R = R + 22;
-          const a = start + (Math.PI * 2 * i) / N;
-          const ax = Math.cos(a), ay = Math.sin(a);
-          const lx = cx + ax * LABEL_R;
-          const ly = cy + ay * LABEL_R;
-          const isSide = Math.abs(ax) > 0.1;
-          const anchor = isSide ? (ax < 0 ? 'end' : 'start') : 'middle';
-          let lines = d.label.split('|');
-          if (lines.length === 1 && isSide) {
-            const words = d.label.split(' ');
-            if (words.length >= 2) {
-              const mid = Math.ceil(words.length / 2);
-              lines = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
-            }
-          }
-          const lineH = 12;
-          const baseY = ly - ((lines.length - 1) * lineH) / 2 + 4;
-          return (
-            <text key={`l${i}`} x={lx.toFixed(1)} y={baseY.toFixed(1)} fontFamily="Inter" fontSize={10.5} fill={T.textSecondary} textAnchor={anchor}>
-              {lines.map((ln, k) => (
-                <tspan key={k} x={lx.toFixed(1)} dy={k === 0 ? 0 : lineH}>{ln}</tspan>
-              ))}
-            </text>
-          );
-        })}
-        {/* hit targets */}
-        {polyPts.map((p, i) => (
-          <circle
-            key={`h${i}`} cx={p[0].toFixed(1)} cy={p[1].toFixed(1)} r={14} fill="transparent"
-            onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
-            style={{ cursor: 'default' }}
-          />
-        ))}
-      </svg>
-
-      {/* Tooltip */}
-      {hover !== null && tipPx && (
-        <div
-          role="tooltip"
-          style={{
-            position: 'absolute', pointerEvents: 'none',
-            background: '#fff', border: `1px solid ${T.border}`,
-            borderRadius: 8, padding: '8px 10px',
-            boxShadow: '0 4px 12px rgba(15,23,42,0.08), 0 1px 3px rgba(15,23,42,0.06)',
-            minWidth: 132,
-            left: tipPx.left, top: tipPx.top,
-            transform: 'translate(-50%, calc(-100% - 10px))',
-            zIndex: 5,
-          }}
-        >
-          <div style={{ fontSize: 11, color: T.textSecondary, lineHeight: 1.3, marginBottom: 2 }}>{dims[hover].label}</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-            {dims[hover].value}<small style={{ fontWeight: 500, color: T.textMuted, fontSize: 12, marginLeft: 2 }}>/100</small>
-          </div>
-          <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 500, color: T.blue600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {qualitative(dims[hover].value)}
-          </div>
+    <div className="bg-card border border-border rounded-lg p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-1">
+          {TABS.map(({ id, label, premiumOnly }) => {
+            const locked    = premiumOnly && !isPremium;
+            const isActive  = effectiveTab === id;
+            const tabColor  = CHART_COLORS[id];
+            return (
+              <button
+                key={id}
+                onClick={() => !locked && setActiveTab(id)}
+                disabled={locked}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  locked    ? 'text-muted-foreground/40 cursor-not-allowed' :
+                  isActive  ? 'bg-secondary text-foreground' :
+                  'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                }`}
+              >
+                {locked
+                  ? <Lock className="w-3 h-3 shrink-0" />
+                  : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tabColor, opacity: isActive ? 1 : 0.45 }} />
+                }
+                {label}
+              </button>
+            );
+          })}
         </div>
-      )}
-    </div>
-  );
-}
-
-function InsightsCardSkeleton() {
-  return (
-    <Panel>
-      <PanelHead title="Interview Practice Insights" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} height={62} radius={8} />
-        ))}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 14px' }}>
-        <Skeleton width={220} height={200} radius={9999} />
-      </div>
-      <Skeleton width="100%" height={70} radius={10} />
-    </Panel>
-  );
-}
-
-function InsightsCard({
-  isLoading,
-  insights,
-}: {
-  isLoading: boolean;
-  insights?: InterviewInsights | null;
-}) {
-  const navigate = useNavigate();
-  if (isLoading) return <InsightsCardSkeleton />;
-
-  const hasInsights = insights != null;
-  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores) && insights!.categoryScores.length > 0
-    ? insights!.categoryScores.map((c) => ({
-        label: c.category,
-        value: Math.round(Number(c.averageScore) || 0),
-      }))
-    : hasInsights
-      ? []
-      : MOCK_DIMS;
-
-  const hasData = hasInsights
-    ? dims.length > 0
-    : dims.some((d) => d.value > 0);
-
-  if (!hasData) {
-    return (
-      <Panel>
-        <PanelHead title="Interview Practice Insights" linkLabel="View all" onLink={() => navigate('/history')} />
-        <EmptyState
-          message="No interview practice data yet"
-          ctaLabel="Start practicing"
-          onCta={() => navigate('/personalized-practice')}
-        />
-      </Panel>
-    );
-  }
-
-  const avg = hasInsights
-    ? Math.round(Number(insights!.averageScore) || 0)
-    : Math.round(dims.reduce((s, d) => s + d.value, 0) / dims.length);
-  const best = hasInsights
-    ? Math.round(Number(insights!.bestScore) || 0)
-    : Math.max(...dims.map((d) => d.value));
-  const low = hasInsights
-    ? Math.round(Number(insights!.lowestScore) || 0)
-    : Math.min(...dims.map((d) => d.value));
-  const lowest = [...dims].sort((a, b) => a.value - b.value)[0];
-
-  return (
-    <Panel>
-      <PanelHead title="Interview Practice Insights" linkLabel="View all" onLink={() => navigate('/history')} />
-
-      {/* Avg/Best/Low summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
-        <SummaryCell value={avg} label="Avg" color={T.blue500} />
-        <SummaryCell value={best} label="Best" color={T.green500} />
-        <SummaryCell value={low} label="Low" color={T.textSecondary} />
-      </div>
-
-      <Radar dims={dims} />
-
-      {/* Focus area */}
-      <div style={{
-        background: T.bgSecondary, borderRadius: 10,
-        padding: '12px 14px', marginTop: 4,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: T.textSecondary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-            Recommended focus area
-          </div>
-          <button
-            onClick={() => navigate('/personalized-practice')}
-            style={{
-              fontSize: 12, color: T.blue500, fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: 3,
-              background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'color 160ms',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = T.blue600; e.currentTarget.style.textDecoration = 'underline'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = T.blue500; e.currentTarget.style.textDecoration = 'none'; }}
-          >
-            Practice {lowest.label} →
-          </button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>{lowest.label}</div>
-          <div style={{ fontSize: 12, color: T.textSecondary, fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
-            {lowest.value}/100
-          </div>
-        </div>
-        <div style={{ fontSize: 12, color: T.textSecondary, marginTop: 6, lineHeight: 1.5 }}>
-          Most variable across your last 8 mocks — lowest recent dimension.
+        <div className="flex items-center gap-0.5">
+          {TIME_RANGES.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setTimeRange(id)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                timeRange === id
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
-    </Panel>
-  );
-}
 
-function EmptyState({ message, ctaLabel, onCta }: { message: string; ctaLabel?: string; onCta?: () => void }) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 10, padding: '32px 16px', textAlign: 'center',
-      border: `1px dashed ${T.border}`, borderRadius: 10,
-      color: T.textMuted, fontSize: 13,
-    }}>
-      <div>{message}</div>
-      {ctaLabel && onCta && (
-        <button
-          onClick={onCta}
-          style={{
-            padding: '7px 14px', borderRadius: 8, border: 0,
-            background: T.blue500, color: '#fff',
-            fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {ctaLabel}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SummaryCell({ value, label, color }: { value: number | string; label: string; color: string }) {
-  return (
-    <div style={{
-      background: T.bgSecondary, borderRadius: 8,
-      padding: 12, textAlign: 'center',
-    }}>
-      <div style={{ fontSize: 24, fontWeight: 600, color, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 11, color: T.textSecondary, marginTop: 4 }}>{label}</div>
-    </div>
-  );
-}
-
-// ─── Community Picks ─────────────────────────────────────────────────────────
-type CommunityPost = {
-  id: string;
-  role: string;
-  company: string;
-  title: string;
-  date: string;
-  saveCount?: number;
-  commentCount?: number;
-};
-
-function formatMonthLabel(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-}
-
-function CommunityCardSkeleton() {
-  return (
-    <Panel>
-      <PanelHead title="Community Picks" />
-      <Skeleton width="100%" height={36} radius={8} style={{ marginBottom: 12 }} />
-      {[0, 1, 2].map((i) => (
-        <div key={i} style={{ padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${T.border}` }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <Skeleton width={80} height={16} radius={4} />
-            <Skeleton width={60} height={16} radius={4} />
-          </div>
-          <Skeleton width="90%" height={14} style={{ marginBottom: 6 }} />
-          <Skeleton width="60%" height={14} style={{ marginBottom: 8 }} />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Skeleton width={40} height={12} />
-            <Skeleton width={40} height={12} />
-          </div>
-        </div>
-      ))}
-    </Panel>
-  );
-}
-
-function CommunityCard() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [targetRole, setTargetRole] = useState<string>('');
-  const [targetCompanies, setTargetCompanies] = useState<string[]>([]);
-  const [posts, setPosts] = useState<CommunityPost[]>([]);
-
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      try {
-        let role = '';
-        let companies: string[] = [];
-        try {
-          const res = await getProfilePreferences();
-          const data = res?.data?.data ?? res?.data;
-          role = Array.isArray(data?.target_roles) ? (data.target_roles[0] ?? '') : '';
-          companies = Array.isArray(data?.target_companies) ? data.target_companies : [];
-        } catch {
-          // No preferences yet — fall through with empty role/companies
-        }
-        if (alive) {
-          setTargetRole(role);
-          setTargetCompanies(companies);
-        }
-
-        const baseParams: Record<string, unknown> = { page: 0, size: 3 };
-        if (role) baseParams.role = role;
-        if (companies[0]) baseParams.company = companies[0];
-
-        try {
-          const res = await getPosts(baseParams);
-          const data = res?.data?.data ?? res?.data;
-          const content: Array<Record<string, unknown>> = Array.isArray(data) ? data : (data?.content ?? []);
-          const mapped: CommunityPost[] = content.slice(0, 3).map((p) => ({
-            id: String(p.id ?? ''),
-            role: String(p.role ?? ''),
-            company: String(p.company ?? ''),
-            title: String(p.summary ?? p.title ?? ''),
-            date: String(p.createdAt ?? p.date ?? ''),
-            saveCount: typeof p.saveCount === 'number' ? p.saveCount : undefined,
-            commentCount: typeof p.commentCount === 'number' ? p.commentCount : undefined,
-          }));
-          if (alive) setPosts(mapped);
-        } catch {
-          if (alive) setPosts([]);
-        }
-      } finally {
-        // Always clear loading — setting state on an unmounted component is a
-        // no-op in React 18, so we don't need to gate this on `alive`.
-        if (alive) setLoading(false);
-      }
-    })();
-
-    return () => { alive = false; };
-  }, []);
-
-  if (loading) return <CommunityCardSkeleton />;
-
-  const matchLabel = targetCompanies.length > 0 ? targetCompanies.slice(0, 3).join(', ') : '';
-  const hasMatch = !!targetRole || !!matchLabel;
-
-  return (
-    <Panel>
-      <PanelHead title="Community Picks" linkLabel="Browse community" onLink={() => navigate('/interview-insights')} />
-
-      {/* Matched */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: T.bgSecondary, borderRadius: 8,
-        padding: '8px 12px', marginBottom: 12, fontSize: 12,
-      }}>
+      {/* Summary metrics */}
+      <div className="flex items-center gap-8 mb-5">
         <div>
-          {hasMatch ? (
-            <>
-              <span style={{ color: T.textSecondary }}>Matched to </span>
-              {targetRole && (
-                <span style={{ color: T.textPrimary, fontWeight: 500 }}>{targetRole}</span>
-              )}
-              {matchLabel && (
-                <span style={{ color: T.textSecondary }}>{targetRole ? ' · ' : ''}{matchLabel}</span>
-              )}
-            </>
-          ) : (
-            <span style={{ color: T.textSecondary }}>Set your target role to see matches</span>
-          )}
+          <div className="text-xs text-muted-foreground mb-0.5">{sumLabel1}</div>
+          <div className="text-xl font-semibold tracking-tight" style={{ color }}>{sumVal1}</div>
         </div>
-        <button
-          onClick={() => navigate('/settings')}
-          style={{
-            fontSize: 12, color: T.blue500, fontWeight: 500,
-            display: 'flex', alignItems: 'center', gap: 2,
-            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-            transition: 'color 160ms',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = T.blue600; e.currentTarget.style.textDecoration = 'underline'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = T.blue500; e.currentTarget.style.textDecoration = 'none'; }}
-        >
-          Edit ↗
-        </button>
+        <div className="w-px h-8 bg-border" />
+        <div>
+          <div className="text-xs text-muted-foreground mb-0.5">{sumLabel2}</div>
+          <div className="text-xl font-semibold tracking-tight" style={{ color }}>{sumVal2}</div>
+        </div>
       </div>
 
-      {posts.length === 0 ? (
-        <div style={{
-          padding: '24px 8px', textAlign: 'center',
-          fontSize: 12, color: T.textMuted,
-        }}>
-          No matching posts yet.
-        </div>
-      ) : (
-        posts.map((post, idx) => (
-          <PostItem key={post.id || idx} post={post} first={idx === 0} onClick={() => navigate(`/interview-insights/${post.id}`)} />
-        ))
-      )}
-    </Panel>
-  );
-}
+      {/* Chart */}
+      <CustomAreaChart data={data} color={color} formatValue={fmtValue} />
 
-function PostItem({ post, first, onClick }: { post: CommunityPost; first: boolean; onClick?: () => void }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onClick={onClick}
-      style={{
-        padding: first ? '4px 8px 12px' : '12px 8px',
-        borderTop: first ? 'none' : `1px solid ${T.border}`,
-        margin: '0 -8px',
-        borderRadius: 8,
-        background: hover ? T.bgSecondary : 'transparent',
-        cursor: 'pointer',
-        transition: 'background-color 200ms cubic-bezier(.4,0,.2,1)',
-      }}
-    >
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        {post.role && <span style={tagStyle(T.blue600, T.roleBg)}>{post.role}</span>}
-        {post.company && <span style={tagStyle(T.textSecondary, T.bgSecondary)}>{post.company}</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{formatMonthLabel(post.date)}</span>
-      </div>
-      <div style={{
-        fontSize: 13, fontWeight: 500,
-        color: hover ? T.blue600 : T.textPrimary,
-        lineHeight: 1.4, marginBottom: 8,
-        transition: 'color 160ms',
-      }}>
-        {post.title}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: T.textSecondary }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {typeof post.saveCount === 'number' && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <IconEye />{post.saveCount.toLocaleString()}
-            </span>
-          )}
-          {typeof post.commentCount === 'number' && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <IconMsg />{post.commentCount}
-            </span>
-          )}
-        </div>
-        <span style={{ color: T.blue500, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 2, textDecoration: hover ? 'underline' : 'none' }}>
-          View post ↗
+      {/* Legend */}
+      <div className="flex items-center gap-1.5 mt-3">
+        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className="text-xs text-muted-foreground">
+          {effectiveTab === 'applications' ? 'Applications submitted' :
+           effectiveTab === 'learning'     ? 'Learning time per day (min)' :
+           'Sessions per day'}
         </span>
       </div>
     </div>
   );
 }
 
-function tagStyle(color: string, bg: string): CSSProperties {
-  return {
-    display: 'inline-flex', alignItems: 'center',
-    fontSize: 11, fontWeight: 500,
-    padding: '2px 8px', borderRadius: 4,
-    color, background: bg,
-  };
-}
-
-// ─── Dashboard Home (main export) ────────────────────────────────────────────
-export function DashboardHome({
-  userData,
-  plan: planProp,
-}: {
-  userData: UserData | null;
-  plan?: Plan;
-}) {
-  const userPlan = useUserPlan();
-  const plan: Plan = planProp ?? planFromUserPlan(userPlan.planData.currentPlan);
-
-  const [loading, setLoading] = useState(true);
-  const [apiStats, setApiStats] = useState<DashboardStatsApi | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    getDashboardStats()
-      .then((res) => {
-        const body = (res as { data?: unknown })?.data;
-        let payload: DashboardStatsApi | null = null;
-        if (body && typeof body === 'object') {
-          const maybeEnvelope = body as { data?: DashboardStatsApi } & DashboardStatsApi;
-          if ('totalLearningTimeMinutes' in maybeEnvelope || 'dailyLearningTimeMinutes' in maybeEnvelope) {
-            payload = maybeEnvelope as DashboardStatsApi;
-          } else if (maybeEnvelope.data && typeof maybeEnvelope.data === 'object') {
-            payload = maybeEnvelope.data as DashboardStatsApi;
-          }
-        }
-        setApiStats(payload);
-      })
-      .catch(() => setApiStats(null))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const effectiveStats: DashboardStats = apiStats
-    ? {
-        ...EMPTY_STATS,
-        totalLearningTime: formatMinutesAsHm(apiStats.totalLearningTimeMinutes ?? 0),
-        sessionsCompleted: apiStats.sessionCompletedCount ?? 0,
-      }
-    : EMPTY_STATS;
-
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const name = userData?.firstName ? `, ${userData.firstName}` : '';
+// ─── Mentorship Card ───────────────────────────────────────────────────────────
+function MentorshipCard() {
+  const navigate = useNavigate();
+  const [state] = useState<'hasSession' | 'noSession'>('hasSession');
 
   return (
-    <div>
-      {/* Skeleton keyframes (scoped via global insertion since inline style cannot define @keyframes) */}
-      <style>{`
-        @keyframes dh-skeleton {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        @media (max-width: 1280px) {
-          [data-dashboard-grid] { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-
-      {/* Page header */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        marginBottom: 20,
-      }}>
-        <h1 style={{
-          fontFamily: "'Playfair Display', serif",
-          fontWeight: 700, fontSize: 28, lineHeight: 1.2,
-          color: T.textPrimary, margin: 0,
-        }}>
-          {greeting}{name}
-        </h1>
+    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
+        <span className="font-medium text-foreground">Mentorship</span>
+        <button className="text-xs text-primary hover:opacity-75 transition-opacity">Browse mentors ↗</button>
       </div>
 
-      <StatsRow plan={plan} stats={effectiveStats} isLoading={loading} />
+      <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1 overflow-y-auto">
+        {state === 'hasSession' ? (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="bg-primary/10 flex items-center justify-between px-3 py-2">
+              <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs font-medium rounded-md">
+                Upcoming session
+              </span>
+              <span className="text-xs text-primary">Mon Apr 14, 2:00 PM</span>
+            </div>
+            <div className="p-3.5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-semibold shrink-0">
+                  SJ
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">Sarah Jenkins</div>
+                  <div className="text-xs text-muted-foreground">Senior PM · TechCorp</div>
+                </div>
+              </div>
+              <div className="bg-secondary rounded-md p-2.5 mb-3">
+                <div className="text-xs text-muted-foreground mb-0.5">Session goal</div>
+                <div className="text-sm font-medium text-foreground mb-1.5">Mock Interview: Product Strategy</div>
+                <div className="text-xs text-muted-foreground mb-0.5">Mentor note</div>
+                <div className="text-xs text-foreground">"Please bring 2 product ideas to discuss."</div>
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                <span className="text-xs text-primary">In 14 hours — get prepared</span>
+              </div>
+              <button className="w-full bg-primary text-primary-foreground rounded-md py-2 text-xs font-medium hover:opacity-90 transition-opacity">
+                Join session
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="border border-dashed border-border rounded-lg p-5 flex flex-col items-center text-center gap-3">
+            <Calendar className="w-5 h-5 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">No upcoming sessions. Ready for your next 1:1?</p>
+            <button className="border border-primary text-primary rounded-md px-3 py-1.5 text-xs font-medium hover:bg-primary/5 transition-colors">
+              Browse mentors →
+            </button>
+          </div>
+        )}
 
-      <TrendChart
-        key={plan}
-        plan={plan}
-        isLoading={loading}
-        learningDaily={apiStats?.dailyLearningTimeMinutes}
-        sessionsDaily={apiStats?.dailySessionCount}
-      />
-
-      <div
-        data-dashboard-grid
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: 16,
-          alignItems: 'start',
-        }}
-      >
-        <MentorshipCard plan={plan} />
-        <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
-        <CommunityCard />
+        {/* Past sessions */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-foreground">Past sessions</span>
+            <span className="text-xs text-muted-foreground flex items-center gap-0.5 cursor-pointer hover:text-primary transition-colors">
+              {PAST_SESSIONS.length} <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {PAST_SESSIONS.map(s => (
+              <div
+                key={s.id}
+                className="bg-background border border-border rounded-md p-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-secondary/60 transition-colors"
+                onClick={() => navigate(`/session-detail/${s.id}`)}
+              >
+                <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium text-foreground shrink-0">
+                  {s.initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-foreground truncate">{s.name}</div>
+                  <div className="text-xs text-muted-foreground">{s.type} · {s.date}</div>
+                </div>
+                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                  {s.reviewed ? (
+                    <>
+                      <span className="px-1.5 py-0.5 bg-accent/15 text-accent-foreground text-[10px] font-medium rounded-sm">
+                        Reviewed
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        {[1,2,3,4,5].map(n => (
+                          <Star key={n} className={`w-2 h-2 ${n <= s.rating ? 'text-primary fill-primary' : 'text-muted-foreground'}`} />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-400 text-[10px] font-medium rounded-sm">
+                      Review pending
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Page wrapper ────────────────────────────────────────────────────────────
+// ─── Interview Practice Insights Card ─────────────────────────────────────────
+function InterviewInsightsCard() {
+  const [hasSessions] = useState(true);
+  const scores    = RADAR_DIMS.map(d => d.value);
+  const avg       = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+  const best      = Math.max(...scores);
+  const low       = Math.min(...scores);
+  const lowestDim = [...RADAR_DIMS].sort((a, b) => a.value - b.value)[0];
+  const lowestBdg = qualityBadge(lowestDim.value);
+
+  return (
+    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
+        <span className="font-medium text-foreground">Interview Practice Insights</span>
+        <button className="text-xs text-primary hover:opacity-75 transition-opacity">View all ↗</button>
+      </div>
+
+      {hasSessions ? (
+        <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1">
+          {/* Score summary */}
+          <div className="grid grid-cols-3 gap-2">
+            {[{ label: 'Avg', value: avg }, { label: 'Best', value: best }, { label: 'Low', value: low }].map(s => (
+              <div key={s.label} className="bg-secondary rounded-md p-3 text-center">
+                <div className="text-lg font-semibold tracking-tight">{s.value}</div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Radar */}
+          <CustomRadar data={RADAR_DIMS} color={CHART_COLORS.sessions} />
+
+          {/* Focus callout */}
+          <div className="bg-secondary rounded-md p-3 flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-muted-foreground mb-1">Recommended focus area</div>
+              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                <span className="text-sm font-medium text-foreground">{lowestDim.label}</span>
+                <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${lowestBdg.cls}`}>
+                  {lowestBdg.label}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">{lowestDim.value}/100</div>
+            </div>
+            <button className="text-xs text-primary font-medium hover:opacity-75 transition-opacity whitespace-nowrap shrink-0 mt-0.5">
+              Practice {lowestDim.label} →
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 text-center">
+          <Target className="w-8 h-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No practice sessions yet</p>
+          <button className="text-sm text-primary font-medium hover:opacity-75 transition-opacity">
+            Practice now →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Community Picks Card ──────────────────────────────────────────────────────
+function CommunityPicksCard() {
+  const [hasPosts] = useState(true);
+
+  return (
+    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
+        <span className="font-medium text-foreground">Community Picks</span>
+        <button className="text-xs text-primary hover:opacity-75 transition-opacity">Browse community ↗</button>
+      </div>
+
+      {hasPosts ? (
+        <div className="px-4 pb-4 pt-3 flex flex-col gap-3 flex-1">
+          {/* Personalisation hint */}
+          <div className="bg-secondary rounded-md px-3 py-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground min-w-0 truncate">
+              Matched to <span className="font-medium text-foreground">Product Manager</span> · Google, Meta
+            </p>
+            <button className="text-xs text-primary hover:opacity-75 transition-opacity shrink-0">
+              Edit ↗
+            </button>
+          </div>
+
+          {COMMUNITY_POSTS.map(post => (
+            <div
+              key={post.id}
+              className="rounded-lg border border-border p-3.5 flex flex-col gap-2.5 hover:bg-secondary/50 transition-colors cursor-pointer"
+            >
+              {/* Tags */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-medium rounded-sm">
+                  {post.role}
+                </span>
+                <span className="px-1.5 py-0.5 bg-secondary text-muted-foreground text-[10px] font-medium rounded-sm">
+                  {post.company}
+                </span>
+                <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm ${
+                  post.status === 'Hired'
+                    ? 'bg-accent/15 text-accent-foreground'
+                    : 'bg-chart-4/15 text-chart-4'
+                }`}>
+                  {post.status}
+                </span>
+                <span className="text-[10px] text-muted-foreground ml-auto">{post.month}</span>
+              </div>
+              {/* Title */}
+              <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
+                {post.title}
+              </p>
+              {/* Footer */}
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Eye className="w-3 h-3" />{post.views.toLocaleString()}
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageCircle className="w-3 h-3" />{post.comments}
+                </span>
+                <button className="ml-auto text-primary hover:opacity-75 transition-opacity">View post ↗</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 text-center">
+          <Users className="w-8 h-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No posts match your target roles yet</p>
+          <button className="text-sm text-primary font-medium hover:opacity-75 transition-opacity">
+            Browse community →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard Home (main export) ─────────────────────────────────────────────
+type UserData = {
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+};
+
+export function DashboardHome({ userData }: { userData: UserData | null }) {
+  const [plan, setPlan] = useState<Plan>('premium');
+
+  const hour     = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const name     = userData?.firstName ? `, ${userData.firstName}` : '';
+
+  return (
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
+
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-foreground">{greeting}{name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {userData?.role ? `${userData.role} · ` : ''}Apr 2025 · Career Command Center
+          </p>
+        </div>
+
+        {/* Plan toggle — demonstrates both dashboard variants */}
+        <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 shrink-0">
+          {(['starter', 'premium'] as Plan[]).map(p => (
+            <button
+              key={p}
+              onClick={() => setPlan(p)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
+                plan === p
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {p === 'premium' && (
+                <Sparkles className="w-3 h-3 text-amber-500" />
+              )}
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 1. Stats row ── */}
+      <StatsRow plan={plan} />
+
+      {/* ── 2. Trend chart ── */}
+      <TrendChartSection key={plan} plan={plan} />
+
+      {/* ── 3. Bottom 3-column grid ── */}
+      <div className="grid grid-cols-3 gap-5">
+        <MentorshipCard />
+        <InterviewInsightsCard />
+        <CommunityPicksCard />
+      </div>
+
+    </div>
+  );
+}
+
+// ── Page wrapper: routed at /dashboard ───────────────────────────────────────
 export function DashboardHomePage() {
   const { user } = useAuth();
   const nameParts = (user?.name || '').trim().split(' ');

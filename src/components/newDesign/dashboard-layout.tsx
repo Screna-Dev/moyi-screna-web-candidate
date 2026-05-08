@@ -13,9 +13,6 @@ import {
   FileText,
   History,
   User,
-  Sparkles,
-  ShieldCheck,
-  User,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -32,26 +29,6 @@ function FreshFromCommunity() {
   return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
 }
 
-function LearningActivityChart() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
-}
-function FreshFromCommunity() {
-  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
-}
-function JobApplyTab() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
-}
-
-function LearningActivityChart() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
-}
-function FreshFromCommunity() {
-  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
-}
-function JobApplyTab() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Job Apply — coming soon</div>;
-}
-
 type UserData = {
   firstName?: string;
   lastName?: string;
@@ -62,67 +39,20 @@ type UserData = {
 
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
-  { icon: History, label: 'Training History', path: '/history' },
-  { icon: FileText, label: 'My Contributions', path: '/contributions' },
+  { icon: Briefcase, label: 'Jobs', path: '/applications' },
+  { icon: History, label: 'Interview History', path: '/history' },
+  { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
 ];
 
 const sidebarAccountLinks = [
   { icon: User, label: 'Profile', path: '/profile' },
-  // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
+  { icon: Gift, label: 'Refer & Earn', path: '/refer' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
-];
-
-const adminSidebarLinks = [
-  { icon: ShieldCheck, label: 'Dashboard', path: '/admin' },
-  { icon: Gift, label: 'Redeem Codes', path: '/redeem-code' },
-  { icon: Settings, label: 'Audit Log', path: '/audit-logs' },
 ];
 
 function SidebarContent({ currentPath }: { currentPath: string }) {
   const { planData } = useUserPlan();
-  const { user, logout } = useAuth();
   const creditBalance = planData.permanentCreditBalance;
-  const isAdmin = user?.role === 'ADMIN';
-
-  if (isAdmin) {
-    return (
-      <div className="flex flex-col h-full bg-sidebar">
-        <nav className="px-3 pt-4 pb-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Admin</p>
-          <div className="space-y-0.5">
-            {adminSidebarLinks.map((item) => {
-              const isActive = currentPath === item.path;
-              return (
-                <Link
-                  key={item.label}
-                  to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                  }`}
-                >
-                  <item.icon className="w-4 h-4 shrink-0" />
-                  <span className="text-sm">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-        <div className="px-3 pb-5 mt-auto shrink-0">
-          <button
-            onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
-          >
-            <LogOut className="w-4 h-4 shrink-0" />
-            <span className="text-sm">Logout</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full bg-sidebar">
       {/* Nav links — Career group */}
@@ -145,9 +75,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
               >
                 <item.icon className="w-4 h-4 shrink-0" />
                 <span className="text-sm">{item.label}</span>
-                {item.premiumOnly && (
-                  <Sparkles className="w-3 h-3 text-amber-500 ml-auto shrink-0" aria-label="Premium feature" />
-                )}
               </Link>
             );
           })}
@@ -220,7 +147,7 @@ function GlobalTopHeader({
   currentPath: string;
 }) {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const { planData } = useUserPlan();
   const creditBalance = planData.permanentCreditBalance;
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -280,16 +207,6 @@ function GlobalTopHeader({
     </Link>
   );
 
-  if (user?.role === 'ADMIN') {
-    return (
-      <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
-        <Link to="/admin" className="flex items-center gap-2">
-          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
-        </Link>
-      </header>
-    );
-  }
-
   return (
     <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
       {/* Left: Logo + Home */}
@@ -308,19 +225,10 @@ function GlobalTopHeader({
         </Link>
       </div>
 
-      {/* Center: Global Nav Links — Coach / Practice ▼ / Community ▼ / Pricing / FAQ */}
+      {/* Center: Global Nav Links */}
       <nav className="hidden md:flex items-center gap-5 mx-auto">
 
-        {/* Coach (plain link) */}
-        <Link
-          to="/marketplace"
-          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-          style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
-        >
-          Coach
-        </Link>
-
-        {/* Practice dropdown */}
+        {/* Interview dropdown */}
         <div className="relative group">
           <button
             className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
@@ -349,6 +257,14 @@ function GlobalTopHeader({
         </div>
 
         <Link
+          to="/help"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/faq') ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          FAQ
+        </Link>
+
+        <Link
           to="/pricing"
           className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
           style={{ fontWeight: 450, color: isLinkActive('/pricing') ? '#2E5BFF' : '#2A2A2A' }}
@@ -356,14 +272,19 @@ function GlobalTopHeader({
           Pricing
         </Link>
 
-        {/* FAQ — points to existing Help Center */}
-        <Link
-          to="/help"
-          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-          style={{ fontWeight: 450, color: currentPath === '/help' ? '#2E5BFF' : '#2A2A2A' }}
-        >
-          FAQ
-        </Link>
+        {/* Service dropdown */}
+        <div className="relative group">
+          <button
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
+          >
+            Service
+            <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+          </button>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/marketplace', 'Mentorship Marketplace', 'Connect with mentors for mock interviews, resume review, and career support.')}
+          </div>
+        </div>
       </nav>
 
       {/* Right: Avatar */}
