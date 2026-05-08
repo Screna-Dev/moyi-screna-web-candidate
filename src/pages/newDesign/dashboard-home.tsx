@@ -5,6 +5,8 @@ import {
   TrendingUp, Sparkles, Target, Users,
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { useAuth } from '@/contexts/AuthContext';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 
 // ─── Brand blue palette — uses design-system tokens only ──────────────────────
 const BLUES = {
@@ -784,5 +786,24 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
       </div>
 
     </div>
+  );
+}
+
+// ── Page wrapper: routed at /dashboard ───────────────────────────────────────
+export function DashboardHomePage() {
+  const { user } = useAuth();
+  const nameParts = (user?.name || '').trim().split(' ');
+  const userData: UserData | null = user
+    ? {
+        firstName: nameParts[0] || undefined,
+        lastName: nameParts.slice(1).join(' ') || undefined,
+        role: user.role,
+      }
+    : null;
+
+  return (
+    <DashboardLayout>
+      <DashboardHome userData={userData} />
+    </DashboardLayout>
   );
 }
