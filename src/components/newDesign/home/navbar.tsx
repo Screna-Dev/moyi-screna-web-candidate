@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -36,9 +37,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
 
   const nameParts = (user?.name || '').trim().split(' ');
   const firstName = nameParts[0] || '';
@@ -66,9 +67,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setAvatarOpen(false);
-    await logout();
+    logout();
   };
 
   return (
@@ -192,7 +193,64 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               )}
             </div>
           ))}
+            </div>
+          </div>
 
+          {/* Interview */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
+              Interview
+              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+              {/* <Link
+                to="/mock-interview"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                  <Bot className="w-[18px] h-[18px]" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Trending Roles</div>
+                  <div className="text-xs text-slate-500">Practice for popular roles</div>
+                </div>
+              </Link> */}
+              <Link
+                to="/personalized-practice"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
+                  <Target className="w-[18px] h-[18px]" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Personalized Practice</div>
+                  <div className="text-xs text-slate-500">AI-tailored mock sessions</div>
+                </div>
+              </Link>
+            </div>
+          </div>
+
+          {/* Community */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-[14px] font-medium text-slate-500 hover:text-blue-600 transition-colors duration-200">
+              Community
+              <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-64 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
+              <Link
+                to="/interview-insights"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group/item"
+              >
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Interview Insights</div>
+                  <div className="text-xs text-slate-500">Real interview experiences</div>
+                </div>
+              </Link>
+            </div>
+          </div>
           {/* Pricing */}
           <Link
             to="/pricing"
@@ -287,7 +345,7 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               >
                 Start free
               </Link>
-            </div>
+            </>
           )}
 
         {/* Mobile toggle */}
@@ -309,6 +367,7 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             transition={{ duration: 0.18 }}
             className="md:hidden bg-white/95 backdrop-blur-xl border-t border-[#E8E8EA] px-4 pb-4"
           >
+<<<<<<< HEAD
             <Link
               to="/marketplace"
               onClick={() => setMobileMenuOpen(false)}
@@ -316,6 +375,9 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             >
               Coach
             </Link>
+=======
+<<<<<<< HEAD
+>>>>>>> 7284b5c (Change google call back)
             {NAV_ITEMS.map(({ label, items }) => (
               <div key={label}>
                 <p
@@ -334,6 +396,17 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                   </Link>
                 ))}
               </div>
+=======
+            {mobileLinks.map((link) => (
+              <Link
+                key={link.name}
+                to={link.path}
+                className="block px-4 py-3 text-[15px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link.name}
+              </Link>
+>>>>>>> 6633cbd (change)
             ))}
             <div className="border-t border-[#E8E8EA] mt-3 pt-1">
               <Link
@@ -352,10 +425,17 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </Link>
             </div>
             {!isLoggedIn && (
+<<<<<<< HEAD
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
                   <button className="w-full h-[42px] rounded-xl text-[14px] font-[500] text-[#2A2A2A] hover:bg-[#F7F7F7] transition-colors">
                     Sign in
+=======
+              <div className="mt-2 pt-2 border-t border-slate-100/60 grid grid-cols-2 gap-2 px-2 pb-1">
+                <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>
+                  <button className="w-full h-[42px] rounded-xl text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    Log in
+>>>>>>> 6633cbd (change)
                   </button>
                 </Link>
                 <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
