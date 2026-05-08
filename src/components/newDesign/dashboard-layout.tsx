@@ -16,11 +16,6 @@ import {
   Sparkles,
   ShieldCheck,
   User,
-  BadgeCheck,
-  Download,
-  Building2,
-  Lock,
-  Star,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
