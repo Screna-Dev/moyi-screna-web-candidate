@@ -10,16 +10,16 @@ interface NavbarProps {
 }
 
 const NAV_ITEMS = [
-  // {
-  //   label: 'Service',
-  //   items: [
-  //     {
-  //       title: 'Mentorship Marketplace',
-  //       desc: 'Connect with mentors for mock interviews, resume review, and career support.',
-  //       path: '/marketplace',
-  //     },
-  //   ],
-  // },
+  {
+    label: 'Service',
+    items: [
+      {
+        title: 'Mentorship Marketplace',
+        desc: 'Connect with mentors for mock interviews, resume review, and career support.',
+        path: '/marketplace',
+      },
+    ],
+  },
   {
     label: 'Practice',
     items: [
