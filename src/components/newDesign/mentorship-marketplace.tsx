@@ -20,7 +20,7 @@ interface ApiMentor {
   avatarUrl: string;
   expertiseTags: string[];
   priceFrom: number;
-  averageRating: number;
+  averageRating: number | null;
   reviewCount: number;
   hasSlotsThisWeek: boolean;
   hasSlotsNextWeek: boolean;
@@ -166,16 +166,17 @@ const FAQ_ITEMS = [
 
 // ─── StarRating ─────────────────────────────────────────────────────────────────
 
-function StarRating({ rating }: { rating: number }) {
+function StarRating({ rating }: { rating: number | null }) {
+  const r = rating ?? 0;
   return (
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
         <svg
           key={i}
           className={`w-3 h-3 ${
-            i <= Math.floor(rating)
+            i <= Math.floor(r)
               ? 'text-amber-400'
-              : i - 0.5 <= rating
+              : i - 0.5 <= r
               ? 'text-amber-300'
               : 'text-slate-200'
           }`}
@@ -222,7 +223,7 @@ function FilterDropdown({
         onClick={onToggle}
         className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] transition-all duration-150 whitespace-nowrap ${
           isActive
-            ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/6 text-[hsl(221,91%,55%)] shadow-[0_0_0_1px_hsl(221,91%,60%)]'
+            ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/[6%] text-[hsl(221,91%,55%)] shadow-[0_0_0_1px_hsl(221,91%,60%)]'
             : isOpen
             ? 'border-slate-300 bg-white text-slate-700 shadow-sm'
             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800'
@@ -249,7 +250,7 @@ function FilterDropdown({
               onClick={() => onSelect(opt)}
               className={`w-full flex items-center justify-between px-3.5 py-2 text-[13px] transition-colors ${
                 selected === opt
-                  ? 'bg-[hsl(221,91%,60%)]/6 text-[hsl(221,91%,55%)]'
+                  ? 'bg-[hsl(221,91%,60%)]/[6%] text-[hsl(221,91%,55%)]'
                   : 'text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -309,8 +310,8 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
         <div className="flex items-center justify-between mt-3.5">
           <div className="flex items-center gap-1.5">
             <StarRating rating={mentor.averageRating} />
-            <span className="font-semibold text-slate-700 text-[15px]">{mentor.averageRating.toFixed(1)}</span>
-            <span className="text-[11.5px] text-slate-400">({mentor.reviewCount})</span>
+            <span className="font-semibold text-slate-700 text-[15px]">{(mentor.averageRating ?? 0).toFixed(1)}</span>
+            <span className="text-[11.5px] text-slate-400 text-[12px]">({mentor.reviewCount})</span>
           </div>
           <div className="flex items-center gap-1 text-[11.5px] text-slate-500">
             <Calendar className="w-3 h-3 text-slate-400" />
@@ -343,7 +344,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
             className={`w-full py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 ${
               hovered
                 ? 'bg-[hsl(221,91%,60%)] text-white shadow-[0_2px_12px_hsl(221,91%,60%)/30]'
-                : 'bg-[hsl(221,91%,60%)]/8 text-[hsl(221,91%,55%)] border border-[hsl(221,91%,60%)]/20'
+                : 'bg-[hsl(221,91%,60%)]/[8%] text-[hsl(221,91%,55%)] border border-[hsl(221,91%,60%)]/20'
             }`}
           >
             Book a Session
@@ -413,7 +414,7 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="max-w-7xl mx-auto px-6 pt-10 pb-24 space-y-16">
+      <div className="w-full space-y-16 pb-24 pt-28 bg-white -mx-6 px-6 -mt-8 bg-[#f9fafb]">
 
         {/* ── Demo toggle ───────────────────────────────────────────────────── */}
         <div className="flex justify-end -mb-6">
@@ -442,12 +443,15 @@ export function MentorshipMarketplacePage() {
         <div className="flex items-start justify-between gap-6">
           <div>
             <div className="flex items-center gap-2.5 mb-2.5">
-              <h1 className="text-[#0F172A] font-bold text-[40px] font-[family-name:var(--font-serif)]">Mentorship Market Space</h1>
+              <h1
+                className="font-semibold text-slate-900 text-[40px]"
+                style={{ letterSpacing: '-0.025em' }}
+              >Mentorship Market Space</h1>
               {isMember && (
                 null
               )}
             </div>
-            <p className="text-slate-500 max-w-2xl">
+            <p className="text-[13.5px] text-slate-500 max-w-[520px] leading-relaxed">
               Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective.
             </p>
           </div>
@@ -469,7 +473,7 @@ export function MentorshipMarketplacePage() {
 
         {/* ── Non-member soft banner ─────────────────────────────────────────── */}
         {!isMember && (
-          <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-[hsl(221,91%,60%)]/15 bg-[hsl(221,91%,60%)]/4">
+          <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-[hsl(221,91%,60%)]/15 bg-[hsl(221,91%,60%)]/[4%]">
             <div className="flex items-center gap-2.5">
               <div className="w-6 h-6 rounded-full bg-[hsl(221,91%,60%)]/15 flex items-center justify-center shrink-0">
                 <Users className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />
@@ -560,7 +564,7 @@ export function MentorshipMarketplacePage() {
                         key={opt}
                         onClick={() => { setSortBy(opt); setOpenSort(false); }}
                         className={`w-full flex items-center justify-between px-3.5 py-2 text-[13px] transition-colors ${
-                          sortBy === opt ? 'bg-[hsl(221,91%,60%)]/6 text-[hsl(221,91%,55%)]' : 'text-slate-700 hover:bg-slate-50'
+                          sortBy === opt ? 'bg-[hsl(221,91%,60%)]/[6%] text-[hsl(221,91%,55%)]' : 'text-slate-700 hover:bg-slate-50'
                         }`}
                       >
                         {opt}
