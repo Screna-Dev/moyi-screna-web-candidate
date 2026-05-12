@@ -8,11 +8,11 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 
-// ─── Brand blue palette — uses design-system tokens only ──────────────────────
+// ─── Brand blue scale — strict palette (blue-50 → blue-950) ──────────────────
 const BLUES = {
-  royal: 'var(--primary)',   // --primary:  hsl(221 91% 60%) — brand blue
-  sky:   'var(--chart-4)',   // --chart-4:  hsl(200 70% 55%) — sky / teal-blue
-  deep:  'var(--chart-3)',   // --chart-3:  hsl(220 25% 35%) — deep navy blue
+  royal: '#3C77F6',   // Tailwind blue-500 — primary
+  sky:   '#93B0FB',   // Tailwind blue-300 — light periwinkle
+  deep:  '#1D4ED8',   // Tailwind blue-700 — deep blue
 } as const;
 
 const CHART_COLORS = {
@@ -309,16 +309,19 @@ function StatsRow({ plan }: { plan: Plan }) {
   const isPremium = plan === 'premium';
   return (
     <div className={`grid gap-3 ${isPremium ? 'grid-cols-5' : 'grid-cols-2'}`}>
-      <div className="bg-secondary rounded-md p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Total Learning Time</span>
-          <Clock className="w-3.5 h-3.5" style={{ color: BLUES.sky }} />
+      <div className="bg-secondary rounded-md overflow-hidden flex">
+        <div className="w-0.5 bg-blue-300 shrink-0" />
+        <div className="p-4 flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Total Learning Time</span>
+            <Clock className="w-3.5 h-3.5 text-blue-300" />
+          </div>
+          <div className="text-2xl font-semibold tracking-tight mb-1 text-blue-300">14h 20m</div>
+          <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
         </div>
-        <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.sky }}>14h 20m</div>
-        <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
       </div>
 
-      <div className="bg-secondary rounded-md p-4">
+      <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.deep }}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground">Sessions Completed</span>
           <CheckCircle2 className="w-3.5 h-3.5" style={{ color: BLUES.deep }} />
@@ -329,7 +332,7 @@ function StatsRow({ plan }: { plan: Plan }) {
 
       {isPremium && (
         <>
-          <div className="bg-secondary rounded-md p-4">
+          <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.royal }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Applications This Period</span>
               <Send className="w-3.5 h-3.5" style={{ color: BLUES.royal }} />
@@ -342,7 +345,7 @@ function StatsRow({ plan }: { plan: Plan }) {
             </div>
           </div>
 
-          <div className="bg-secondary rounded-md p-4">
+          <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.sky }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Avg. Daily Applications</span>
               <TrendingUp className="w-3.5 h-3.5" style={{ color: BLUES.sky }} />
@@ -351,7 +354,7 @@ function StatsRow({ plan }: { plan: Plan }) {
             <div className="text-xs text-muted-foreground">Rolling 30-day avg</div>
           </div>
 
-          <div className="bg-secondary rounded-md p-4">
+          <div className="bg-secondary rounded-md p-4 border-l-2 border-l-amber-400/60">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Pending Review</span>
               <Inbox className="w-3.5 h-3.5 text-amber-500" />
@@ -514,7 +517,7 @@ function MentorshipCard() {
                   <div className="text-xs text-muted-foreground">Senior PM · TechCorp</div>
                 </div>
               </div>
-              <div className="bg-secondary rounded-md p-2.5 mb-3">
+              <div className="bg-blue-50 border-l-2 border-blue-300 rounded-md p-2.5 mb-3">
                 <div className="text-xs text-muted-foreground mb-0.5">Session goal</div>
                 <div className="text-sm font-medium text-foreground mb-1.5">Mock Interview: Product Strategy</div>
                 <div className="text-xs text-muted-foreground mb-0.5">Mentor note</div>
@@ -530,8 +533,8 @@ function MentorshipCard() {
             </div>
           </div>
         ) : (
-          <div className="border border-dashed border-border rounded-lg p-5 flex flex-col items-center text-center gap-3">
-            <Calendar className="w-5 h-5 text-muted-foreground" />
+          <div className="border border-dashed border-blue-300 bg-blue-50 rounded-lg p-5 flex flex-col items-center text-center gap-3">
+            <Calendar className="w-5 h-5 text-blue-400" />
             <p className="text-xs text-muted-foreground">No upcoming sessions. Ready for your next 1:1?</p>
             <button className="border border-primary text-primary rounded-md px-3 py-1.5 text-xs font-medium hover:bg-primary/5 transition-colors">
               Browse mentors →
@@ -607,11 +610,15 @@ function InterviewInsightsCard() {
 
       {hasSessions ? (
         <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1">
-          {/* Score summary */}
+          {/* Score summary — three distinct blue steps */}
           <div className="grid grid-cols-3 gap-2">
-            {[{ label: 'Avg', value: avg }, { label: 'Best', value: best }, { label: 'Low', value: low }].map(s => (
-              <div key={s.label} className="bg-secondary rounded-md p-3 text-center">
-                <div className="text-lg font-semibold tracking-tight">{s.value}</div>
+            {([
+              { label: 'Avg',  value: avg,  bg: 'bg-blue-50 border border-blue-200',    val: 'text-blue-600' },
+              { label: 'Best', value: best, bg: 'bg-blue-100 border border-blue-300',   val: 'text-blue-500' },
+              { label: 'Low',  value: low,  bg: 'bg-blue-900/[0.06] border border-blue-800/15', val: 'text-blue-700' },
+            ] as const).map(s => (
+              <div key={s.label} className={`rounded-md p-3 text-center ${s.bg}`}>
+                <div className={`text-lg font-semibold tracking-tight ${s.val}`}>{s.value}</div>
                 <div className="text-xs text-muted-foreground">{s.label}</div>
               </div>
             ))}
@@ -621,7 +628,7 @@ function InterviewInsightsCard() {
           <CustomRadar data={RADAR_DIMS} color={CHART_COLORS.sessions} />
 
           {/* Focus callout */}
-          <div className="bg-secondary rounded-md p-3 flex items-start justify-between gap-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="text-xs text-muted-foreground mb-1">Recommended focus area</div>
               <div className="flex items-center gap-2 mb-0.5 flex-wrap">
