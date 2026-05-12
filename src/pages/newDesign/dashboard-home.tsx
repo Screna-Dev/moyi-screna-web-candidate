@@ -10,9 +10,9 @@ import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 
 // ─── Brand blue palette — uses design-system tokens only ──────────────────────
 const BLUES = {
-  royal: 'hsl(var(--primary))',   // --primary:  hsl(221 91% 60%) — brand blue
-  sky:   'hsl(var(--chart-4))',   // --chart-4:  hsl(200 70% 55%) — sky / teal-blue
-  deep:  'hsl(var(--chart-3))',   // --chart-3:  hsl(220 25% 35%) — deep navy blue
+  royal: 'var(--primary)',   // --primary:  hsl(221 91% 60%) — brand blue
+  sky:   'var(--chart-4)',   // --chart-4:  hsl(200 70% 55%) — sky / teal-blue
+  deep:  'var(--chart-3)',   // --chart-3:  hsl(220 25% 35%) — deep navy blue
 } as const;
 
 const CHART_COLORS = {
