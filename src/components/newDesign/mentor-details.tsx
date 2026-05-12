@@ -668,7 +668,7 @@ export function MentorDetailsPage() {
 
             <div className="flex flex-wrap gap-2 mt-4">
               {(mentor?.expertiseTags ?? []).map(tag => (
-                <span key={tag} className="px-2.5 py-1 rounded-md bg-primary/8 border border-primary/20 text-primary text-xs font-medium">{tag}</span>
+                <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
               ))}
             </div>
 
@@ -693,7 +693,7 @@ export function MentorDetailsPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Verification</p>
-                <div className="flex items-center gap-2 text-sm bg-accent/10 text-accent-foreground px-3 py-2 rounded-lg w-fit border border-accent/20">
+                <div className="flex items-center gap-2 text-sm bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent-foreground px-3 py-2 rounded-lg w-fit border border-[color-mix(in_srgb,var(--accent)_20%,transparent)]">
                   <ShieldCheck className="w-4 h-4 text-accent" />
                   <span className="text-xs font-medium">Identity & Experience Verified</span>
                 </div>
@@ -763,7 +763,7 @@ export function MentorDetailsPage() {
                     <div className="flex justify-center my-2"><StarRating rating={ratingBreakdown.overall} /></div>
                     <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
                   </div>
-                  <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
+                  {/* <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
                     {[
                       { label: 'Communication', val: ratingBreakdown.Communication },
                       { label: 'Expertise',      val: ratingBreakdown.Expertise },
@@ -776,7 +776,7 @@ export function MentorDetailsPage() {
                         <span className="w-8 text-right text-xs font-medium text-foreground">{item.val.toFixed(1)}</span>
                       </div>
                     ))}
-                  </div>
+                  </div> */}
                 </div>
               </div>
 
@@ -795,13 +795,13 @@ export function MentorDetailsPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-2 mb-2">
+                    {/* <div className="flex gap-2 mb-2">
                       {(review.tags ?? []).map(tag => (
                         <span key={tag} className="px-2 py-0.5 bg-secondary text-muted-foreground text-xs font-medium rounded-md border border-border">
                           {tag}
                         </span>
                       ))}
-                    </div>
+                      </div> */}
                     <p className="text-sm text-muted-foreground leading-relaxed">"{review.comment}"</p>
                   </div>
                 ))}
@@ -861,7 +861,7 @@ export function MentorDetailsPage() {
               </div>
 
               {/* Screna guarantee */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/15 text-sm">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-[color-mix(in_srgb,var(--primary)_5%,transparent)] border border-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-sm">
                 <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-medium text-foreground mb-0.5">Screna Guarantee</p>
@@ -882,8 +882,8 @@ export function MentorDetailsPage() {
                   <p className="text-xs text-muted-foreground">Avg. rating</p>
                 </div>
                 <div>
-                  <p className="text-lg font-medium text-foreground">{mentor?.yearsOfExperience ? `${mentor.yearsOfExperience}yr` : '—'}</p>
-                  <p className="text-xs text-muted-foreground">Experience</p>
+                  <p className="text-lg font-medium text-foreground">{'—'}</p>
+                  <p className="text-xs text-muted-foreground">Repeat booking rate</p>
                 </div>
                 <div>
                   <p className="text-lg font-medium text-foreground">24h</p>

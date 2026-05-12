@@ -11,7 +11,7 @@ interface NavbarProps {
 
 const NAV_ITEMS = [
   {
-    label: 'Service',
+    label: 'Coach',
     items: [
       {
         title: 'Mentorship Marketplace',
