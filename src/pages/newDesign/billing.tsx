@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { SettingsPage } from './settings';
 import { useToast } from '../../components/newDesign/ui/use-toast';
-import { MembershipOnboardingModal } from '../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import {
@@ -29,21 +28,23 @@ import {
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type CancelState = 'active' | 'refund_window' | 'post_window' | 'canceled';
 
-// ─── Pricing tables (Starter + Premium across offered cycles) ─────────────────
-const PRICING: Record<Tier, Partial<Record<BillingCycle, { perMonth: string; periodTotal: string; cycleDesc: string; save?: string }>>> = {
+// ─── Pricing tables (Starter + Premium across 3 cycles) ────────────────────────
+const PRICING: Record<Tier, Record<BillingCycle, { perMonth: string; periodTotal: string; cycleDesc: string; save?: string }>> = {
   starter: {
-    monthly:   { perMonth: '$29.9/mo', periodTotal: '$29.9', cycleDesc: 'billed monthly' },
-    quarterly: { perMonth: '$29.9/mo', periodTotal: '$89.7', cycleDesc: '$89.7 every 3 months' },
+    monthly:   { perMonth: '$29.9/mo', periodTotal: '$29.9',  cycleDesc: 'billed monthly' },
+    quarterly: { perMonth: '$29.9/mo', periodTotal: '$89.7',  cycleDesc: '$89.7 every 3 months' },
+    annual:    { perMonth: '$29.9/mo', periodTotal: '$358.8', cycleDesc: '$358.8/year' },
   },
   premium: {
-    monthly:   { perMonth: '$219/mo', periodTotal: '$219', cycleDesc: 'billed monthly' },
-    quarterly: { perMonth: '$199/mo', periodTotal: '$597', cycleDesc: '$597 every 3 months', save: 'Save 9%' },
+    monthly:   { perMonth: '$199/mo', periodTotal: '$199',   cycleDesc: 'billed monthly' },
+    quarterly: { perMonth: '$159/mo', periodTotal: '$477',   cycleDesc: '$477 every 3 months', save: 'Save 19%' },
+    annual:    { perMonth: '$129/mo', periodTotal: '$1,548', cycleDesc: '$1,548/year',         save: 'Save 38%' },
   },
 };
 
 const REFUND_WINDOW_DAYS = 3;
 
-const CYCLES: BillingCycle[] = ['monthly', 'quarterly'];
+const CYCLES: BillingCycle[] = ['monthly', 'quarterly', 'annual'];
 const TIERS: Tier[] = ['starter', 'premium'];
 
 // Benefit lists per tier (rendered in banner)
@@ -727,11 +728,6 @@ export function BillingTab() {
   // Buy-credits loading
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // onboardingTier → set after a successful tier change so we can show the
-  // Starter Discord welcome modal inline. Premium upgrades skip this and
-  // navigate to /premium-onboarding (resume → preferences → consent → Discord).
-  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
-
   // Keep selected tier/cycle in sync when subscription loads
   useEffect(() => {
     if (subscription) {
@@ -781,40 +777,6 @@ export function BillingTab() {
   }, [invoicePage]);
 
   // ── Handlers ──
-  // Run the actual tier-or-cycle change. Called both from the direct Confirm
-  // button and from the consent modal's Confirm (for Premium activations).
-  const executePlanChange = async (
-    tierChanged: boolean,
-    cycleChanged: boolean,
-  ) => {
-    if (!subscription) return;
-    const ok = tierChanged
-      ? await changeTier(selectedTier)
-      : await changeBillingCycle(selectedCycle);
-    if (!ok) return;
-
-    const isUpgrade = tierChanged
-      ? selectedTier === 'premium'
-      : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
-    toast({
-      title: isUpgrade ? 'Plan updated' : 'Change scheduled',
-      description: isUpgrade
-        ? 'Your new plan is active. New benefits unlocked.'
-        : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
-    });
-    setSwitchPlanOpen(false);
-    // Re-fire onboarding on any tier transition. Cycle-only changes (e.g.
-    // monthly → quarterly) don't re-onboard. Premium goes through the
-    // post-payment onboarding page; Starter gets the inline Discord modal.
-    if (tierChanged) {
-      if (selectedTier === 'premium') {
-        navigate('/premium-onboarding');
-      } else {
-        setOnboardingTier(selectedTier);
-      }
-    }
-  };
-
   const handleConfirmSwitch = async () => {
     if (!subscription) return;
     const { tierChanged, cycleChanged } = comparePlanChange(
@@ -835,7 +797,21 @@ export function BillingTab() {
       });
       return;
     }
-    await executePlanChange(tierChanged, cycleChanged);
+    const ok = tierChanged
+      ? await changeTier(selectedTier)
+      : await changeBillingCycle(selectedCycle);
+    if (ok) {
+      const isUpgrade = tierChanged
+        ? selectedTier === 'premium'
+        : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
+      toast({
+        title: isUpgrade ? 'Plan updated' : 'Change scheduled',
+        description: isUpgrade
+          ? 'Your new plan is active. New benefits unlocked.'
+          : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
+      });
+      setSwitchPlanOpen(false);
+    }
   };
 
   const handleCancelPending = async () => {
@@ -989,7 +965,7 @@ export function BillingTab() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-foreground">
-                        {tierLabel(subscription.plan)} plan · {planPricing?.perMonth ?? '—'} · {cycleLabel(subscription.billingCycle)}
+                        {tierLabel(subscription.plan)} plan · {PRICING[subscription.plan][subscription.billingCycle].perMonth} · {cycleLabel(subscription.billingCycle)}
                       </span>
                       <StatusBadge status={STATUS_LABEL[subscription.status] ?? 'Active'} />
                     </div>
@@ -1079,7 +1055,7 @@ export function BillingTab() {
                         <div className="px-4 py-3">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Billing cycle</p>
                           {CYCLES.map(c => {
-                            const p = PRICING[selectedTier][c]!;
+                            const p = PRICING[selectedTier][c];
                             const isCurrent = c === subscription.billingCycle && selectedTier === subscription.plan;
                             const selected = selectedCycle === c;
                             return (
@@ -1573,12 +1549,6 @@ export function BillingTab() {
             )}
           </div>
         </div>
-
-        <MembershipOnboardingModal
-          open={onboardingTier !== null}
-          tier={onboardingTier ?? 'starter'}
-          onClose={() => setOnboardingTier(null)}
-        />
       </div>
   );
 }
