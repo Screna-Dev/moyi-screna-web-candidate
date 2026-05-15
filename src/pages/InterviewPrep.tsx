@@ -350,7 +350,7 @@ const InterviewPrep = () => {
       
       // Close the preview sheet and navigate to settings
       handleCloseSessionPreview();
-      navigate("/settings?tab=plan-usage");
+      navigate("/settings?tab=billing");
       return;
     }
 

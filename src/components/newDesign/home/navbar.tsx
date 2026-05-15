@@ -10,16 +10,16 @@ interface NavbarProps {
 }
 
 const NAV_ITEMS = [
-  // {
-  //   label: 'Service',
-  //   items: [
-  //     {
-  //       title: 'Mentorship Marketplace',
-  //       desc: 'Connect with mentors for mock interviews, resume review, and career support.',
-  //       path: '/marketplace',
-  //     },
-  //   ],
-  // },
+  {
+    label: 'Coach',
+    items: [
+      {
+        title: 'Mentorship Marketplace',
+        desc: 'Connect with mentors for mock interviews, resume review, and career support.',
+        path: '/marketplace',
+      },
+    ],
+  },
   {
     label: 'Practice',
     items: [
@@ -146,6 +146,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               </div>
             </div>
           ))}
+
+          {/* Pricing */}
           <Link
             to="/pricing"
             className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
