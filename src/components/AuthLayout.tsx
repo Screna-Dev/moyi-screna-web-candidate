@@ -25,7 +25,7 @@ function TrialBanner() {
           If you don't upgrade to Elite, all video session recordings will be lost.
         </span>
         <button
-          onClick={() => navigate('/settings?tab=plan-usage')}
+          onClick={() => navigate('/settings?tab=billing')}
           className="ml-2 underline font-semibold hover:text-white/90 whitespace-nowrap"
         >
           Upgrade Now
