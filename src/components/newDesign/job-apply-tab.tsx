@@ -3,8 +3,10 @@ import {
   Search, ChevronDown, X, CheckCircle2, ExternalLink,
   Pencil, Plus, Shield, AlertCircle, ChevronLeft,
   ChevronRight, Eye, EyeOff, Zap, Building2, DollarSign,
-  Globe, Briefcase, Lock, MapPin, Star,
+  Globe, Briefcase, Lock, MapPin, Star, Check, Loader2,
 } from 'lucide-react';
+import { Link } from 'react-router';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import {
@@ -1313,9 +1315,79 @@ function EmptyState({
   );
 }
 
+// ─── Premium Gate ─────────────────────────────────────────────────────────────
+
+function PremiumGate() {
+  return (
+    <div className="min-h-[600px] flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-[460px] bg-white rounded-3xl p-10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-slate-100/50">
+        <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-6">
+          <Lock className="w-6 h-6 text-blue-500" strokeWidth={2} />
+        </div>
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100 mb-5">
+          <Shield className="w-3 h-3 text-slate-400" />
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            Premium members only
+          </span>
+        </div>
+        <h2 className="text-[26px] font-bold text-slate-900 mb-3 tracking-tight">
+          Let us apply for you
+        </h2>
+        <p className="text-[15px] text-slate-500 leading-relaxed mb-8">
+          Your job applications, on autopilot. Premium members get a dedicated team
+          that finds roles and submits applications on your behalf.
+        </p>
+        <ul className="space-y-4 mb-10">
+          {[
+            'Up to 500 applications submitted per month',
+            'Recruiter outreach & referral requests',
+            'Daily progress updates and tracking dashboard',
+            'Dedicated 1:1 job search advisor',
+          ].map((text, i) => (
+            <li key={i} className="flex items-start gap-3.5">
+              <div className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
+                <Check className="w-3 h-3 text-blue-500" strokeWidth={3} />
+              </div>
+              <span className="text-[14.5px] text-slate-600 leading-snug">{text}</span>
+            </li>
+          ))}
+        </ul>
+        <Link
+          to="/pricing"
+          className="block w-full py-3 rounded-xl bg-slate-900 text-white text-[14px] font-semibold text-center hover:bg-slate-800 transition-colors"
+        >
+          Upgrade to Premium
+        </Link>
+        <p className="text-[12px] text-slate-400 text-center mt-3">
+          Already a Premium member? Try refreshing the page.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function JobApplyTab() {
+  // Job-apply (auto-apply + dedicated advisor) is Premium only per spec.
+  // Free + Starter users see the upgrade gate instead of dashboard contents.
+  const { isElite, isLoading: isPlanLoading } = useUserPlan();
+
+  if (isPlanLoading) {
+    return (
+      <div className="min-h-[500px] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+  if (!isElite) {
+    return <PremiumGate />;
+  }
+
+  return <JobApplyDashboard />;
+}
+
+function JobApplyDashboard() {
   const [preferences, setPreferences] = useState<UserPreferences>(INITIAL_PREFERENCES);
   const [prefModalOpen, setPrefModalOpen] = useState(false);
 

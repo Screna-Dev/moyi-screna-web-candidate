@@ -15,6 +15,7 @@ import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
+import { useSubscription, type Tier } from '@/hooks/useSubscription';
 
 // ─── Types & data ────────────────────────────────────────────
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
@@ -24,9 +25,9 @@ const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check,
 
 // Membership tier prices (from Claude design / Screna Landing Page.html)
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29', note: 'Billed $29 / month · cancel anytime' },
-  quarterly: { price: '$29', note: 'Billed $87 / quarter · cancel anytime' },
-  annual:    { price: '$29', note: 'Billed $348 / year · cancel anytime' },
+  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
+  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
+  annual:    { price: '$29.9', note: 'Billed $358.8 / year · cancel anytime' },
 };
 
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
@@ -329,6 +330,7 @@ function creditPrice(q: number): number {
 export function PricingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { subscription, subscribe, changeTier, isActing: isSubscribing } = useSubscription();
 
   const [cycle, setCycle] = useState<BillingCycle>('quarterly');
   const starter = STARTER_PRICES[cycle];
@@ -341,7 +343,52 @@ export function PricingPage() {
   const fillPct = ((credits - 150) / (1000 - 150)) * 100;
 
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
+  const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
   const [openFaq, setOpenFaq] = useState<number>(0);
+
+  // Subscription lifecycle:
+  //   FREE (no row)         → POST /subscriptions          (Stripe Checkout)
+  //   CANCELED (period end) → POST /subscriptions/tier     (creates new row)
+  //   ACTIVE                → manage in /billing
+  const isActiveMember = subscription !== null && subscription.status !== 'canceled';
+
+  const handleSubscribe = async (plan: Tier) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    if (isActiveMember) {
+      navigate('/billing');
+      return;
+    }
+    setLoadingTier(plan);
+    try {
+      if (subscription && subscription.status === 'canceled') {
+        // Re-subscribe path
+        const ok = await changeTier(plan);
+        if (ok) navigate('/billing');
+      } else {
+        // First-time subscription
+        const url = await subscribe(plan, cycle);
+        if (url) {
+          window.location.href = url;
+        } else {
+          navigate('/billing');
+        }
+      }
+    } finally {
+      setLoadingTier(null);
+    }
+  };
+
+  const starterLabel = isActiveMember
+    ? (subscription!.plan === 'starter' ? 'Current plan' : 'Manage plan')
+    : 'Start Starter';
+  const premiumLabel = isActiveMember
+    ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
+    : 'Start Premium';
+  const starterDisabled = (isActiveMember && subscription!.plan === 'starter') || isSubscribing;
+  const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
 
   // ─── Handlers (credit packs only — subscriptions not wired) ───
   const buyPack = async (
@@ -546,17 +593,16 @@ export function PricingPage() {
 
                   <div className="relative mb-6">
                     <button
-                      disabled
-                      className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] opacity-60 cursor-not-allowed"
+                      onClick={() => handleSubscribe('starter')}
+                      disabled={starterDisabled}
+                      className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Start Starter
+                      {loadingTier === 'starter' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        starterLabel
+                      )}
                     </button>
-                    <span
-                      style={{ fontFamily: "'JetBrains Mono', monospace", background: PRICING_ACCENT }}
-                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-white text-[10px] font-[700] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap"
-                    >
-                      Coming soon
-                    </span>
                   </div>
 
                   <p className="text-[13px] font-[500] mb-1.5" style={{ color: PRICING_ACCENT }}>
@@ -630,18 +676,17 @@ export function PricingPage() {
 
                   <div className="relative mb-6">
                     <button
-                      disabled
-                      className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] text-white opacity-60 cursor-not-allowed"
+                      onClick={() => handleSubscribe('premium')}
+                      disabled={premiumDisabled}
+                      className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] text-white hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ background: PRICING_ACCENT, border: `1.5px solid ${PRICING_ACCENT}` }}
                     >
-                      Start Premium
+                      {loadingTier === 'premium' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        premiumLabel
+                      )}
                     </button>
-                    <span
-                      style={{ fontFamily: "'JetBrains Mono', monospace", background: PRICING_ACCENT }}
-                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-white text-[10px] font-[700] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap"
-                    >
-                      Coming soon
-                    </span>
                   </div>
 
                   <p className="text-[13px] font-[500] mb-1.5" style={{ color: PRICING_ACCENT }}>

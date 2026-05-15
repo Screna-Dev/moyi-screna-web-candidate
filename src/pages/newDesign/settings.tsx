@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   User,
   Shield,
@@ -8,7 +8,6 @@ import {
   CreditCard,
   Globe,
   LogOut,
-  ChevronRight,
   Mail,
   Lock,
   Trash2,
@@ -20,21 +19,38 @@ import { Input } from '../../components/newDesign/ui/input';
 import { Label } from '../../components/newDesign/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { getPersonalInfo, savePersonalInfo } from '@/services/ProfileServices';
+import { BillingTab } from './billing';
 
 // Settings Tabs
 const SETTINGS_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'security', label: 'Security', icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'billing', label: 'Billing', icon: CreditCard, path: '/billing' }, // Link to separate page
+  { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'preferences', label: 'Preferences', icon: Globe },
 ];
 
-export function SettingsPage() {
+const VALID_TAB_IDS = new Set(SETTINGS_TABS.map(t => t.id));
+
+export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Initial tab — prefer explicit prop, then URL (?tab=), then 'profile'.
+  const urlTab = searchParams.get('tab');
+  const initialTab =
+    (defaultTab && VALID_TAB_IDS.has(defaultTab) ? defaultTab : null) ??
+    (urlTab && VALID_TAB_IDS.has(urlTab) ? urlTab : null) ??
+    'profile';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Keep URL ?tab= in sync with active tab.
+  useEffect(() => {
+    if (searchParams.get('tab') !== activeTab) {
+      setSearchParams({ tab: activeTab }, { replace: true });
+    }
+  }, [activeTab, searchParams, setSearchParams]);
 
   // Profile Form State
   const [profileData, setProfileData] = useState({
@@ -98,19 +114,6 @@ export function SettingsPage() {
         <aside className="lg:col-span-1 space-y-1">
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
-            if (tab.path) {
-              return (
-                <Link
-                  key={tab.id}
-                  to={tab.path}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors w-full text-left"
-                >
-                  <Icon className="w-4.5 h-4.5" />
-                  <span className="text-sm font-medium">{tab.label}</span>
-                  <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />
-                </Link>
-              );
-            }
             return (
               <button
                 key={tab.id}
@@ -309,6 +312,17 @@ export function SettingsPage() {
                     ))}
                  </div>
                </div>
+            </motion.div>
+           )}
+
+           {/* Billing */}
+           {activeTab === 'billing' && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <BillingTab />
             </motion.div>
            )}
 
