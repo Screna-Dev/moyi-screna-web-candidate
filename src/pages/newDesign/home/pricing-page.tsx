@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { motion, useInView } from 'motion/react';
+import { motion, AnimatePresence, useInView } from 'motion/react';
 import { Link, useNavigate } from 'react-router';
 import {
   Check,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
+import { PremiumConsentModal } from '../../../components/newDesign/premium-consent-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import { useSubscription, type Tier } from '@/hooks/useSubscription';
@@ -128,6 +129,7 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
+      { text: 'Get referred by 1000+ recruiters within 24 hours', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: true },
       { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
@@ -345,6 +347,7 @@ export function PricingPage() {
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
   const [openFaq, setOpenFaq] = useState<number>(0);
+  const [premiumConsentOpen, setPremiumConsentOpen] = useState(false);
 
   // Subscription lifecycle:
   //   FREE (no row)         → POST /subscriptions          (Stripe Checkout)
@@ -352,15 +355,7 @@ export function PricingPage() {
   //   ACTIVE                → manage in /billing
   const isActiveMember = subscription !== null && subscription.status !== 'canceled';
 
-  const handleSubscribe = async (plan: Tier) => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
-    if (isActiveMember) {
-      navigate('/billing');
-      return;
-    }
+  const startSubscribe = async (plan: Tier) => {
     setLoadingTier(plan);
     try {
       if (subscription && subscription.status === 'canceled') {
@@ -379,6 +374,28 @@ export function PricingPage() {
     } finally {
       setLoadingTier(null);
     }
+  };
+
+  const handleSubscribe = async (plan: Tier) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    if (isActiveMember) {
+      navigate('/billing');
+      return;
+    }
+    // Premium requires Managed Apply consent before payment
+    if (plan === 'premium') {
+      setPremiumConsentOpen(true);
+      return;
+    }
+    await startSubscribe(plan);
+  };
+
+  const handlePremiumConsentConfirm = async () => {
+    setPremiumConsentOpen(false);
+    await startSubscribe('premium');
   };
 
   const starterLabel = isActiveMember
@@ -418,6 +435,17 @@ export function PricingPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
+
+      <AnimatePresence>
+        {premiumConsentOpen && (
+          <PremiumConsentModal
+            open={premiumConsentOpen}
+            onClose={() => setPremiumConsentOpen(false)}
+            onConfirm={handlePremiumConsentConfirm}
+            loading={loadingTier === 'premium'}
+          />
+        )}
+      </AnimatePresence>
 
       <main className="flex-1">
         {/* ═══ PRICING ═══════════════════════════════════════ */}
