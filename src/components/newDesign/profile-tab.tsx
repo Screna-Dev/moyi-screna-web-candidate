@@ -1,13 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowLeft, ArrowRight,
   UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
-  BadgeCheck, Building2, Coins,
+  BadgeCheck, Building2, Coins, Lock,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ApplicationProfileContent } from './application-profile-tab';
 import { getProfile, getUserInsights, saveUserInsights, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
@@ -956,7 +957,17 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 // ── ProfileTab (with sub-tabs) ────────────────────────────────────────────────
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
+  const navigate = useNavigate();
+  const { isElite, isLoading: isPlanLoading } = useUserPlan();
   const [subTab, setSubTab] = useState<'profile' | 'application'>('profile');
+
+  // If a non-Premium user somehow lands on the application sub-tab (e.g. plan
+  // downgrades while open), bounce them back to Profile.
+  useEffect(() => {
+    if (!isPlanLoading && !isElite && subTab === 'application') {
+      setSubTab('profile');
+    }
+  }, [isElite, isPlanLoading, subTab]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -968,14 +979,21 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
           { id: 'application' as const, label: 'Application Profile', premium: true  },
         ]).map(({ id, label, premium }) => {
           const isActive = subTab === id;
+          const locked   = premium && !isElite;
           return (
             <button
               key={id}
-              onClick={() => setSubTab(id)}
+              onClick={() => !locked && setSubTab(id)}
+              disabled={locked}
+              aria-disabled={locked}
+              title={locked ? 'Upgrade to Premium to access Application Profile' : undefined}
               className={`pb-3 px-1 mr-6 text-sm font-medium transition-colors relative flex items-center gap-2 ${
-                isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                locked   ? 'text-muted-foreground/50 cursor-not-allowed' :
+                isActive ? 'text-foreground' :
+                           'text-muted-foreground hover:text-foreground'
               }`}
             >
+              {locked && <Lock className="w-3 h-3 shrink-0" />}
               {label}
               {premium && (
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-400/10 to-amber-500/15 border border-amber-400/50">
@@ -983,7 +1001,7 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
                   <span className="text-[10px] font-semibold text-amber-600">Premium</span>
                 </span>
               )}
-              {isActive && (
+              {isActive && !locked && (
                 <motion.div layoutId="profileSubTab" className="absolute bottom-0 left-0 w-full h-[2px] bg-primary" />
               )}
             </button>
@@ -997,9 +1015,29 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
             <ProfileCoreContent userData={userData} />
           </motion.div>
         )}
-        {subTab === 'application' && (
+        {subTab === 'application' && isElite && (
           <motion.div key="application-profile" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
             <ApplicationProfileContent />
+          </motion.div>
+        )}
+        {subTab === 'application' && !isElite && (
+          <motion.div key="application-locked" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+            <div className="bg-card border border-border rounded-lg p-10 flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-amber-500" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground">Application Profile is Premium-only</h3>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Upgrade to Premium to let us submit job applications on your behalf using your saved personal information and preferences.
+              </p>
+              <button
+                onClick={() => navigate('/pricing')}
+                className="mt-2 inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Upgrade to Premium
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

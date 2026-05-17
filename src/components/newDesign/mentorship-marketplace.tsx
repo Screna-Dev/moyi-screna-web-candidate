@@ -440,11 +440,14 @@ export function MentorshipMarketplacePage() {
 
           {/* Utility area */}
           {isMember ? (
-            <button className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-700 hover:border-slate-300 hover:text-slate-900 transition-colors shadow-sm whitespace-nowrap">
+            <Link
+              to="/dashboard"
+              className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-700 hover:border-slate-300 hover:text-slate-900 transition-colors shadow-sm whitespace-nowrap"
+            >
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               View My Sessions
               <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-            </button>
+            </Link>
           ) : (
             <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/5 text-[13px] text-[hsl(221,91%,55%)]">
               <Shield className="w-3.5 h-3.5" />
