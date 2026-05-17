@@ -27,7 +27,10 @@ type Plan      = 'free' | 'starter' | 'premium';
 type ChartTab  = 'applications' | 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
 
-const isPaid = (p: Plan) => p === 'starter' || p === 'premium';
+// Starter renders the same stats row + trend chart as Free; only Premium
+// unlocks the application-related cards/tabs. Mentorship/bottom-grid behavior
+// is unaffected by this flag.
+const showsPaidStats = (p: Plan) => p === 'premium';
 
 // Map the canonical PlanType from useUserPlan into the dashboard's Plan tier.
 // Free→free, Pro→starter, Elite→premium.
@@ -389,13 +392,11 @@ function StatsRow({
   stats: DashboardStats;
   isLoading: boolean;
 }) {
-  const paid       = isPaid(plan);
+  const paid       = showsPaidStats(plan);
   const isPremium  = plan === 'premium';
-  const cardCount  = plan === 'premium' ? 5 : plan === 'starter' ? 4 : 2;
-  const gridCls    =
-    cardCount === 5 ? 'grid-cols-5' :
-    cardCount === 4 ? 'grid-cols-4' :
-                      'grid-cols-2';
+  // Starter falls into Free's 2-card layout; only Premium gets the full row.
+  const cardCount  = plan === 'premium' ? 5 : 2;
+  const gridCls    = cardCount === 5 ? 'grid-cols-5' : 'grid-cols-2';
 
   const learningSubtext  = stats.learningSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
   const sessionsSubtext  = stats.sessionsSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
@@ -486,7 +487,7 @@ function TrendChartSection({
   hasSessions: boolean;
 }) {
   const navigate = useNavigate();
-  const paid = isPaid(plan);
+  const paid = showsPaidStats(plan);
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
