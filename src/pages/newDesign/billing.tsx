@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { SettingsPage } from './settings';
 import { useToast } from '../../components/newDesign/ui/use-toast';
-import { PremiumConsentModal } from '../../components/newDesign/premium-consent-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import {
@@ -717,9 +716,6 @@ export function BillingTab() {
   // Post-window cancel confirm modal
   const [postCancelModalOpen, setPostCancelModalOpen] = useState(false);
 
-  // Premium Managed Apply consent modal — required before any upgrade to premium
-  const [premiumConsentOpen, setPremiumConsentOpen] = useState(false);
-
   // Modals
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showRedeemCode, setShowRedeemCode] = useState(false);
@@ -781,31 +777,6 @@ export function BillingTab() {
   }, [invoicePage]);
 
   // ── Handlers ──
-  const applyPlanSwitch = async () => {
-    if (!subscription) return;
-    const { tierChanged, cycleChanged } = comparePlanChange(
-      subscription.plan,
-      subscription.billingCycle,
-      selectedTier,
-      selectedCycle,
-    );
-    const ok = tierChanged
-      ? await changeTier(selectedTier)
-      : await changeBillingCycle(selectedCycle);
-    if (ok) {
-      const isUpgrade = tierChanged
-        ? selectedTier === 'premium'
-        : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
-      toast({
-        title: isUpgrade ? 'Plan updated' : 'Change scheduled',
-        description: isUpgrade
-          ? 'Your new plan is active. New benefits unlocked.'
-          : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
-      });
-      setSwitchPlanOpen(false);
-    }
-  };
-
   const handleConfirmSwitch = async () => {
     if (!subscription) return;
     const { tierChanged, cycleChanged } = comparePlanChange(
@@ -826,17 +797,21 @@ export function BillingTab() {
       });
       return;
     }
-    // Upgrading to Premium requires Managed Apply consent before billing
-    if (tierChanged && selectedTier === 'premium') {
-      setPremiumConsentOpen(true);
-      return;
+    const ok = tierChanged
+      ? await changeTier(selectedTier)
+      : await changeBillingCycle(selectedCycle);
+    if (ok) {
+      const isUpgrade = tierChanged
+        ? selectedTier === 'premium'
+        : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
+      toast({
+        title: isUpgrade ? 'Plan updated' : 'Change scheduled',
+        description: isUpgrade
+          ? 'Your new plan is active. New benefits unlocked.'
+          : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
+      });
+      setSwitchPlanOpen(false);
     }
-    await applyPlanSwitch();
-  };
-
-  const handlePremiumConsentConfirm = async () => {
-    setPremiumConsentOpen(false);
-    await applyPlanSwitch();
   };
 
   const handleCancelPending = async () => {
@@ -964,14 +939,6 @@ export function BillingTab() {
             <RedeemCodeModal
               onClose={() => setShowRedeemCode(false)}
               onRedeem={handleRedeem}
-            />
-          )}
-          {premiumConsentOpen && (
-            <PremiumConsentModal
-              open={premiumConsentOpen}
-              onClose={() => setPremiumConsentOpen(false)}
-              onConfirm={handlePremiumConsentConfirm}
-              loading={isActing}
             />
           )}
         </AnimatePresence>
