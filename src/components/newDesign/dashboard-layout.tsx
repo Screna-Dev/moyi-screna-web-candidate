@@ -13,6 +13,7 @@ import {
   FileText,
   History,
   User,
+  Sparkles,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -39,7 +40,7 @@ type UserData = {
 
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: Briefcase, label: 'Jobs', path: '/applications' },
+  { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
   { icon: History, label: 'Interview History', path: '/history' },
   { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
 ];
@@ -75,6 +76,9 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
               >
                 <item.icon className="w-4 h-4 shrink-0" />
                 <span className="text-sm">{item.label}</span>
+                {item.premiumOnly && (
+                  <Sparkles className="w-3 h-3 text-amber-500 ml-auto shrink-0" aria-label="Premium feature" />
+                )}
               </Link>
             );
           })}

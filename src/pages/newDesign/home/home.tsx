@@ -994,6 +994,7 @@ const FULL_GROUPS: TierFeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
+      { text: 'Get referred by 1000+ recruiters within 24 hours', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: true },
       { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
@@ -1165,12 +1166,9 @@ function Pricing() {
             <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{starter.note}</p>
 
             <div className="relative mb-6">
-              <button disabled className="block w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] opacity-60 cursor-not-allowed">
+              <Link to="/pricing" className="block w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#0A0A0A] text-[#0A0A0A] text-[14px] font-[600] text-center hover:bg-[#0A0A0A] hover:text-white transition-colors">
                 Start Starter
-              </button>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
-                Coming soon
-              </span>
+              </Link>
             </div>
 
             <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
@@ -1206,12 +1204,9 @@ function Pricing() {
             <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{note}</p>
 
             <div className="relative mb-6">
-              <button disabled className="block w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] opacity-60 cursor-not-allowed" style={{ border: '1.5px solid #3B6FE8' }}>
+              <Link to="/pricing" className="block w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] text-center hover:opacity-90 transition-opacity" style={{ border: '1.5px solid #3B6FE8' }}>
                 Start Premium
-              </button>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
-                Coming soon
-              </span>
+              </Link>
             </div>
 
             <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
