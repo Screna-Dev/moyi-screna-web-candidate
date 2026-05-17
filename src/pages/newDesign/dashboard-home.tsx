@@ -27,7 +27,10 @@ type Plan      = 'free' | 'starter' | 'premium';
 type ChartTab  = 'applications' | 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
 
-const isPaid = (p: Plan) => p === 'starter' || p === 'premium';
+// Starter renders the same stats row + trend chart as Free; only Premium
+// unlocks the application-related cards/tabs. Mentorship/bottom-grid behavior
+// is unaffected by this flag.
+const showsPaidStats = (p: Plan) => p === 'premium';
 
 // Map the canonical PlanType from useUserPlan into the dashboard's Plan tier.
 // Free→free, Pro→starter, Elite→premium.
@@ -87,7 +90,11 @@ const CHART_DATA: Record<ChartTab, Record<TimeRange, number[]>> = {
 };
 
 // ─── Radar data ────────────────────────────────────────────────────────────────
-const RADAR_DIMS = [
+// `value: null` means N/A — the user has no mock data for this dimension. The
+// radar must NOT display 0/100 for these (DSH-I004).
+type RadarDim = { label: string; value: number | null };
+
+const RADAR_DIMS: RadarDim[] = [
   { label: 'Problem Solving', value: 82 },
   { label: 'Communication',   value: 75 },
   { label: 'Collaboration',   value: 68 },
@@ -123,11 +130,11 @@ const PAST_SESSIONS = [
 ];
 
 // ─── Quality badge ─────────────────────────────────────────────────────────────
+// Thresholds per QA spec (DSH-I005): STRONG 80–100, DEVELOPING 70–79, INCONSISTENT <70.
 function qualityBadge(v: number) {
-  if (v >= 85) return { label: 'Strong',       cls: 'bg-accent/15 text-accent-foreground' };
-  if (v >= 75) return { label: 'Developing',   cls: 'bg-primary/10 text-primary' };
-  if (v >= 65) return { label: 'Inconsistent', cls: 'bg-amber-400/15 text-amber-700 dark:text-amber-400' };
-  return              { label: 'Needs work',   cls: 'bg-destructive/10 text-destructive' };
+  if (v >= 80) return { label: 'Strong',       cls: 'bg-accent/15 text-accent-foreground' };
+  if (v >= 70) return { label: 'Developing',   cls: 'bg-primary/10 text-primary' };
+  return              { label: 'Inconsistent', cls: 'bg-amber-400/15 text-amber-700 dark:text-amber-400' };
 }
 
 // ─── Custom Area Chart ─────────────────────────────────────────────────────────
@@ -236,7 +243,7 @@ function CustomAreaChart({
 const RCX = 130, RCY = 130, RR = 82;
 const RVW = 260, RVH = 260;
 
-function CustomRadar({ data, color }: { data: { label: string; value: number }[]; color: string }) {
+function CustomRadar({ data, color }: { data: RadarDim[]; color: string }) {
   const [hovIdx, setHovIdx] = useState<number | null>(null);
   const n = data.length;
   const ang = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
@@ -250,11 +257,22 @@ function CustomRadar({ data, color }: { data: { label: string; value: number }[]
     data.map((_, i) => { const p = pt(i, r); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; }).join(' ') + ' Z'
   );
 
-  const dataPath = data
-    .map((d, i) => { const p = pt(i, d.value / 100); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; })
-    .join(' ') + ' Z';
+  // N/A handling (DSH-I001/I002/I004): only build the polygon from dimensions
+  // that have data. If every dimension is N/A, render no polygon and no dots.
+  const dataPts = data.map((d, i) => ({
+    p: d.value !== null ? pt(i, d.value / 100) : null,
+    value: d.value,
+  }));
+  const filledPts = dataPts.filter(d => d.p !== null) as { p: { x: number; y: number }; value: number }[];
+  const dataPath = filledPts.length >= 3
+    ? filledPts.map((d, i) => `${i === 0 ? 'M' : 'L'} ${d.p.x.toFixed(1)} ${d.p.y.toFixed(1)}`).join(' ') + ' Z'
+    : null;
 
-  const dataPts = data.map((d, i) => pt(i, d.value / 100));
+  const hovered    = hovIdx !== null ? data[hovIdx] : null;
+  const hoveredPt  = hovIdx !== null ? dataPts[hovIdx].p : null;
+  // For N/A vertices the tooltip needs to anchor somewhere — use the rim.
+  const naAnchor   = hovIdx !== null && hovered && hovered.value === null ? pt(hovIdx, 1) : null;
+  const tipAnchor  = hoveredPt ?? naAnchor;
 
   return (
     <div className="relative w-full" style={{ paddingBottom: '100%' }}>
@@ -271,26 +289,32 @@ function CustomRadar({ data, color }: { data: { label: string; value: number }[]
               style={{ stroke: 'hsl(var(--border))', strokeWidth: 0.7 }} />
           );
         })}
-        {/* Data fill */}
-        <path d={dataPath} fill={color} fillOpacity={0.14} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-        {/* Dots */}
-        {dataPts.map((p, i) => (
+        {/* Data fill — only if we have at least 3 points for a polygon */}
+        {dataPath && (
+          <path d={dataPath} fill={color} fillOpacity={0.14} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+        )}
+        {/* Dots — only for dimensions with data */}
+        {dataPts.map((d, i) => d.p && (
           <circle
             key={i}
-            cx={p.x} cy={p.y} r={hovIdx === i ? 4.5 : 2.5}
+            cx={d.p.x} cy={d.p.y} r={hovIdx === i ? 4.5 : 2.5}
             fill={color}
             style={{ cursor: 'pointer', transition: 'r 0.12s' }}
             onMouseEnter={() => setHovIdx(i)}
             onMouseLeave={() => setHovIdx(null)}
           />
         ))}
-        {/* Labels */}
+        {/* Labels — gray-out N/A dimensions to visually distinguish them */}
         {data.map((d, i) => {
-          const LR  = RR + 20;
-          const lx  = RCX + LR * Math.cos(ang(i));
-          const ly  = RCY + LR * Math.sin(ang(i));
-          const cos = Math.cos(ang(i));
-          const sin = Math.sin(ang(i));
+          const LR    = RR + 20;
+          const lx    = RCX + LR * Math.cos(ang(i));
+          const ly    = RCY + LR * Math.sin(ang(i));
+          const cos   = Math.cos(ang(i));
+          const sin   = Math.sin(ang(i));
+          const isNA  = d.value === null;
+          const fill  = hovIdx === i
+            ? (isNA ? 'hsl(var(--muted-foreground))' : color)
+            : (isNA ? 'hsl(var(--muted-foreground) / 0.55)' : 'hsl(var(--muted-foreground))');
           return (
             <text
               key={i}
@@ -301,7 +325,7 @@ function CustomRadar({ data, color }: { data: { label: string; value: number }[]
               onMouseLeave={() => setHovIdx(null)}
               style={{
                 fontSize: 9,
-                fill: hovIdx === i ? color : 'hsl(var(--muted-foreground))',
+                fill,
                 fontFamily: 'inherit',
                 fontWeight: hovIdx === i ? 600 : 400,
                 transition: 'fill 0.12s',
@@ -313,25 +337,28 @@ function CustomRadar({ data, color }: { data: { label: string; value: number }[]
           );
         })}
       </svg>
-      {/* Hover tooltip */}
-      {hovIdx !== null && (() => {
-        const d   = data[hovIdx];
-        const p   = dataPts[hovIdx];
-        const bdg = qualityBadge(d.value);
+      {/* Hover tooltip — shows "N/A" for null values, no badge/score (DSH-I006) */}
+      {hovered && tipAnchor && (() => {
+        const isNA = hovered.value === null;
+        const bdg  = !isNA ? qualityBadge(hovered.value as number) : null;
         return (
           <div
             className="absolute z-20 bg-card border border-border rounded-md shadow-sm px-2.5 py-1.5 text-xs pointer-events-none"
             style={{
-              left: `${(p.x / RVW) * 100}%`,
-              top:  `${(p.y / RVH) * 100}%`,
+              left: `${(tipAnchor.x / RVW) * 100}%`,
+              top:  `${(tipAnchor.y / RVH) * 100}%`,
               transform: 'translate(-50%, -120%)',
             }}
           >
-            <div className="font-medium text-foreground mb-1">{d.label}</div>
-            <div className="flex items-center gap-1.5">
-              <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${bdg.cls}`}>{bdg.label}</span>
-              <span className="text-muted-foreground">{d.value}/100</span>
-            </div>
+            <div className="font-medium text-foreground mb-1">{hovered.label}</div>
+            {isNA ? (
+              <span className="text-muted-foreground">N/A</span>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${bdg!.cls}`}>{bdg!.label}</span>
+                <span className="text-muted-foreground">{hovered.value}/100</span>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -365,13 +392,11 @@ function StatsRow({
   stats: DashboardStats;
   isLoading: boolean;
 }) {
-  const paid       = isPaid(plan);
+  const paid       = showsPaidStats(plan);
   const isPremium  = plan === 'premium';
-  const cardCount  = plan === 'premium' ? 5 : plan === 'starter' ? 4 : 2;
-  const gridCls    =
-    cardCount === 5 ? 'grid-cols-5' :
-    cardCount === 4 ? 'grid-cols-4' :
-                      'grid-cols-2';
+  // Starter falls into Free's 2-card layout; only Premium gets the full row.
+  const cardCount  = plan === 'premium' ? 5 : 2;
+  const gridCls    = cardCount === 5 ? 'grid-cols-5' : 'grid-cols-2';
 
   const learningSubtext  = stats.learningSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
   const sessionsSubtext  = stats.sessionsSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
@@ -462,7 +487,7 @@ function TrendChartSection({
   hasSessions: boolean;
 }) {
   const navigate = useNavigate();
-  const paid = isPaid(plan);
+  const paid = showsPaidStats(plan);
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
@@ -639,16 +664,19 @@ function MentorshipCard() {
           </div>
         )}
 
-        {/* Past sessions */}
+        {/* Past sessions — most recent 3 only; header shows total count (DSH-M006) */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-foreground">Past sessions</span>
-            <span className="text-xs text-muted-foreground flex items-center gap-0.5 cursor-pointer hover:text-primary transition-colors">
+            <span
+              className="text-xs text-muted-foreground flex items-center gap-0.5 cursor-pointer hover:text-primary transition-colors"
+              onClick={() => navigate('/mentorship-sessions')}
+            >
               {PAST_SESSIONS.length} <ChevronRight className="w-3 h-3" />
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            {PAST_SESSIONS.map(s => (
+            {PAST_SESSIONS.slice(0, 3).map(s => (
               <div
                 key={s.id}
                 className="bg-background border border-border rounded-md p-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-secondary/60 transition-colors"
@@ -689,14 +717,25 @@ function MentorshipCard() {
 }
 
 // ─── Interview Practice Insights Card ─────────────────────────────────────────
+// Three states per QA spec (DSH-I001/I002/I003):
+//   Form A: every dimension has data         → radar polygon + Avg/Best/Low + focus callout for lowest
+//   Form B: some dimensions are N/A          → radar partial + Avg/Best/Low over non-null + focus on an N/A dim
+//   Form C: all dimensions N/A (new user)    → empty radar + N/A summary + 4 entry cards (no scores)
 function InterviewInsightsCard() {
-  const [hasSessions] = useState(true);
-  const scores    = RADAR_DIMS.map(d => d.value);
-  const avg       = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
-  const best      = Math.max(...scores);
-  const low       = Math.min(...scores);
-  const lowestDim = [...RADAR_DIMS].sort((a, b) => a.value - b.value)[0];
-  const lowestBdg = qualityBadge(lowestDim.value);
+  const dims        = RADAR_DIMS;
+  const withData    = dims.filter((d): d is { label: string; value: number } => d.value !== null);
+  const naDims      = dims.filter(d => d.value === null);
+  const allNA       = withData.length === 0;
+
+  // Summary metrics computed only from non-null dimensions (DSH-I007).
+  const avg  = withData.length ? Math.round(withData.reduce((s, d) => s + d.value, 0) / withData.length) : null;
+  const best = withData.length ? Math.max(...withData.map(d => d.value)) : null;
+  const low  = withData.length ? Math.min(...withData.map(d => d.value)) : null;
+
+  // Recommended focus: in Form B prefer an N/A dimension; in Form A pick the lowest scoring.
+  const focusDim    = naDims[0] ?? [...withData].sort((a, b) => a.value - b.value)[0] ?? null;
+  const focusIsNA   = focusDim?.value === null;
+  const focusBdg    = focusDim && focusDim.value !== null ? qualityBadge(focusDim.value) : null;
 
   return (
     <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
@@ -705,51 +744,61 @@ function InterviewInsightsCard() {
         <button className="text-xs text-primary hover:opacity-75 transition-opacity">View all ↗</button>
       </div>
 
-      {hasSessions ? (
-        <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1">
-          {/* Score summary — three distinct blue steps */}
-          <div className="grid grid-cols-3 gap-2">
-            {([
-              { label: 'Avg',  value: avg,  bg: 'bg-blue-50 border border-blue-200',    val: 'text-blue-600' },
-              { label: 'Best', value: best, bg: 'bg-blue-100 border border-blue-300',   val: 'text-blue-500' },
-              { label: 'Low',  value: low,  bg: 'bg-blue-900/[0.06] border border-blue-800/15', val: 'text-blue-700' },
-            ] as const).map(s => (
-              <div key={s.label} className={`rounded-md p-3 text-center ${s.bg}`}>
-                <div className={`text-lg font-semibold tracking-tight ${s.val}`}>{s.value}</div>
-                <div className="text-xs text-muted-foreground">{s.label}</div>
+      <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1">
+        {/* Score summary — N/A when no mock records (DSH-I007) */}
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { label: 'Avg',  value: avg,  bg: 'bg-blue-50 border border-blue-200',                  val: 'text-blue-600' },
+            { label: 'Best', value: best, bg: 'bg-blue-100 border border-blue-300',                 val: 'text-blue-500' },
+            { label: 'Low',  value: low,  bg: 'bg-blue-900/[0.06] border border-blue-800/15',       val: 'text-blue-700' },
+          ] as const).map(s => (
+            <div key={s.label} className={`rounded-md p-3 text-center ${s.bg}`}>
+              <div className={`text-lg font-semibold tracking-tight ${s.val}`}>
+                {s.value === null ? <span className="text-muted-foreground">N/A</span> : s.value}
               </div>
+              <div className="text-xs text-muted-foreground">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Radar — renders empty (just grid + spokes) when allNA */}
+        <CustomRadar data={dims} color={CHART_COLORS.sessions} />
+
+        {/* Form C — 4 (here: all-N/A) entry cards: dimension name + CTA only, NO score (DSH-I001/I008) */}
+        {allNA ? (
+          <div className="grid grid-cols-2 gap-2">
+            {dims.map(d => (
+              <button
+                key={d.label}
+                className="rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors p-2.5 text-left flex flex-col gap-1"
+              >
+                <span className="text-xs font-medium text-foreground truncate">{d.label}</span>
+                <span className="text-xs text-primary">Start practice →</span>
+              </button>
             ))}
           </div>
-
-          {/* Radar */}
-          <CustomRadar data={RADAR_DIMS} color={CHART_COLORS.sessions} />
-
-          {/* Focus callout */}
+        ) : focusDim ? (
           <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="text-xs text-muted-foreground mb-1">Recommended focus area</div>
               <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                <span className="text-sm font-medium text-foreground">{lowestDim.label}</span>
-                <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${lowestBdg.cls}`}>
-                  {lowestBdg.label}
-                </span>
+                <span className="text-sm font-medium text-foreground">{focusDim.label}</span>
+                {focusBdg && (
+                  <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${focusBdg.cls}`}>
+                    {focusBdg.label}
+                  </span>
+                )}
               </div>
-              <div className="text-xs text-muted-foreground">{lowestDim.value}/100</div>
+              <div className="text-xs text-muted-foreground">
+                {focusIsNA ? 'No data yet — try a practice session' : `${focusDim.value}/100`}
+              </div>
             </div>
             <button className="text-xs text-primary font-medium hover:opacity-75 transition-opacity whitespace-nowrap shrink-0 mt-0.5">
-              Practice {lowestDim.label} →
+              Practice {focusDim.label} →
             </button>
           </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 text-center">
-          <Target className="w-8 h-8 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">No practice sessions yet</p>
-          <button className="text-sm text-primary font-medium hover:opacity-75 transition-opacity">
-            Practice now →
-          </button>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -881,9 +930,9 @@ export function DashboardHome({
       {/* ── 2. Trend chart ── */}
       <TrendChartSection key={plan} plan={plan} hasSessions={hasSessions} />
 
-      {/* ── 3. Bottom 3-column grid ── */}
-      <div className="grid grid-cols-3 gap-5">
-        <MentorshipCard />
+      {/* ── 3. Bottom grid — Mentorship is Pro/Elite only (DSH-M001) ── */}
+      <div className={`grid gap-5 ${plan === 'free' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {plan !== 'free' && <MentorshipCard />}
         <InterviewInsightsCard />
         <CommunityPicksCard />
       </div>
