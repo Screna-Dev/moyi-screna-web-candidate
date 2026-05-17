@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
-import { getMentor, getMentorSlots } from '../../services/MentorService';
+import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -134,6 +134,8 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   const [notes, setNotes] = useState('');
   const [slots, setSlots] = useState<{ startTime: string; endTime: string }[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   // Fetch available slots when duration changes
   useEffect(() => {
@@ -215,9 +217,36 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
     step === 3 ? selectedSlot !== null :
     true;
 
-  function handleContinue() {
-    if (step < 5) setStep(s => s + 1);
-    else setStep(6); // payment → success
+  async function handleContinue() {
+    if (step < 5) {
+      setStep(s => s + 1);
+      return;
+    }
+    if (!selectedSlot) {
+      setBookingError('Please select a time slot.');
+      return;
+    }
+    setSubmitting(true);
+    setBookingError(null);
+    try {
+      const res: any = await createBooking(mentorId, {
+        topicId: plan.id,
+        durationMinutes: duration === '30min' ? 30 : 60,
+        startTime: selectedSlot,
+        note: notes || undefined,
+      });
+      const data = res.data?.data ?? res.data ?? {};
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+      setBookingError('Booking created but no checkout URL was returned. Please contact support.');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to create booking. Please try again.';
+      setBookingError(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const formattedDate = selectedDay
@@ -499,6 +528,12 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                 <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <span>Payments are processed securely via Stripe. If you're not satisfied, Screna will refund you or match you with another mentor.</span>
               </div>
+
+              {bookingError && (
+                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  {bookingError}
+                </div>
+              )}
             </div>
           )}
 
@@ -559,10 +594,11 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
             )}
             <button
               onClick={handleContinue}
-              disabled={!canContinue}
-              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!canContinue || submitting}
+              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {step === 4 ? 'Continue to payment' : step === 5 ? 'Pay with Stripe' : 'Continue'}
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {step === 4 ? 'Continue to payment' : step === 5 ? (submitting ? 'Redirecting…' : 'Pay with Stripe') : 'Continue'}
             </button>
           </div>
         )}
@@ -634,10 +670,13 @@ export function MentorDetailsPage() {
             <ArrowLeft className="w-4 h-4" />
             Back to Mentorship
           </Link>
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+          <Link
+            to="/dashboard"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
             <Calendar className="w-3.5 h-3.5" />
             View My Sessions
-          </button>
+          </Link>
         </div>
 
         {/* ── 1. Mentor Hero ── */}

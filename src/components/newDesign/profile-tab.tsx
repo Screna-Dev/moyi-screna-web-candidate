@@ -1,18 +1,17 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
-  Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
+  Sparkles, Check, Pencil, X, Plus, Search, ArrowLeft, ArrowRight,
   UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
-  BadgeCheck, Building2, Coins,
+  BadgeCheck, Building2, Coins, Lock,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
-import { useSubscription } from '@/hooks/useSubscription';
+import { ApplicationProfileContent } from './application-profile-tab';
+import { getProfile, getUserInsights, saveUserInsights, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
-import { PageHead } from '@/components/newDesign/page-head';
-import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
 type UserData = {
   firstName?: string;
@@ -66,23 +65,27 @@ const COMPANY_CATEGORIES = [
   { id: 'open',    label: 'Open to all',        desc: 'No preference on size'         },
 ];
 
-// Maps legacy uppercase GET values to the canonical API enum values
-// Canonical values: "faang" | "unicorn" | "mid" | "startup" | "open"
-const LEGACY_API_TO_CATEGORY: Record<string, string> = {
+// Maps between API companyTypes values and internal category IDs
+const API_TYPE_TO_CATEGORY: Record<string, string> = {
   FAANG: 'faang',
   LARGE: 'unicorn',
   MID_SIZE: 'mid',
   STARTUP: 'startup',
 };
+const CATEGORY_TO_API_TYPE: Record<string, string> = {
+  faang: 'FAANG',
+  unicorn: 'LARGE',
+  mid: 'MID_SIZE',
+  startup: 'STARTUP',
+};
 
-type UserPreferences = {
-  target_roles?: string[];
-  goal_clarity_level?: string;
-  company_size_categories?: string[];
-  target_companies?: string[];
-  job_search_stage?: string;
-  priority_needs?: string[];
-  work_authorization?: string;
+type UserInsights = {
+  role?: string;
+  goalClarityLevel?: string;
+  companyTypes?: string[];
+  companies?: string[];
+  jobSearchStage?: string;
+  priorityNeeds?: string[];
 };
 
 const VISA_OPTIONS = [
@@ -97,27 +100,15 @@ const VISA_OPTIONS = [
 
 // ── ProfileCoreContent ────────────────────────────────────────────────────────
 
-function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-muted rounded ${className ?? ''}`} />;
-}
-
 function ProfileCoreContent({ userData }: { userData: UserData | null }) {
-  const expLevel = userData?.experienceLevel || '';
+  const expLevel = userData?.experienceLevel || 'Mid-level (3–5 yrs)';
   const completedSections = 3;
   const totalSections = 5;
   const completePct = Math.round((completedSections / totalSections) * 100);
 
-  const { subscription, credits, isLoading: isSubLoading } = useSubscription();
-
-  // ── Loading states ──
-  const [loadingPreferences, setLoadingPreferences] = useState(true);
-  const [loadingPersonal, setLoadingPersonal] = useState(true);
-  const [loadingResume, setLoadingResume] = useState(true);
-
   // ── Personal info state (from /profile/personal-info) ──
   const [personalName, setPersonalName] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
-  const [timezone, setTimezone] = useState('');
 
   const displayName = personalName || (userData?.firstName
     ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
@@ -147,10 +138,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [pendingVisaStatus, setPendingVisaStatus] = useState<string>('');
   const [structuredResume, setStructuredResume] = useState<Record<string, unknown> | null>(null);
 
-  // ── Profile preferences (kept for merging on save) ──
-  const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
+  // ── User insights (kept for merging on save) ──
+  const [userInsights, setUserInsights] = useState<UserInsights | null>(null);
 
-  // ── Target Companies state (from user-insights) ──
+  // ── Target Companies state ──
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [specificCompanies, setSpecificCompanies] = useState<string[]>([]);
   const [companyQuery, setCompanyQuery] = useState('');
@@ -232,37 +223,31 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         setResumeFile({ name: displayName, size: 'Stored in your profile' });
         setResumeState('success');
       }
-    }).catch(() => {}).finally(() => setLoadingResume(false));
+    }).catch(() => {});
 
-    // Fetch profile preferences (target roles, target companies, company sizes, work authorization)
-    getProfilePreferences().then((res: { data: { data?: UserPreferences } }) => {
-      const data = (res.data?.data ?? res.data) as UserPreferences;
-      setUserPrefs(data);
-      const firstRole = data?.target_roles?.[0];
-      if (firstRole) {
+    // Fetch user insights
+    getUserInsights().then((res: { data: { data?: UserInsights } }) => {
+      const data = (res.data?.data ?? res.data) as UserInsights;
+      setUserInsights(data);
+      // Always set companies (even empty arrays clear stale state)
+      setSelectedCategories(
+        (data?.companyTypes ?? []).map((t: string) => API_TYPE_TO_CATEGORY[t]).filter(Boolean)
+      );
+      setSpecificCompanies(data?.companies ?? []);
+      // Pre-select matching role in the edit UI
+      if (data?.role) {
         const allRoles = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles);
-        const match = allRoles.find(r => r.label.toLowerCase() === firstRole.toLowerCase());
+        const match = allRoles.find(r => r.label.toLowerCase() === data.role!.toLowerCase());
         if (match) setSelectedRoleId(match.id);
       }
-      if (data?.target_companies) setSpecificCompanies(data.target_companies);
-      if (data?.company_size_categories) {
-        setSelectedCategories(
-          data.company_size_categories.map((t: string) => {
-            const lower = t.toLowerCase();
-            return LEGACY_API_TO_CATEGORY[t] ?? lower;
-          }).filter(Boolean)
-        );
-      }
-      if (data?.work_authorization) setVisaStatus(data.work_authorization);
-    }).catch(() => {}).finally(() => setLoadingPreferences(false));
+    }).catch(() => {});
 
-    // Fetch personal info (name, email, timezone)
-    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string } } }) => {
+    // Fetch personal info (name, email)
+    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string } } }) => {
       const data = res.data?.data ?? res.data;
       if (data?.name) setPersonalName(data.name);
       if (data?.email) setPersonalEmail(data.email);
-      if (data?.timezone) setTimezone(data.timezone);
-    }).catch(() => {}).finally(() => setLoadingPersonal(false));
+    }).catch(() => {});
 
     return () => { if (resumeTimerRef.current) clearInterval(resumeTimerRef.current); };
   }, []);
@@ -278,7 +263,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // Label of the currently highlighted option in the edit UI (used when saving)
   const selectedRoleLabel = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(r => r.id === selectedRoleId)?.label ?? '';
 
-  const displayRole = userPrefs?.target_roles?.[0] ?? selectedRoleLabel;
+  // Source-of-truth role for display — always the saved API value
+  const displayRole = userInsights?.role || selectedRoleLabel;
 
   const totalCompanyCount = selectedCategories.length + specificCompanies.length;
 
@@ -292,47 +278,32 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     );
   };
 
-  const savePreferences = (patch: { workAuthorization?: string }) => {
-    const wa = patch.workAuthorization ?? visaStatus;
-    const updated: UserPreferences = {
-      ...(userPrefs ?? {}),
-      ...(wa ? { work_authorization: wa } : {}),
-    };
-    setUserPrefs(updated);
-    saveProfilePreferences(updated).catch(() => {});
-  };
-
   const handleCompanyDone = () => {
     setEditingCompanies(false);
     setCompanyQuery('');
-    const company_size_categories = selectedCategories;
-    const updated: UserPreferences = {
-      ...(userPrefs ?? {}),
-      target_companies: specificCompanies,
-      company_size_categories,
-    };
-    setUserPrefs(updated);
-    saveProfilePreferences(updated).catch(() => {});
+    const apiCompanyTypes = selectedCategories.map(c => CATEGORY_TO_API_TYPE[c]).filter(Boolean);
+    setUserInsights(prev => ({ ...(prev ?? {}), companyTypes: apiCompanyTypes, companies: specificCompanies }));
+    saveUserInsights({
+      ...(userInsights ?? {}),
+      companyTypes: apiCompanyTypes,
+      companies: specificCompanies,
+    }).catch(() => {});
   };
 
   const handleVisaDone = () => {
     setEditingVisa(false);
-    if (!visaStatus) return;
-    savePreferences({ workAuthorization: visaStatus });
-    if (structuredResume) {
-      const updated = {
-        ...structuredResume,
-        profile: { ...(structuredResume.profile as Record<string, unknown>), visa_status: visaStatus },
-      };
-      updateProfile(updated).then(() => setStructuredResume(updated)).catch(() => {});
-    }
+    if (!structuredResume || !visaStatus) return;
+    const updated = {
+      ...structuredResume,
+      profile: { ...(structuredResume.profile as Record<string, unknown>), visa_status: visaStatus },
+    };
+    updateProfile(updated).then(() => setStructuredResume(updated)).catch(() => {});
   };
 
   const handleVisaModalSave = () => {
     if (!pendingVisaStatus) return;
     setVisaStatus(pendingVisaStatus);
     setShowVisaDialog(false);
-    savePreferences({ workAuthorization: pendingVisaStatus });
     const base = structuredResume ?? {};
     const updated = {
       ...base,
@@ -344,9 +315,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const handleRoleConfirm = () => {
     setRoleMode('view');
     const newRole = selectedRoleLabel;
-    const updated: UserPreferences = { ...(userPrefs ?? {}), target_roles: [newRole] };
-    setUserPrefs(updated);
-    saveProfilePreferences(updated).catch(() => {});
+    setUserInsights(prev => ({ ...(prev ?? {}), role: newRole }));
+    saveUserInsights({
+      ...(userInsights ?? {}),
+      role: newRole,
+    }).catch(() => {});
   };
 
   return (
@@ -380,13 +353,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Resume Card */}
-        <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
+        <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 style={panelTitleStyle}>Resume</h3>
+              <h3 className="text-foreground">Resume</h3>
               {resumeState === 'success' && (
                 <span className="flex items-center gap-1 text-xs text-green-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Active
@@ -404,17 +374,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-3">
-            {loadingResume && (
-              <div className="flex items-center gap-3 px-3 py-3 rounded-md border border-border bg-secondary/30 animate-pulse">
-                <SkeletonBlock className="w-8 h-8 rounded-md shrink-0" />
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <SkeletonBlock className="h-3.5 w-40" />
-                  <SkeletonBlock className="h-3 w-28" />
-                </div>
-              </div>
-            )}
             <AnimatePresence mode="wait">
-              {!loadingResume && resumeState === 'idle' && (
+              {resumeState === 'idle' && (
                 <motion.div
                   key="idle"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -443,16 +404,14 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                   <p className="text-xs text-muted-foreground mb-4">PDF or DOCX · Max 5MB</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); resumeInputRef.current?.click(); }}
-                    style={primaryButtonStyle}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
                   >
                     <FileText className="w-3.5 h-3.5" />Choose File to Upload
                   </button>
                 </motion.div>
               )}
 
-              {!loadingResume && resumeState === 'uploading' && resumeFile && (
+              {resumeState === 'uploading' && resumeFile && (
                 <motion.div
                   key="uploading"
                   initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -479,7 +438,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                 </motion.div>
               )}
 
-              {!loadingResume && resumeState === 'success' && resumeFile && (
+              {resumeState === 'success' && resumeFile && (
                 <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <div className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-border bg-secondary/50">
                     <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
@@ -532,27 +491,24 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) { setResumeState('idle'); setTimeout(() => processResumeFile(f), 50); } e.target.value = ''; }}
             />
 
-            {!loadingResume && resumeState === 'idle' && (
+            {resumeState === 'idle' && (
               <p className="text-xs text-muted-foreground text-center">Keep your resume current — we use it for every application.</p>
             )}
           </div>
         </div>
 
         {/* Target Role Card */}
-        <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
+        <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 style={panelTitleStyle}>Target Role</h3>
-              {!loadingPreferences && roleMode === 'view' && displayRole && (
+              <h3 className="text-foreground">Target Role</h3>
+              {roleMode === 'view' && (
                 <span className="flex items-center gap-1 text-xs text-green-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Set
                 </span>
               )}
             </div>
-            {!loadingPreferences && (roleMode === 'view' ? (
+            {roleMode === 'view' ? (
               <button
                 onClick={() => { setRoleMode('edit'); setRoleQuery(''); }}
                 className="flex items-center gap-1.5 text-sm font-medium text-primary border border-primary/30 rounded-md px-3 py-1.5 hover:bg-primary/5 transition-colors"
@@ -563,30 +519,17 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               <button onClick={() => setRoleMode('view')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <X className="w-3.5 h-3.5" />Cancel
               </button>
-            ))}
+            )}
           </div>
 
-          {loadingPreferences && (
-            <div className="px-5 py-4 flex flex-col gap-4">
-              <SkeletonBlock className="h-4 w-24" />
-              <SkeletonBlock className="h-6 w-40" />
-              <SkeletonBlock className="h-4 w-32" />
-              <div className="flex flex-col gap-2 mt-2">
-                <SkeletonBlock className="h-4 w-full" />
-                <SkeletonBlock className="h-4 w-full" />
-                <SkeletonBlock className="h-4 w-full" />
-              </div>
-            </div>
-          )}
-
-          {!loadingPreferences && roleMode === 'view' && (
+          {roleMode === 'view' && (
             <div className="px-5 py-4 flex flex-col gap-4">
               <div>
                 <span className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Current Target</span>
                 <div className="text-lg font-medium text-foreground">
                   {displayRole || <span className="text-muted-foreground text-base">Not set</span>}
                 </div>
-                {expLevel && <div className="text-sm text-muted-foreground mt-0.5">{expLevel}</div>}
+                <div className="text-sm text-muted-foreground mt-0.5">{expLevel}</div>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Used for</span>
@@ -612,7 +555,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
             </div>
           )}
 
-          {!loadingPreferences && roleMode === 'edit' && (
+          {roleMode === 'edit' && (
             <div className="px-5 py-4 flex flex-col gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -651,10 +594,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               <button
                 onClick={handleRoleConfirm}
                 disabled={!selectedRoleLabel}
-                className="disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ ...primaryButtonStyle, width: '100%', justifyContent: 'center', height: 36, marginTop: 4 }}
-                onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
+                className="flex items-center justify-center gap-2 w-full py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed mt-1"
               >
                 Confirm Role <ArrowRight className="w-3.5 h-3.5" />
               </button>
@@ -667,13 +607,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Target Companies */}
-        <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
+        <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 style={panelTitleStyle}>Target Companies</h3>
+              <h3 className="text-foreground">Target Companies</h3>
               {totalCompanyCount > 0 && (
                 <span className="text-xs text-muted-foreground">
                   {selectedCategories.length > 0 && `${selectedCategories.length} ${selectedCategories.length === 1 ? 'type' : 'types'}`}
@@ -697,18 +634,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
-            {loadingPreferences && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-2">
-                  <SkeletonBlock className="h-8 w-32 rounded-full" />
-                  <SkeletonBlock className="h-8 w-24 rounded-full" />
-                  <SkeletonBlock className="h-8 w-28 rounded-full" />
-                </div>
-                <SkeletonBlock className="h-3 w-64 mt-1" />
-              </div>
-            )}
             <AnimatePresence>
-              {!loadingPreferences && editingCompanies && (
+              {editingCompanies && (
                 <motion.div
                   key="edit-panel"
                   initial={{ opacity: 0, height: 0 }}
@@ -798,7 +725,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               )}
             </AnimatePresence>
 
-            {!loadingPreferences && totalCompanyCount > 0 ? (
+            {totalCompanyCount > 0 ? (
               <>
                 <div className="flex flex-wrap gap-2">
                   {selectedCategories.map(catId => {
@@ -835,15 +762,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                 )}
               </>
             ) : (
-              !loadingPreferences && !editingCompanies && (
+              !editingCompanies && (
                 <div className="py-4 text-center">
                   <p className="text-sm font-medium text-foreground mb-1">No target companies added</p>
                   <p className="text-sm text-muted-foreground mb-4">Add companies to activate outreach.</p>
                   <button
                     onClick={() => setEditingCompanies(true)}
-                    style={{ ...primaryButtonStyle, margin: '0 auto' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
+                    className="flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity mx-auto"
                   >
                     Add target companies <ArrowRight className="w-3.5 h-3.5" />
                   </button>
@@ -854,40 +779,23 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
 
         {/* Work Authorization */}
-        <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
+        <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-            <h3 style={panelTitleStyle}>Work Authorization</h3>
-            {!loadingPreferences && (
-              <button
-                onClick={() => editingVisa ? handleVisaDone() : setEditingVisa(true)}
-                className={`flex items-center gap-1.5 text-sm font-medium border rounded-md px-3 py-1.5 transition-colors ${
-                  editingVisa
-                    ? 'border-border text-muted-foreground hover:text-foreground'
-                    : 'border-primary/30 text-primary hover:bg-primary/5'
-                }`}
-              >
-                {editingVisa ? <><Check className="w-3.5 h-3.5" />Done</> : <><Pencil className="w-3.5 h-3.5" />Edit</>}
-              </button>
-            )}
+            <h3 className="text-foreground">Work Authorization</h3>
+            <button
+              onClick={() => editingVisa ? handleVisaDone() : setEditingVisa(true)}
+              className={`flex items-center gap-1.5 text-sm font-medium border rounded-md px-3 py-1.5 transition-colors ${
+                editingVisa
+                  ? 'border-border text-muted-foreground hover:text-foreground'
+                  : 'border-primary/30 text-primary hover:bg-primary/5'
+              }`}
+            >
+              {editingVisa ? <><Check className="w-3.5 h-3.5" />Done</> : <><Pencil className="w-3.5 h-3.5" />Edit</>}
+            </button>
           </div>
           <div className="px-5 py-4 flex flex-col gap-3">
-            {loadingPreferences && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2.5">
-                  <SkeletonBlock className="w-8 h-8 rounded-md shrink-0" />
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <SkeletonBlock className="h-4 w-40" />
-                    <SkeletonBlock className="h-3 w-28" />
-                  </div>
-                </div>
-                <SkeletonBlock className="h-3 w-56" />
-              </div>
-            )}
             <AnimatePresence mode="wait">
-              {!loadingPreferences && editingVisa ? (
+              {editingVisa ? (
                 <motion.div key="visa-edit" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }} className="flex flex-col gap-2">
                   {VISA_OPTIONS.map(({ id, label, sub }) => {
                     const sel = visaStatus === id;
@@ -943,12 +851,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       </div>
 
       {/* ── Basic Info ── */}
-      <div
-        className="overflow-hidden transition-colors"
-        style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-      >
+      <div className="bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-          <h3 style={panelTitleStyle}>Basic Info</h3>
+          <h3 className="text-foreground">Basic Info</h3>
           <Link to="/settings">
             <button className="flex items-center gap-1.5 text-sm font-medium text-primary border border-primary/30 rounded-md px-3 py-1.5 hover:bg-primary/5 transition-colors">
               <Settings className="w-3.5 h-3.5" />Change in Settings
@@ -958,54 +863,36 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
           <div className="px-5 py-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Full Name</div>
-            {loadingPersonal
-              ? <SkeletonBlock className="h-4 w-32" />
-              : <div className="text-sm font-medium text-foreground mb-2">{displayName || <span className="text-muted-foreground">—</span>}</div>
-            }
+            <div className="text-sm font-medium text-foreground mb-2">
+              {displayName || <span className="text-muted-foreground">—</span>}
+            </div>
           </div>
           <div className="px-5 py-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Email Address</div>
-            {loadingPersonal
-              ? <SkeletonBlock className="h-4 w-48" />
-              : <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm text-foreground truncate">
-                    {personalEmail || <span className="text-muted-foreground">—</span>}
-                  </span>
-                  {personalEmail && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-medium">
-                      <BadgeCheck className="w-3 h-3" />Verified
-                    </span>
-                  )}
-                </div>
-            }
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm text-foreground truncate">
+                {personalEmail || <span className="text-muted-foreground">—</span>}
+              </span>
+              {personalEmail && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                  <BadgeCheck className="w-3 h-3" />Verified
+                </span>
+              )}
+            </div>
           </div>
           <div className="px-5 py-4">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Timezone</div>
-            {loadingPersonal
-              ? <SkeletonBlock className="h-4 w-40 mb-2" />
-              : <div className="text-sm text-foreground font-medium mb-2">{timezone || <span className="text-muted-foreground font-normal">—</span>}</div>
-            }
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Account</div>
+            <div className="text-sm text-foreground font-medium mb-2">Joined Sep 2024</div>
             <div className="flex items-center gap-2 flex-wrap">
-              {isSubLoading ? (
-                <>
-                  <SkeletonBlock className="h-5 w-20 rounded-full" />
-                  <SkeletonBlock className="h-5 w-16 rounded-full" />
-                </>
-              ) : (
-                <>
-                  {subscription?.plan && (
-                    <span className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-400/10 to-amber-500/15 border border-amber-400/50 shadow-[0_0_10px_hsl(38_95%_55%/0.18)]">
-                      <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-sm shrink-0">
-                        <Sparkles className="w-2.5 h-2.5 text-white" />
-                      </span>
-                      <span className="text-xs font-semibold text-amber-600 tracking-wide capitalize">{subscription.plan}</span>
-                    </span>
-                  )}
-                  <button className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-medium hover:bg-primary/20 transition-colors flex items-center gap-1">
-                    <Coins className="w-3 h-3" />{credits.totalBalance} credits
-                  </button>
-                </>
-              )}
+              <span className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-400/10 to-amber-500/15 border border-amber-400/50 shadow-[0_0_10px_hsl(38_95%_55%/0.18)]">
+                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-sm shrink-0">
+                  <Sparkles className="w-2.5 h-2.5 text-white" />
+                </span>
+                <span className="text-xs font-semibold text-amber-600 tracking-wide">Premium</span>
+              </span>
+              <button className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-medium hover:bg-primary/20 transition-colors flex items-center gap-1">
+                <Coins className="w-3 h-3" />12 credits
+              </button>
             </div>
           </div>
         </div>
@@ -1055,10 +942,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
             <button
               onClick={handleVisaModalSave}
               disabled={!pendingVisaStatus}
-              className="disabled:opacity-40 disabled:cursor-not-allowed"
-              style={primaryButtonStyle}
-              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
+              className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Check className="w-3.5 h-3.5" />Save & Continue
             </button>
@@ -1070,16 +954,94 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   );
 }
 
-// ── ProfileTab ────────────────────────────────────────────────────────────────
+// ── ProfileTab (with sub-tabs) ────────────────────────────────────────────────
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
+  const navigate = useNavigate();
+  const { isElite, isLoading: isPlanLoading } = useUserPlan();
+  const [subTab, setSubTab] = useState<'profile' | 'application'>('profile');
+
+  // If a non-Premium user somehow lands on the application sub-tab (e.g. plan
+  // downgrades while open), bounce them back to Profile.
+  useEffect(() => {
+    if (!isPlanLoading && !isElite && subTab === 'application') {
+      setSubTab('profile');
+    }
+  }, [isElite, isPlanLoading, subTab]);
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHead
-        title="Profile"
-        subtitle="Your career profile, target roles, and saved preferences."
-      />
-      <ProfileCoreContent userData={userData} />
+
+      {/* Second-level tabs */}
+      <div className="flex items-center border-b border-border -mt-2">
+        {([
+          { id: 'profile' as const,     label: 'Profile',             premium: false },
+          { id: 'application' as const, label: 'Application Profile', premium: true  },
+        ]).map(({ id, label, premium }) => {
+          const isActive = subTab === id;
+          const locked   = premium && !isElite;
+          return (
+            <button
+              key={id}
+              onClick={() => !locked && setSubTab(id)}
+              disabled={locked}
+              aria-disabled={locked}
+              title={locked ? 'Upgrade to Premium to access Application Profile' : undefined}
+              className={`pb-3 px-1 mr-6 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+                locked   ? 'text-muted-foreground/50 cursor-not-allowed' :
+                isActive ? 'text-foreground' :
+                           'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {locked && <Lock className="w-3 h-3 shrink-0" />}
+              {label}
+              {premium && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-400/10 to-amber-500/15 border border-amber-400/50">
+                  <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                  <span className="text-[10px] font-semibold text-amber-600">Premium</span>
+                </span>
+              )}
+              {isActive && !locked && (
+                <motion.div layoutId="profileSubTab" className="absolute bottom-0 left-0 w-full h-[2px] bg-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {subTab === 'profile' && (
+          <motion.div key="profile-core" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+            <ProfileCoreContent userData={userData} />
+          </motion.div>
+        )}
+        {subTab === 'application' && isElite && (
+          <motion.div key="application-profile" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+            <ApplicationProfileContent />
+          </motion.div>
+        )}
+        {subTab === 'application' && !isElite && (
+          <motion.div key="application-locked" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+            <div className="bg-card border border-border rounded-lg p-10 flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-amber-500" />
+              </div>
+              <h3 className="text-base font-semibold text-foreground">Application Profile is Premium-only</h3>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Upgrade to Premium to let us submit job applications on your behalf using your saved personal information and preferences.
+              </p>
+              <button
+                onClick={() => navigate('/pricing')}
+                className="mt-2 inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Upgrade to Premium
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

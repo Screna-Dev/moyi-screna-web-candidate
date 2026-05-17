@@ -2,10 +2,11 @@ import { useState, useRef } from 'react';
 import {
   Clock, CheckCircle2, Send, Inbox,
   ChevronRight, Star, Lock, Calendar, MessageCircle, Eye,
-  TrendingUp, Sparkles, Target, Users,
+  TrendingUp, Target, Users,
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 
 // ─── Brand blue scale — strict palette (blue-50 → blue-950) ──────────────────
@@ -22,9 +23,43 @@ const CHART_COLORS = {
 } as const;
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type Plan      = 'starter' | 'premium';
+type Plan      = 'free' | 'starter' | 'premium';
 type ChartTab  = 'applications' | 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
+
+const isPaid = (p: Plan) => p === 'starter' || p === 'premium';
+
+// Map the canonical PlanType from useUserPlan into the dashboard's Plan tier.
+// Free→free, Pro→starter, Elite→premium.
+function planFromUserPlan(pt: PlanType): Plan {
+  if (pt === 'Elite') return 'premium';
+  if (pt === 'Pro')   return 'starter';
+  return 'free';
+}
+
+// Stat values rendered in the StatsRow. Each field is optional so individual
+// cards can render skeletons until their source resolves.
+export type DashboardStats = {
+  totalLearningTime?: string;        // e.g. "14h 20m"
+  learningSubtext?: string;          // e.g. "Mock Interview · Apr"
+  sessionsCompleted?: number | string;
+  sessionsSubtext?: string;
+  applicationsThisPeriod?: number | string;
+  applicationsDelta?: string;        // e.g. "+18%"
+  avgDailyApplications?: number | string;
+  pendingReview?: number | string;
+};
+
+// Default placeholder values so the dashboard still renders without a backing
+// service. Production code can pass real stats via DashboardHome props.
+const DEFAULT_STATS: DashboardStats = {
+  totalLearningTime: '14h 20m',
+  sessionsCompleted: 23,
+  applicationsThisPeriod: 47,
+  applicationsDelta: '+18%',
+  avgDailyApplications: 3.2,
+  pendingReview: 12,
+};
 
 // ─── Deterministic series generator ───────────────────────────────────────────
 function makeSeries(n: number, base: number, variance: number, seed: number): number[] {
@@ -305,10 +340,44 @@ function CustomRadar({ data, color }: { data: { label: string; value: number }[]
 }
 
 // ─── Stats Row ─────────────────────────────────────────────────────────────────
-function StatsRow({ plan }: { plan: Plan }) {
-  const isPremium = plan === 'premium';
+function StatValue({
+  value, isLoading, color, className,
+}: {
+  value: number | string | undefined;
+  isLoading: boolean;
+  color?: string;
+  className?: string;
+}) {
+  if (isLoading || value === undefined) {
+    return <div className="h-7 w-16 bg-muted/60 rounded animate-pulse mb-1" />;
+  }
   return (
-    <div className={`grid gap-3 ${isPremium ? 'grid-cols-5' : 'grid-cols-2'}`}>
+    <div className={`text-2xl font-semibold tracking-tight mb-1 ${className ?? ''}`} style={color ? { color } : undefined}>
+      {value}
+    </div>
+  );
+}
+
+function StatsRow({
+  plan, stats, isLoading,
+}: {
+  plan: Plan;
+  stats: DashboardStats;
+  isLoading: boolean;
+}) {
+  const paid       = isPaid(plan);
+  const isPremium  = plan === 'premium';
+  const cardCount  = plan === 'premium' ? 5 : plan === 'starter' ? 4 : 2;
+  const gridCls    =
+    cardCount === 5 ? 'grid-cols-5' :
+    cardCount === 4 ? 'grid-cols-4' :
+                      'grid-cols-2';
+
+  const learningSubtext  = stats.learningSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
+  const sessionsSubtext  = stats.sessionsSubtext  ?? (paid ? 'Mock + Mentorship · Apr' : 'Mock Interview · Apr');
+
+  return (
+    <div className={`grid gap-3 ${gridCls}`}>
       <div className="bg-secondary rounded-md overflow-hidden flex">
         <div className="w-0.5 bg-blue-300 shrink-0" />
         <div className="p-4 flex-1">
@@ -316,8 +385,8 @@ function StatsRow({ plan }: { plan: Plan }) {
             <span className="text-xs text-muted-foreground">Total Learning Time</span>
             <Clock className="w-3.5 h-3.5 text-blue-300" />
           </div>
-          <div className="text-2xl font-semibold tracking-tight mb-1 text-blue-300">14h 20m</div>
-          <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
+          <StatValue value={stats.totalLearningTime} isLoading={isLoading} className="text-blue-300" />
+          <div className="text-xs text-muted-foreground">{learningSubtext}</div>
         </div>
       </div>
 
@@ -326,23 +395,27 @@ function StatsRow({ plan }: { plan: Plan }) {
           <span className="text-xs text-muted-foreground">Sessions Completed</span>
           <CheckCircle2 className="w-3.5 h-3.5" style={{ color: BLUES.deep }} />
         </div>
-        <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.deep }}>23</div>
-        <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
+        <StatValue value={stats.sessionsCompleted} isLoading={isLoading} color={BLUES.deep} />
+        <div className="text-xs text-muted-foreground">{sessionsSubtext}</div>
       </div>
 
-      {isPremium && (
+      {paid && (
         <>
           <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.royal }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Applications This Period</span>
               <Send className="w-3.5 h-3.5" style={{ color: BLUES.royal }} />
             </div>
-            <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.royal }}>47</div>
-            <div className="flex items-center gap-1 text-xs">
-              <TrendingUp className="w-3 h-3" style={{ color: BLUES.royal }} />
-              <span style={{ color: BLUES.royal }} className="font-medium">+18%</span>
-              <span className="text-muted-foreground">vs prior period</span>
-            </div>
+            <StatValue value={stats.applicationsThisPeriod} isLoading={isLoading} color={BLUES.royal} />
+            {isLoading || stats.applicationsDelta === undefined ? (
+              <div className="h-3.5 w-24 bg-muted/60 rounded animate-pulse" />
+            ) : (
+              <div className="flex items-center gap-1 text-xs">
+                <TrendingUp className="w-3 h-3" style={{ color: BLUES.royal }} />
+                <span style={{ color: BLUES.royal }} className="font-medium">{stats.applicationsDelta}</span>
+                <span className="text-muted-foreground">vs prior period</span>
+              </div>
+            )}
           </div>
 
           <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.sky }}>
@@ -350,29 +423,31 @@ function StatsRow({ plan }: { plan: Plan }) {
               <span className="text-xs text-muted-foreground">Avg. Daily Applications</span>
               <TrendingUp className="w-3.5 h-3.5" style={{ color: BLUES.sky }} />
             </div>
-            <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.sky }}>3.2</div>
+            <StatValue value={stats.avgDailyApplications} isLoading={isLoading} color={BLUES.sky} />
             <div className="text-xs text-muted-foreground">Rolling 30-day avg</div>
           </div>
-
-          <div className="bg-secondary rounded-md p-4 border-l-2 border-l-amber-400/60">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground">Pending Review</span>
-              <Inbox className="w-3.5 h-3.5 text-amber-500" />
-            </div>
-            <div className="text-2xl font-semibold text-amber-600 tracking-tight mb-1">12</div>
-            <div className="text-xs text-muted-foreground">Ready for your approval</div>
-          </div>
         </>
+      )}
+
+      {isPremium && (
+        <div className="bg-secondary rounded-md p-4 border-l-2 border-l-amber-400/60">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Pending Review</span>
+            <Inbox className="w-3.5 h-3.5 text-amber-500" />
+          </div>
+          <StatValue value={stats.pendingReview} isLoading={isLoading} className="text-amber-600" />
+          <div className="text-xs text-muted-foreground">Ready for your approval</div>
+        </div>
       )}
     </div>
   );
 }
 
 // ─── Trend Chart Section ───────────────────────────────────────────────────────
-const TABS: { id: ChartTab; label: string; premiumOnly: boolean }[] = [
-  { id: 'applications', label: 'Applications', premiumOnly: true  },
-  { id: 'learning',     label: 'Learning Time', premiumOnly: false },
-  { id: 'sessions',     label: 'Sessions',      premiumOnly: false },
+const TABS: { id: ChartTab; label: string; paidOnly: boolean }[] = [
+  { id: 'applications', label: 'Applications',  paidOnly: true  },
+  { id: 'learning',     label: 'Learning Time', paidOnly: false },
+  { id: 'sessions',     label: 'Sessions',      paidOnly: false },
 ];
 const TIME_RANGES: { id: TimeRange; label: string }[] = [
   { id: '7d',  label: 'Last 7 Days'   },
@@ -380,13 +455,35 @@ const TIME_RANGES: { id: TimeRange; label: string }[] = [
   { id: '3m',  label: 'Last 3 Months' },
 ];
 
-function TrendChartSection({ plan }: { plan: Plan }) {
-  const isPremium = plan === 'premium';
+function TrendChartSection({
+  plan, hasSessions,
+}: {
+  plan: Plan;
+  hasSessions: boolean;
+}) {
+  const navigate = useNavigate();
+  const paid = isPaid(plan);
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
 
+  // Free users cannot land on the applications tab — silently fall back.
   const effectiveTab: ChartTab =
-    !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
+    !paid && activeTab === 'applications' ? 'learning' : activeTab;
+
+  if (!hasSessions) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-5 flex flex-col items-center justify-center text-center gap-3 min-h-[260px]">
+        <Target className="w-8 h-8 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">No practice sessions yet</p>
+        <button
+          onClick={() => navigate('/personalized-practice')}
+          className="text-sm text-primary font-medium hover:opacity-75 transition-opacity"
+        >
+          Practice now →
+        </button>
+      </div>
+    );
+  }
 
   const data  = CHART_DATA[effectiveTab][timeRange];
   const color = CHART_COLORS[effectiveTab];
@@ -416,8 +513,8 @@ function TrendChartSection({ plan }: { plan: Plan }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-1">
-          {TABS.map(({ id, label, premiumOnly }) => {
-            const locked    = premiumOnly && !isPremium;
+          {TABS.map(({ id, label, paidOnly }) => {
+            const locked    = paidOnly && !paid;
             const isActive  = effectiveTab === id;
             const tabColor  = CHART_COLORS[id];
             return (
@@ -739,8 +836,27 @@ type UserData = {
   role?: string;
 };
 
-export function DashboardHome({ userData }: { userData: UserData | null }) {
-  const [plan, setPlan] = useState<Plan>('premium');
+export function DashboardHome({
+  userData,
+  plan: planProp,
+  stats,
+  isStatsLoading = false,
+  hasSessions = true,
+}: {
+  userData: UserData | null;
+  plan?: Plan;
+  stats?: DashboardStats;
+  isStatsLoading?: boolean;
+  hasSessions?: boolean;
+}) {
+  // Plan source: explicit `plan` prop wins for testing/preview, otherwise read
+  // the real subscription. Free→free, Pro→starter, Elite→premium.
+  const userPlan = useUserPlan();
+  const plan: Plan = planProp ?? planFromUserPlan(userPlan.planData.currentPlan);
+
+  // Fall back to the canned defaults when no stats prop is supplied so the
+  // page still renders during integration. Real data arrives via `stats`.
+  const effectiveStats: DashboardStats = stats ?? DEFAULT_STATS;
 
   const hour     = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -757,33 +873,13 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
             {userData?.role ? `${userData.role} · ` : ''}Apr 2025 · Career Command Center
           </p>
         </div>
-
-        {/* Plan toggle — demonstrates both dashboard variants */}
-        <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 shrink-0">
-          {(['starter', 'premium'] as Plan[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPlan(p)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
-                plan === p
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {p === 'premium' && (
-                <Sparkles className="w-3 h-3 text-amber-500" />
-              )}
-              {p}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* ── 1. Stats row ── */}
-      <StatsRow plan={plan} />
+      <StatsRow plan={plan} stats={effectiveStats} isLoading={isStatsLoading} />
 
       {/* ── 2. Trend chart ── */}
-      <TrendChartSection key={plan} plan={plan} />
+      <TrendChartSection key={plan} plan={plan} hasSessions={hasSessions} />
 
       {/* ── 3. Bottom 3-column grid ── */}
       <div className="grid grid-cols-3 gap-5">
