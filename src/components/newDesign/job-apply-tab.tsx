@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, ChevronDown, X, CheckCircle2, ExternalLink,
   Pencil, Plus, Shield, AlertCircle, ChevronLeft,
-  ChevronRight, Eye, EyeOff, Zap, Building2, DollarSign,
+  ChevronRight, Eye, EyeOff, Zap, DollarSign,
   Globe, Briefcase, Lock, MapPin, Star, Check, Loader2,
 } from 'lucide-react';
 import { Link } from 'react-router';
@@ -17,6 +17,13 @@ import { Sheet, SheetContent } from './ui/sheet';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui/select';
+import { PageHead } from '@/components/newDesign/page-head';
+import {
+  T,
+  primaryButtonStyle,
+  cardStyle,
+  panelTitleStyle,
+} from '@/lib/design-tokens';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -373,7 +380,10 @@ function PreferenceBar({
   const locationDisplay = locationParts.join(' · ') || '—';
 
   return (
-    <div className="bg-card border border-border rounded-xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+    <div
+      style={cardStyle}
+      className="flex items-center justify-between gap-4 flex-wrap"
+    >
       <div className="flex items-center gap-5 flex-wrap">
         <PrefItem icon={Briefcase} label="Roles" value={rolesDisplay} />
         <div className="w-px h-4 bg-border" />
@@ -856,7 +866,10 @@ function JobCard({
   onViewDetails: (app: Application) => void;
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4 hover:border-border/80 hover:shadow-sm transition-all">
+    <div
+      style={cardStyle}
+      className="hover:shadow-sm transition-all"
+    >
       <div className="flex items-start gap-3">
         {/* Logo */}
         <div
@@ -869,7 +882,10 @@ function JobCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">
+              <p
+                style={{ ...panelTitleStyle, fontSize: 14 }}
+                className="truncate"
+              >
                 {app.company} · {app.title}
                 {app.department && (
                   <span className="font-normal text-muted-foreground"> — {app.department}</span>
@@ -1496,6 +1512,24 @@ function JobApplyDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Page head */}
+      <PageHead
+        title="Jobs"
+        subtitle="Track auto-submitted applications, watchlist roles, and items that need your review."
+        actions={
+          <button
+            type="button"
+            onClick={() => setPrefModalOpen(true)}
+            style={primaryButtonStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.background = T.blue600; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit preferences
+          </button>
+        }
+      />
+
       {/* Preference Bar */}
       <PreferenceBar prefs={preferences} onEdit={() => setPrefModalOpen(true)} />
 

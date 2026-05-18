@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
-import { getMyPosts, getMyComments, getMySavedPosts } from '@/services/CommunityService';
+import { getMyPosts, getMyComments } from '@/services/CommunityService';
 
 // ─── Color Mappings ────────────────────────────────────
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
@@ -158,20 +158,42 @@ function mapApiComment(c: ApiComment): CommentItem {
   };
 }
 
-function mapApiSavedPost(p: ApiPost): SavedPost {
-  const author = p.isAnonymous ? 'Anonymous' : (p.user?.name ?? 'Anonymous');
-  return {
-    id: p.id,
-    company: p.company ?? 'Unknown',
-    role: p.role ?? 'Unknown role',
-    round: p.round ?? '—',
-    author,
-    date: formatPostDate(p.createdAt ?? p.date),
-    likes: p.likeCount ?? 0,
-    comments: p.commentCount ?? 0,
-    questions: Array.isArray(p.questions) ? p.questions.length : 0,
-  };
-}
+// ─── Mock Data (Saved tab — no API yet) ────────────────
+const MOCK_SAVED: SavedPost[] = [
+  {
+    id: 201,
+    company: 'Apple',
+    role: 'Engineering Manager',
+    round: 'Onsite - Behavioral / Leadership',
+    author: 'Daniel W.',
+    date: 'Mar 2026',
+    likes: 92,
+    comments: 31,
+    questions: 3,
+  },
+  {
+    id: 202,
+    company: 'Netflix',
+    role: 'Data Scientist',
+    round: 'Technical Phone Screen',
+    author: 'Priya R.',
+    date: 'Dec 2025',
+    likes: 68,
+    comments: 21,
+    questions: 2,
+  },
+  {
+    id: 203,
+    company: 'Microsoft',
+    role: 'Software Engineer',
+    round: 'Onsite - System Design',
+    author: 'Anonymous',
+    date: 'Feb 2026',
+    likes: 156,
+    comments: 44,
+    questions: 4,
+  },
+];
 
 type TabKey = 'posts' | 'comments' | 'saved';
 
@@ -188,13 +210,10 @@ export function MyContributionsPage() {
   // Live data from the backend
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<CommentItem[]>([]);
-  const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(true);
-  const [savedLoading, setSavedLoading] = useState(true);
   const [postsError, setPostsError] = useState<string | null>(null);
   const [commentsError, setCommentsError] = useState<string | null>(null);
-  const [savedError, setSavedError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,31 +247,15 @@ export function MyContributionsPage() {
         if (!cancelled) setCommentsLoading(false);
       }
     }
-    async function loadSaved() {
-      try {
-        const res = await getMySavedPosts();
-        if (cancelled) return;
-        const content: ApiPost[] = res.data?.data?.content ?? [];
-        setSavedPosts(content.map(mapApiSavedPost));
-        setSavedError(null);
-      } catch (e: unknown) {
-        if (cancelled) return;
-        setSavedError(e instanceof Error ? e.message : 'Failed to load saved posts');
-        setSavedPosts([]);
-      } finally {
-        if (!cancelled) setSavedLoading(false);
-      }
-    }
     loadPosts();
     loadComments();
-    loadSaved();
     return () => { cancelled = true; };
   }, []);
 
   const TABS: { key: TabKey; label: string; icon: React.ReactNode; count: number }[] = [
     { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: posts.length },
     { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: comments.length },
-    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: savedPosts.length },
+    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: MOCK_SAVED.length },
   ];
 
   // Filtered posts
@@ -275,7 +278,7 @@ export function MyContributionsPage() {
     return c.content.toLowerCase().includes(q) || c.postTitle.toLowerCase().includes(q);
   });
 
-  const filteredSaved = savedPosts.filter(s => {
+  const filteredSaved = MOCK_SAVED.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -338,7 +341,7 @@ export function MyContributionsPage() {
 
         {/* ─── Controls Bar ─── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
-          {/* <div className="relative flex-1 max-w-sm">
+          <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
             <input
               type="text"
@@ -351,11 +354,11 @@ export function MyContributionsPage() {
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 h-9 rounded-xl border border-[hsl(220,16%,90%)] bg-white text-sm focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 outline-none transition-all"
             />
-          </div> */}
+          </div>
 
           {activeTab === 'posts' && (
             <div className="flex items-center gap-2">
-              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (        
+              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -638,11 +641,7 @@ export function MyContributionsPage() {
         {/* ─── Saved Tab ─── */}
         {activeTab === 'saved' && (
           <div>
-            {savedLoading ? (
-              <LoadingState />
-            ) : savedError ? (
-              <ErrorState message={savedError} />
-            ) : filteredSaved.length === 0 ? (
+            {filteredSaved.length === 0 ? (
               <EmptyState
                 title="No saved posts yet"
                 description="Save interview experiences from the community to reference them later during your prep."

@@ -12,10 +12,6 @@ export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
 
-export const getPostAccessInfo = (postId) => {
-  return API.get(`/community/posts/${postId}/access-info`);
-};
-
 export const createPost = (data) => {
   return API.post('/community/posts', data);
 };
@@ -56,8 +52,4 @@ export const getMyPosts = (params = {}) => {
 
 export const getMyComments = (params = {}) => {
   return API.get('/community/comments/me', { params });
-};
-
-export const getMySavedPosts = (params = {}) => {
-  return API.get('/community/posts/me/saved', { params });
 };
