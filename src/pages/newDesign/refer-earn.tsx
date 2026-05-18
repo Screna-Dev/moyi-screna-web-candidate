@@ -5,6 +5,8 @@ import { Button } from '@/components/newDesign/ui/button';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/newDesign/ui/tooltip';
 import { toast } from 'sonner';
+import { PageHead } from '@/components/newDesign/page-head';
+import { T, primaryButtonStyle } from '@/lib/design-tokens';
 
 export function ReferEarnPage() {
   const [referralCode] = useState('ALEX2024');
@@ -60,7 +62,32 @@ export function ReferEarnPage() {
   return (
     <DashboardLayout headerTitle="Refer & Earn">
       <div className="max-w-4xl mx-auto space-y-8">
-        
+
+        <PageHead
+          title="Refer & Earn"
+          subtitle="Invite friends and earn credits when they sign up."
+          actions={
+            <button
+              onClick={handleCopy}
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  Copy link
+                </>
+              )}
+            </button>
+          }
+        />
+
         {/* Hero Section */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
