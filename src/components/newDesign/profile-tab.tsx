@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
-  Sparkles, Check, Pencil, X, Plus, Search, ArrowLeft, ArrowRight,
+  Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
   UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
   BadgeCheck, Building2, Coins, Lock,
 } from 'lucide-react';
@@ -12,6 +12,8 @@ import { useUserPlan } from '@/hooks/useUserPlan';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
+import { PageHead } from '@/components/newDesign/page-head';
+import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
 type UserData = {
   firstName?: string;
@@ -353,10 +355,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Resume Card */}
-        <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+        <div
+          className="lg:col-span-7 overflow-hidden transition-colors"
+          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
+        >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 className="text-foreground">Resume</h3>
+              <h3 style={panelTitleStyle}>Resume</h3>
               {resumeState === 'success' && (
                 <span className="flex items-center gap-1 text-xs text-green-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Active
@@ -404,7 +409,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                   <p className="text-xs text-muted-foreground mb-4">PDF or DOCX · Max 5MB</p>
                   <button
                     onClick={(e) => { e.stopPropagation(); resumeInputRef.current?.click(); }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
+                    style={primaryButtonStyle}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
                   >
                     <FileText className="w-3.5 h-3.5" />Choose File to Upload
                   </button>
@@ -498,10 +505,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
 
         {/* Target Role Card */}
-        <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+        <div
+          className="lg:col-span-5 overflow-hidden transition-colors"
+          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
+        >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 className="text-foreground">Target Role</h3>
+              <h3 style={panelTitleStyle}>Target Role</h3>
               {roleMode === 'view' && (
                 <span className="flex items-center gap-1 text-xs text-green-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Set
@@ -594,7 +604,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               <button
                 onClick={handleRoleConfirm}
                 disabled={!selectedRoleLabel}
-                className="flex items-center justify-center gap-2 w-full py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed mt-1"
+                className="disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ ...primaryButtonStyle, width: '100%', justifyContent: 'center', height: 36, marginTop: 4 }}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
               >
                 Confirm Role <ArrowRight className="w-3.5 h-3.5" />
               </button>
@@ -607,10 +620,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Target Companies */}
-        <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+        <div
+          className="lg:col-span-7 overflow-hidden transition-colors"
+          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
+        >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
             <div className="flex items-center gap-2.5">
-              <h3 className="text-foreground">Target Companies</h3>
+              <h3 style={panelTitleStyle}>Target Companies</h3>
               {totalCompanyCount > 0 && (
                 <span className="text-xs text-muted-foreground">
                   {selectedCategories.length > 0 && `${selectedCategories.length} ${selectedCategories.length === 1 ? 'type' : 'types'}`}
@@ -768,7 +784,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                   <p className="text-sm text-muted-foreground mb-4">Add companies to activate outreach.</p>
                   <button
                     onClick={() => setEditingCompanies(true)}
-                    className="flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity mx-auto"
+                    style={{ ...primaryButtonStyle, margin: '0 auto' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
                   >
                     Add target companies <ArrowRight className="w-3.5 h-3.5" />
                   </button>
@@ -779,9 +797,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
 
         {/* Work Authorization */}
-        <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+        <div
+          className="lg:col-span-5 overflow-hidden transition-colors"
+          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
+        >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-            <h3 className="text-foreground">Work Authorization</h3>
+            <h3 style={panelTitleStyle}>Work Authorization</h3>
             <button
               onClick={() => editingVisa ? handleVisaDone() : setEditingVisa(true)}
               className={`flex items-center gap-1.5 text-sm font-medium border rounded-md px-3 py-1.5 transition-colors ${
@@ -851,9 +872,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       </div>
 
       {/* ── Basic Info ── */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+      <div
+        className="overflow-hidden transition-colors"
+        style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
+      >
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-          <h3 className="text-foreground">Basic Info</h3>
+          <h3 style={panelTitleStyle}>Basic Info</h3>
           <Link to="/settings">
             <button className="flex items-center gap-1.5 text-sm font-medium text-primary border border-primary/30 rounded-md px-3 py-1.5 hover:bg-primary/5 transition-colors">
               <Settings className="w-3.5 h-3.5" />Change in Settings
@@ -942,7 +966,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
             <button
               onClick={handleVisaModalSave}
               disabled={!pendingVisaStatus}
-              className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              className="disabled:opacity-40 disabled:cursor-not-allowed"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
             >
               <Check className="w-3.5 h-3.5" />Save & Continue
             </button>
@@ -971,6 +998,11 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
 
   return (
     <div className="flex flex-col gap-6">
+
+      <PageHead
+        title="Profile"
+        subtitle="Your career profile, target roles, and saved preferences."
+      />
 
       {/* Second-level tabs */}
       <div className="flex items-center border-b border-border -mt-2">
@@ -1022,7 +1054,10 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
         )}
         {subTab === 'application' && !isElite && (
           <motion.div key="application-locked" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
-            <div className="bg-card border border-border rounded-lg p-10 flex flex-col items-center text-center gap-3">
+            <div
+              className="flex flex-col items-center text-center gap-3"
+              style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12, padding: 40 }}
+            >
               <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
                 <Lock className="w-5 h-5 text-amber-500" />
               </div>
@@ -1032,7 +1067,9 @@ export function ProfileTab({ userData }: { userData: UserData | null }) {
               </p>
               <button
                 onClick={() => navigate('/pricing')}
-                className="mt-2 inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+                style={{ ...primaryButtonStyle, marginTop: 8 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Upgrade to Premium

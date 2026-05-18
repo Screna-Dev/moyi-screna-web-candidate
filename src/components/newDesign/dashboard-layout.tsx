@@ -41,8 +41,8 @@ type UserData = {
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
-  { icon: History, label: 'Interview History', path: '/history' },
-  { icon: FileText, label: 'My Contributions', path: '/dashboard/contributions' },
+  { icon: History, label: 'Training History', path: '/history' },
+  { icon: FileText, label: 'My Contributions', path: '/contributions' },
 ];
 
 const sidebarAccountLinks = [
@@ -229,16 +229,25 @@ function GlobalTopHeader({
         </Link>
       </div>
 
-      {/* Center: Global Nav Links */}
+      {/* Center: Global Nav Links — Coach / Practice ▼ / Community ▼ / Pricing / FAQ */}
       <nav className="hidden md:flex items-center gap-5 mx-auto">
 
-        {/* Interview dropdown */}
+        {/* Coach (plain link) */}
+        <Link
+          to="/marketplace"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          Coach
+        </Link>
+
+        {/* Practice dropdown */}
         <div className="relative group">
           <button
             className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
             style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
           >
-            Interview
+            Practice
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
           <div className={dropdownPanelClass}>
@@ -261,14 +270,6 @@ function GlobalTopHeader({
         </div>
 
         <Link
-          to="/help"
-          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-          style={{ fontWeight: 450, color: isLinkActive('/faq') ? '#2E5BFF' : '#2A2A2A' }}
-        >
-          FAQ
-        </Link>
-
-        <Link
           to="/pricing"
           className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
           style={{ fontWeight: 450, color: isLinkActive('/pricing') ? '#2E5BFF' : '#2A2A2A' }}
@@ -276,19 +277,14 @@ function GlobalTopHeader({
           Pricing
         </Link>
 
-        {/* Service dropdown */}
-        <div className="relative group">
-          <button
-            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Coach
-            <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-          </button>
-          <div className={dropdownPanelClass}>
-            {dropdownItem('/marketplace', 'Mentorship Marketplace', 'Connect with mentors for mock interviews, resume review, and career support.')}
-          </div>
-        </div>
+        {/* FAQ — points to existing Help Center */}
+        <Link
+          to="/help"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: currentPath === '/help' ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          FAQ
+        </Link>
       </nav>
 
       {/* Right: Avatar */}

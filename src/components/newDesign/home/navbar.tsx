@@ -11,16 +11,6 @@ interface NavbarProps {
 
 const NAV_ITEMS = [
   {
-    label: 'Coach',
-    items: [
-      {
-        title: 'Mentorship Marketplace',
-        desc: 'Connect with mentors for mock interviews, resume review, and career support.',
-        path: '/marketplace',
-      },
-    ],
-  },
-  {
     label: 'Practice',
     items: [
       {
@@ -108,6 +98,15 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
 
         {/* Center nav — absolutely centered */}
         <nav className="hidden md:flex items-center gap-7 absolute left-1/2 -translate-x-1/2">
+          {/* Coach (plain link) */}
+          <Link
+            to="/marketplace"
+            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450 }}
+          >
+            Coach
+          </Link>
+
           {NAV_ITEMS.map(({ label, items }) => (
             <div key={label} className="relative group">
               <button className="flex items-center gap-1 text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150" style={{ fontWeight: 450 }}>
@@ -154,6 +153,15 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             style={{ fontWeight: 450 }}
           >
             Pricing
+          </Link>
+
+          {/* FAQ — points to existing Help Center */}
+          <Link
+            to="/help"
+            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450 }}
+          >
+            FAQ
           </Link>
         </nav>
 
@@ -255,6 +263,13 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             transition={{ duration: 0.18 }}
             className="md:hidden bg-white/95 backdrop-blur-xl border-t border-[#E8E8EA] px-4 pb-4"
           >
+            <Link
+              to="/marketplace"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors mt-2"
+            >
+              Coach
+            </Link>
             {NAV_ITEMS.map(({ label, items }) => (
               <div key={label}>
                 <p
@@ -281,6 +296,13 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                 className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
               >
                 Pricing
+              </Link>
+              <Link
+                to="/help"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
+              >
+                FAQ
               </Link>
             </div>
             {!isLoggedIn && (

@@ -20,6 +20,8 @@ import { Label } from '../../components/newDesign/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { getPersonalInfo, savePersonalInfo } from '@/services/ProfileServices';
 import { BillingTab } from './billing';
+import { PageHead } from '@/components/newDesign/page-head';
+import { T, primaryButtonStyle, cardStyle, panelTitleStyle } from '@/lib/design-tokens';
 
 // Settings Tabs
 const SETTINGS_TABS = [
@@ -108,8 +110,12 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
 
   return (
     <DashboardLayout headerTitle="Settings">
+      <PageHead
+        title="Settings & Payment"
+        subtitle="Manage your profile, security, notifications, billing, and regional preferences."
+      />
       <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
+
         {/* Sidebar Navigation */}
         <aside className="lg:col-span-1 space-y-1">
           {SETTINGS_TABS.map((tab) => {
@@ -133,7 +139,7 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
 
         {/* Content Area */}
         <main className="lg:col-span-3 space-y-6">
-          
+
           {/* Profile Settings */}
           {activeTab === 'profile' && (
             <motion.div
@@ -142,14 +148,21 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
               transition={{ duration: 0.3 }}
               className="space-y-6"
             >
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <div style={cardStyle}>
                 <div className="mb-6">
-                  <h2 className="text-xl font-semibold text-slate-900 mb-1">Profile Information</h2>
-                  <p className="text-sm text-slate-500">Update your account's profile information and email address.</p>
+                  <h2 style={{ ...panelTitleStyle, marginBottom: 4 }}>Profile Information</h2>
+                  <p className="text-sm" style={{ color: T.textSecondary }}>Update your account's profile information and email address.</p>
                 </div>
 
                 {/* Profile header — avatar + name + email */}
-                <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 mb-6">
+                <div
+                  className="flex items-center gap-4 p-4 mb-6"
+                  style={{
+                    background: T.bgSecondary,
+                    borderRadius: 12,
+                    border: `1px solid ${T.border}`,
+                  }}
+                >
                   {profileData.avatarUrl ? (
                     <img
                       src={profileData.avatarUrl}
@@ -162,10 +175,10 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="text-base font-semibold text-slate-900 truncate">
+                    <p className="text-base font-semibold truncate" style={{ color: T.textPrimary }}>
                       {[profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || 'No name set'}
                     </p>
-                    <p className="text-sm text-slate-500 truncate">{profileData.email || '—'}</p>
+                    <p className="text-sm truncate" style={{ color: T.textSecondary }}>{profileData.email || '—'}</p>
                   </div>
                 </div>
 
@@ -228,9 +241,15 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
                   </div>
 
                   <div className="pt-4">
-                    <Button type="submit" disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      style={{ ...primaryButtonStyle, opacity: isLoading ? 0.6 : 1 }}
+                      onMouseEnter={(e) => { if (!isLoading) e.currentTarget.style.background = T.blue600; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
+                    >
                       {isLoading ? 'Saving...' : 'Save changes'}
-                    </Button>
+                    </button>
                   </div>
                 </form>
               </div>
@@ -245,9 +264,9 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
               transition={{ duration: 0.3 }}
               className="space-y-6"
             >
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-xl font-semibold text-slate-900 mb-1">Password</h2>
-                <p className="text-sm text-slate-500 mb-6">Ensure your account is using a long, random password to stay secure.</p>
+              <div style={cardStyle}>
+                <h2 style={{ ...panelTitleStyle, marginBottom: 4 }}>Password</h2>
+                <p className="text-sm mb-6" style={{ color: T.textSecondary }}>Ensure your account is using a long, random password to stay secure.</p>
 
                 <div className="space-y-4 max-w-xl">
                   <div className="space-y-2">
@@ -263,16 +282,29 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
                     <Input id="confirm-password" type="password" />
                   </div>
                   <div className="pt-2">
-                    <Button variant="outline">Update password</Button>
+                    <button
+                      type="button"
+                      style={primaryButtonStyle}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
+                    >
+                      Update password
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-red-50 border border-red-100 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-xl font-semibold text-red-700 mb-1">Delete Account</h2>
-                <p className="text-sm text-red-600/80 mb-6">Permanently delete your account and all of your content.</p>
+              <div
+                style={{
+                  ...cardStyle,
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                }}
+              >
+                <h2 style={{ ...panelTitleStyle, color: '#B91C1C', marginBottom: 4 }}>Delete Account</h2>
+                <p className="text-sm mb-6" style={{ color: '#DC2626' }}>Permanently delete your account and all of your content.</p>
                 <div className="flex items-center justify-between">
-                   <p className="text-sm text-red-600/70 italic">
+                   <p className="text-sm italic" style={{ color: '#DC2626' }}>
                       Once you delete your account, there is no going back. Please be certain.
                    </p>
                    <Button variant="destructive" className="bg-red-600 hover:bg-red-700 text-white">
@@ -291,8 +323,8 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
               transition={{ duration: 0.3 }}
               className="space-y-6"
             >
-               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                 <h2 className="text-xl font-semibold text-slate-900 mb-6">Email Notifications</h2>
+               <div style={cardStyle}>
+                 <h2 style={{ ...panelTitleStyle, marginBottom: 16 }}>Email Notifications</h2>
                  <div className="space-y-4">
                     {[
                        { title: 'Communication emails', desc: 'Receive emails about your account activity.' },
@@ -302,10 +334,10 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
                     ].map((item, i) => (
                        <div key={i} className="flex items-start justify-between py-3 border-b border-slate-100 last:border-0">
                           <div>
-                             <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                             <p className="text-xs text-slate-500">{item.desc}</p>
+                             <p className="text-sm font-medium" style={{ color: T.textPrimary }}>{item.title}</p>
+                             <p className="text-xs" style={{ color: T.textSecondary }}>{item.desc}</p>
                           </div>
-                          <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 cursor-pointer transition-colors">
+                          <div className="relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors" style={{ background: T.blue500 }}>
                              <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out" />
                           </div>
                        </div>
@@ -334,8 +366,8 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
               transition={{ duration: 0.3 }}
               className="space-y-6"
             >
-               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                 <h2 className="text-xl font-semibold text-slate-900 mb-6">Language & Region</h2>
+               <div style={cardStyle}>
+                 <h2 style={{ ...panelTitleStyle, marginBottom: 16 }}>Language & Region</h2>
                  <div className="space-y-4 max-w-xl">
                     <div className="space-y-2">
                        <Label>Language</Label>
@@ -356,7 +388,14 @@ export function SettingsPage({ defaultTab }: { defaultTab?: string } = {}) {
                        </select>
                     </div>
                     <div className="pt-4">
-                       <Button>Save preferences</Button>
+                       <button
+                         type="button"
+                         style={primaryButtonStyle}
+                         onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
+                         onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
+                       >
+                         Save preferences
+                       </button>
                     </div>
                  </div>
                </div>
