@@ -7,8 +7,7 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
 import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
-import JobBoardPage from './pages/newDesign/home/job-board';
-
+import JobBoardPage from './pages/newDesign/home/job-board'
 // Auth / onboarding pages
 import { AuthPage } from './pages/newDesign/auth';
 import { SignupFlowPage } from './pages/newDesign/signup-flow';
