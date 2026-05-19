@@ -116,6 +116,30 @@ export const getUserInsights = () => {
   return API.get(`${BASE_URL}/user-insights`);
 };
 
+// ============================================
+// Profile Preferences APIs  (/profile/preferences)
+// ============================================
+
+export const getProfilePreferences = () => {
+  return API.get(`${BASE_URL}/preferences`);
+};
+
+export const saveProfilePreferences = (preferences) => {
+  return API.post(`${BASE_URL}/preferences`, preferences);
+};
+
+// ============================================
+// Jobs / Application Preferences APIs  (/apply/candidates/preferences)
+// ============================================
+
+export const getJobsPreferences = () => {
+  return API.get('/apply/candidates/preferences');
+};
+
+export const upsertJobsPreferences = (preferences) => {
+  return API.put('/apply/candidates/preferences', preferences);
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile
@@ -130,6 +154,12 @@ const ProfileService = {
   changePassword,
   getJobTitleRecommendations,
   saveUserInsights,
+  // Profile preferences
+  getProfilePreferences,
+  saveProfilePreferences,
+  // Jobs preferences
+  getJobsPreferences,
+  upsertJobsPreferences,
 };
 
 export default ProfileService;
