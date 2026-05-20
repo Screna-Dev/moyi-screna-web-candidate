@@ -901,9 +901,9 @@ function Journey() {
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$199', note: 'Billed $199 / month · cancel anytime' },
-  quarterly: { price: '$159', note: 'Billed $477 / quarter · cancel anytime' },
-  annual:    { price: '$129',  note: 'Billed $1,548 / year · cancel anytime' },
+  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
+  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
+  annual:    { price: '$179', note: 'Billed $2,148 / year · cancel anytime' },
 };
 
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
@@ -1099,10 +1099,10 @@ function Pricing() {
               >
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 19%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
                 )}
                 {c === 'annual' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 38%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 18%</span>
                 )}
               </button>
             ))}

@@ -31,14 +31,14 @@ const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
 };
 
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$199', note: 'Billed $199 / month · cancel anytime' },
-  quarterly: { price: '$159', note: 'Billed $477 / quarter · cancel anytime' },
-  annual:    { price: '$129', note: 'Billed $1,548 / year · cancel anytime' },
+  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
+  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
+  annual:    { price: '$179', note: 'Billed $2,148 / year · cancel anytime' },
 };
 
 const SAVE_BADGES: Partial<Record<BillingCycle, string>> = {
-  quarterly: 'Save 19%',
-  annual:    'Save 38%',
+  quarterly: 'Save 9%',
+  annual:    'Save 18%',
 };
 
 // Limited Access — plain list of what's included
