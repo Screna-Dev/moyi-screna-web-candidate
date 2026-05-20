@@ -36,9 +36,9 @@ const PRICING: Record<Tier, Record<BillingCycle, { perMonth: string; periodTotal
     annual:    { perMonth: '$29.9/mo', periodTotal: '$358.8', cycleDesc: '$358.8/year' },
   },
   premium: {
-    monthly:   { perMonth: '$199/mo', periodTotal: '$199',   cycleDesc: 'billed monthly' },
-    quarterly: { perMonth: '$159/mo', periodTotal: '$477',   cycleDesc: '$477 every 3 months', save: 'Save 19%' },
-    annual:    { perMonth: '$129/mo', periodTotal: '$1,548', cycleDesc: '$1,548/year',         save: 'Save 38%' },
+    monthly:   { perMonth: '$219/mo', periodTotal: '$219',   cycleDesc: 'billed monthly' },
+    quarterly: { perMonth: '$199/mo', periodTotal: '$597',   cycleDesc: '$597 every 3 months', save: 'Save 9%' },
+    annual:    { perMonth: '$179/mo', periodTotal: '$2,148', cycleDesc: '$2,148/year',         save: 'Save 18%' },
   },
 };
 
