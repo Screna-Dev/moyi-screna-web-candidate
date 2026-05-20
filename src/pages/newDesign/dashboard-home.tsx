@@ -5,6 +5,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { T } from '@/lib/design-tokens';
+import { listMyBookings } from '@/services/MentorService';
+import { getUserInsights } from '@/services/ProfileServices';
+import { getPosts } from '@/services/CommunityService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Plan = 'free' | 'starter' | 'premium';
@@ -26,7 +29,18 @@ type UserData = {
   role?: string;
 };
 
-const DEFAULT_STATS: DashboardStats = {
+const EMPTY_STATS: DashboardStats = {
+  totalLearningTime: '—',
+  sessionsCompleted: '—',
+  applicationsThisPeriod: '—',
+  applicationsDelta: '—',
+  avgDailyApplications: '—',
+  pendingReview: '—',
+};
+
+// TODO: replace with real backend endpoints when they exist. Mock-only so the
+// dashboard isn't empty during development.
+const MOCK_STATS: DashboardStats = {
   totalLearningTime: '14h 20m',
   sessionsCompleted: 23,
   applicationsThisPeriod: 47,
@@ -34,6 +48,29 @@ const DEFAULT_STATS: DashboardStats = {
   avgDailyApplications: 3.2,
   pendingReview: 12,
 };
+
+// ─── Skeleton primitive ──────────────────────────────────────────────────────
+function Skeleton({
+  width = '100%',
+  height = 12,
+  radius = 6,
+  style,
+}: { width?: number | string; height?: number | string; radius?: number; style?: CSSProperties }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        width,
+        height,
+        borderRadius: radius,
+        background: `linear-gradient(90deg, ${T.bgSecondary} 0%, #EEF2F7 50%, ${T.bgSecondary} 100%)`,
+        backgroundSize: '200% 100%',
+        animation: 'dh-skeleton 1.2s ease-in-out infinite',
+        ...style,
+      }}
+    />
+  );
+}
 
 function planFromUserPlan(pt: PlanType): Plan {
   if (pt === 'Elite') return 'premium';
@@ -153,7 +190,29 @@ function IconMsg() {
 }
 
 // ─── Stats Row ───────────────────────────────────────────────────────────────
-function StatsRow({ plan, stats }: { plan: Plan; stats: DashboardStats }) {
+function StatCardSkeleton() {
+  return (
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      padding: 16,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+      minHeight: 96,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Skeleton width={110} height={10} />
+        <Skeleton width={28} height={28} radius={8} />
+      </div>
+      <Skeleton width={70} height={22} />
+      <Skeleton width="80%" height={10} />
+    </div>
+  );
+}
+
+function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
   const isPremium = plan === 'premium';
   const colCount = isPremium ? 5 : 2;
   const learningSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
@@ -169,32 +228,38 @@ function StatsRow({ plan, stats }: { plan: Plan; stats: DashboardStats }) {
         transition: 'grid-template-columns 320ms cubic-bezier(.4,0,.2,1)',
       }}
     >
-      <StatCard label="Total Learning Time" value={stats.totalLearningTime ?? '—'} sub={learningSub} icon={<IconClock />} />
-      <StatCard label="Sessions Completed" value={stats.sessionsCompleted ?? '—'} sub={sessionsSub} icon={<IconCheck />} />
-      {isPremium && (
+      {isLoading ? (
+        Array.from({ length: colCount }).map((_, i) => <StatCardSkeleton key={i} />)
+      ) : (
         <>
-          <div style={{ position: 'relative' }}>
-            <StatCard
-              label="Applications This Period"
-              value={stats.applicationsThisPeriod ?? '—'}
-              sub={`↗ ${stats.applicationsDelta ?? '+0%'} vs prior period`}
-              icon={<IconSend />}
-            />
-          </div>
-          <StatCard
-            label="Avg. Daily Applications"
-            value={stats.avgDailyApplications ?? '—'}
-            sub="Rolling 30-day avg"
-            icon={<IconTrend />}
-            variant="soft"
-          />
-          <StatCard
-            label="Pending Review"
-            value={stats.pendingReview ?? '—'}
-            sub="Ready for your approval"
-            icon={<IconInbox />}
-            variant="warning"
-          />
+          <StatCard label="Total Learning Time" value={stats.totalLearningTime ?? '—'} sub={learningSub} icon={<IconClock />} />
+          <StatCard label="Sessions Completed" value={stats.sessionsCompleted ?? '—'} sub={sessionsSub} icon={<IconCheck />} />
+          {isPremium && (
+            <>
+              <div style={{ position: 'relative' }}>
+                <StatCard
+                  label="Applications This Period"
+                  value={stats.applicationsThisPeriod ?? '—'}
+                  sub={`↗ ${stats.applicationsDelta ?? '—'} vs prior period`}
+                  icon={<IconSend />}
+                />
+              </div>
+              <StatCard
+                label="Avg. Daily Applications"
+                value={stats.avgDailyApplications ?? '—'}
+                sub="Rolling 30-day avg"
+                icon={<IconTrend />}
+                variant="soft"
+              />
+              <StatCard
+                label="Pending Review"
+                value={stats.pendingReview ?? '—'}
+                sub="Ready for your approval"
+                icon={<IconInbox />}
+                variant="warning"
+              />
+            </>
+          )}
         </>
       )}
     </div>
@@ -208,7 +273,8 @@ type Series = {
   summaryB: { label: string; value: string };
   legend: string;
 };
-const SERIES: Record<ChartTab, Series> = {
+// TODO: swap for real timeseries endpoint when available.
+const MOCK_SERIES: Record<ChartTab, Series> = {
   applications: {
     data: [3,4,3,3,4,3,4,3,3,4,3,4,3,3,4,3,3,4,3,4,3,3,4,3,4,7,5,4,3,4],
     summaryA: { label: 'Total Applications', value: '107' },
@@ -246,7 +312,29 @@ function formatDate(i: number, total: number): string {
 }
 
 // ─── Trend Chart ─────────────────────────────────────────────────────────────
-function TrendChart({ plan }: { plan: Plan }) {
+function TrendChartSkeleton() {
+  return (
+    <section style={{
+      background: '#fff',
+      border: `1px solid ${T.border}`,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 20,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Skeleton width={260} height={32} radius={9999} />
+        <Skeleton width={280} height={24} />
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+        <Skeleton width={140} height={48} radius={8} />
+        <Skeleton width={140} height={48} radius={8} />
+      </div>
+      <Skeleton width="100%" height={180} radius={8} />
+    </section>
+  );
+}
+
+function TrendChart({ plan, isLoading }: { plan: Plan; isLoading: boolean }) {
   const isPremium = plan === 'premium';
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [range, setRange] = useState<TimeRange>('30d');
@@ -254,7 +342,8 @@ function TrendChart({ plan }: { plan: Plan }) {
 
   // Free/Starter: applications tab is locked
   const effectiveTab: ChartTab = !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
-  const series = SERIES[effectiveTab];
+  const series = MOCK_SERIES[effectiveTab];
+  const hasData = series.data.length > 0;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -264,23 +353,28 @@ function TrendChart({ plan }: { plan: Plan }) {
   const innerH = H - PAD_T - PAD_B;
   const innerW = W;
   const data = series.data;
-  const dMin = Math.min(...data);
-  const dMax = Math.max(...data);
+  const dMin = data.length ? Math.min(...data) : 0;
+  const dMax = data.length ? Math.max(...data) : 0;
   const dRange = dMax - dMin;
   const minV = Math.max(0, dMin - dRange * 0.3);
   const maxV = dMax + dRange * 0.25;
 
-  const stepX = innerW / (data.length - 1);
+  const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
   const points = data.map((v, i) => ({
     x: stepX * i,
     y: PAD_T + innerH - ((v - minV) / (maxV - minV || 1)) * innerH,
     v, i,
   }));
 
-  const linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ');
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${PAD_T + innerH} L ${points[0].x} ${PAD_T + innerH} Z`;
+  const linePath = points.length
+    ? `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
+    : '';
+  const areaPath = points.length
+    ? `${linePath} L ${points[points.length - 1].x} ${PAD_T + innerH} L ${points[0].x} ${PAD_T + innerH} Z`
+    : '';
 
   const handleMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!points.length) return;
     const rect = svgRef.current!.getBoundingClientRect();
     const xViewbox = ((e.clientX - rect.left) / rect.width) * W;
     let nearest = points[0];
@@ -316,6 +410,25 @@ function TrendChart({ plan }: { plan: Plan }) {
     const top = (svgRect.top - cardRect.top) + (hover.y / H) * svgRect.height;
     hoverPxRef.current = { left, top };
   }, [hover]);
+
+  if (isLoading) return <TrendChartSkeleton />;
+
+  if (!hasData) {
+    return (
+      <section style={{
+        background: '#fff',
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: T.textPrimary, marginBottom: 14 }}>
+          Activity Trend
+        </div>
+        <EmptyState message="No activity to chart yet" />
+      </section>
+    );
+  }
 
   return (
     <section
@@ -404,37 +517,47 @@ function TrendChart({ plan }: { plan: Plan }) {
       </div>
 
       {/* SVG chart */}
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        width="100%"
-        height={180}
-        style={{ display: 'block' }}
-        onMouseMove={handleMove}
-        onMouseLeave={() => setHover(null)}
-      >
-        <defs>
-          <linearGradient id="dh-line-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={T.blue500} stopOpacity="0.10" />
-            <stop offset="100%" stopColor={T.blue500} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0, 1, 2, 3].map((i) => {
-          const y = PAD_T + (innerH / 3) * i;
-          return (
-            <line key={i} x1={0} y1={y} x2={W} y2={y} stroke="rgba(0,0,0,0.06)" strokeWidth={0.5} />
-          );
-        })}
-        <path d={areaPath} fill="url(#dh-line-fill)" />
-        <path d={linePath} fill="none" stroke={T.blue500} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
-        {hover && (
-          <line x1={hover.x} y1={PAD_T} x2={hover.x} y2={PAD_T + innerH} stroke="rgba(37,99,235,0.25)" strokeWidth={1} strokeDasharray="3 3" />
-        )}
-      </svg>
+      {hasData ? (
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          width="100%"
+          height={180}
+          style={{ display: 'block' }}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHover(null)}
+        >
+          <defs>
+            <linearGradient id="dh-line-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={T.blue500} stopOpacity="0.10" />
+              <stop offset="100%" stopColor={T.blue500} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {[0, 1, 2, 3].map((i) => {
+            const y = PAD_T + (innerH / 3) * i;
+            return (
+              <line key={i} x1={0} y1={y} x2={W} y2={y} stroke="rgba(0,0,0,0.06)" strokeWidth={0.5} />
+            );
+          })}
+          <path d={areaPath} fill="url(#dh-line-fill)" />
+          <path d={linePath} fill="none" stroke={T.blue500} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
+          {hover && (
+            <line x1={hover.x} y1={PAD_T} x2={hover.x} y2={PAD_T + innerH} stroke="rgba(37,99,235,0.25)" strokeWidth={1} strokeDasharray="3 3" />
+          )}
+        </svg>
+      ) : (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: 180, color: T.textMuted, fontSize: 13,
+          background: T.bgSecondary, borderRadius: 8,
+        }}>
+          No activity yet
+        </div>
+      )}
 
       {/* Hover point (overlay) */}
-      {hover && hoverPxRef.current && (
+      {hasData && hover && hoverPxRef.current && (
         <div
           aria-hidden
           style={{
@@ -455,7 +578,7 @@ function TrendChart({ plan }: { plan: Plan }) {
       )}
 
       {/* Tooltip */}
-      {hover && hoverPxRef.current && (
+      {hasData && hover && hoverPxRef.current && (
         <div
           role="status"
           style={{
@@ -545,16 +668,138 @@ function PanelHead({ title, linkLabel, onLink }: { title: string; linkLabel?: st
 }
 
 // ─── Mentorship card ─────────────────────────────────────────────────────────
-type PastSession = { initials: string; name: string; meta: string; status: 'reviewed' | 'pending'; rating?: number };
-const PAST_SESSIONS: PastSession[] = [
-  { initials: 'RK', name: 'Riya Kapoor', meta: 'Career Strategy · Apr 8', status: 'reviewed', rating: 5 },
-  { initials: 'TN', name: 'Tom Nakamura', meta: 'Resume Review · Mar 29', status: 'pending' },
-  { initials: 'AL', name: 'Amy Liu', meta: 'Mock Interview · Mar 20', status: 'reviewed', rating: 4 },
-];
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'COMPLETED';
+
+type Booking = {
+  id: string;
+  mentorId: string;
+  mentorName: string;
+  mentorAvatarUrl?: string;
+  topicTitle: string;
+  durationMinutes: number;
+  startTime: string;
+  endTime: string;
+  status: BookingStatus;
+  hasReview: boolean;
+  meetingLink?: string;
+  mentorAvgRating?: number;
+  studentNote?: string;
+};
+
+function getInitials(name?: string): string {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+function formatBookingDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const weekday = d.toLocaleDateString(undefined, { weekday: 'short' });
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${weekday} ${date}, ${time}`;
+}
+
+function formatBookingShortDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function timeUntil(iso: string): string {
+  const d = new Date(iso).getTime();
+  if (isNaN(d)) return '';
+  const diffMs = d - Date.now();
+  if (diffMs <= 0) return 'Starting soon';
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 60) return `In ${mins} min — get prepared`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `In ${hours} hour${hours === 1 ? '' : 's'} — get prepared`;
+  const days = Math.round(hours / 24);
+  return `In ${days} day${days === 1 ? '' : 's'} — get prepared`;
+}
+
+function MentorshipCardSkeleton() {
+  return (
+    <Panel>
+      <PanelHead title="Mentorship" />
+      <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Skeleton width={110} height={18} radius={9999} />
+          <Skeleton width={120} height={12} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+          <Skeleton width={36} height={36} radius={9999} />
+          <div style={{ flex: 1 }}>
+            <Skeleton width="60%" height={13} style={{ marginBottom: 6 }} />
+            <Skeleton width="40%" height={11} />
+          </div>
+        </div>
+        <Skeleton width="100%" height={50} radius={8} />
+        <div style={{ marginTop: 10 }}>
+          <Skeleton width="100%" height={36} radius={8} />
+        </div>
+      </div>
+      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8 }}>
+            <Skeleton width={30} height={30} radius={9999} />
+            <div style={{ flex: 1 }}>
+              <Skeleton width="55%" height={12} style={{ marginBottom: 4 }} />
+              <Skeleton width="35%" height={10} />
+            </div>
+            <Skeleton width={60} height={16} radius={4} />
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
 
 function MentorshipCard({ plan }: { plan: Plan }) {
   const navigate = useNavigate();
+  const userPlan = useUserPlan();
   const isFree = plan === 'free';
+  const planLoading = userPlan.isLoading;
+  const [loading, setLoading] = useState(true);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    if (planLoading) return;        // Wait until the real plan is known
+    if (isFree) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    let alive = true;
+    (async () => {
+      try {
+        const res = await listMyBookings({ page: 0, size: 20 });
+        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+        if (alive) setBookings(Array.isArray(content) ? content : []);
+      } catch {
+        if (alive) setBookings([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [isFree, planLoading]);
+
+  if (planLoading || loading) return <MentorshipCardSkeleton />;
+
+  // Upcoming = PENDING, soonest first
+  const upcoming = bookings
+    .filter((b) => b.status === 'PENDING')
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  const nextSession = upcoming[0];
+
+  // Past = COMPLETED, most recent first
+  const past = bookings
+    .filter((b) => b.status === 'COMPLETED')
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+    .slice(0, 3);
 
   return (
     <Panel style={{ position: 'relative' }}>
@@ -601,78 +846,131 @@ function MentorshipCard({ plan }: { plan: Plan }) {
 
       <div style={{ filter: isFree ? 'blur(6px)' : 'none', pointerEvents: isFree ? 'none' : 'auto', userSelect: isFree ? 'none' : 'auto', opacity: isFree ? 0.55 : 1 }}>
         {/* Upcoming session */}
-        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, background: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center',
-              background: T.roleBg, color: T.blue600,
-              fontSize: 11, fontWeight: 500,
-              padding: '2px 8px', borderRadius: 9999,
-            }}>
-              Upcoming session
-            </span>
-            <span style={{ fontSize: 12, color: T.textSecondary, fontWeight: 500 }}>Mon Apr 14, 2:00 PM</span>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-            <MentorAvatar initials="SJ" />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Sarah Jenkins</div>
-              <div style={{ fontSize: 12, color: T.textSecondary }}>Senior PM · TechCorp</div>
+        {nextSession ? (
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: T.roleBg, color: T.blue600,
+                fontSize: 11, fontWeight: 500,
+                padding: '2px 8px', borderRadius: 9999,
+              }}>
+                Upcoming session
+              </span>
+              <span style={{ fontSize: 12, color: T.textSecondary, fontWeight: 500 }}>
+                {formatBookingDateTime(nextSession.startTime)}
+              </span>
             </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+              <MentorAvatar initials={getInitials(nextSession.mentorName)} avatarUrl={nextSession.mentorAvatarUrl} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>{nextSession.mentorName}</div>
+                <div style={{ fontSize: 12, color: T.textSecondary }}>
+                  {nextSession.durationMinutes} min session
+                </div>
+              </div>
+            </div>
+            {nextSession.topicTitle && (
+              <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Session topic</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary }}>{nextSession.topicTitle}</div>
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginBottom: 10 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue500 }} />
+              {timeUntil(nextSession.startTime)}
+            </div>
+            <button
+              onClick={() => {
+                if (nextSession.meetingLink) window.open(nextSession.meetingLink, '_blank', 'noopener,noreferrer');
+              }}
+              disabled={!nextSession.meetingLink}
+              style={{
+                display: 'block', width: '100%',
+                background: nextSession.meetingLink ? T.blue500 : T.bgSecondary,
+                color: nextSession.meetingLink ? '#fff' : T.textMuted,
+                borderRadius: 8, padding: '9px 12px',
+                fontSize: 13, fontWeight: 500,
+                textAlign: 'center', border: 'none',
+                cursor: nextSession.meetingLink ? 'pointer' : 'not-allowed',
+                fontFamily: 'inherit',
+                transition: 'background 120ms',
+              }}
+              onMouseEnter={(e) => { if (nextSession.meetingLink) e.currentTarget.style.background = T.blue600; }}
+              onMouseLeave={(e) => { if (nextSession.meetingLink) e.currentTarget.style.background = T.blue500; }}
+            >
+              {nextSession.meetingLink ? 'Join Session' : 'Awaiting meeting link'}
+            </button>
           </div>
-          <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Session goal</div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary }}>Mock Interview: Product Strategy</div>
+        ) : (
+          <div style={{
+            border: `1px dashed ${T.border}`, borderRadius: 10, padding: 16,
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 13, color: T.textSecondary, marginBottom: 8 }}>
+              No upcoming sessions
+            </div>
+            <button
+              onClick={() => navigate('/marketplace')}
+              style={{
+                padding: '7px 14px', borderRadius: 8, border: 0,
+                background: T.blue500, color: '#fff',
+                fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Book a mentor
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginBottom: 10 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue500 }} />
-            In 14 hours — get prepared
-          </div>
-          <button
-            style={{
-              display: 'block', width: '100%',
-              background: T.blue500, color: '#fff',
-              borderRadius: 8, padding: '9px 12px',
-              fontSize: 13, fontWeight: 500,
-              textAlign: 'center', border: 'none', cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 120ms',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
-          >
-            Join Session
-          </button>
-        </div>
+        )}
 
         {/* Past sessions */}
         <div style={{ marginTop: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: T.textSecondary }}>Past sessions</div>
-            <button
-              onClick={() => navigate('/history')}
-              style={{
-                fontSize: 11, color: T.textMuted,
-                display: 'flex', alignItems: 'center', gap: 2,
-                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {PAST_SESSIONS.length}
-              <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="3,3 6,5 3,7"/></svg>
-            </button>
+            {past.length > 0 && (
+              <button
+                onClick={() => navigate('/history')}
+                style={{
+                  fontSize: 11, color: T.textMuted,
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {past.length}
+                <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="3,3 6,5 3,7"/></svg>
+              </button>
+            )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {PAST_SESSIONS.map((s, i) => (
-              <PastItem key={i} s={s} />
-            ))}
-          </div>
+          {past.length === 0 ? (
+            <div style={{ fontSize: 12, color: T.textMuted, padding: '8px 0' }}>
+              Completed sessions will appear here.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {past.map((b) => (
+                <PastItem key={b.id} booking={b} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Panel>
   );
 }
 
-function MentorAvatar({ initials, size = 36 }: { initials: string; size?: number }) {
+function MentorAvatar({ initials, size = 36, avatarUrl }: { initials: string; size?: number; avatarUrl?: string }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={initials}
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          objectFit: 'cover', flex: 'none',
+        }}
+      />
+    );
+  }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
@@ -685,8 +983,10 @@ function MentorAvatar({ initials, size = 36 }: { initials: string; size?: number
   );
 }
 
-function PastItem({ s }: { s: PastSession }) {
+function PastItem({ booking }: { booking: Booking }) {
   const [hover, setHover] = useState(false);
+  const reviewed = booking.hasReview;
+  const rating = Math.round(booking.mentorAvgRating ?? 0);
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -699,18 +999,22 @@ function PastItem({ s }: { s: PastSession }) {
         transition: 'background 160ms',
       }}
     >
-      <MentorAvatar initials={s.initials} size={30} />
+      <MentorAvatar initials={getInitials(booking.mentorName)} size={30} avatarUrl={booking.mentorAvatarUrl} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: T.textPrimary }}>{s.name}</div>
-        <div style={{ fontSize: 11, color: T.textSecondary }}>{s.meta}</div>
+        <div style={{ fontSize: 12, fontWeight: 500, color: T.textPrimary }}>{booking.mentorName}</div>
+        <div style={{ fontSize: 11, color: T.textSecondary }}>
+          {booking.topicTitle ? `${booking.topicTitle} · ` : ''}{formatBookingShortDate(booking.startTime)}
+        </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-        {s.status === 'reviewed' ? (
+        {reviewed ? (
           <>
             <span style={statusTagStyle(T.successText, T.successBg)}>Reviewed</span>
-            <div style={{ display: 'flex', gap: 1 }}>
-              {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= (s.rating ?? 0)} />)}
-            </div>
+            {rating > 0 && (
+              <div style={{ display: 'flex', gap: 1 }}>
+                {[1, 2, 3, 4, 5].map((n) => <IconStar key={n} filled={n <= rating} />)}
+              </div>
+            )}
           </>
         ) : (
           <span style={statusTagStyle(T.warningText, T.warningBg)}>Review pending</span>
@@ -731,7 +1035,8 @@ function statusTagStyle(color: string, bg: string): CSSProperties {
 
 // ─── Interview Practice Insights (radar) ─────────────────────────────────────
 type Dim = { label: string; value: number };
-const RADAR_DIMS: Dim[] = [
+// TODO: swap for real radar endpoint when available.
+const MOCK_DIMS: Dim[] = [
   { label: 'Domain Knowledge', value: 82 },
   { label: 'Technical Skills', value: 76 },
   { label: 'Behavioral Skills', value: 65 },
@@ -864,9 +1169,43 @@ function Radar({ dims }: { dims: Dim[] }) {
   );
 }
 
-function InsightsCard() {
+function InsightsCardSkeleton() {
+  return (
+    <Panel>
+      <PanelHead title="Interview Practice Insights" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} height={62} radius={8} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 14px' }}>
+        <Skeleton width={220} height={200} radius={9999} />
+      </div>
+      <Skeleton width="100%" height={70} radius={10} />
+    </Panel>
+  );
+}
+
+function InsightsCard({ isLoading }: { isLoading: boolean }) {
   const navigate = useNavigate();
-  const dims = RADAR_DIMS;
+  if (isLoading) return <InsightsCardSkeleton />;
+
+  const dims = MOCK_DIMS;
+  const hasData = dims.some((d) => d.value > 0);
+
+  if (!hasData) {
+    return (
+      <Panel>
+        <PanelHead title="Interview Practice Insights" linkLabel="View all" onLink={() => navigate('/history')} />
+        <EmptyState
+          message="No interview practice data yet"
+          ctaLabel="Start practicing"
+          onCta={() => navigate('/personalized-practice')}
+        />
+      </Panel>
+    );
+  }
+
   const avg = Math.round(dims.reduce((s, d) => s + d.value, 0) / dims.length);
   const best = Math.max(...dims.map((d) => d.value));
   const low = Math.min(...dims.map((d) => d.value));
@@ -922,7 +1261,32 @@ function InsightsCard() {
   );
 }
 
-function SummaryCell({ value, label, color }: { value: number; label: string; color: string }) {
+function EmptyState({ message, ctaLabel, onCta }: { message: string; ctaLabel?: string; onCta?: () => void }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 10, padding: '32px 16px', textAlign: 'center',
+      border: `1px dashed ${T.border}`, borderRadius: 10,
+      color: T.textMuted, fontSize: 13,
+    }}>
+      <div>{message}</div>
+      {ctaLabel && onCta && (
+        <button
+          onClick={onCta}
+          style={{
+            padding: '7px 14px', borderRadius: 8, border: 0,
+            background: T.blue500, color: '#fff',
+            fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {ctaLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SummaryCell({ value, label, color }: { value: number | string; label: string; color: string }) {
   return (
     <div style={{
       background: T.bgSecondary, borderRadius: 8,
@@ -937,15 +1301,109 @@ function SummaryCell({ value, label, color }: { value: number; label: string; co
 }
 
 // ─── Community Picks ─────────────────────────────────────────────────────────
-type Post = { role: string; company: string; title: string; month: string; views: number; comments: number };
-const COMMUNITY_POSTS: Post[] = [
-  { role: 'Product Manager', company: 'Google', title: 'Cracked Google PM L5 after 4 months of prep — full breakdown', month: 'Mar 2025', views: 2847, comments: 43 },
-  { role: 'Product Manager', company: 'Meta', title: 'Meta PM behavioral loop — what surprised me and how I prepared', month: 'Apr 2025', views: 1204, comments: 18 },
-  { role: 'Senior PM', company: 'Stripe', title: 'How I answered the payment product for emerging markets question', month: 'Feb 2025', views: 891, comments: 12 },
-];
+type CommunityPost = {
+  id: string;
+  role: string;
+  company: string;
+  title: string;
+  date: string;
+  saveCount?: number;
+  commentCount?: number;
+};
+
+function formatMonthLabel(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
+function CommunityCardSkeleton() {
+  return (
+    <Panel>
+      <PanelHead title="Community Picks" />
+      <Skeleton width="100%" height={36} radius={8} style={{ marginBottom: 12 }} />
+      {[0, 1, 2].map((i) => (
+        <div key={i} style={{ padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${T.border}` }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <Skeleton width={80} height={16} radius={4} />
+            <Skeleton width={60} height={16} radius={4} />
+          </div>
+          <Skeleton width="90%" height={14} style={{ marginBottom: 6 }} />
+          <Skeleton width="60%" height={14} style={{ marginBottom: 8 }} />
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Skeleton width={40} height={12} />
+            <Skeleton width={40} height={12} />
+          </div>
+        </div>
+      ))}
+    </Panel>
+  );
+}
 
 function CommunityCard() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [targetRole, setTargetRole] = useState<string>('');
+  const [targetCompanies, setTargetCompanies] = useState<string[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        let role = '';
+        let companies: string[] = [];
+        try {
+          const res = await getUserInsights();
+          const data = res?.data?.data ?? res?.data;
+          role = data?.role ?? '';
+          companies = Array.isArray(data?.companies) ? data.companies : [];
+        } catch {
+          // No insights yet — fall through with empty role/companies
+        }
+        if (alive) {
+          setTargetRole(role);
+          setTargetCompanies(companies);
+        }
+
+        const baseParams: Record<string, unknown> = { page: 0, size: 3 };
+        if (role) baseParams.role = role;
+        if (companies[0]) baseParams.company = companies[0];
+
+        try {
+          const res = await getPosts(baseParams);
+          const data = res?.data?.data ?? res?.data;
+          const content: Array<Record<string, unknown>> = Array.isArray(data) ? data : (data?.content ?? []);
+          const mapped: CommunityPost[] = content.slice(0, 3).map((p) => ({
+            id: String(p.id ?? ''),
+            role: String(p.role ?? ''),
+            company: String(p.company ?? ''),
+            title: String(p.summary ?? p.title ?? ''),
+            date: String(p.createdAt ?? p.date ?? ''),
+            saveCount: typeof p.saveCount === 'number' ? p.saveCount : undefined,
+            commentCount: typeof p.commentCount === 'number' ? p.commentCount : undefined,
+          }));
+          if (alive) setPosts(mapped);
+        } catch {
+          if (alive) setPosts([]);
+        }
+      } finally {
+        // Always clear loading — setting state on an unmounted component is a
+        // no-op in React 18, so we don't need to gate this on `alive`.
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, []);
+
+  if (loading) return <CommunityCardSkeleton />;
+
+  const matchLabel = targetCompanies.length > 0 ? targetCompanies.slice(0, 3).join(', ') : '';
+  const hasMatch = !!targetRole || !!matchLabel;
+
   return (
     <Panel>
       <PanelHead title="Community Picks" linkLabel="Browse community" onLink={() => navigate('/interview-insights')} />
@@ -957,9 +1415,19 @@ function CommunityCard() {
         padding: '8px 12px', marginBottom: 12, fontSize: 12,
       }}>
         <div>
-          <span style={{ color: T.textSecondary }}>Matched to </span>
-          <span style={{ color: T.textPrimary, fontWeight: 500 }}>Product Manager</span>
-          <span style={{ color: T.textSecondary }}> · Google, Meta</span>
+          {hasMatch ? (
+            <>
+              <span style={{ color: T.textSecondary }}>Matched to </span>
+              {targetRole && (
+                <span style={{ color: T.textPrimary, fontWeight: 500 }}>{targetRole}</span>
+              )}
+              {matchLabel && (
+                <span style={{ color: T.textSecondary }}>{targetRole ? ' · ' : ''}{matchLabel}</span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: T.textSecondary }}>Set your target role to see matches</span>
+          )}
         </div>
         <button
           onClick={() => navigate('/settings')}
@@ -976,19 +1444,29 @@ function CommunityCard() {
         </button>
       </div>
 
-      {COMMUNITY_POSTS.map((post, idx) => (
-        <PostItem key={idx} post={post} first={idx === 0} />
-      ))}
+      {posts.length === 0 ? (
+        <div style={{
+          padding: '24px 8px', textAlign: 'center',
+          fontSize: 12, color: T.textMuted,
+        }}>
+          No matching posts yet.
+        </div>
+      ) : (
+        posts.map((post, idx) => (
+          <PostItem key={post.id || idx} post={post} first={idx === 0} onClick={() => navigate(`/interview-insights/${post.id}`)} />
+        ))
+      )}
     </Panel>
   );
 }
 
-function PostItem({ post, first }: { post: Post; first: boolean }) {
+function PostItem({ post, first, onClick }: { post: CommunityPost; first: boolean; onClick?: () => void }) {
   const [hover, setHover] = useState(false);
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onClick={onClick}
       style={{
         padding: first ? '4px 8px 12px' : '12px 8px',
         borderTop: first ? 'none' : `1px solid ${T.border}`,
@@ -1000,9 +1478,9 @@ function PostItem({ post, first }: { post: Post; first: boolean }) {
       }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <span style={tagStyle(T.blue600, T.roleBg)}>{post.role}</span>
-        <span style={tagStyle(T.textSecondary, T.bgSecondary)}>{post.company}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{post.month}</span>
+        {post.role && <span style={tagStyle(T.blue600, T.roleBg)}>{post.role}</span>}
+        {post.company && <span style={tagStyle(T.textSecondary, T.bgSecondary)}>{post.company}</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: T.textMuted }}>{formatMonthLabel(post.date)}</span>
       </div>
       <div style={{
         fontSize: 13, fontWeight: 500,
@@ -1014,12 +1492,16 @@ function PostItem({ post, first }: { post: Post; first: boolean }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: T.textSecondary }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <IconEye />{post.views.toLocaleString()}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <IconMsg />{post.comments}
-          </span>
+          {typeof post.saveCount === 'number' && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <IconEye />{post.saveCount.toLocaleString()}
+            </span>
+          )}
+          {typeof post.commentCount === 'number' && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <IconMsg />{post.commentCount}
+            </span>
+          )}
         </div>
         <span style={{ color: T.blue500, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 2, textDecoration: hover ? 'underline' : 'none' }}>
           View post ↗
@@ -1043,6 +1525,7 @@ export function DashboardHome({
   userData,
   plan: planProp,
   stats,
+  isStatsLoading,
 }: {
   userData: UserData | null;
   plan?: Plan;
@@ -1052,7 +1535,12 @@ export function DashboardHome({
 }) {
   const userPlan = useUserPlan();
   const plan: Plan = planProp ?? planFromUserPlan(userPlan.planData.currentPlan);
-  const effectiveStats = stats ?? DEFAULT_STATS;
+
+  // Stats / chart / radar don't have dedicated endpoints yet. Show a wireframe
+  // while the plan/auth boot APIs are in flight, then flip to the empty state.
+  // A parent can still override by passing `isStatsLoading` explicitly.
+  const statsLoading = isStatsLoading ?? userPlan.isLoading;
+  const effectiveStats = stats ?? EMPTY_STATS;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -1060,6 +1548,17 @@ export function DashboardHome({
 
   return (
     <div>
+      {/* Skeleton keyframes (scoped via global insertion since inline style cannot define @keyframes) */}
+      <style>{`
+        @keyframes dh-skeleton {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @media (max-width: 1280px) {
+          [data-dashboard-grid] { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+
       {/* Page header */}
       <div style={{
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
@@ -1074,27 +1573,23 @@ export function DashboardHome({
         </h1>
       </div>
 
-      <StatsRow plan={plan} stats={effectiveStats} />
+      <StatsRow plan={plan} stats={effectiveStats} isLoading={statsLoading} />
 
-      <TrendChart key={plan} plan={plan} />
+      <TrendChart key={plan} plan={plan} isLoading={statsLoading} />
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
-        gap: 16,
-        alignItems: 'start',
-      }}>
+      <div
+        data-dashboard-grid
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: 16,
+          alignItems: 'start',
+        }}
+      >
         <MentorshipCard plan={plan} />
-        <InsightsCard />
+        <InsightsCard isLoading={statsLoading} />
         <CommunityCard />
       </div>
-
-      {/* Responsive: stack at narrow widths */}
-      <style>{`
-        @media (max-width: 1280px) {
-          [data-dashboard-grid] { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
     </div>
   );
 }
@@ -1111,9 +1606,14 @@ export function DashboardHomePage() {
       }
     : null;
 
+  // Stats / chart / insights APIs aren't ready yet — render with mock data.
+  // `isStatsLoading` is left to default to `useUserPlan().isLoading` inside
+  // DashboardHome, so the wireframe shows while the plan API is in flight,
+  // then flips to the mocked content. Swap MOCK_STATS for a real fetch once
+  // the backend lands.
   return (
     <DashboardLayout>
-      <DashboardHome userData={userData} />
+      <DashboardHome userData={userData} stats={MOCK_STATS} />
     </DashboardLayout>
   );
 }
