@@ -1,14 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
   UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
-  BadgeCheck, Building2, Coins, Lock,
+  BadgeCheck, Building2, Coins,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ApplicationProfileContent } from './application-profile-tab';
 import { getProfile, getUserInsights, saveUserInsights, uploadResume, updateProfile, getPersonalInfo, getJobsPreferences, upsertJobsPreferences } from '../../services/ProfileServices';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -156,14 +154,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // ── User insights (kept for merging on save) ──
   const [userInsights, setUserInsights] = useState<UserInsights | null>(null);
 
-  // ── Target Companies state (driven by /profile/preferences) ──
+  // ── Target Companies state (from user-insights) ──
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [specificCompanies, setSpecificCompanies] = useState<string[]>([]);
   const [companyQuery, setCompanyQuery] = useState('');
   const [editingCompanies, setEditingCompanies] = useState(false);
-
-  // ── Saved targetRoles from /profile/preferences ──
-  const [targetRoles, setTargetRoles] = useState<string[]>([]);
 
   const processResumeFile = async (file: File) => {
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
@@ -243,23 +238,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       }
     }).catch(() => {}).finally(() => setLoadingResume(false));
 
-    // Fetch apply preferences (target roles, company size categories, target companies, work authorization)
-    getJobsPreferences().then((res: { data: { data?: { candidate_apply_preferences?: { target_roles?: string[]; company_size_categories?: string[]; target_companies?: string[]; work_authorization?: string } } } }) => {
+    // Fetch work authorization only from apply preferences
+    getJobsPreferences().then((res: { data: { data?: { candidate_apply_preferences?: { work_authorization?: string } } } }) => {
       const prefs = res.data?.data?.candidate_apply_preferences ?? {};
-      if (prefs.target_roles) setTargetRoles(prefs.target_roles);
-      if (prefs.company_size_categories) {
-        setSelectedCategories(
-          prefs.company_size_categories.map((t: string) => {
-            const lower = t.toLowerCase();
-            return API_TYPE_TO_CATEGORY[t] ?? API_TYPE_TO_CATEGORY[lower] ?? lower;
-          }).filter(Boolean)
-        );
-      }
-      if (prefs.target_companies) setSpecificCompanies(prefs.target_companies);
       if (prefs.work_authorization) setVisaStatus(prefs.work_authorization);
-    }).catch(() => {}).finally(() => setLoadingPreferences(false));
+    }).catch(() => {});
 
-    // Fetch user insights (role display + company types fallback)
+    // Fetch user insights (role, target companies, company types)
     getUserInsights().then((res: { data: { data?: UserInsights } }) => {
       const data = (res.data?.data ?? res.data) as UserInsights;
       setUserInsights(data);
@@ -268,7 +253,16 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         const match = allRoles.find(r => r.label.toLowerCase() === data.role!.toLowerCase());
         if (match) setSelectedRoleId(match.id);
       }
-    }).catch(() => {});
+      if (data?.companies) setSpecificCompanies(data.companies);
+      if (data?.companyTypes) {
+        setSelectedCategories(
+          data.companyTypes.map((t: string) => {
+            const lower = t.toLowerCase();
+            return API_TYPE_TO_CATEGORY[t] ?? API_TYPE_TO_CATEGORY[lower] ?? lower;
+          }).filter(Boolean)
+        );
+      }
+    }).catch(() => {}).finally(() => setLoadingPreferences(false));
 
     // Fetch personal info (name, email, timezone)
     getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string } } }) => {
@@ -292,8 +286,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // Label of the currently highlighted option in the edit UI (used when saving)
   const selectedRoleLabel = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(r => r.id === selectedRoleId)?.label ?? '';
 
-  // Source-of-truth role for display — prefer preferences targetRoles, then insights role
-  const displayRole = (targetRoles.length > 0 ? targetRoles[0] : null) ?? userInsights?.role ?? selectedRoleLabel;
+  const displayRole = userInsights?.role ?? selectedRoleLabel;
 
   const totalCompanyCount = selectedCategories.length + specificCompanies.length;
 
@@ -307,14 +300,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     );
   };
 
-  const savePreferences = (patch: { targetRoles?: string[]; companySizeCategories?: string[]; targetCompanies?: string[]; workAuthorization?: string }) => {
-    const apiCompanyTypes = (patch.companySizeCategories ?? selectedCategories.map(c => CATEGORY_TO_API_TYPE[c]).filter(Boolean)) as string[];
+  const savePreferences = (patch: { workAuthorization?: string }) => {
     const wa = patch.workAuthorization ?? visaStatus;
     upsertJobsPreferences({
       candidate_apply_preferences: {
-        target_roles:            patch.targetRoles    ?? targetRoles,
-        company_size_categories: apiCompanyTypes,
-        target_companies:        patch.targetCompanies ?? specificCompanies,
         ...(wa ? { work_authorization: wa } : {}),
       },
     }).catch(() => {});
@@ -323,8 +312,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const handleCompanyDone = () => {
     setEditingCompanies(false);
     setCompanyQuery('');
-    const apiCompanyTypes = selectedCategories.map(c => CATEGORY_TO_API_TYPE[c]).filter(Boolean);
-    savePreferences({ companySizeCategories: apiCompanyTypes, targetCompanies: specificCompanies });
+    const companyTypes = selectedCategories.map(c => CATEGORY_TO_API_TYPE[c]).filter(Boolean);
+    const updated = { ...(userInsights ?? {}), companies: specificCompanies, companyTypes };
+    setUserInsights(updated);
+    saveUserInsights(updated).catch(() => {});
   };
 
   const handleVisaDone = () => {
@@ -356,11 +347,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const handleRoleConfirm = () => {
     setRoleMode('view');
     const newRole = selectedRoleLabel;
-    const newRoles = newRole ? [newRole] : targetRoles;
-    setTargetRoles(newRoles);
     setUserInsights(prev => ({ ...(prev ?? {}), role: newRole }));
     saveUserInsights({ ...(userInsights ?? {}), role: newRole }).catch(() => {});
-    savePreferences({ targetRoles: newRoles });
   };
 
   return (
@@ -1084,104 +1072,16 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   );
 }
 
-// ── ProfileTab (with sub-tabs) ────────────────────────────────────────────────
+// ── ProfileTab ────────────────────────────────────────────────────────────────
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
-  const navigate = useNavigate();
-  const { isElite, isLoading: isPlanLoading } = useUserPlan();
-  const [subTab, setSubTab] = useState<'profile' | 'application'>('profile');
-
-  // If a non-Premium user somehow lands on the application sub-tab (e.g. plan
-  // downgrades while open), bounce them back to Profile.
-  useEffect(() => {
-    if (!isPlanLoading && !isElite && subTab === 'application') {
-      setSubTab('profile');
-    }
-  }, [isElite, isPlanLoading, subTab]);
-
   return (
     <div className="flex flex-col gap-6">
-
       <PageHead
         title="Profile"
         subtitle="Your career profile, target roles, and saved preferences."
       />
-
-      {/* Second-level tabs */}
-      <div className="flex items-center border-b border-border -mt-2">
-        {([
-          { id: 'profile' as const,     label: 'Profile',             premium: false },
-          { id: 'application' as const, label: 'Application Profile', premium: true  },
-        ]).map(({ id, label, premium }) => {
-          const isActive = subTab === id;
-          const locked   = premium && !isElite;
-          return (
-            <button
-              key={id}
-              onClick={() => !locked && setSubTab(id)}
-              disabled={locked}
-              aria-disabled={locked}
-              title={locked ? 'Upgrade to Premium to access Application Profile' : undefined}
-              className={`pb-3 px-1 mr-6 text-sm font-medium transition-colors relative flex items-center gap-2 ${
-                locked   ? 'text-muted-foreground/50 cursor-not-allowed' :
-                isActive ? 'text-foreground' :
-                           'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {locked && <Lock className="w-3 h-3 shrink-0" />}
-              {label}
-              {premium && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-400/10 to-amber-500/15 border border-amber-400/50">
-                  <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                  <span className="text-[10px] font-semibold text-amber-600">Premium</span>
-                </span>
-              )}
-              {isActive && !locked && (
-                <motion.div layoutId="profileSubTab" className="absolute bottom-0 left-0 w-full h-[2px] bg-primary" />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {subTab === 'profile' && (
-          <motion.div key="profile-core" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
-            <ProfileCoreContent userData={userData} />
-          </motion.div>
-        )}
-        {subTab === 'application' && isElite && (
-          <motion.div key="application-profile" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
-            <ApplicationProfileContent />
-          </motion.div>
-        )}
-        {subTab === 'application' && !isElite && (
-          <motion.div key="application-locked" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
-            <div
-              className="flex flex-col items-center text-center gap-3"
-              style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12, padding: 40 }}
-            >
-              <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-                <Lock className="w-5 h-5 text-amber-500" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground">Application Profile is Premium-only</h3>
-              <p className="text-sm text-muted-foreground max-w-md">
-                Upgrade to Premium to let us submit job applications on your behalf using your saved personal information and preferences.
-              </p>
-              <button
-                onClick={() => navigate('/pricing')}
-                style={{ ...primaryButtonStyle, marginTop: 8 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-                onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Upgrade to Premium
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      <ProfileCoreContent userData={userData} />
     </div>
   );
 }

@@ -30,9 +30,9 @@ interface ApiMentor {
 // ─── Filter → API mappings ─────────────────────────────────────────────────────
 
 const PRICE_TO_PARAMS: Record<string, { priceMin?: number; priceMax?: number }> = {
-  '$0–$50':    { priceMin: 0,   priceMax: 50 },
-  '$50–$100':  { priceMin: 50,  priceMax: 100 },
-  '$100+':     { priceMin: 100 },
+  '$0–$50':    { priceMin: 0,     priceMax: 5000 },
+  '$50–$100':  { priceMin: 5000,  priceMax: 10000 },
+  '$100+':     { priceMin: 10000 },
 };
 const AVAIL_TO_API: Record<string, string> = {
   'Has slots this week': 'THIS_WEEK',
@@ -303,7 +303,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="font-semibold text-[#2466f5] text-[20px]">${mentor.priceFrom}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px]">${mentor.priceFrom / 100}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
