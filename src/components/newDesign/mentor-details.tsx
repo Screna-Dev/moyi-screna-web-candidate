@@ -65,7 +65,7 @@ function topicToPlan(t: MentorData['topics'][0]): CoachingPlan {
     id: t.id,
     name: t.title,
     description: t.description,
-    pricing: { '30min': t.price30min, '1hr': t.price60min },
+    pricing: { '30min': t.price30min / 100, '1hr': t.price60min / 100 },
     icon: Video,
   };
 }
@@ -148,6 +148,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
       .then((res: any) => {
         const data = res.data?.data ?? res.data ?? [];
         const list = Array.isArray(data) ? data : [];
+        console.log('[mentor-slots] received', list.length, 'slots; sample:', list[0]);
         setSlots(list);
         if (list.length > 0) {
           const first = new Date(list[0].startTime);
@@ -401,9 +402,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                           onClick={() => { setSelectedDay(day); setSelectedSlot(null); }}
                           className={`aspect-square flex items-center justify-center text-xs rounded-lg mx-auto w-full max-w-[36px] transition-colors ${
                             selected
-                              ? 'bg-primary text-primary-foreground font-medium'
+                              ? 'bg-primary text-primary-foreground font-semibold ring-2 ring-primary/40'
                               : avail
-                              ? 'text-foreground hover:bg-primary/10 hover:text-primary font-medium cursor-pointer'
+                              ? 'bg-primary/10 text-primary font-semibold hover:bg-primary/20 cursor-pointer'
                               : 'text-muted-foreground/40 cursor-default'
                           }`}
                         >
