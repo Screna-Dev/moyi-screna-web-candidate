@@ -1200,7 +1200,7 @@ export function JobApplyTab() {
 
   const tabs: { id: JobsTab; label: string; locked?: boolean }[] = [
     { id: 'matched', label: 'Matched' },
-    { id: 'saved', label: 'Saved' },
+    // { id: 'saved', label: 'Saved' },
     { id: 'delegated', label: 'Delegated', locked: !isElite },
     { id: 'applied', label: 'Applied' },
     { id: 'application_profile', label: 'Application Profile' },
