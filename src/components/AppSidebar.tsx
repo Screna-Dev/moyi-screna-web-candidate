@@ -96,7 +96,7 @@ export function AppSidebar() {
           <div className="text-sm mb-2 px-2">
             <p className="font-medium text-foreground">{user.name}</p>
             <p className="text-muted-foreground text-xs">{user.email}</p>
-            {user.role === 'admin' && (
+            {user.role === 'ADMIN' && (
               <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
                 Admin
               </span>
