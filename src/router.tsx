@@ -29,8 +29,7 @@ import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
-import PaymentSuccess from './pages/PaymentSuccess';
-import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
+import MentorCalendarCallback from './pages/MentorCalendarCallback';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
 import { HomePage } from './pages/newDesign/home/home';
@@ -104,6 +103,7 @@ export const router = createBrowserRouter([
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
+      { path: '/mentor/calendar/callback', element: <MentorCalendarCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
@@ -121,8 +121,6 @@ export const router = createBrowserRouter([
       { path: '/history', element: <HistoryPage /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '/billing', element: <BillingPage /> },
-      { path: '/payment-success', element: <PaymentSuccess /> },
-      { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
       { path: '/messages', element: <MessageCenterPage /> },

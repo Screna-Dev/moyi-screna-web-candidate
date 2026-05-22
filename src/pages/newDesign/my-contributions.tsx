@@ -341,7 +341,7 @@ export function MyContributionsPage() {
 
         {/* ─── Controls Bar ─── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
-          <div className="relative flex-1 max-w-sm">
+          {/* <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
             <input
               type="text"
@@ -354,7 +354,7 @@ export function MyContributionsPage() {
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 h-9 rounded-xl border border-[hsl(220,16%,90%)] bg-white text-sm focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 outline-none transition-all"
             />
-          </div>
+          </div> */}
 
           {activeTab === 'posts' && (
             <div className="flex items-center gap-2">

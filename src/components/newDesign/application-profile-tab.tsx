@@ -3,7 +3,7 @@ import {
   Sparkles, Check, Pencil, X, Plus, Trash2, BadgeCheck,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getJobsPreferences, upsertJobsPreferences } from '../../services/ProfileServices';
+import { getJobsPreferences, upsertJobsPreferences, getProfile } from '../../services/ProfileServices';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ const EMP_TYPES = [
 ];
 const WORK_MODES = [
   { id: 'Remote',   label: 'Remote'  },
-  { id: 'Hybrid',   label: 'Hybrid'  },
+  { id: 'Hybrid',  label: 'Hybrid'  },
   { id: 'On-site',  label: 'On-site' },
 ];
 const DEGREE_OPTIONS = ["Associate's", "Bachelor's", "Master's", "PhD", "Other"];
@@ -139,16 +139,49 @@ export function ApplicationProfileContent() {
 
   useEffect(() => {
     getJobsPreferences()
-      .then((res: { data: { data?: { candidate_apply_preferences?: ApplyPrefs; candidate_structured_resume?: StructuredResume } } }) => {
-        const prefs: ApplyPrefs       = res.data?.data?.candidate_apply_preferences  ?? {};
+      .then(async (res: { data: { data?: { candidate_apply_preferences?: ApplyPrefs; candidate_structured_resume?: StructuredResume } } }) => {
+        let prefs: ApplyPrefs         = res.data?.data?.candidate_apply_preferences  ?? {};
         const resume: StructuredResume = res.data?.data?.candidate_structured_resume ?? {};
+
+        // If required personal fields are missing, pull from /profile/resume
+        const missingPersonal = !prefs.first_name || !prefs.last_name || !prefs.email || !prefs.phone;
+        if (missingPersonal) {
+          try {
+            const profileRes = await getProfile();
+            const sr = profileRes.data?.data?.structured_resume ?? profileRes.data?.structured_resume ?? {};
+            const profile = sr.profile ?? {};
+            const links   = sr.links   ?? {};
+
+            const fullName: string = profile.full_name ?? '';
+            const nameParts = fullName.trim().split(/\s+/);
+            const firstName = nameParts[0] ?? '';
+            const lastName  = nameParts.slice(1).join(' ');
+
+            const patch: Partial<ApplyPrefs> = {};
+            if (!prefs.first_name && firstName)       patch.first_name   = firstName;
+            if (!prefs.last_name  && lastName)        patch.last_name    = lastName;
+            if (!prefs.email      && profile.email)   patch.email        = profile.email;
+            if (!prefs.phone      && profile.phone)   patch.phone        = profile.phone;
+            if (!prefs.linkedin_url  && links.linkedin) patch.linkedin_url  = links.linkedin;
+            if (!prefs.github_url    && links.github)   patch.github_url    = links.github;
+            if (!prefs.portfolio_url && links.website)  patch.portfolio_url = links.website;
+
+            if (Object.keys(patch).length > 0) {
+              prefs = { ...prefs, ...patch };
+              // Persist the filled-in data so future saves include it
+              upsertJobsPreferences({ candidate_apply_preferences: prefs }).catch(() => {});
+            }
+          } catch {
+            // Resume not available — continue with whatever prefs has
+          }
+        }
 
         setApplyPrefs(prefs);
         setStructuredResume(resume);
 
         // Seed job-preference UI state
         setEmpTypes(prefs.employment_types ?? []);
-        setWorkModes(prefs.work_modes ?? []);
+        setWorkModes((prefs.work_modes ?? []).map((m: string) => m.trim() === 'Hybrid' ? 'Hybrid' : m));
         setSalaryMin(prefs.salary_min != null ? String(Math.round(prefs.salary_min / 1000)) : '');
         setSalaryMax(prefs.salary_max != null ? String(Math.round(prefs.salary_max / 1000)) : '');
         setLocationTags(prefs.target_locations ?? []);
@@ -188,10 +221,13 @@ export function ApplicationProfileContent() {
   const toApiPayload = (obj: ApplyPrefs): ApplyPrefs => {
     const out: ApplyPrefs = {};
     for (const [k, v] of Object.entries(obj)) {
+      const value = k === 'work_modes' && Array.isArray(v)
+        ? v.map((m: string) => m.trim() === 'Hybrid' ? 'Hybrid' : m)
+        : v;
       if ((REQUIRED_FIELDS as readonly string[]).includes(k)) {
-        out[k] = (v === '' || v === undefined) ? null : v;
-      } else if (v !== '' && v !== null && v !== undefined) {
-        out[k] = v;
+        out[k] = (value === '' || value === undefined) ? null : value;
+      } else if (value !== '' && value !== null && value !== undefined) {
+        out[k] = value;
       }
     }
     // Ensure all required fields are present even if not in obj yet
@@ -210,7 +246,12 @@ export function ApplicationProfileContent() {
   const saveStructuredResume = (patch: Partial<StructuredResume>) => {
     const merged = { ...structuredResume, ...patch };
     setStructuredResume(merged);
-    upsertJobsPreferences({ candidate_structured_resume: merged }).catch(() => {});
+    upsertJobsPreferences({
+      candidate_structured_resume: {
+        experience: merged.experience,
+        education: merged.education,
+      },
+    }).catch(() => {});
   };
 
   const handlePersonalSave = () => {

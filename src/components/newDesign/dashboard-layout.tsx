@@ -47,7 +47,7 @@ const sidebarLinks = [
 
 const sidebarAccountLinks = [
   { icon: User, label: 'Profile', path: '/profile' },
-  { icon: Gift, label: 'Refer & Earn', path: '/refer' },
+  // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
