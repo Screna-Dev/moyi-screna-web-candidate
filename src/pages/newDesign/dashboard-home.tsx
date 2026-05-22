@@ -6,7 +6,7 @@ import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { T } from '@/lib/design-tokens';
 import { listMyBookings } from '@/services/MentorService';
-import { getUserInsights } from '@/services/ProfileServices';
+import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1119,8 +1119,16 @@ function Radar({ dims }: { dims: Dim[] }) {
           const ax = Math.cos(a), ay = Math.sin(a);
           const lx = cx + ax * LABEL_R;
           const ly = cy + ay * LABEL_R;
-          const anchor = Math.abs(ax) > 0.1 ? (ax < 0 ? 'end' : 'start') : 'middle';
-          const lines = d.label.split('|');
+          const isSide = Math.abs(ax) > 0.1;
+          const anchor = isSide ? (ax < 0 ? 'end' : 'start') : 'middle';
+          let lines = d.label.split('|');
+          if (lines.length === 1 && isSide) {
+            const words = d.label.split(' ');
+            if (words.length >= 2) {
+              const mid = Math.ceil(words.length / 2);
+              lines = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+            }
+          }
           const lineH = 12;
           const baseY = ly - ((lines.length - 1) * lineH) / 2 + 4;
           return (
@@ -1356,12 +1364,12 @@ function CommunityCard() {
         let role = '';
         let companies: string[] = [];
         try {
-          const res = await getUserInsights();
+          const res = await getProfilePreferences();
           const data = res?.data?.data ?? res?.data;
-          role = data?.role ?? '';
-          companies = Array.isArray(data?.companies) ? data.companies : [];
+          role = Array.isArray(data?.target_roles) ? (data.target_roles[0] ?? '') : '';
+          companies = Array.isArray(data?.target_companies) ? data.target_companies : [];
         } catch {
-          // No insights yet — fall through with empty role/companies
+          // No preferences yet — fall through with empty role/companies
         }
         if (alive) {
           setTargetRole(role);
