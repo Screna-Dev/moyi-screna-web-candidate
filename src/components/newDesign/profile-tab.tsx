@@ -6,7 +6,7 @@ import {
   BadgeCheck, Building2, Coins,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getUserInsights, saveUserInsights, uploadResume, updateProfile, getPersonalInfo, getJobsPreferences, upsertJobsPreferences } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -66,27 +66,23 @@ const COMPANY_CATEGORIES = [
   { id: 'open',    label: 'Open to all',        desc: 'No preference on size'         },
 ];
 
-// Maps between API companyTypes values and internal category IDs
-const API_TYPE_TO_CATEGORY: Record<string, string> = {
+// Maps legacy uppercase GET values to the canonical API enum values
+// Canonical values: "faang" | "unicorn" | "mid" | "startup" | "open"
+const LEGACY_API_TO_CATEGORY: Record<string, string> = {
   FAANG: 'faang',
   LARGE: 'unicorn',
   MID_SIZE: 'mid',
   STARTUP: 'startup',
 };
-const CATEGORY_TO_API_TYPE: Record<string, string> = {
-  faang: 'FAANG',
-  unicorn: 'LARGE',
-  mid: 'MID_SIZE',
-  startup: 'STARTUP',
-};
 
-type UserInsights = {
-  role?: string;
-  goalClarityLevel?: string;
-  companyTypes?: string[];
-  companies?: string[];
-  jobSearchStage?: string;
-  priorityNeeds?: string[];
+type UserPreferences = {
+  target_roles?: string[];
+  goal_clarity_level?: string;
+  company_size_categories?: string[];
+  target_companies?: string[];
+  job_search_stage?: string;
+  priority_needs?: string[];
+  work_authorization?: string;
 };
 
 const VISA_OPTIONS = [
@@ -151,8 +147,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [pendingVisaStatus, setPendingVisaStatus] = useState<string>('');
   const [structuredResume, setStructuredResume] = useState<Record<string, unknown> | null>(null);
 
-  // ── User insights (kept for merging on save) ──
-  const [userInsights, setUserInsights] = useState<UserInsights | null>(null);
+  // ── Profile preferences (kept for merging on save) ──
+  const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
 
   // ── Target Companies state (from user-insights) ──
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -238,30 +234,26 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       }
     }).catch(() => {}).finally(() => setLoadingResume(false));
 
-    // Fetch work authorization only from apply preferences
-    getJobsPreferences().then((res: { data: { data?: { candidate_apply_preferences?: { work_authorization?: string } } } }) => {
-      const prefs = res.data?.data?.candidate_apply_preferences ?? {};
-      if (prefs.work_authorization) setVisaStatus(prefs.work_authorization);
-    }).catch(() => {});
-
-    // Fetch user insights (role, target companies, company types)
-    getUserInsights().then((res: { data: { data?: UserInsights } }) => {
-      const data = (res.data?.data ?? res.data) as UserInsights;
-      setUserInsights(data);
-      if (data?.role) {
+    // Fetch profile preferences (target roles, target companies, company sizes, work authorization)
+    getProfilePreferences().then((res: { data: { data?: UserPreferences } }) => {
+      const data = (res.data?.data ?? res.data) as UserPreferences;
+      setUserPrefs(data);
+      const firstRole = data?.target_roles?.[0];
+      if (firstRole) {
         const allRoles = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles);
-        const match = allRoles.find(r => r.label.toLowerCase() === data.role!.toLowerCase());
+        const match = allRoles.find(r => r.label.toLowerCase() === firstRole.toLowerCase());
         if (match) setSelectedRoleId(match.id);
       }
-      if (data?.companies) setSpecificCompanies(data.companies);
-      if (data?.companyTypes) {
+      if (data?.target_companies) setSpecificCompanies(data.target_companies);
+      if (data?.company_size_categories) {
         setSelectedCategories(
-          data.companyTypes.map((t: string) => {
+          data.company_size_categories.map((t: string) => {
             const lower = t.toLowerCase();
-            return API_TYPE_TO_CATEGORY[t] ?? API_TYPE_TO_CATEGORY[lower] ?? lower;
+            return LEGACY_API_TO_CATEGORY[t] ?? lower;
           }).filter(Boolean)
         );
       }
+      if (data?.work_authorization) setVisaStatus(data.work_authorization);
     }).catch(() => {}).finally(() => setLoadingPreferences(false));
 
     // Fetch personal info (name, email, timezone)
@@ -286,7 +278,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // Label of the currently highlighted option in the edit UI (used when saving)
   const selectedRoleLabel = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(r => r.id === selectedRoleId)?.label ?? '';
 
-  const displayRole = userInsights?.role ?? selectedRoleLabel;
+  const displayRole = userPrefs?.target_roles?.[0] ?? selectedRoleLabel;
 
   const totalCompanyCount = selectedCategories.length + specificCompanies.length;
 
@@ -302,20 +294,25 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
   const savePreferences = (patch: { workAuthorization?: string }) => {
     const wa = patch.workAuthorization ?? visaStatus;
-    upsertJobsPreferences({
-      candidate_apply_preferences: {
-        ...(wa ? { work_authorization: wa } : {}),
-      },
-    }).catch(() => {});
+    const updated: UserPreferences = {
+      ...(userPrefs ?? {}),
+      ...(wa ? { work_authorization: wa } : {}),
+    };
+    setUserPrefs(updated);
+    saveProfilePreferences(updated).catch(() => {});
   };
 
   const handleCompanyDone = () => {
     setEditingCompanies(false);
     setCompanyQuery('');
-    const companyTypes = selectedCategories.map(c => CATEGORY_TO_API_TYPE[c]).filter(Boolean);
-    const updated = { ...(userInsights ?? {}), companies: specificCompanies, companyTypes };
-    setUserInsights(updated);
-    saveUserInsights(updated).catch(() => {});
+    const company_size_categories = selectedCategories;
+    const updated: UserPreferences = {
+      ...(userPrefs ?? {}),
+      target_companies: specificCompanies,
+      company_size_categories,
+    };
+    setUserPrefs(updated);
+    saveProfilePreferences(updated).catch(() => {});
   };
 
   const handleVisaDone = () => {
@@ -347,8 +344,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const handleRoleConfirm = () => {
     setRoleMode('view');
     const newRole = selectedRoleLabel;
-    setUserInsights(prev => ({ ...(prev ?? {}), role: newRole }));
-    saveUserInsights({ ...(userInsights ?? {}), role: newRole }).catch(() => {});
+    const updated: UserPreferences = { ...(userPrefs ?? {}), target_roles: [newRole] };
+    setUserPrefs(updated);
+    saveProfilePreferences(updated).catch(() => {});
   };
 
   return (

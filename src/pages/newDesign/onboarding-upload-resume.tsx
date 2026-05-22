@@ -7,7 +7,7 @@ import {
   Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
   Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2,
 } from 'lucide-react';
-import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
+import { uploadResume, updateProfile, saveProfilePreferences, getJobTitleRecommendations } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
@@ -175,7 +175,7 @@ interface FlowData {
   uploadState: UploadState;
   uploadedFile: File | null;
   resumeJobTitles: string[];
-  targetRole: string;
+  targetRoles: string[];
   roleClarity: string;
   companyChoice: CompanyChoice;
   targetCompanies: string[];
@@ -506,16 +506,31 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
 
   // Auto-select role from resume job titles on first mount if not already set
   useEffect(() => {
-    if (!data.targetRole && data.resumeJobTitles.length > 0) {
+    if (data.targetRoles.length === 0 && data.resumeJobTitles.length > 0) {
       const matched = matchRoleFromJobTitles(data.resumeJobTitles);
       if (matched) {
-        update({ targetRole: matched });
+        update({ targetRoles: [matched] });
         setAutoFilledFromResume(true);
       }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedRole = useMemo(() => ALL_ROLES.find(r => r.id === data.targetRole), [data.targetRole]);
+  const toggleRole = (id: string) => {
+    const current = data.targetRoles;
+    if (current.includes(id)) {
+      const next = current.filter(r => r !== id);
+      update({ targetRoles: next, ...(next.length === 0 ? { roleClarity: '' } : {}) });
+      if (next.length === 0) setAutoFilledFromResume(false);
+    } else {
+      update({ targetRoles: [...current, id] });
+    }
+  };
+
+  const clearAllRoles = () => {
+    update({ targetRoles: [], roleClarity: '' });
+    setAutoFilledFromResume(false);
+    searchRef.current?.focus();
+  };
 
   const filteredCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -526,21 +541,21 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
   }, [query]);
 
   const totalFiltered = filteredCategories.reduce((n, c) => n + c.roles.length, 0);
-  const canProceed = data.targetRole && data.roleClarity;
+  const canProceed = data.targetRoles.length > 0 && data.roleClarity;
 
   return (
     <div className="flex flex-col items-center w-full max-w-[540px] mx-auto">
       <ScreenEyebrow step={3} total={8} />
       <h1 className="text-[28px] font-bold text-[hsl(222,22%,12%)] mb-2 text-center" style={{ letterSpacing: '-0.025em', lineHeight: 1.15 }}>
-        What role are you targeting?
+        What roles are you targeting?
       </h1>
       <p className="text-[14px] text-[hsl(222,12%,50%)] text-center mb-6 max-w-[380px]">
-        We'll tailor every practice session and recommendation to your specific target.
+        Pick one or more — we'll tailor every practice session and recommendation to your targets.
       </p>
 
-      {/* Selected role badge */}
+      {/* Selected roles */}
       <AnimatePresence>
-        {data.targetRole && (
+        {data.targetRoles.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: -6, height: 0, marginBottom: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto', marginBottom: 12 }}
@@ -548,31 +563,53 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
             transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
             className="w-full overflow-hidden"
           >
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/25">
-              <div className="w-4 h-4 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shrink-0">
-                <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-              </div>
-              <span className="flex-1 text-[13px] font-semibold text-[hsl(221,91%,50%)]">
-                {selectedRole ? selectedRole.label : data.targetRole}
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-[11px] font-semibold text-[hsl(221,91%,50%)] uppercase tracking-[0.5px]">
+                Selected ({data.targetRoles.length})
               </span>
-              {autoFilledFromResume && (
-                <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
-                  Pre-filled from resume
-                </span>
-              )}
-              {selectedRole ? (
-                <span className="text-[10.5px] text-[hsl(221,91%,60%)]/60 font-medium">{selectedRole.category}</span>
-              ) : (
-                <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
-                  Custom
-                </span>
-              )}
-              <button
-                onClick={() => { update({ targetRole: '', roleClarity: '' }); setAutoFilledFromResume(false); searchRef.current?.focus(); }}
-                className="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-[hsl(221,91%,60%)]/60 hover:text-[hsl(221,91%,50%)] hover:bg-[hsl(221,91%,60%)]/15 transition-all"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-2">
+                {autoFilledFromResume && (
+                  <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
+                    Pre-filled from resume
+                  </span>
+                )}
+                {data.targetRoles.length > 1 && (
+                  <button
+                    onClick={clearAllRoles}
+                    className="text-[11px] text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors underline underline-offset-2"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {data.targetRoles.map(id => {
+                const role = ALL_ROLES.find(r => r.id === id);
+                return (
+                  <div
+                    key={id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/25 text-[12.5px] font-semibold text-[hsl(221,91%,50%)]"
+                  >
+                    <div className="w-3.5 h-3.5 rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shrink-0">
+                      <Check className="w-2 h-2 text-white" strokeWidth={3} />
+                    </div>
+                    <span>{role ? role.label : id}</span>
+                    {!role && (
+                      <span className="text-[9.5px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-1.5 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20">
+                        Custom
+                      </span>
+                    )}
+                    <button
+                      onClick={() => toggleRole(id)}
+                      className="ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[hsl(221,91%,60%)]/60 hover:text-[hsl(221,91%,50%)] hover:bg-[hsl(221,91%,60%)]/15 transition-all"
+                      aria-label={`Remove ${role ? role.label : id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </motion.div>
         )}
@@ -612,11 +649,17 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
                   <p className="text-[11.5px] text-[hsl(222,12%,60%)] mt-1 mb-4">No match — add it as a custom role</p>
                   <button
                     type="button"
-                    onClick={() => { update({ targetRole: query.trim(), roleClarity: '' }); setQuery(''); }}
+                    onClick={() => {
+                      const custom = query.trim();
+                      if (!data.targetRoles.includes(custom)) {
+                        update({ targetRoles: [...data.targetRoles, custom] });
+                      }
+                      setQuery('');
+                    }}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[hsl(221,91%,60%)]/10 border border-[hsl(221,91%,60%)]/30 text-[13px] font-semibold text-[hsl(221,91%,55%)] hover:bg-[hsl(221,91%,60%)]/18 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Use &ldquo;{query.trim()}&rdquo; as my role
+                    Add &ldquo;{query.trim()}&rdquo; to my roles
                   </button>
                 </>
               ) : (
@@ -632,12 +675,12 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {cat.roles.map(role => {
-                      const sel = data.targetRole === role.id;
+                      const sel = data.targetRoles.includes(role.id);
                       return (
                         <button
                           key={role.id}
                           onClick={() => {
-                            update({ targetRole: role.id, roleClarity: sel ? '' : data.roleClarity });
+                            toggleRole(role.id);
                             setQuery('');
                           }}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12.5px] font-medium transition-all duration-150 ${
@@ -663,7 +706,13 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
                   <div className="h-px bg-[hsl(220,16%,94%)]" />
                   <button
                     type="button"
-                    onClick={() => { update({ targetRole: query.trim(), roleClarity: '' }); setQuery(''); }}
+                    onClick={() => {
+                      const custom = query.trim();
+                      if (!data.targetRoles.includes(custom)) {
+                        update({ targetRoles: [...data.targetRoles, custom] });
+                      }
+                      setQuery('');
+                    }}
                     className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[hsl(221,91%,60%)]/5 transition-colors"
                   >
                     <div className="w-6 h-6 rounded-md bg-[hsl(221,91%,60%)]/12 flex items-center justify-center shrink-0">
@@ -689,7 +738,7 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
 
       {/* Role clarity — slides in after selection */}
       <AnimatePresence>
-        {data.targetRole && (
+        {data.targetRoles.length > 0 && (
           <motion.div
             initial={{ opacity: 0, height: 0, marginTop: 0 }}
             animate={{ opacity: 1, height: 'auto', marginTop: 20 }}
@@ -1150,7 +1199,9 @@ function Screen6HelpPreference({ data, update, onNext, onBack }: {
 function Screen7YourHub({ data, onNext }: {
   data: FlowData; onNext: () => void;
 }) {
-  const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
+  const roleLabels = data.targetRoles
+    .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
+    .join(', ');
   const statusLabel = JOB_STATUSES.find(s => s.id === data.jobStatus)?.label ?? data.jobStatus;
   const helpIds = data.helpPreference.split(',').filter(Boolean);
   const helpLabel = helpIds.length
@@ -1158,7 +1209,7 @@ function Screen7YourHub({ data, onNext }: {
     : '—';
 
   const items = [
-    { label: 'Target role', value: roleLabel || 'Exploring' },
+    { label: data.targetRoles.length > 1 ? 'Target roles' : 'Target role', value: roleLabels || 'Exploring' },
     { label: 'Search stage', value: statusLabel || '—' },
     { label: 'What would help', value: helpLabel },
   ];
@@ -1439,7 +1490,12 @@ function ScreenAnalysisTransition({
             </div>
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Target role', value: data.targetRole || 'Exploring' },
+                {
+                  label: 'Target role',
+                  value: data.targetRoles.length > 0
+                    ? data.targetRoles.map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id).join(', ')
+                    : 'Exploring',
+                },
                 { label: 'Search stage', value: data.jobStatus || 'Calibrating…' },
                 { label: 'Focus area', value: data.helpPreference || 'Preparing…' },
               ].map(item => (
@@ -1481,7 +1537,7 @@ function ScreenAnalysisTransition({
   );
 }
 
-// ─── Field mappings for POST /profile/user-insights ──────────────────────────
+// ─── Field mappings for POST /profile/preferences ────────────────────────────
 
 function toGoalClarityLevel(roleClarity: string): string {
   if (roleClarity === 'exact') return 'KNOW_EXACTLY';
@@ -1556,7 +1612,7 @@ export function OnboardingUploadResumePage() {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [data, setData] = useState<FlowData>({
     uploadState: 'idle', uploadedFile: null, resumeJobTitles: [],
-    targetRole: '', roleClarity: '',
+    targetRoles: [], roleClarity: '',
     companyChoice: null, targetCompanies: [],
     jobStatus: '', helpPreference: '',
   });
@@ -1582,12 +1638,16 @@ export function OnboardingUploadResumePage() {
     if (step === 2) { setShowAnalysis(true); return; }
     if (step === 4) {
       // Fire-and-forget training plan creation
-      const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
-      if (roleLabel) {
+      const roleLabels = data.targetRoles
+        .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
+        .filter(Boolean);
+      const primaryRole = roleLabels[0] ?? '';
+      if (primaryRole) {
         const firstCompany = data.companyChoice === 'yes'
           ? (data.targetCompanies.filter(c => !TYPE_LABEL_SET.has(c))[0] ?? '')
           : '';
-        createTrainingPlan({ jobTitle: roleLabel, company: firstCompany, jobDescription: roleLabel })
+        const jobDescription = roleLabels.join(', ');
+        createTrainingPlan({ jobTitle: primaryRole, company: firstCompany, jobDescription })
           .then(res => console.log('[createTrainingPlan] ✅', res?.data))
           .catch(err => console.error('[createTrainingPlan] ❌', err?.response?.data ?? err));
       }
@@ -1602,19 +1662,21 @@ export function OnboardingUploadResumePage() {
     }
     if (step === 6) {
       // Fire-and-forget save, then move to step 7
-      const roleLabel = ALL_ROLES.find(r => r.id === data.targetRole)?.label ?? data.targetRole;
-      if (roleLabel) {
-        saveUserInsights({
-          role: roleLabel,
-          goalClarityLevel: toGoalClarityLevel(data.roleClarity),
-          companyTypes: toCompanyTypes(data.targetCompanies),
-          companies: toSpecificCompanies(data.targetCompanies),
-          jobSearchStage: toJobSearchStage(data.jobStatus),
-          priorityNeeds: toPriorityNeeds(data.helpPreference),
+      const roleLabels = data.targetRoles
+        .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
+        .filter(Boolean);
+      if (roleLabels.length > 0) {
+        saveProfilePreferences({
+          target_roles: roleLabels,
+          goal_clarity_level: toGoalClarityLevel(data.roleClarity),
+          company_size_categories: toCompanyTypes(data.targetCompanies),
+          target_companies: toSpecificCompanies(data.targetCompanies),
+          job_search_stage: toJobSearchStage(data.jobStatus),
+          priority_needs: toPriorityNeeds(data.helpPreference),
         }).then((res) => {
-          console.log('[saveUserInsights] ✅ success', res?.data);
+          console.log('[saveProfilePreferences] ✅ success', res?.data);
         }).catch((err) => {
-          console.error('[saveUserInsights] ❌ failed', err?.response?.data ?? err);
+          console.error('[saveProfilePreferences] ❌ failed', err?.response?.data ?? err);
         });
       }
       goTo(7);
