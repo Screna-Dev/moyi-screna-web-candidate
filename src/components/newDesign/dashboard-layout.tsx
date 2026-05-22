@@ -14,6 +14,7 @@ import {
   History,
   User,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -51,9 +52,56 @@ const sidebarAccountLinks = [
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
+const adminSidebarLinks = [
+  { icon: ShieldCheck, label: 'Dashboard', path: '/admin' },
+  { icon: Gift, label: 'Redeem Codes', path: '/redeem-code' },
+  { icon: Settings, label: 'Audit Log', path: '/audit-logs' },
+];
+
 function SidebarContent({ currentPath }: { currentPath: string }) {
   const { planData } = useUserPlan();
+  const { user, logout } = useAuth();
   const creditBalance = planData.permanentCreditBalance;
+  const isAdmin = user?.role === 'ADMIN';
+
+  if (isAdmin) {
+    return (
+      <div className="flex flex-col h-full bg-sidebar">
+        <nav className="px-3 pt-4 pb-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Admin</p>
+          <div className="space-y-0.5">
+            {adminSidebarLinks.map((item) => {
+              const isActive = currentPath === item.path;
+              return (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                  }`}
+                >
+                  <item.icon className="w-4 h-4 shrink-0" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+        <div className="px-3 pb-5 mt-auto shrink-0">
+          <button
+            onClick={logout}
+            className="flex items-center gap-3 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="text-sm">Logout</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-sidebar">
       {/* Nav links — Career group */}
@@ -151,7 +199,7 @@ function GlobalTopHeader({
   currentPath: string;
 }) {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { planData } = useUserPlan();
   const creditBalance = planData.permanentCreditBalance;
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -210,6 +258,16 @@ function GlobalTopHeader({
       <span className="text-xs text-muted-foreground leading-relaxed">{desc}</span>
     </Link>
   );
+
+  if (user?.role === 'ADMIN') {
+    return (
+      <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
+        <Link to="/admin" className="flex items-center gap-2">
+          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+        </Link>
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
