@@ -2150,13 +2150,14 @@ function ProgressMomentum() {
 
 // ─── Career Profile Card ─────────────────────────────────────────────────────
 
-function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: UserData | null; onEdit: () => void; onUploadResume?: () => void }) {
+function CareerProfileCard({ userData, loading, onEdit, onUploadResume }: { userData: UserData | null; loading: boolean; onEdit: () => void; onUploadResume?: () => void }) {
   const fields = [
     !!(userData?.firstName || userData?.lastName),
     !!userData?.role,
     !!userData?.experienceLevel,
-    !!userData?.resumeFileName || !!userData?.resumePath,
+    !!(userData?.companyTypes?.length || userData?.targetCompanies?.length),
     !!userData?.jobStatus,
+    !!userData?.resumeFileName || !!userData?.resumePath,
   ];
   const completion = Math.round((fields.filter(Boolean).length / fields.length) * 100);
 
@@ -2189,10 +2190,21 @@ function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: Use
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11.5px] text-slate-500">Profile completion</span>
-            <span className="text-[12px] font-semibold text-[hsl(221,91%,55%)]">{completion}%</span>
+            {loading ? (
+              <span className="h-3 w-8 rounded bg-slate-100 animate-pulse" />
+            ) : (
+              <span className="text-[12px] font-semibold text-[hsl(221,91%,55%)]">{completion}%</span>
+            )}
           </div>
-          <div className="w-full h-1.5 rounded-full bg-slate-100">
-            <div className="h-1.5 rounded-full bg-[hsl(221,91%,60%)]" style={{ width: `${completion}%` }} />
+          <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            {loading ? (
+              <div className="h-1.5 w-1/3 rounded-full bg-slate-200 animate-pulse" />
+            ) : (
+              <div
+                className="h-1.5 rounded-full bg-[hsl(221,91%,60%)] transition-[width] duration-500"
+                style={{ width: `${completion}%` }}
+              />
+            )}
           </div>
         </div>
 
@@ -2211,7 +2223,11 @@ function CareerProfileCard({ userData, onEdit, onUploadResume }: { userData: Use
                 <RowIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <div className="flex-1 flex items-center justify-between min-w-0">
                   <span className="text-[11px] text-slate-400 shrink-0">{row.label}</span>
-                  <span className="text-[12.5px] font-medium text-slate-700 truncate ml-2 text-right">{row.value}</span>
+                  {loading ? (
+                    <span className="h-3 w-20 rounded bg-slate-100 animate-pulse ml-2" />
+                  ) : (
+                    <span className="text-[12.5px] font-medium text-slate-700 truncate ml-2 text-right">{row.value}</span>
+                  )}
                 </div>
               </div>
             );
@@ -2287,6 +2303,7 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
 
 export function DashboardPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [isMember] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
@@ -2352,6 +2369,8 @@ export function DashboardPage() {
         const plans: any[] = Array.isArray(plansData) ? plansData : [];
         setRecentSessions(mapPlansToRecentSessions(plans));
       }
+
+      setProfileLoading(false);
     });
   }, []);
 
@@ -2362,11 +2381,12 @@ export function DashboardPage() {
 
   const handleSaveProfile = (data: EditProfileData) => {
     handleUpdateProfile({
+      ...(userData || {}),
       firstName: data.firstName,
       lastName: data.lastName,
       role: data.currentRole,
       experienceLevel: data.currentLevel,
-      targetCompanies: [],
+      companyTypes: data.targetCompanyType,
       jobStatus: data.jobStatus,
     });
   };
@@ -2447,7 +2467,7 @@ export function DashboardPage() {
           <div className="flex flex-col gap-5">
             <MentorshipSessions />
             <ProgressMomentum />
-            <CareerProfileCard userData={userData} onEdit={() => setEditOpen(true)} onUploadResume={triggerResumeInput} />
+            <CareerProfileCard userData={userData} loading={profileLoading} onEdit={() => setEditOpen(true)} onUploadResume={triggerResumeInput} />
           </div>
         </motion.div>
 
