@@ -57,3 +57,7 @@ export const getMyPosts = (params = {}) => {
 export const getMyComments = (params = {}) => {
   return API.get('/community/comments/me', { params });
 };
+
+export const getMySavedPosts = (params = {}) => {
+  return API.get('/community/posts/me/saved', { params });
+};
