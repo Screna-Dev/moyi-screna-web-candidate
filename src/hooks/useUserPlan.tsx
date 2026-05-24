@@ -306,7 +306,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const isPro = currentPlan === 'Pro';
   
   // Feature access - return false while loading to prevent flash of wrong content
-  const canAccessJobs = !effectiveIsLoading && isPremium;
+  const canAccessJobs = !effectiveIsLoading && isElite;
   const canAccessPremiumReport = !effectiveIsLoading && isElite;
   const canPushProfile = !effectiveIsLoading && isPremium;
   const canAccessMentorship = !effectiveIsLoading && isPremium;
