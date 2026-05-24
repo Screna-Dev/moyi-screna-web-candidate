@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart2, RotateCcw,
@@ -668,8 +668,10 @@ function LoadingState() {
 export function HistoryPage() {
   const navigate = useNavigate();
   const { isFree } = useUserPlan();
+  const [searchParams] = useSearchParams();
+  const initialTab: MainTab = searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock';
 
-  const [activeTab,    setActiveTab]    = useState<MainTab>('ai-mock');
+  const [activeTab,    setActiveTab]    = useState<MainTab>(initialTab);
   const [mentorFilter, setMentorFilter] = useState<'all' | ReviewStatus>('all');
   const [roleFilter,   setRoleFilter]   = useState<string | 'all'>('all');
   const [typeFilter,   setTypeFilter]   = useState<AIMockType | 'all'>('all');
