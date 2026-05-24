@@ -11,11 +11,11 @@ import {
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { getTrainingPlans } from '@/services/InterviewServices';
+import { listMyBookings, submitMentorReview } from '@/services/MentorService';
 import { useUserPlan } from '@/hooks/useUserPlan';
 
 // ─── Types ────────────────────────────────────────────
 type AIMockType = 'System Design' | 'Behavioral' | 'Coding' | 'Product Sense' | 'ML Design' | 'Case Study';
-type MentorSessionType = 'Career Strategy' | 'Resume Review' | 'Mock Interview' | 'Offer Negotiation' | 'Behavioral';
 type ReviewStatus = 'Reviewed' | 'Pending Review';
 type MainTab = 'ai-mock' | 'mentor';
 
@@ -29,23 +29,73 @@ interface AIMockSession {
   interviewId?: string;
 }
 interface MentorSession {
-  id: string; kind: 'mentor'; sessionType: MentorSessionType;
-  mentorName: string; mentorTitle: string; mentorCompany: string;
-  initials: string; avatarBg: string; date: string; time: string; duration: string;
+  id: string; kind: 'mentor'; sessionType: string;
+  mentorName: string; mentorTitle?: string; mentorCompany?: string;
+  initials: string; avatarBg: string; avatarUrl?: string;
+  date: string; time: string; duration: string;
   coachingPlan: string;
   reviewStatus: ReviewStatus; stars?: number; myNote?: string;
 }
 type TrainingEntry = AIMockSession | MentorSession;
 
-// ─── Mock mentor data (no backend yet — placeholder UI) ──────────
-const MENTOR_SESSIONS: MentorSession[] = [
-  { id:'m1', kind:'mentor', sessionType:'Mock Interview',    mentorName:'Sarah Chen',    mentorTitle:'Staff Engineer',      mentorCompany:'Google',  initials:'SC', avatarBg:'bg-violet-100 text-violet-700',   date:'May 6, 2026',  time:'10:00 AM', duration:'45 min', coachingPlan:'Mock Interview (Product Sense)',   reviewStatus:'Reviewed',       stars:5, myNote:'Focusing on PM-style system design and cross-functional communication.' },
-  { id:'m2', kind:'mentor', sessionType:'Career Strategy',   mentorName:'James Park',    mentorTitle:'Engineering Manager', mentorCompany:'Meta',    initials:'JP', avatarBg:'bg-blue-100 text-blue-700',       date:'May 2, 2026',  time:'2:30 PM',  duration:'60 min', coachingPlan:'Career Strategy Session',         reviewStatus:'Reviewed',       stars:4, myNote:'Want to discuss transition from IC to EM and whether to target FAANG or high-growth startups.' },
-  { id:'m3', kind:'mentor', sessionType:'Resume Review',     mentorName:'Priya Nair',    mentorTitle:'Senior PM',           mentorCompany:'Stripe',  initials:'PN', avatarBg:'bg-emerald-100 text-emerald-700', date:'Apr 29, 2026', time:'11:00 AM', duration:'30 min', coachingPlan:'Resume & LinkedIn Review',        reviewStatus:'Pending Review',                 myNote:'Please focus on my PM experience section and whether my metrics are framed compellingly.' },
-  { id:'m4', kind:'mentor', sessionType:'Offer Negotiation', mentorName:'David Wu',      mentorTitle:'Principal Engineer',  mentorCompany:'Apple',   initials:'DW', avatarBg:'bg-orange-100 text-orange-700',   date:'Apr 24, 2026', time:'4:00 PM',  duration:'45 min', coachingPlan:'Offer & Salary Negotiation',      reviewStatus:'Reviewed',       stars:5, myNote:'Got an offer from two companies — need help comparing and negotiating the better one.' },
-  { id:'m5', kind:'mentor', sessionType:'Behavioral',        mentorName:'Aisha Johnson', mentorTitle:'Director of Product', mentorCompany:'Airbnb',  initials:'AJ', avatarBg:'bg-pink-100 text-pink-700',       date:'Apr 20, 2026', time:'9:00 AM',  duration:'60 min', coachingPlan:'Behavioral Interview',            reviewStatus:'Pending Review',                 myNote:'Struggling with leadership and conflict-resolution stories. Need structured STAR examples.' },
-  { id:'m6', kind:'mentor', sessionType:'Mock Interview',    mentorName:'Kenji Tanaka',  mentorTitle:'ML Engineer',         mentorCompany:'OpenAI',  initials:'KT', avatarBg:'bg-amber-100 text-amber-700',     date:'Apr 14, 2026', time:'3:00 PM',  duration:'50 min', coachingPlan:'Mock Interview (ML Design)',       reviewStatus:'Reviewed',       stars:4, myNote:'Looking to practice ML system design end-to-end, especially feature pipelines and model serving.' },
+// ─── Booking → MentorSession ──────────────────────────
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'COMPLETED';
+interface Booking {
+  id: string;
+  mentorName?: string;
+  mentorAvatarUrl?: string;
+  topicTitle?: string;
+  durationMinutes?: number;
+  startTime: string;
+  status: BookingStatus;
+  hasReview?: boolean;
+  studentNote?: string;
+}
+
+const AVATAR_BGS = [
+  'bg-violet-100 text-violet-700',
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-orange-100 text-orange-700',
+  'bg-pink-100 text-pink-700',
+  'bg-amber-100 text-amber-700',
 ];
+function pickAvatarBg(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return AVATAR_BGS[Math.abs(h) % AVATAR_BGS.length];
+}
+function bookingInitials(name?: string): string {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+function mapBookingsToMentorSessions(bookings: Booking[]): MentorSession[] {
+  return bookings
+    .filter(b => b.status === 'COMPLETED')
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+    .map((b): MentorSession => {
+      const start = new Date(b.startTime);
+      const valid = !isNaN(start.getTime());
+      const name = b.mentorName ?? '';
+      return {
+        id: b.id,
+        kind: 'mentor',
+        sessionType: b.topicTitle || 'Mentor Session',
+        mentorName: name || 'Mentor',
+        initials: bookingInitials(name),
+        avatarBg: pickAvatarBg(name || b.id),
+        avatarUrl: b.mentorAvatarUrl,
+        date: valid ? start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
+        time: valid ? start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '',
+        duration: b.durationMinutes ? `${b.durationMinutes} min` : '—',
+        coachingPlan: b.topicTitle || '',
+        reviewStatus: b.hasReview ? 'Reviewed' : 'Pending Review',
+        myNote: b.studentNote,
+      };
+    });
+}
 
 const AI_ROLES = ['Software Engineer', 'Product Manager', 'Engineering Manager', 'ML Engineer'];
 const AI_TYPES: AIMockType[] = ['System Design', 'Behavioral', 'Coding', 'Product Sense', 'ML Design', 'Case Study'];
@@ -314,13 +364,42 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
 }
 
 // ─── Mentor Row ────────────────────────────────────────
-function MentorRow({ session, isLast }: { session: MentorSession; isLast: boolean }) {
+function MentorRow({
+  session,
+  isLast,
+  onReviewed,
+}: {
+  session: MentorSession;
+  isLast: boolean;
+  onReviewed?: (bookingId: string, stars: number) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [reviewStars, setReviewStars] = useState(0);
   const [hoverStar, setHoverStar] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const reviewed = session.reviewStatus === 'Reviewed';
+
+  const handleSubmitReview = async () => {
+    if (reviewStars < 1 || submitting) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await submitMentorReview(session.id, {
+        overallRating: reviewStars,
+        comment: reviewComment.trim() || undefined,
+      });
+      setSubmitted(true);
+      onReviewed?.(session.id, reviewStars);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setSubmitError(msg ?? 'Failed to submit review. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <div className={!isLast ? 'border-b border-border' : ''}>
       <div
@@ -334,7 +413,9 @@ function MentorRow({ session, isLast }: { session: MentorSession; isLast: boolea
           </div>
           <div className="min-w-0">
             <p className="font-medium text-foreground truncate" style={{ fontSize: '14px', lineHeight: '20px' }}>{session.sessionType}</p>
-            <p className="text-muted-foreground truncate" style={{ fontSize: '12px', lineHeight: '16px' }}>{session.mentorName} · {session.mentorTitle} · {session.mentorCompany}</p>
+            <p className="text-muted-foreground truncate" style={{ fontSize: '12px', lineHeight: '16px' }}>
+              {[session.mentorName, session.mentorTitle, session.mentorCompany].filter(Boolean).join(' · ')}
+            </p>
           </div>
         </div>
 
@@ -514,13 +595,16 @@ function MentorRow({ session, isLast }: { session: MentorSession; isLast: boolea
                   <div>
                     <Button
                       size="sm"
-                      disabled={reviewStars === 0}
-                      onClick={() => { if (reviewStars > 0) setSubmitted(true); }}
+                      disabled={reviewStars === 0 || submitting}
+                      onClick={handleSubmitReview}
                       className="h-8 px-4 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ fontSize: '12px', fontWeight: 500, boxShadow: reviewStars > 0 ? '0px 1px 1.5px rgba(60,119,246,0.2),0px 1px 1px rgba(60,119,246,0.2)' : 'none' }}
                     >
-                      Submit Review
+                      {submitting ? 'Submitting…' : 'Submit Review'}
                     </Button>
+                    {submitError && (
+                      <p className="mt-2 text-destructive" style={{ fontSize: '12px' }}>{submitError}</p>
+                    )}
                   </div>
                 </>
               )}
@@ -678,6 +762,8 @@ export function HistoryPage() {
 
   const [aiSessions, setAiSessions] = useState<AIMockSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mentorSessions, setMentorSessions] = useState<MentorSession[]>([]);
+  const [mentorLoading, setMentorLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -696,6 +782,24 @@ export function HistoryPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (isFree) { setMentorLoading(false); return; }
+    let alive = true;
+    setMentorLoading(true);
+    (async () => {
+      try {
+        const res = await listMyBookings({ page: 0, size: 100 });
+        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+        if (alive) setMentorSessions(mapBookingsToMentorSessions(Array.isArray(content) ? content : []));
+      } catch {
+        if (alive) setMentorSessions([]);
+      } finally {
+        if (alive) setMentorLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [isFree]);
+
   const filteredAI = useMemo(() => aiSessions.filter(s => {
     if (roleFilter !== 'all' && s.role !== roleFilter) return false;
     if (typeFilter !== 'all' && s.type !== typeFilter) return false;
@@ -703,8 +807,8 @@ export function HistoryPage() {
   }), [aiSessions, roleFilter, typeFilter]);
 
   const filteredMentor = useMemo(() =>
-    MENTOR_SESSIONS.filter(s => mentorFilter === 'all' || s.reviewStatus === mentorFilter),
-    [mentorFilter]);
+    mentorSessions.filter(s => mentorFilter === 'all' || s.reviewStatus === mentorFilter),
+    [mentorSessions, mentorFilter]);
 
   const hasAIFilters   = roleFilter !== 'all' || typeFilter !== 'all';
   const clearAIFilters = () => { setRoleFilter('all'); setTypeFilter('all'); };
@@ -783,7 +887,9 @@ export function HistoryPage() {
         </div>
 
         {/* ── Session count — only when not locked and not loading ── */}
-        {!(activeTab === 'mentor' && isFree) && !(activeTab === 'ai-mock' && loading) && (
+        {!(activeTab === 'mentor' && isFree) &&
+          !(activeTab === 'ai-mock' && loading) &&
+          !(activeTab === 'mentor' && mentorLoading) && (
           <p className="text-xs text-muted-foreground -mt-2">
             Showing <span className="font-medium text-foreground">{displayList.length}</span> session{displayList.length !== 1 ? 's' : ''}
           </p>
@@ -792,7 +898,7 @@ export function HistoryPage() {
         {/* ── Session List / Lock Gate / Loading ── */}
         {activeTab === 'mentor' && isFree ? (
           <MentorLockGate onUpgrade={() => navigate('/billing')} />
-        ) : activeTab === 'ai-mock' && loading ? (
+        ) : (activeTab === 'ai-mock' && loading) || (activeTab === 'mentor' && mentorLoading) ? (
           <LoadingState />
         ) : (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
@@ -808,7 +914,16 @@ export function HistoryPage() {
                     const isLast = i === displayList.length - 1;
                     return entry.kind === 'ai-mock'
                       ? <AIMockRow key={entry.id} session={entry} isLast={isLast} />
-                      : <MentorRow key={entry.id} session={entry} isLast={isLast} />;
+                      : <MentorRow
+                          key={entry.id}
+                          session={entry}
+                          isLast={isLast}
+                          onReviewed={(bookingId, stars) =>
+                            setMentorSessions(prev =>
+                              prev.map(m => m.id === bookingId ? { ...m, reviewStatus: 'Reviewed', stars } : m)
+                            )
+                          }
+                        />;
                   })}
                 </motion.div>
               </AnimatePresence>
