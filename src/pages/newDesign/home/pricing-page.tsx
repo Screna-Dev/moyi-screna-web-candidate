@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
+import { PremiumOnboardingWizard } from '../../../components/newDesign/premium-onboarding-wizard';
+import { MembershipOnboardingModal } from '../../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import { useSubscription, type Tier } from '@/hooks/useSubscription';
@@ -346,11 +348,43 @@ export function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
   const [openFaq, setOpenFaq] = useState<number>(0);
 
+  // Premium 3-step onboarding wizard (resume → preferences → consent) gates
+  // every Premium activation. pendingTier holds the tier the user is trying to
+  // activate while the wizard is open. The re-subscribe path (canceled →
+  // changeTier) doesn't go through Stripe checkout, so we show the Discord
+  // welcome modal inline on success.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [pendingTier, setPendingTier] = useState<Tier | null>(null);
+  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
+
   // Subscription lifecycle:
   //   FREE (no row)         → POST /subscriptions          (Stripe Checkout)
   //   CANCELED (period end) → POST /subscriptions/tier     (creates new row)
   //   ACTIVE                → manage in /billing
   const isActiveMember = subscription !== null && subscription.status !== 'canceled';
+
+  const proceedWithSubscribe = async (plan: Tier) => {
+    setLoadingTier(plan);
+    try {
+      if (subscription && subscription.status === 'canceled') {
+        // Re-subscribe path — no Stripe redirect, show onboarding inline.
+        const ok = await changeTier(plan);
+        if (ok) setOnboardingTier(plan);
+      } else {
+        // First-time subscription — Stripe redirect. Onboarding fires on return
+        // via /payment-success.
+        const url = await subscribe(plan, cycle);
+        if (url) {
+          window.location.href = url;
+        } else {
+          // Backend returned no URL (e.g. card on file) — show onboarding now.
+          setOnboardingTier(plan);
+        }
+      }
+    } finally {
+      setLoadingTier(null);
+    }
+  };
 
   const handleSubscribe = async (plan: Tier) => {
     if (!user) {
@@ -361,24 +395,27 @@ export function PricingPage() {
       navigate('/billing');
       return;
     }
-    setLoadingTier(plan);
-    try {
-      if (subscription && subscription.status === 'canceled') {
-        // Re-subscribe path
-        const ok = await changeTier(plan);
-        if (ok) navigate('/billing');
-      } else {
-        // First-time subscription
-        const url = await subscribe(plan, cycle);
-        if (url) {
-          window.location.href = url;
-        } else {
-          navigate('/billing');
-        }
-      }
-    } finally {
-      setLoadingTier(null);
+    // Premium activation requires the 3-step onboarding wizard
+    // (resume upload → job preferences → Managed Apply consent).
+    if (plan === 'premium') {
+      setPendingTier('premium');
+      setWizardOpen(true);
+      return;
     }
+    await proceedWithSubscribe(plan);
+  };
+
+  const handleWizardComplete = async () => {
+    if (!pendingTier) return;
+    const tier = pendingTier;
+    setWizardOpen(false);
+    setPendingTier(null);
+    await proceedWithSubscribe(tier);
+  };
+
+  const handleOnboardingClose = () => {
+    setOnboardingTier(null);
+    navigate('/billing');
   };
 
   const starterLabel = isActiveMember
@@ -1024,6 +1061,21 @@ export function PricingPage() {
       </main>
 
       <Footer />
+
+      <PremiumOnboardingWizard
+        open={wizardOpen}
+        onCancel={() => {
+          setWizardOpen(false);
+          setPendingTier(null);
+        }}
+        onComplete={handleWizardComplete}
+        isCompleting={isSubscribing}
+      />
+      <MembershipOnboardingModal
+        open={onboardingTier !== null}
+        tier={onboardingTier ?? 'starter'}
+        onClose={handleOnboardingClose}
+      />
     </div>
   );
 }

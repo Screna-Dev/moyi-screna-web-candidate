@@ -789,9 +789,9 @@ function MentorshipCard({ plan }: { plan: Plan }) {
 
   if (planLoading || loading) return <MentorshipCardSkeleton />;
 
-  // Upcoming = PENDING, soonest first
+  // Upcoming = CONFIRMED, soonest first
   const upcoming = bookings
-    .filter((b) => b.status === 'PENDING')
+    .filter((b) => b.status === 'CONFIRMED')
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   const nextSession = upcoming[0];
 

@@ -37,7 +37,8 @@ const COPY: Record<Tier, {
       'Head to #Membership-Introductions and introduce yourself with your Screna username and email',
       'Our team will reach out to help you get oriented',
     ],
-    hoursNote: 'Our team is available Mon–Fri, 9:00 AM – 5:00 PM EST.',
+    hoursNote:
+      "Our team is available Mon–Fri, 9:00 AM – 5:00 PM EST. If you join outside these hours, we'll reach out on the next business day.",
   },
   premium: {
     headline: 'Welcome to Screna Premium!',

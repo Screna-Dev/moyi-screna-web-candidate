@@ -10,28 +10,23 @@ const PaymentSuccess = () => {
   const { subscription, isLoading, refresh } = useSubscription();
 
   // Stripe checkout has just completed — force a fresh subscription read so the
-  // server-side webhook update is reflected here.
+  // server-side webhook update is reflected here, then auto-open onboarding.
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Premium subscribers go through the post-payment onboarding wizard
-  // (resume → preferences → Managed Apply consent) at /premium-onboarding.
-  // Starter subscribers see the Discord welcome modal inline.
+  // Once the subscription resolves, open onboarding for the active tier.
+  // Stays closed until we have a real tier so the modal copy is correct.
   const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
   useEffect(() => {
-    if (isLoading || !subscription?.plan) return;
-    if (subscription.plan === 'premium') {
-      navigate('/premium-onboarding', { replace: true });
-      return;
-    }
-    if (onboardingTier === null) {
+    if (!isLoading && subscription?.plan && onboardingTier === null) {
       setOnboardingTier(subscription.plan);
     }
-  }, [isLoading, subscription?.plan, onboardingTier, navigate]);
+  }, [isLoading, subscription?.plan, onboardingTier]);
 
   const handleOnboardingClose = () => {
     setOnboardingTier(null);
+    // After dismissing onboarding, send the user to their billing dashboard.
     navigate("/billing");
   };
 
