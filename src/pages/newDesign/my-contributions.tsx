@@ -358,7 +358,7 @@ export function MyContributionsPage() {
 
           {activeTab === 'posts' && (
             <div className="flex items-center gap-2">
-              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (
+              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (        
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}

@@ -29,6 +29,9 @@ export const updateDispute = (bookingId, payload) =>
 export const getBookingScriptUrl = (bookingId) =>
   API.get(`/mentorship/bookings/${bookingId}/script`);
 
+export const submitMentorReview = (bookingId, payload) =>
+  API.post(`/mentorship/bookings/${bookingId}/reviews`, payload);
+
 export const applyMentor = (payload) => API.post('/mentorship/apply', payload);
 export const getCalendarAuthUrl = (redirectUri) =>
   API.get('/mentorship/mentor/calendar/authorize', { params: { redirectUri } });
