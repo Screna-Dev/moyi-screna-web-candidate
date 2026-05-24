@@ -414,7 +414,8 @@ export function MentorshipMarketplacePage() {
     careerBackground: [] as { company: string; role: string; startYear: string; endYear: string }[],
     officeHours: [] as OfficeHour[],
   });
-  const { setUserFromToken } = useAuth();
+  const { user, setUserFromToken } = useAuth();
+  const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
 
   const resetMentorModal = () => {
     setMentorStep(1);
@@ -430,9 +431,18 @@ export function MentorshipMarketplacePage() {
     });
   };
 
+  // If the current accessToken already carries the MENTOR role, the user has
+  // already applied. Skip the application form and jump straight to the
+  // calendar-connect step when the modal opens.
+  useEffect(() => {
+    if (!isBecomeMentorOpen) return;
+    if (isAlreadyMentor) setMentorSubmitted(true);
+  }, [isBecomeMentorOpen, isAlreadyMentor]);
+
   // Auto-fill form from resume when modal opens
   useEffect(() => {
     if (!isBecomeMentorOpen) return;
+    if (isAlreadyMentor) return;
     setProfileLoading(true);
     getProfile()
       .then((res: { data: { data?: { structured_resume?: ProfileData }; structured_resume?: ProfileData } }) => {
@@ -554,7 +564,14 @@ export function MentorshipMarketplacePage() {
       setMentorSubmitted(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setMentorError(msg ?? 'Submission failed. Please try again.');
+      // Existing mentor: backend rejects re-apply. Keep the current accessToken
+      // (the user already holds the MENTOR role from their original apply) and
+      // advance to the calendar-connect step.
+      if (msg?.toLowerCase().includes('mentor profile already exists')) {
+        setMentorSubmitted(true);
+      } else {
+        setMentorError(msg ?? 'Submission failed. Please try again.');
+      }
     } finally {
       setMentorSubmitting(false);
     }
