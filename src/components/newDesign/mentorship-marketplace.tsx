@@ -64,6 +64,12 @@ const AVAIL_TO_API: Record<string, string> = {
 const RATING_TO_MIN: Record<string, number> = {
   '4.0+': 4.0, '4.5+': 4.5, '5.0 only': 5.0,
 };
+const SORT_TO_API: Record<string, { sortBy: string; sortDir: 'asc' | 'desc' }> = {
+  'Top rated':           { sortBy: 'rating', sortDir: 'desc' },
+  'Price: Low to high':  { sortBy: 'price',     sortDir: 'asc'  },
+  'Price: High to low':  { sortBy: 'price',     sortDir: 'desc' },
+  'Most reviewed':       { sortBy: 'review',   sortDir: 'desc' },
+};
 
 // ─── Color palette helper ──────────────────────────────────────────────────────
 
@@ -325,7 +331,8 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="font-semibold text-[#2466f5] text-[20px]">${mentor.priceFrom / 100}</p>
+            <p className="text-[10.5px] text-slate-400 leading-none">From</p>
+            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${mentor.priceFrom / 100}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
@@ -614,6 +621,11 @@ export function MentorshipMarketplacePage() {
         if (p.priceMin !== undefined) params.priceMin = p.priceMin;
         if (p.priceMax !== undefined) params.priceMax = p.priceMax;
       }
+      const sort = SORT_TO_API[sortBy];
+      if (sort) {
+        params.sortBy = sort.sortBy;
+        params.sortDir = sort.sortDir;
+      }
       const res = await getMentors(params);
       const data = res.data?.data?.content ?? res.data?.content ?? [];
       setMentors(Array.isArray(data) ? data : []);
@@ -622,7 +634,7 @@ export function MentorshipMarketplacePage() {
     } finally {
       setLoadingMentors(false);
     }
-  }, [filters]);
+  }, [filters, sortBy]);
 
   useEffect(() => {
     fetchMentorList();
