@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { SettingsPage } from './settings';
 import { useToast } from '../../components/newDesign/ui/use-toast';
+import { PremiumOnboardingWizard } from '../../components/newDesign/premium-onboarding-wizard';
+import { MembershipOnboardingModal } from '../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import {
@@ -728,6 +730,14 @@ export function BillingTab() {
   // Buy-credits loading
   const [isPurchasing, setIsPurchasing] = useState(false);
 
+  // Premium 3-step onboarding wizard + post-change Discord welcome modal.
+  // wizardOpen → user is upgrading to Premium and must complete the wizard
+  //   (resume → preferences → consent) before the tier change goes through.
+  // onboardingTier → set after a successful tier change so we can show the
+  //   appropriate Starter/Premium Discord welcome modal.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
+
   // Keep selected tier/cycle in sync when subscription loads
   useEffect(() => {
     if (subscription) {
@@ -777,6 +787,33 @@ export function BillingTab() {
   }, [invoicePage]);
 
   // ── Handlers ──
+  // Run the actual tier-or-cycle change. Called both from the direct Confirm
+  // button and from the consent modal's Confirm (for Premium activations).
+  const executePlanChange = async (
+    tierChanged: boolean,
+    cycleChanged: boolean,
+  ) => {
+    if (!subscription) return;
+    const ok = tierChanged
+      ? await changeTier(selectedTier)
+      : await changeBillingCycle(selectedCycle);
+    if (!ok) return;
+
+    const isUpgrade = tierChanged
+      ? selectedTier === 'premium'
+      : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
+    toast({
+      title: isUpgrade ? 'Plan updated' : 'Change scheduled',
+      description: isUpgrade
+        ? 'Your new plan is active. New benefits unlocked.'
+        : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
+    });
+    setSwitchPlanOpen(false);
+    // Re-fire onboarding on any tier transition. Cycle-only changes (e.g.
+    // monthly → annual) don't re-onboard.
+    if (tierChanged) setOnboardingTier(selectedTier);
+  };
+
   const handleConfirmSwitch = async () => {
     if (!subscription) return;
     const { tierChanged, cycleChanged } = comparePlanChange(
@@ -797,21 +834,25 @@ export function BillingTab() {
       });
       return;
     }
-    const ok = tierChanged
-      ? await changeTier(selectedTier)
-      : await changeBillingCycle(selectedCycle);
-    if (ok) {
-      const isUpgrade = tierChanged
-        ? selectedTier === 'premium'
-        : (CYCLES.indexOf(selectedCycle) > CYCLES.indexOf(subscription.billingCycle));
-      toast({
-        title: isUpgrade ? 'Plan updated' : 'Change scheduled',
-        description: isUpgrade
-          ? 'Your new plan is active. New benefits unlocked.'
-          : `Your change takes effect on ${formatDate(subscription.currentPeriodEnd)}.`,
-      });
-      setSwitchPlanOpen(false);
+    // Tier change → Premium runs the 3-step onboarding wizard first
+    // (resume → preferences → Managed Apply consent).
+    if (tierChanged && selectedTier === 'premium') {
+      setWizardOpen(true);
+      return;
     }
+    await executePlanChange(tierChanged, cycleChanged);
+  };
+
+  const handleWizardComplete = async () => {
+    if (!subscription) return;
+    setWizardOpen(false);
+    const { tierChanged, cycleChanged } = comparePlanChange(
+      subscription.plan,
+      subscription.billingCycle,
+      selectedTier,
+      selectedCycle,
+    );
+    await executePlanChange(tierChanged, cycleChanged);
   };
 
   const handleCancelPending = async () => {
@@ -1549,6 +1590,18 @@ export function BillingTab() {
             )}
           </div>
         </div>
+
+        <PremiumOnboardingWizard
+          open={wizardOpen}
+          onCancel={() => setWizardOpen(false)}
+          onComplete={handleWizardComplete}
+          isCompleting={isActing}
+        />
+        <MembershipOnboardingModal
+          open={onboardingTier !== null}
+          tier={onboardingTier ?? 'starter'}
+          onClose={() => setOnboardingTier(null)}
+        />
       </div>
   );
 }
