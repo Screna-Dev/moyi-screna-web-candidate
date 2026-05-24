@@ -8,6 +8,7 @@ import { T } from '@/lib/design-tokens';
 import { listMyBookings } from '@/services/MentorService';
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
+import { getDashboardStats } from '@/services/DashboardService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Plan = 'free' | 'starter' | 'premium';
@@ -20,8 +21,31 @@ export type DashboardStats = {
   applicationsThisPeriod?: number | string;
   applicationsDelta?: string;
   avgDailyApplications?: number | string;
-  pendingReview?: number | string;
 };
+
+type DailyEntry = { date: string; value: number };
+
+type InterviewInsights = {
+  averageScore: number;
+  bestScore: number;
+  lowestScore: number;
+  categoryScores: Array<{ category: string; averageScore: number }>;
+};
+
+type DashboardStatsApi = {
+  totalLearningTimeMinutes: number;
+  sessionCompletedCount: number;
+  interviewPracticeInsights?: InterviewInsights | null;
+  dailyLearningTimeMinutes?: DailyEntry[];
+  dailySessionCount?: DailyEntry[];
+};
+
+function formatMinutesAsHm(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return '0h 0m';
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return `${h}h ${m}m`;
+}
 
 type UserData = {
   firstName?: string;
@@ -35,18 +59,6 @@ const EMPTY_STATS: DashboardStats = {
   applicationsThisPeriod: '—',
   applicationsDelta: '—',
   avgDailyApplications: '—',
-  pendingReview: '—',
-};
-
-// TODO: replace with real backend endpoints when they exist. Mock-only so the
-// dashboard isn't empty during development.
-const MOCK_STATS: DashboardStats = {
-  totalLearningTime: '14h 20m',
-  sessionsCompleted: 23,
-  applicationsThisPeriod: 47,
-  applicationsDelta: '+18%',
-  avgDailyApplications: 3.2,
-  pendingReview: 12,
 };
 
 // ─── Skeleton primitive ──────────────────────────────────────────────────────
@@ -167,9 +179,6 @@ function IconSend() {
 function IconTrend() {
   return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><polyline points="2,11 6,7 9,9 14,3"/><polyline points="14,3 14,7"/><polyline points="14,3 10,3"/></svg>;
 }
-function IconInbox() {
-  return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M2 4h12v8H2z"/><path d="M2 4l6 5 6-5"/></svg>;
-}
 function IconLock() {
   return <svg viewBox="0 0 12 12" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5.5" width="6" height="4" rx="1"/><path d="M4.5 5.5V4a1.5 1.5 0 0 1 3 0v1.5"/></svg>;
 }
@@ -251,13 +260,6 @@ function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStat
                 icon={<IconTrend />}
                 variant="soft"
               />
-              <StatCard
-                label="Pending Review"
-                value={stats.pendingReview ?? '—'}
-                sub="Ready for your approval"
-                icon={<IconInbox />}
-                variant="warning"
-              />
             </>
           )}
         </>
@@ -269,6 +271,7 @@ function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStat
 // ─── Trend chart series ──────────────────────────────────────────────────────
 type Series = {
   data: number[];
+  dates?: string[];
   summaryA: { label: string; value: string };
   summaryB: { label: string; value: string };
   legend: string;
@@ -334,7 +337,17 @@ function TrendChartSkeleton() {
   );
 }
 
-function TrendChart({ plan, isLoading }: { plan: Plan; isLoading: boolean }) {
+function TrendChart({
+  plan,
+  isLoading,
+  learningDaily,
+  sessionsDaily,
+}: {
+  plan: Plan;
+  isLoading: boolean;
+  learningDaily?: DailyEntry[];
+  sessionsDaily?: DailyEntry[];
+}) {
   const isPremium = plan === 'premium';
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [range, setRange] = useState<TimeRange>('30d');
@@ -342,7 +355,40 @@ function TrendChart({ plan, isLoading }: { plan: Plan; isLoading: boolean }) {
 
   // Free/Starter: applications tab is locked
   const effectiveTab: ChartTab = !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
-  const series = MOCK_SERIES[effectiveTab];
+
+  const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  const series: Series = useMemo(() => {
+    if (effectiveTab === 'learning' && Array.isArray(learningDaily)) {
+      const sliced = learningDaily.slice(-rangeDays);
+      const data = sliced.map((d) => Number(d?.value) || 0);
+      const dates = sliced.map((d) => d?.date ?? '');
+      const total = data.reduce((a, b) => a + b, 0);
+      const avg = data.length ? Math.round(total / data.length) : 0;
+      return {
+        data,
+        dates,
+        summaryA: { label: 'Total Learning Time', value: formatMinutesAsHm(total) },
+        summaryB: { label: 'Daily Average', value: `${avg}m` },
+        legend: 'Learning time per day (min)',
+      };
+    }
+    if (effectiveTab === 'sessions' && Array.isArray(sessionsDaily)) {
+      const sliced = sessionsDaily.slice(-rangeDays);
+      const data = sliced.map((d) => Number(d?.value) || 0);
+      const dates = sliced.map((d) => d?.date ?? '');
+      const total = data.reduce((a, b) => a + b, 0);
+      const avg = data.length ? (total / data.length).toFixed(1) : '0';
+      return {
+        data,
+        dates,
+        summaryA: { label: 'Total Sessions', value: String(total) },
+        summaryB: { label: 'Avg per Day', value: avg },
+        legend: 'Sessions per day',
+      };
+    }
+    return MOCK_SERIES[effectiveTab];
+  }, [effectiveTab, learningDaily, sessionsDaily, rangeDays]);
+
   const hasData = series.data.length > 0;
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -598,7 +644,9 @@ function TrendChart({ plan, isLoading }: { plan: Plan; isLoading: boolean }) {
           }}
         >
           <div style={{ fontSize: 11, color: T.textSecondary, fontWeight: 500, marginBottom: 2 }}>
-            {formatDate(hover.i, points.length)}
+            {series.dates && series.dates[hover.i]
+              ? new Date(series.dates[hover.i]).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+              : formatDate(hover.i, points.length)}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.textPrimary, fontWeight: 500 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.blue500, flex: 'none' }} />
@@ -1194,12 +1242,29 @@ function InsightsCardSkeleton() {
   );
 }
 
-function InsightsCard({ isLoading }: { isLoading: boolean }) {
+function InsightsCard({
+  isLoading,
+  insights,
+}: {
+  isLoading: boolean;
+  insights?: InterviewInsights | null;
+}) {
   const navigate = useNavigate();
   if (isLoading) return <InsightsCardSkeleton />;
 
-  const dims = MOCK_DIMS;
-  const hasData = dims.some((d) => d.value > 0);
+  const hasInsights = insights != null;
+  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores) && insights!.categoryScores.length > 0
+    ? insights!.categoryScores.map((c) => ({
+        label: c.category,
+        value: Math.round(Number(c.averageScore) || 0),
+      }))
+    : hasInsights
+      ? []
+      : MOCK_DIMS;
+
+  const hasData = hasInsights
+    ? dims.length > 0
+    : dims.some((d) => d.value > 0);
 
   if (!hasData) {
     return (
@@ -1214,9 +1279,15 @@ function InsightsCard({ isLoading }: { isLoading: boolean }) {
     );
   }
 
-  const avg = Math.round(dims.reduce((s, d) => s + d.value, 0) / dims.length);
-  const best = Math.max(...dims.map((d) => d.value));
-  const low = Math.min(...dims.map((d) => d.value));
+  const avg = hasInsights
+    ? Math.round(Number(insights!.averageScore) || 0)
+    : Math.round(dims.reduce((s, d) => s + d.value, 0) / dims.length);
+  const best = hasInsights
+    ? Math.round(Number(insights!.bestScore) || 0)
+    : Math.max(...dims.map((d) => d.value));
+  const low = hasInsights
+    ? Math.round(Number(insights!.lowestScore) || 0)
+    : Math.min(...dims.map((d) => d.value));
   const lowest = [...dims].sort((a, b) => a.value - b.value)[0];
 
   return (
@@ -1532,23 +1603,43 @@ function tagStyle(color: string, bg: string): CSSProperties {
 export function DashboardHome({
   userData,
   plan: planProp,
-  stats,
-  isStatsLoading,
 }: {
   userData: UserData | null;
   plan?: Plan;
-  stats?: DashboardStats;
-  isStatsLoading?: boolean;
-  hasSessions?: boolean;
 }) {
   const userPlan = useUserPlan();
   const plan: Plan = planProp ?? planFromUserPlan(userPlan.planData.currentPlan);
 
-  // Stats / chart / radar don't have dedicated endpoints yet. Show a wireframe
-  // while the plan/auth boot APIs are in flight, then flip to the empty state.
-  // A parent can still override by passing `isStatsLoading` explicitly.
-  const statsLoading = isStatsLoading ?? userPlan.isLoading;
-  const effectiveStats = stats ?? EMPTY_STATS;
+  const [loading, setLoading] = useState(true);
+  const [apiStats, setApiStats] = useState<DashboardStatsApi | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    getDashboardStats()
+      .then((res) => {
+        const body = (res as { data?: unknown })?.data;
+        let payload: DashboardStatsApi | null = null;
+        if (body && typeof body === 'object') {
+          const maybeEnvelope = body as { data?: DashboardStatsApi } & DashboardStatsApi;
+          if ('totalLearningTimeMinutes' in maybeEnvelope || 'dailyLearningTimeMinutes' in maybeEnvelope) {
+            payload = maybeEnvelope as DashboardStatsApi;
+          } else if (maybeEnvelope.data && typeof maybeEnvelope.data === 'object') {
+            payload = maybeEnvelope.data as DashboardStatsApi;
+          }
+        }
+        setApiStats(payload);
+      })
+      .catch(() => setApiStats(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const effectiveStats: DashboardStats = apiStats
+    ? {
+        ...EMPTY_STATS,
+        totalLearningTime: formatMinutesAsHm(apiStats.totalLearningTimeMinutes ?? 0),
+        sessionsCompleted: apiStats.sessionCompletedCount ?? 0,
+      }
+    : EMPTY_STATS;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -1581,9 +1672,15 @@ export function DashboardHome({
         </h1>
       </div>
 
-      <StatsRow plan={plan} stats={effectiveStats} isLoading={statsLoading} />
+      <StatsRow plan={plan} stats={effectiveStats} isLoading={loading} />
 
-      <TrendChart key={plan} plan={plan} isLoading={statsLoading} />
+      <TrendChart
+        key={plan}
+        plan={plan}
+        isLoading={loading}
+        learningDaily={apiStats?.dailyLearningTimeMinutes}
+        sessionsDaily={apiStats?.dailySessionCount}
+      />
 
       <div
         data-dashboard-grid
@@ -1595,7 +1692,7 @@ export function DashboardHome({
         }}
       >
         <MentorshipCard plan={plan} />
-        <InsightsCard isLoading={statsLoading} />
+        <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
         <CommunityCard />
       </div>
     </div>
@@ -1614,14 +1711,9 @@ export function DashboardHomePage() {
       }
     : null;
 
-  // Stats / chart / insights APIs aren't ready yet — render with mock data.
-  // `isStatsLoading` is left to default to `useUserPlan().isLoading` inside
-  // DashboardHome, so the wireframe shows while the plan API is in flight,
-  // then flips to the mocked content. Swap MOCK_STATS for a real fetch once
-  // the backend lands.
   return (
     <DashboardLayout>
-      <DashboardHome userData={userData} stats={MOCK_STATS} />
+      <DashboardHome userData={userData} />
     </DashboardLayout>
   );
 }
