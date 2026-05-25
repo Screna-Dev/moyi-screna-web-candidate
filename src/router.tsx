@@ -45,6 +45,7 @@ import { HelpCenterPage } from './pages/newDesign/help-center';
 import { CookieBanner } from './components/newDesign/cookie-banner';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
 import { CookiePolicy } from './pages/newDesign/cookie-policy';
+import { Terms } from './pages/newDesign/terms';
 import { DataProtectionPolicy } from './pages/newDesign/data-protection-policy';
 import { GoalPage } from './pages/newDesign/goal-page';
 import { GoalUploadPage } from './pages/newDesign/goal-upload-page';
@@ -132,6 +133,7 @@ export const router = createBrowserRouter([
       { path: '/help',element: <HelpCenterPage />},
       { path: '/privacy',element: <PrivacyPolicy/>},
       { path: '/cookies',element: <CookiePolicy/>},
+      { path: '/terms',element: <Terms/>},
       { path: '/data-protection',element: <DataProtectionPolicy/>},
       {
         path: '/goal',
