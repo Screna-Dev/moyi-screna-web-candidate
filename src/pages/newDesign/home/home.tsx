@@ -898,18 +898,16 @@ function Journey() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PRICING
 // ─────────────────────────────────────────────────────────────────────────────
-type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+type BillingCycle = 'monthly' | 'quarterly';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
   monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
   quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
-  annual:    { price: '$179', note: 'Billed $2,148 / year · cancel anytime' },
 };
 
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29', note: 'Billed $29 / month · cancel anytime' },
-  quarterly: { price: '$29', note: 'Billed $87 / quarter · cancel anytime' },
-  annual:    { price: '$29', note: 'Billed $348 / year · cancel anytime' },
+  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
+  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
 };
 
 const LIMITED_INCLUDED = [
@@ -1089,7 +1087,7 @@ function Pricing() {
         {/* Billing toggle */}
         <div className="flex justify-center mb-9">
           <div className="inline-flex items-stretch bg-[#F3F4F6] rounded-full p-1 gap-0">
-            {(['monthly', 'quarterly', 'annual'] as BillingCycle[]).map((c) => (
+            {(['monthly', 'quarterly'] as BillingCycle[]).map((c) => (
               <button
                 key={c}
                 onClick={() => setCycle(c)}
@@ -1100,9 +1098,6 @@ function Pricing() {
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
                   <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
-                )}
-                {c === 'annual' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 18%</span>
                 )}
               </button>
             ))}

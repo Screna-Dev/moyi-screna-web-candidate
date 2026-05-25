@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { SettingsPage } from './settings';
 import { useToast } from '../../components/newDesign/ui/use-toast';
-import { PremiumOnboardingWizard } from '../../components/newDesign/premium-onboarding-wizard';
 import { MembershipOnboardingModal } from '../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
@@ -30,23 +29,21 @@ import {
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type CancelState = 'active' | 'refund_window' | 'post_window' | 'canceled';
 
-// ─── Pricing tables (Starter + Premium across 3 cycles) ────────────────────────
-const PRICING: Record<Tier, Record<BillingCycle, { perMonth: string; periodTotal: string; cycleDesc: string; save?: string }>> = {
+// ─── Pricing tables (Starter + Premium across offered cycles) ─────────────────
+const PRICING: Record<Tier, Partial<Record<BillingCycle, { perMonth: string; periodTotal: string; cycleDesc: string; save?: string }>>> = {
   starter: {
-    monthly:   { perMonth: '$29.9/mo', periodTotal: '$29.9',  cycleDesc: 'billed monthly' },
-    quarterly: { perMonth: '$29.9/mo', periodTotal: '$89.7',  cycleDesc: '$89.7 every 3 months' },
-    annual:    { perMonth: '$29.9/mo', periodTotal: '$358.8', cycleDesc: '$358.8/year' },
+    monthly:   { perMonth: '$29.9/mo', periodTotal: '$29.9', cycleDesc: 'billed monthly' },
+    quarterly: { perMonth: '$29.9/mo', periodTotal: '$89.7', cycleDesc: '$89.7 every 3 months' },
   },
   premium: {
-    monthly:   { perMonth: '$219/mo', periodTotal: '$219',   cycleDesc: 'billed monthly' },
-    quarterly: { perMonth: '$199/mo', periodTotal: '$597',   cycleDesc: '$597 every 3 months', save: 'Save 9%' },
-    annual:    { perMonth: '$179/mo', periodTotal: '$2,148', cycleDesc: '$2,148/year',         save: 'Save 18%' },
+    monthly:   { perMonth: '$219/mo', periodTotal: '$219', cycleDesc: 'billed monthly' },
+    quarterly: { perMonth: '$199/mo', periodTotal: '$597', cycleDesc: '$597 every 3 months', save: 'Save 9%' },
   },
 };
 
 const REFUND_WINDOW_DAYS = 3;
 
-const CYCLES: BillingCycle[] = ['monthly', 'quarterly', 'annual'];
+const CYCLES: BillingCycle[] = ['monthly', 'quarterly'];
 const TIERS: Tier[] = ['starter', 'premium'];
 
 // Benefit lists per tier (rendered in banner)
@@ -730,12 +727,9 @@ export function BillingTab() {
   // Buy-credits loading
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // Premium 3-step onboarding wizard + post-change Discord welcome modal.
-  // wizardOpen → user is upgrading to Premium and must complete the wizard
-  //   (resume → preferences → consent) before the tier change goes through.
   // onboardingTier → set after a successful tier change so we can show the
-  //   appropriate Starter/Premium Discord welcome modal.
-  const [wizardOpen, setWizardOpen] = useState(false);
+  // Starter Discord welcome modal inline. Premium upgrades skip this and
+  // navigate to /premium-onboarding (resume → preferences → consent → Discord).
   const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
 
   // Keep selected tier/cycle in sync when subscription loads
@@ -810,8 +804,15 @@ export function BillingTab() {
     });
     setSwitchPlanOpen(false);
     // Re-fire onboarding on any tier transition. Cycle-only changes (e.g.
-    // monthly → annual) don't re-onboard.
-    if (tierChanged) setOnboardingTier(selectedTier);
+    // monthly → quarterly) don't re-onboard. Premium goes through the
+    // post-payment onboarding page; Starter gets the inline Discord modal.
+    if (tierChanged) {
+      if (selectedTier === 'premium') {
+        navigate('/premium-onboarding');
+      } else {
+        setOnboardingTier(selectedTier);
+      }
+    }
   };
 
   const handleConfirmSwitch = async () => {
@@ -834,24 +835,6 @@ export function BillingTab() {
       });
       return;
     }
-    // Tier change → Premium runs the 3-step onboarding wizard first
-    // (resume → preferences → Managed Apply consent).
-    if (tierChanged && selectedTier === 'premium') {
-      setWizardOpen(true);
-      return;
-    }
-    await executePlanChange(tierChanged, cycleChanged);
-  };
-
-  const handleWizardComplete = async () => {
-    if (!subscription) return;
-    setWizardOpen(false);
-    const { tierChanged, cycleChanged } = comparePlanChange(
-      subscription.plan,
-      subscription.billingCycle,
-      selectedTier,
-      selectedCycle,
-    );
     await executePlanChange(tierChanged, cycleChanged);
   };
 
@@ -1006,7 +989,7 @@ export function BillingTab() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-foreground">
-                        {tierLabel(subscription.plan)} plan · {PRICING[subscription.plan][subscription.billingCycle].perMonth} · {cycleLabel(subscription.billingCycle)}
+                        {tierLabel(subscription.plan)} plan · {planPricing?.perMonth ?? '—'} · {cycleLabel(subscription.billingCycle)}
                       </span>
                       <StatusBadge status={STATUS_LABEL[subscription.status] ?? 'Active'} />
                     </div>
@@ -1096,7 +1079,7 @@ export function BillingTab() {
                         <div className="px-4 py-3">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Billing cycle</p>
                           {CYCLES.map(c => {
-                            const p = PRICING[selectedTier][c];
+                            const p = PRICING[selectedTier][c]!;
                             const isCurrent = c === subscription.billingCycle && selectedTier === subscription.plan;
                             const selected = selectedCycle === c;
                             return (
@@ -1591,12 +1574,6 @@ export function BillingTab() {
           </div>
         </div>
 
-        <PremiumOnboardingWizard
-          open={wizardOpen}
-          onCancel={() => setWizardOpen(false)}
-          onComplete={handleWizardComplete}
-          isCompleting={isActing}
-        />
         <MembershipOnboardingModal
           open={onboardingTier !== null}
           tier={onboardingTier ?? 'starter'}
