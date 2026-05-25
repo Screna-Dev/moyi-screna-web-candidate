@@ -8,11 +8,10 @@ import {
 import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
-import { getMentors, applyMentor, getCalendarAuthUrl } from '../../services/MentorService';
+import { getMentors, applyMentor, getCalendarAuthUrl, connectCalendar } from '../../services/MentorService';
 import { getProfile } from '../../services/ProfileServices';
 import type { ProfileData } from '../../types/profile';
 import { useUserPlan } from '@/hooks/useUserPlan';
-import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Office hours ─────────────────────────────────────────────────────────────
 // dayOfWeek follows ISO 8601: 1 = Monday … 7 = Sunday.
@@ -421,9 +420,6 @@ export function MentorshipMarketplacePage() {
     careerBackground: [] as { company: string; role: string; startYear: string; endYear: string }[],
     officeHours: [] as OfficeHour[],
   });
-  const { user, setUserFromToken } = useAuth();
-  const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
-
   const resetMentorModal = () => {
     setMentorStep(1);
     setCalendarConnected(false);
@@ -438,18 +434,53 @@ export function MentorshipMarketplacePage() {
     });
   };
 
-  // If the current accessToken already carries the MENTOR role, the user has
-  // already applied. Skip the application form and jump straight to the
-  // calendar-connect step when the modal opens.
+  // Google Calendar OAuth return: full-page redirect lands back on /marketplace
+  // with ?code & ?state (or ?error). Exchange the code, surface result in the
+  // mentor modal, then strip the params so a refresh doesn't replay the call.
+  const oauthReturnHandled = useRef(false);
   useEffect(() => {
-    if (!isBecomeMentorOpen) return;
-    if (isAlreadyMentor) setMentorSubmitted(true);
-  }, [isBecomeMentorOpen, isAlreadyMentor]);
+    if (oauthReturnHandled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    if (!code && !error) return;
+    oauthReturnHandled.current = true;
+
+    const cleanUrl = () => {
+      window.history.replaceState({}, '', window.location.pathname);
+    };
+
+    setIsBecomeMentorOpen(true);
+    setMentorSubmitted(true);
+
+    if (error || !code || !state) {
+      setMentorError(error ? decodeURIComponent(error) : 'Missing authorization parameters.');
+      cleanUrl();
+      return;
+    }
+
+    const redirectUri = `${window.location.origin}/marketplace`;
+    setCalendarLoading(true);
+    connectCalendar({ code, redirectUri, state })
+      .then(() => {
+        setCalendarConnected(true);
+      })
+      .catch((err: unknown) => {
+        const msg =
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+          ?? 'Failed to connect Google Calendar. Please try again.';
+        setMentorError(msg);
+      })
+      .finally(() => {
+        setCalendarLoading(false);
+        cleanUrl();
+      });
+  }, []);
 
   // Auto-fill form from resume when modal opens
   useEffect(() => {
     if (!isBecomeMentorOpen) return;
-    if (isAlreadyMentor) return;
     setProfileLoading(true);
     getProfile()
       .then((res: { data: { data?: { structured_resume?: ProfileData }; structured_resume?: ProfileData } }) => {
@@ -495,39 +526,14 @@ export function MentorshipMarketplacePage() {
     setCalendarLoading(true);
     setMentorError('');
     try {
-      const redirectUri = `${window.location.origin}/mentor/calendar/callback`;
+      const redirectUri = `${window.location.origin}/marketplace`;
       const res = await getCalendarAuthUrl(redirectUri);
       // data keys are dynamic per spec — find the URL string among the values
       const data: Record<string, string> = res.data?.data ?? {};
       const authUrl = data.authUrl ?? data.url ?? (Object.values(data).find(v => typeof v === 'string' && v.startsWith('http')) as string | undefined);
       if (!authUrl) throw new Error('No auth URL returned');
 
-      const popup = window.open(authUrl, 'google-calendar-auth', 'width=500,height=650,left=400,top=100');
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.type === 'MENTOR_CALENDAR_CONNECTED') {
-          setCalendarConnected(true);
-          setCalendarLoading(false);
-          window.removeEventListener('message', handleMessage);
-          clearInterval(closedPoll);
-        } else if (event.data?.type === 'MENTOR_CALENDAR_ERROR') {
-          setMentorError(event.data.message ?? 'Calendar connection failed. Please try again.');
-          setCalendarLoading(false);
-          window.removeEventListener('message', handleMessage);
-          clearInterval(closedPoll);
-        }
-      };
-      window.addEventListener('message', handleMessage);
-
-      // Fallback: if user closes popup without completing OAuth
-      const closedPoll = setInterval(() => {
-        if (!popup || popup.closed) {
-          clearInterval(closedPoll);
-          window.removeEventListener('message', handleMessage);
-          setCalendarLoading(false);
-        }
-      }, 1000);
+      window.location.assign(authUrl);
     } catch {
       setMentorError('Failed to start Google authorization. Please try again.');
       setCalendarLoading(false);
@@ -538,7 +544,7 @@ export function MentorshipMarketplacePage() {
     setMentorSubmitting(true);
     setMentorError('');
     try {
-      const res = await applyMentor({
+      await applyMentor({
         bio: mentorForm.bio,
         headline: mentorForm.headline,
         expertiseTags: mentorForm.expertiseTags,
@@ -554,26 +560,9 @@ export function MentorshipMarketplacePage() {
         officeHours: mentorForm.officeHours,
       });
 
-      // Backend grants the MENTOR role immediately and returns a fresh access
-      // token. Swap it in so subsequent mentor-only endpoints work without a
-      // re-login.
-      const newAccessToken: string | undefined =
-        res?.data?.data?.accessToken ?? res?.data?.accessToken;
-      if (newAccessToken) {
-        if (localStorage.getItem('authToken')) {
-          localStorage.setItem('authToken', newAccessToken);
-        } else {
-          sessionStorage.setItem('authToken', newAccessToken);
-        }
-        await setUserFromToken(newAccessToken);
-      }
-
       setMentorSubmitted(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      // Existing mentor: backend rejects re-apply. Keep the current accessToken
-      // (the user already holds the MENTOR role from their original apply) and
-      // advance to the calendar-connect step.
       if (msg?.toLowerCase().includes('mentor profile already exists')) {
         setMentorSubmitted(true);
       } else {
