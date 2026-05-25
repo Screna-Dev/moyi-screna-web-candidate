@@ -29,7 +29,6 @@ import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
-import MentorCalendarCallback from './pages/MentorCalendarCallback';
 import PaymentSuccess from './pages/PaymentSuccess';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
@@ -104,7 +103,6 @@ export const router = createBrowserRouter([
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
-      { path: '/mentor/calendar/callback', element: <MentorCalendarCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
