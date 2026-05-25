@@ -24,8 +24,12 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
+import { Link } from 'react-router';
 import { ApplicationProfileContent } from './application-profile-tab';
+import { PremiumOnboardingWizard } from './premium-onboarding-wizard';
 import JobService from '@/services/JobServices';
+import { getOnboardingStatus } from '@/services/ProfileServices';
+import { useUserPlan } from '@/hooks/useUserPlan';
 
 const formatRecTimeAgo = (iso?: string): string => {
   if (!iso) return '';
@@ -2359,6 +2363,49 @@ function AppliedTab({
 
 // ─── Main Component ───────────────────────────────────────────────────────
 export function JobApplyTab() {
+  // Plan gate — Jobs is Premium-only. Pro (starter) and Free users see an
+  // upgrade screen and never hit the onboarding flow.
+  const { isElite, isLoading: isPlanLoading, planData } = useUserPlan();
+
+  // Onboarding gate — premium users who haven't finished resume / preferences
+  // / consent see a blocking screen that opens the wizard at the right step.
+  const [onboardingState, setOnboardingState] =
+    useState<'loading' | 'incomplete' | 'complete'>('loading');
+  const [onboardingFlags, setOnboardingFlags] = useState({
+    resume_uploaded: false,
+    preferences_set: false,
+    consent_agreed: false,
+  });
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const fetchOnboardingStatus = async () => {
+    try {
+      const res: any = await getOnboardingStatus();
+      const data = res?.data?.data ?? {};
+      setOnboardingFlags({
+        resume_uploaded: !!data.resume_uploaded,
+        preferences_set: !!data.preferences_set,
+        consent_agreed: !!data.consent_agreed,
+      });
+      setOnboardingState(data.completed ? 'complete' : 'incomplete');
+    } catch (e) {
+      // Fail open so a flaky status endpoint doesn't lock paying users out.
+      console.error('Failed to load onboarding status:', e);
+      setOnboardingState('complete');
+    }
+  };
+
+  useEffect(() => {
+    if (isPlanLoading || !isElite) return;
+    fetchOnboardingStatus();
+  }, [isPlanLoading, isElite]);
+
+  const wizardInitialStep: 1 | 2 | 3 = !onboardingFlags.resume_uploaded
+    ? 1
+    : !onboardingFlags.preferences_set
+      ? 2
+      : 3;
+
   const [activeTab, setActiveTab] = useState('search');
   const [showDeletedView, setShowDeletedView] = useState(false);
   const [deletedSavedJobs, setDeletedSavedJobs] = useState<DeletedSavedJob[]>([]);
@@ -2397,11 +2444,12 @@ export function JobApplyTab() {
   };
 
   useEffect(() => {
+    if (onboardingState !== 'complete') return;
     if (recsInitRef.current) return;
     recsInitRef.current = true;
     fetchRecs(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onboardingState]);
 
   const handleRecsScroll = () => {
     const el = recsScrollRef.current;
@@ -2445,11 +2493,12 @@ export function JobApplyTab() {
   };
 
   useEffect(() => {
+    if (onboardingState !== 'complete') return;
     if (appsInitRef.current) return;
     appsInitRef.current = true;
     fetchApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onboardingState]);
 
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -2588,6 +2637,127 @@ export function JobApplyTab() {
       toast.error('Failed to dismiss', { description: 'Please try again.' });
     }
   };
+
+  if (isPlanLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px] text-sm text-muted-foreground">
+        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+        Loading your Jobs workspace…
+      </div>
+    );
+  }
+
+  if (!isElite) {
+    const planLabel =
+      planData.currentPlan === 'Pro'
+        ? 'Starter'
+        : planData.currentPlan === 'Free'
+          ? 'Free'
+          : planData.currentPlan;
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px]">
+        <div className="max-w-md w-full text-center px-6">
+          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="w-6 h-6 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">
+            Jobs is a Premium feature
+          </h2>
+          <p className="text-sm text-slate-600 leading-relaxed mb-5">
+            Managed Apply &mdash; the workspace that submits applications to
+            matched roles on your behalf &mdash; is included with Screna
+            Premium. Your current plan is{' '}
+            <span className="font-medium text-slate-900">{planLabel}</span>.
+          </p>
+          <Link to="/pricing">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
+              View Premium plans
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (onboardingState === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px] text-sm text-muted-foreground">
+        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+        Loading your Jobs workspace…
+      </div>
+    );
+  }
+
+  if (onboardingState === 'incomplete') {
+    const missingResume = !onboardingFlags.resume_uploaded;
+    const missingPrefs = !onboardingFlags.preferences_set;
+    const missingConsent = !onboardingFlags.consent_agreed;
+    return (
+      <>
+        <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px]">
+          <div className="max-w-md w-full text-center px-6">
+            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-6 h-6 text-slate-500" />
+            </div>
+            <h2 className="text-xl font-semibold text-slate-900 mb-2">
+              Finish your Premium setup
+            </h2>
+            <p className="text-sm text-slate-600 leading-relaxed mb-5">
+              Before you can use the Jobs workspace, please complete the steps
+              below so Screna can submit applications on your behalf.
+            </p>
+            <ul className="text-sm text-slate-700 text-left rounded-lg border border-slate-200 bg-slate-50 p-4 mb-6 space-y-2">
+              <li className="flex items-center gap-2">
+                {onboardingFlags.resume_uploaded ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+                <span className={missingResume ? 'text-slate-900' : 'text-slate-500 line-through'}>
+                  Upload your resume
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
+                {onboardingFlags.preferences_set ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+                <span className={missingPrefs ? 'text-slate-900' : 'text-slate-500 line-through'}>
+                  Set your personal info &amp; job preferences
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
+                {onboardingFlags.consent_agreed ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+                <span className={missingConsent ? 'text-slate-900' : 'text-slate-500 line-through'}>
+                  Sign the required consents
+                </span>
+              </li>
+            </ul>
+            <Button
+              onClick={() => setWizardOpen(true)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Continue onboarding
+            </Button>
+          </div>
+        </div>
+        <PremiumOnboardingWizard
+          open={wizardOpen}
+          onCancel={() => setWizardOpen(false)}
+          onComplete={async () => {
+            setWizardOpen(false);
+            await fetchOnboardingStatus();
+          }}
+          initialStep={wizardInitialStep}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-220px)] min-h-[600px]">
