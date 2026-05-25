@@ -456,11 +456,16 @@ export function MentorshipMarketplacePage() {
 
     if (error || !code || !state) {
       setMentorError(error ? decodeURIComponent(error) : 'Missing authorization parameters.');
+      sessionStorage.removeItem('mentorCalendarRedirectUri');
       cleanUrl();
       return;
     }
 
-    const redirectUri = `${window.location.origin}/marketplace`;
+    // Use the exact redirectUri that was sent to /authorize. Google requires
+    // the token exchange to use a byte-identical value.
+    const redirectUri =
+      sessionStorage.getItem('mentorCalendarRedirectUri')
+      ?? `${window.location.origin}/marketplace`;
     setCalendarLoading(true);
     connectCalendar({ code, redirectUri, state })
       .then(() => {
@@ -474,6 +479,7 @@ export function MentorshipMarketplacePage() {
       })
       .finally(() => {
         setCalendarLoading(false);
+        sessionStorage.removeItem('mentorCalendarRedirectUri');
         cleanUrl();
       });
   }, []);
@@ -533,6 +539,9 @@ export function MentorshipMarketplacePage() {
       const authUrl = data.authUrl ?? data.url ?? (Object.values(data).find(v => typeof v === 'string' && v.startsWith('http')) as string | undefined);
       if (!authUrl) throw new Error('No auth URL returned');
 
+      // Persist the exact redirectUri so the /connect call after Google's
+      // redirect-back uses a byte-identical value.
+      sessionStorage.setItem('mentorCalendarRedirectUri', redirectUri);
       window.location.assign(authUrl);
     } catch {
       setMentorError('Failed to start Google authorization. Please try again.');
