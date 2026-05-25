@@ -13,14 +13,13 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
-import { PremiumOnboardingWizard } from '../../../components/newDesign/premium-onboarding-wizard';
 import { MembershipOnboardingModal } from '../../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import { useSubscription, type Tier } from '@/hooks/useSubscription';
 
 // ─── Types & data ────────────────────────────────────────────
-type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+type BillingCycle = 'monthly' | 'quarterly';
 
 const ACCENT = 'hsl(221,91%,60%)'; // brand blue #2E5BFF — slider, refund dot, FAQ link
 const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check, save chip
@@ -29,18 +28,15 @@ const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check,
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
   monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
   quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
-  annual:    { price: '$29.9', note: 'Billed $358.8 / year · cancel anytime' },
 };
 
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
   monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
   quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
-  annual:    { price: '$179', note: 'Billed $2,148 / year · cancel anytime' },
 };
 
 const SAVE_BADGES: Partial<Record<BillingCycle, string>> = {
   quarterly: 'Save 9%',
-  annual:    'Save 18%',
 };
 
 // Limited Access — plain list of what's included
@@ -348,13 +344,9 @@ export function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
   const [openFaq, setOpenFaq] = useState<number>(0);
 
-  // Premium 3-step onboarding wizard (resume → preferences → consent) gates
-  // every Premium activation. pendingTier holds the tier the user is trying to
-  // activate while the wizard is open. The re-subscribe path (canceled →
-  // changeTier) doesn't go through Stripe checkout, so we show the Discord
-  // welcome modal inline on success.
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [pendingTier, setPendingTier] = useState<Tier | null>(null);
+  // Starter onboarding (Discord welcome) shown inline when no Stripe redirect
+  // happens (re-subscribe via changeTier, or card-on-file no-URL response).
+  // Premium onboarding runs at /premium-onboarding after payment completes.
   const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
 
   // Subscription lifecycle:
@@ -362,29 +354,6 @@ export function PricingPage() {
   //   CANCELED (period end) → POST /subscriptions/tier     (creates new row)
   //   ACTIVE                → manage in /billing
   const isActiveMember = subscription !== null && subscription.status !== 'canceled';
-
-  const proceedWithSubscribe = async (plan: Tier) => {
-    setLoadingTier(plan);
-    try {
-      if (subscription && subscription.status === 'canceled') {
-        // Re-subscribe path — no Stripe redirect, show onboarding inline.
-        const ok = await changeTier(plan);
-        if (ok) setOnboardingTier(plan);
-      } else {
-        // First-time subscription — Stripe redirect. Onboarding fires on return
-        // via /payment-success.
-        const url = await subscribe(plan, cycle);
-        if (url) {
-          window.location.href = url;
-        } else {
-          // Backend returned no URL (e.g. card on file) — show onboarding now.
-          setOnboardingTier(plan);
-        }
-      }
-    } finally {
-      setLoadingTier(null);
-    }
-  };
 
   const handleSubscribe = async (plan: Tier) => {
     if (!user) {
@@ -395,22 +364,35 @@ export function PricingPage() {
       navigate('/billing');
       return;
     }
-    // Premium activation requires the 3-step onboarding wizard
-    // (resume upload → job preferences → Managed Apply consent).
-    if (plan === 'premium') {
-      setPendingTier('premium');
-      setWizardOpen(true);
-      return;
+    setLoadingTier(plan);
+    try {
+      if (subscription && subscription.status === 'canceled') {
+        // Re-subscribe path — no Stripe redirect. Premium hands off to the
+        // dedicated onboarding page; Starter shows Discord welcome inline.
+        const ok = await changeTier(plan);
+        if (!ok) return;
+        if (plan === 'premium') {
+          navigate('/premium-onboarding');
+        } else {
+          setOnboardingTier(plan);
+        }
+      } else {
+        // First-time subscription — Stripe redirect. Premium activates the
+        // onboarding wizard on return via /payment-success → /premium-onboarding.
+        const url = await subscribe(plan, cycle);
+        if (url) {
+          window.location.href = url;
+        } else if (plan === 'premium') {
+          // No URL (e.g. card on file) — still send Premium through the
+          // post-payment onboarding wizard.
+          navigate('/premium-onboarding');
+        } else {
+          setOnboardingTier(plan);
+        }
+      }
+    } finally {
+      setLoadingTier(null);
     }
-    await proceedWithSubscribe(plan);
-  };
-
-  const handleWizardComplete = async () => {
-    if (!pendingTier) return;
-    const tier = pendingTier;
-    setWizardOpen(false);
-    setPendingTier(null);
-    await proceedWithSubscribe(tier);
   };
 
   const handleOnboardingClose = () => {
@@ -491,7 +473,7 @@ export function PricingPage() {
                   aria-label="Billing cycle"
                   className="inline-flex items-stretch bg-[#F3F4F6] rounded-full p-1 gap-0.5"
                 >
-                  {(['monthly', 'quarterly', 'annual'] as BillingCycle[]).map((c) => {
+                  {(['monthly', 'quarterly'] as BillingCycle[]).map((c) => {
                     const active = cycle === c;
                     const label = c.charAt(0).toUpperCase() + c.slice(1);
                     const save = SAVE_BADGES[c];
@@ -1062,15 +1044,6 @@ export function PricingPage() {
 
       <Footer />
 
-      <PremiumOnboardingWizard
-        open={wizardOpen}
-        onCancel={() => {
-          setWizardOpen(false);
-          setPendingTier(null);
-        }}
-        onComplete={handleWizardComplete}
-        isCompleting={isSubscribing}
-      />
       <MembershipOnboardingModal
         open={onboardingTier !== null}
         tier={onboardingTier ?? 'starter'}

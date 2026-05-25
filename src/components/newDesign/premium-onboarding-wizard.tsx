@@ -16,6 +16,7 @@ import {
   getProfile,
   getJobsPreferences,
   upsertJobsPreferences,
+  recordCandidateConsent,
 } from '@/services/ProfileServices';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -28,13 +29,25 @@ interface PremiumOnboardingWizardProps {
   onComplete: () => void | Promise<void>;
   // Loading state from parent (e.g. while subscribe API is running).
   isCompleting?: boolean;
+  // Optional starting step. Defaults to 1. Used by the Jobs-tab gate so a
+  // user with resume + preferences already saved lands on the consent step.
+  initialStep?: 1 | 2 | 3;
 }
 
 type Step = 1 | 2 | 3;
 type ResumeState = 'checking' | 'idle' | 'uploading' | 'success';
-type ConsentKey = 'authorization' | 'representations' | 'scope' | 'subscription';
+type ConsentDocType =
+  | 'APPLY_AUTHORIZATION'
+  | 'TERMS_OF_SERVICE'
+  | 'PRIVACY_POLICY'
+  | 'CREDENTIAL_STORAGE_CONSENT';
 
 interface JobPrefsDraft {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phone: string;
   employmentTypes: string[];
   workModes: string[];
   salaryMin: string;
@@ -42,6 +55,41 @@ interface JobPrefsDraft {
   locationTags: string[];
   startAvail: string;
 }
+
+const CONSENT_DOC_VERSION = '2026-05';
+
+interface ConsentItem {
+  key: ConsentDocType;
+  required: boolean;
+  label: string;
+}
+
+const CONSENT_ITEMS: ConsentItem[] = [
+  {
+    key: 'APPLY_AUTHORIZATION',
+    required: true,
+    label:
+      'I authorize Screna AI to submit job applications on my behalf and operate third-party application accounts using the credentials I provide, as described in the Premium Membership Agreement above.',
+  },
+  {
+    key: 'TERMS_OF_SERVICE',
+    required: true,
+    label:
+      'I have read and agree to the Screna AI Terms of Service, including the auto-renewing subscription, refund policy, and limitations of the Managed Apply service.',
+  },
+  {
+    key: 'PRIVACY_POLICY',
+    required: true,
+    label:
+      'I consent to Screna sharing the information in my Application Profile with prospective employers and third-party application platforms as described in the Privacy Policy.',
+  },
+  {
+    key: 'CREDENTIAL_STORAGE_CONSENT',
+    required: true,
+    label:
+      'I consent to Screna securely storing the third-party application credentials I provide, solely for the purpose of submitting job applications on my behalf.',
+  },
+];
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -64,21 +112,16 @@ const START_OPTIONS = [
   { id: '3 months', label: '3 months' },
 ];
 
-interface ConsentSection {
-  key: ConsentKey;
+interface AgreementSection {
   number: string;
   title: string;
-  checkboxLabel: string;
   body: React.ReactNode;
 }
 
-const CONSENT_SECTIONS: ConsentSection[] = [
+const AGREEMENT_SECTIONS: AgreementSection[] = [
   {
-    key: 'authorization',
     number: '1',
     title: 'Authorization Granted',
-    checkboxLabel:
-      'I authorize Screna AI to submit job applications, operate third-party application accounts on my behalf, and attach my resume and cover letter as described above.',
     body: (
       <>
         <p className="mb-3">
@@ -105,28 +148,49 @@ const CONSENT_SECTIONS: ConsentSection[] = [
         </ul>
         <p className="mb-3">
           This authorization shall remain in effect for the duration of your
-          active Premium Membership subscription, unless earlier revoked by you.
+          active Premium Membership subscription, unless earlier revoked by you
+          in accordance with Section 6 of this Agreement.
         </p>
       </>
     ),
   },
   {
-    key: 'representations',
     number: '2',
     title: 'Member Representations and Responsibilities',
-    checkboxLabel:
-      'I confirm that all information in my Application Profile is accurate, complete, and truthful, and I accept sole legal responsibility for the information submitted on my behalf.',
     body: (
       <>
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          2.1 Accuracy of Information
+        </h4>
         <p className="mb-2">
-          <strong>2.1 Accuracy of Information.</strong> You represent and warrant
-          that all information contained in your Application Profile is accurate,
-          complete, and truthful. You bear sole legal responsibility for the
-          accuracy of all information submitted to prospective employers on your
-          behalf, including work authorization status, employment history,
-          restrictive covenants, and any conflict-of-interest disclosures.
+          You represent and warrant that all information contained in your
+          Application Profile is accurate, complete, and truthful. You
+          acknowledge that you bear sole legal responsibility for the accuracy
+          of all information submitted to prospective employers on your behalf,
+          including without limitation:
         </p>
-        <p className="mb-2">
+        <ul className="list-disc pl-5 mb-2 space-y-1">
+          <li>Personal and contact information;</li>
+          <li>Work authorization status and visa sponsorship requirements;</li>
+          <li>
+            Employment history, including any prior employment with or
+            termination by any employer to which an application is submitted;
+          </li>
+          <li>
+            The existence and scope of any non-compete, non-solicitation,
+            non-disclosure, or other restrictive covenant agreements to which
+            you are subject;
+          </li>
+          <li>
+            The existence of any familial or personal relationships with
+            employees of any company to which an application is submitted; and
+          </li>
+          <li>
+            Any current or former government employment or affiliations that
+            may give rise to a conflict of interest.
+          </li>
+        </ul>
+        <p className="mb-3">
           Screna transmits your information to prospective employers as provided
           by you, without independent verification.{' '}
           <strong>
@@ -134,72 +198,229 @@ const CONSENT_SECTIONS: ConsentSection[] = [
             submitted information.
           </strong>
         </p>
-        <p className="mb-2">
-          <strong>2.2 Monitoring of Applications.</strong> You can review all
-          submitted applications through Jobs &rarr; Applied and are responsible
-          for notifying Screna promptly via Discord of any errors.
-        </p>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          2.2 Monitoring of Applications
+        </h4>
         <p className="mb-3">
-          <strong>2.3 Application Credentials.</strong> The Application Password
-          you provide to Screna must not be used for any other personal or
-          financial accounts.
+          You acknowledge that you have the ability to review all applications
+          submitted on your behalf through the Jobs &rarr; Applied panel within
+          your account dashboard. You are responsible for monitoring submitted
+          applications and for notifying Screna promptly via Discord if any
+          submission contains an error or inaccuracy.
+        </p>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          2.3 Application Credentials
+        </h4>
+        <p className="mb-3">
+          You are responsible for the Application Password you provide to
+          Screna. Screna will use such credentials solely for the purpose of
+          submitting job applications on your behalf. You agree to designate a
+          password that is not used for any other personal or financial
+          accounts.
         </p>
       </>
     ),
   },
   {
-    key: 'scope',
     number: '3',
     title: 'Scope and Limitations of the Managed Apply Service',
-    checkboxLabel:
-      'I understand Managed Apply is an application-submission service only, that Screna does not guarantee any interview or offer, and that my plan includes up to 200 managed applications per calendar month.',
     body: (
       <>
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          3.1 Service Description
+        </h4>
         <p className="mb-2">
-          <strong>3.1 Service Description.</strong> Managed Apply is a job
-          application submission service only. Screna does not negotiate
-          compensation, represent you in any interview, guarantee any response or
-          offer, or modify your resume without your instruction.
+          The Managed Apply service is a{' '}
+          <strong>job application submission service only</strong>. Screna will
+          match open roles to your Job Search Filter and submit applications
+          accordingly. Screna does not, and shall not be understood to:
         </p>
-        <p className="mb-2">
-          <strong>3.2 No Guarantee of Outcomes.</strong> Results are subject to
-          factors beyond Screna's control, including your qualifications,
-          employer requirements, and labor market conditions.
-        </p>
+        <ul className="list-disc pl-5 mb-3 space-y-1">
+          <li>Negotiate compensation or employment terms on your behalf;</li>
+          <li>
+            Represent you in any interview, assessment, or hiring process;
+          </li>
+          <li>
+            Guarantee any response, interview invitation, or employment offer
+            from any prospective employer; or
+          </li>
+          <li>
+            Modify your resume or application materials without your express
+            instruction.
+          </li>
+        </ul>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          3.2 No Guarantee of Outcomes
+        </h4>
         <p className="mb-3">
-          <strong>3.3 Monthly Application Volume.</strong> Your Premium
-          Membership includes up to <strong>200 managed applications per
-          calendar month</strong>. Unused capacity does not roll over.
+          Screna makes no representations or warranties, express or implied,
+          regarding the likelihood or occurrence of any particular job search
+          outcome. Results are subject to factors beyond Screna's control,
+          including your individual qualifications, employer requirements, and
+          prevailing labor market conditions.
+        </p>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          3.3 Monthly Application Volume
+        </h4>
+        <p className="mb-3">
+          Your Premium Membership includes up to{' '}
+          <strong>200 managed applications per calendar month</strong>. Unused
+          application capacity does not roll over to subsequent months.
+          Applications are submitted at Screna's operational discretion in
+          accordance with your Job Search Filter.
         </p>
       </>
     ),
   },
   {
-    key: 'subscription',
     number: '4',
     title: 'Subscription Terms, Billing, and Refunds',
-    checkboxLabel:
-      'I understand the subscription auto-renews until cancelled, that refunds are available within 3 calendar days of any payment, and I agree to the cancellation and refund process described.',
+    body: (
+      <>
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          4.1 Automatic Renewal
+        </h4>
+        <p className="mb-3">
+          Your Premium Membership is a{' '}
+          <strong>recurring subscription</strong> that renews automatically at
+          the conclusion of each billing period (monthly, quarterly, or annual,
+          as elected at the time of purchase). By subscribing, you authorize
+          Screna to charge the payment method on file at the then-applicable
+          renewal rate, unless you cancel prior to the renewal date in
+          accordance with Section 4.2.
+        </p>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          4.2 Cancellation
+        </h4>
+        <p className="mb-3">
+          You may cancel the automatic renewal of your subscription at any time
+          by navigating to{' '}
+          <strong>Settings &rarr; Billing &rarr; Membership &rarr; Request
+          cancellation</strong>. Cancellation will stop future charges. Your
+          Premium membership benefits will remain accessible through the end of
+          the then-current paid billing period. Cancellation of auto-renewal
+          does not constitute a request for a refund.
+        </p>
+
+        <h4 className="text-sm font-semibold text-slate-900 mt-3 mb-2">
+          4.3 Refund Policy
+        </h4>
+        <p className="mb-2">
+          Screna offers a{' '}
+          <strong>full refund within three (3) calendar days</strong> of any
+          subscription payment, including renewal payments. Refund requests
+          must be submitted through the designated entry point on the Billing
+          page. Requests submitted within the three-day window will be honored
+          in full, regardless of the extent to which the service has been used
+          during that period. Refund requests submitted after the expiration of
+          the three-day window will not be accepted.
+        </p>
+        <p className="mb-3">
+          Approved refunds will be processed within{' '}
+          <strong>five (5) to ten (10) business days</strong>, depending on
+          your payment method and financial institution. Pay-as-you-go credits
+          purchased separately are non-refundable.
+        </p>
+      </>
+    ),
+  },
+  {
+    number: '5',
+    title: 'Data Sharing and Privacy',
+    body: (
+      <>
+        <p className="mb-3">
+          In order to perform the Managed Apply service, Screna will share
+          information contained in your Application Profile &mdash; including
+          your personal information, employment history, and compliance
+          disclosures &mdash; with prospective employers and third-party
+          application platforms as necessary to complete the application
+          submission process. By confirming this Agreement, you expressly
+          consent to such disclosure.
+        </p>
+        <p className="mb-3">
+          For a complete description of how Screna collects, stores, uses, and
+          protects your personal information, please refer to our Privacy
+          Policy.
+        </p>
+      </>
+    ),
+  },
+  {
+    number: '6',
+    title: 'Revocation of Authorization',
     body: (
       <>
         <p className="mb-2">
-          <strong>4.1 Automatic Renewal.</strong> Your Premium Membership renews
-          automatically at the conclusion of each billing period unless cancelled
-          prior to the renewal date.
+          You may revoke the authorization granted under this Agreement at any
+          time by:
         </p>
-        <p className="mb-2">
-          <strong>4.2 Cancellation.</strong> You may cancel auto-renewal at any
-          time via Settings &rarr; Billing. Cancellation stops future charges;
-          benefits remain accessible through the end of the paid period.
-        </p>
+        <ul className="list-disc pl-5 mb-3 space-y-1">
+          <li>Notifying your dedicated client manager via Discord; or</li>
+          <li>
+            Pausing or disabling the Managed Apply feature within your account
+            settings.
+          </li>
+        </ul>
         <p className="mb-3">
-          <strong>4.3 Refund Policy.</strong> Screna offers a{' '}
-          <strong>full refund within three (3) calendar days</strong> of any
-          subscription payment, including renewals. Approved refunds are
-          processed within 5&ndash;10 business days. Pay-as-you-go credits are
-          non-refundable.
+          Revocation shall apply to applications not yet submitted at the time
+          of such notice. Applications already submitted on your behalf prior
+          to revocation cannot be withdrawn by Screna. If you wish to withdraw
+          a previously submitted application, you must contact the relevant
+          employer directly.
         </p>
       </>
+    ),
+  },
+  {
+    number: '7',
+    title: 'Limitation of Liability',
+    body: (
+      <p className="mb-3">
+        To the fullest extent permitted by applicable law, Screna's aggregate
+        liability to you arising out of or in connection with the Managed Apply
+        service shall not exceed the total fees paid by you for your current
+        billing period. In no event shall Screna be liable for any indirect,
+        incidental, special, consequential, or punitive damages, including but
+        not limited to lost employment opportunities, loss of income, or
+        adverse employer decisions, arising from or related to applications
+        submitted under this Agreement.
+      </p>
+    ),
+  },
+  {
+    number: '8',
+    title: 'Governing Law and Dispute Resolution',
+    body: (
+      <p className="mb-3">
+        This Agreement shall be governed by and construed in accordance with
+        the laws of the State of Delaware, without regard to its conflict of
+        laws principles. Any dispute arising out of or relating to this
+        Agreement shall be resolved by binding arbitration administered by the
+        American Arbitration Association in accordance with its Consumer
+        Arbitration Rules, except that either party may seek emergency
+        injunctive or other equitable relief in a court of competent
+        jurisdiction where necessary to prevent irreparable harm.
+      </p>
+    ),
+  },
+  {
+    number: '9',
+    title: 'Modifications to This Agreement',
+    body: (
+      <p className="mb-3">
+        Screna reserves the right to modify this Agreement at any time. In the
+        event of any material modification, Screna will provide you with prior
+        notice and will require your re-confirmation before the Managed Apply
+        service continues. Your continued use of the Managed Apply service
+        following re-confirmation constitutes your acceptance of the modified
+        Agreement.
+      </p>
     ),
   },
 ];
@@ -240,8 +461,9 @@ export function PremiumOnboardingWizard({
   onCancel,
   onComplete,
   isCompleting = false,
+  initialStep = 1,
 }: PremiumOnboardingWizardProps) {
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(initialStep);
 
   // Step 1 — resume
   const [resumeState, setResumeState] = useState<ResumeState>('checking');
@@ -249,8 +471,13 @@ export function PremiumOnboardingWizard({
   const [resumeFileName, setResumeFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 2 — job prefs
+  // Step 2 — job prefs + personal info
   const [prefs, setPrefs] = useState<JobPrefsDraft>({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    email: '',
+    phone: '',
     employmentTypes: [],
     workModes: [],
     salaryMin: '',
@@ -264,12 +491,13 @@ export function PremiumOnboardingWizard({
   const [prefsError, setPrefsError] = useState<string | null>(null);
 
   // Step 3 — consent
-  const [checked, setChecked] = useState<Record<ConsentKey, boolean>>({
-    authorization: false,
-    representations: false,
-    scope: false,
-    subscription: false,
+  const [consents, setConsents] = useState<Record<ConsentDocType, boolean>>({
+    APPLY_AUTHORIZATION: false,
+    TERMS_OF_SERVICE: false,
+    PRIVACY_POLICY: false,
+    CREDENTIAL_STORAGE_CONSENT: false,
   });
+  const [consentError, setConsentError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Reset + load on open ─────────────────────────────────────────────────
@@ -280,56 +508,76 @@ export function PremiumOnboardingWizard({
     }
     document.body.style.overflow = 'hidden';
 
-    setStep(1);
+    setStep(initialStep);
     setResumeError(null);
     setPrefsError(null);
+    setConsentError(null);
     setLocationInput('');
-    setChecked({
-      authorization: false,
-      representations: false,
-      scope: false,
-      subscription: false,
+    setConsents({
+      APPLY_AUTHORIZATION: false,
+      TERMS_OF_SERVICE: false,
+      PRIVACY_POLICY: false,
+      CREDENTIAL_STORAGE_CONSENT: false,
     });
 
-    // Check whether the user already has a resume on file.
+    // Check whether the user already has a resume on file, and capture
+    // structured_resume.profile so we can fall back to it for personal fields
+    // that aren't yet stored in apply-prefs.
     setResumeState('checking');
-    getProfile()
+    type ResumeProfile = { full_name?: string; email?: string; phone?: string };
+    const resumeProfilePromise: Promise<ResumeProfile> = getProfile()
       .then((res: { data?: { data?: { structured_resume?: unknown; resume_path?: string } } & { structured_resume?: unknown; resume_path?: string } }) => {
         const payload = res?.data?.data ?? res?.data ?? {};
-        const sr = (payload as { structured_resume?: { experience?: unknown[]; profile?: unknown } }).structured_resume;
+        const sr = (payload as { structured_resume?: { experience?: unknown[]; profile?: ResumeProfile } }).structured_resume;
         const hasResume =
           !!(payload as { resume_path?: string }).resume_path ||
           !!(sr && (sr.profile || (Array.isArray(sr.experience) && sr.experience.length > 0)));
         setResumeState(hasResume ? 'success' : 'idle');
+        return sr?.profile ?? {};
       })
       .catch(() => {
         setResumeState('idle');
+        return {};
       });
 
-    // Pre-fill job preferences from existing apply-prefs if any.
-    getJobsPreferences()
-      .then((res: { data?: { data?: { candidate_apply_preferences?: Record<string, unknown> } } }) => {
-        const ap = (res?.data?.data?.candidate_apply_preferences ?? {}) as Record<string, unknown>;
-        setExistingApplyPrefs(ap);
-        setPrefs({
-          employmentTypes: (ap.employment_types as string[] | undefined) ?? [],
-          workModes: (ap.work_modes as string[] | undefined) ?? [],
-          salaryMin:
-            ap.salary_min != null ? String(Math.round((ap.salary_min as number) / 1000)) : '',
-          salaryMax:
-            ap.salary_max != null ? String(Math.round((ap.salary_max as number) / 1000)) : '',
-          locationTags: (ap.target_locations as string[] | undefined) ?? [],
-          startAvail: (ap.earliest_start_date as string | undefined) ?? 'Immediately',
-        });
-      })
-      .catch(() => {
-        // Empty profile — start with defaults.
+    // Pre-fill job preferences from existing apply-prefs if any, then fall
+    // back to the parsed resume profile for first_name/last_name/email/phone.
+    Promise.all([
+      getJobsPreferences().catch(() => null),
+      resumeProfilePromise,
+    ]).then(([prefsRes, resumeProfile]) => {
+      const ap =
+        ((prefsRes as { data?: { data?: { candidate_apply_preferences?: Record<string, unknown> } } } | null)
+          ?.data?.data?.candidate_apply_preferences ?? {}) as Record<string, unknown>;
+      setExistingApplyPrefs(ap);
+
+      // Split parsed full_name into first/last as a fallback.
+      const fullName = (resumeProfile.full_name ?? '').trim();
+      const nameParts = fullName ? fullName.split(/\s+/) : [];
+      const fallbackFirst = nameParts[0] ?? '';
+      const fallbackLast = nameParts.slice(1).join(' ');
+
+      setPrefs({
+        firstName: (ap.first_name as string | undefined) ?? fallbackFirst,
+        middleName: (ap.middle_name as string | undefined) ?? '',
+        lastName: (ap.last_name as string | undefined) ?? fallbackLast,
+        email: (ap.email as string | undefined) ?? resumeProfile.email ?? '',
+        phone: (ap.phone as string | undefined) ?? resumeProfile.phone ?? '',
+        employmentTypes: (ap.employment_types as string[] | undefined) ?? [],
+        workModes: (ap.work_modes as string[] | undefined) ?? [],
+        salaryMin:
+          ap.salary_min != null ? String(Math.round((ap.salary_min as number) / 1000)) : '',
+        salaryMax:
+          ap.salary_max != null ? String(Math.round((ap.salary_max as number) / 1000)) : '',
+        locationTags: (ap.target_locations as string[] | undefined) ?? [],
+        startAvail: (ap.earliest_start_date as string | undefined) ?? 'Immediately',
       });
+    });
 
     return () => {
       document.body.style.overflow = '';
     };
-  }, [open]);
+  }, [open, initialStep]);
 
   // Reset scroll on step change.
   useEffect(() => {
@@ -399,6 +647,15 @@ export function PremiumOnboardingWizard({
   };
 
   const handleSavePrefsAndContinue = async () => {
+    const missingPersonal: string[] = [];
+    if (!prefs.firstName.trim()) missingPersonal.push('First name');
+    if (!prefs.lastName.trim()) missingPersonal.push('Last name');
+    if (!prefs.email.trim()) missingPersonal.push('Email');
+    if (!prefs.phone.trim()) missingPersonal.push('Phone');
+    if (missingPersonal.length > 0) {
+      setPrefsError(`Please fill in: ${missingPersonal.join(', ')}.`);
+      return;
+    }
     if (prefs.employmentTypes.length === 0 || prefs.workModes.length === 0) {
       setPrefsError('Please select at least one employment type and one work mode.');
       return;
@@ -407,6 +664,11 @@ export function PremiumOnboardingWizard({
     setSavingPrefs(true);
     try {
       const patch: Record<string, unknown> = {
+        first_name: prefs.firstName.trim(),
+        middle_name: prefs.middleName.trim(),
+        last_name: prefs.lastName.trim(),
+        email: prefs.email.trim(),
+        phone: prefs.phone.trim(),
         employment_types: prefs.employmentTypes,
         work_modes: prefs.workModes,
         target_locations: prefs.locationTags,
@@ -430,9 +692,31 @@ export function PremiumOnboardingWizard({
 
   // ── Step 3 handlers ──────────────────────────────────────────────────────
 
-  const allChecked = CONSENT_SECTIONS.every((s) => checked[s.key]);
+  const requiredConsentsAccepted = CONSENT_ITEMS.every(
+    (c) => !c.required || consents[c.key],
+  );
 
   const handleConfirm = async () => {
+    if (!requiredConsentsAccepted) return;
+    setConsentError(null);
+    // Backend rejects `agreed: false`, so only send consents the user actually
+    // checked. Optional unchecked items are simply omitted from the payload.
+    const agreedItems = CONSENT_ITEMS.filter((c) => consents[c.key]);
+    try {
+      await recordCandidateConsent(
+        agreedItems.map((c) => ({
+          document_type: c.key,
+          document_version: CONSENT_DOC_VERSION,
+          agreed: true,
+        })),
+      );
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Could not record your consent. Please try again.';
+      setConsentError(msg);
+      return;
+    }
     await onComplete();
   };
 
@@ -479,7 +763,7 @@ export function PremiumOnboardingWizard({
         </div>
 
         {/* ── Stepper ── */}
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100 bg-slate-50/60">
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-border bg-muted/40">
           {([1, 2, 3] as Step[]).map((s, i) => {
             const done = s < step;
             const active = s === step;
@@ -487,23 +771,29 @@ export function PremiumOnboardingWizard({
               <div key={s} className="flex items-center gap-2 flex-1">
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors ${
-                    done
-                      ? 'bg-[#00bc7d] text-white'
-                      : active
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-200 text-slate-500'
+                    done || active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {done ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : s}
                 </div>
                 <span
                   className={`text-xs ${
-                    active ? 'text-slate-900 font-medium' : 'text-slate-500'
+                    active
+                      ? 'text-primary font-medium'
+                      : done
+                        ? 'text-foreground'
+                        : 'text-muted-foreground'
                   }`}
                 >
                   {s === 1 ? 'Resume' : s === 2 ? 'Preferences' : 'Agreement'}
                 </span>
-                {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
+                {i < 2 && (
+                  <div
+                    className={`flex-1 h-px ${done ? 'bg-primary/40' : 'bg-border'}`}
+                  />
+                )}
               </div>
             );
           })}
@@ -530,8 +820,8 @@ export function PremiumOnboardingWizard({
                   <div
                     className={`relative overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200 group ${
                       resumeState === 'uploading'
-                        ? 'border-slate-200 bg-white pointer-events-none'
-                        : 'border-[rgba(60,119,246,0.3)] bg-[rgba(239,246,255,0.3)] hover:border-blue-500/50 hover:bg-blue-50/60 cursor-pointer'
+                        ? 'border-border bg-white pointer-events-none'
+                        : 'border-primary/30 bg-primary/5 hover:border-primary/60 hover:bg-primary/10 cursor-pointer'
                     }`}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
@@ -547,21 +837,21 @@ export function PremiumOnboardingWizard({
                     <div className="flex flex-col items-center justify-center py-10 px-6">
                       {resumeState === 'uploading' ? (
                         <>
-                          <Loader2 className="w-8 h-8 text-[hsl(221,91%,60%)] animate-spin mb-3" />
-                          <p className="text-sm font-medium text-slate-700">
+                          <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
+                          <p className="text-sm font-medium text-foreground">
                             Uploading your resume…
                           </p>
                         </>
                       ) : (
                         <>
                           <div className="w-12 h-12 rounded-full bg-white shadow flex items-center justify-center mb-4">
-                            <UploadCloud className="w-6 h-6 text-[#3c77f6]" strokeWidth={2} />
+                            <UploadCloud className="w-6 h-6 text-primary" strokeWidth={2} />
                           </div>
-                          <p className="text-sm font-medium text-[#314158] text-center mb-1">
+                          <p className="text-sm font-medium text-foreground text-center mb-1">
                             Drag and drop your resume here, or{' '}
-                            <span className="text-[#3c77f6] group-hover:underline">browse</span>
+                            <span className="text-primary group-hover:underline">browse</span>
                           </p>
-                          <p className="text-xs text-[#62748e] text-center">
+                          <p className="text-xs text-muted-foreground text-center">
                             Supports PDF, DOCX &middot; Max 1MB
                           </p>
                         </>
@@ -619,6 +909,89 @@ export function PremiumOnboardingWizard({
                 Application Profile.
               </p>
 
+              {/* Personal info */}
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2.5">
+                  Personal Information
+                </p>
+                <p className="text-xs text-slate-500 mb-3">
+                  We pre-fill these from your resume when possible. Please review
+                  and complete any missing fields &mdash; this information is
+                  submitted with every managed application.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">
+                      First name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      value={prefs.firstName}
+                      onChange={(e) =>
+                        setPrefs((p) => ({ ...p, firstName: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      placeholder="Jane"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">
+                      Middle name <span className="text-slate-400">(optional)</span>
+                    </label>
+                    <input
+                      value={prefs.middleName}
+                      onChange={(e) =>
+                        setPrefs((p) => ({ ...p, middleName: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">
+                      Last name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      value={prefs.lastName}
+                      onChange={(e) =>
+                        setPrefs((p) => ({ ...p, lastName: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={prefs.email}
+                      onChange={(e) =>
+                        setPrefs((p) => ({ ...p, email: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      placeholder="jane@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">
+                      Phone <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={prefs.phone}
+                      onChange={(e) =>
+                        setPrefs((p) => ({ ...p, phone: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-slate-400"
+                      placeholder="+1 555 123 4567"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Employment type */}
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mb-2.5">
@@ -636,8 +1009,8 @@ export function PremiumOnboardingWizard({
                         }
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all cursor-pointer ${
                           sel
-                            ? 'border-slate-900 bg-slate-900/5 text-slate-900'
-                            : 'border-slate-200 text-slate-600 bg-white hover:border-slate-400'
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground bg-card hover:border-primary/40'
                         }`}
                       >
                         {sel && <Check className="w-3 h-3 shrink-0" />}
@@ -665,8 +1038,8 @@ export function PremiumOnboardingWizard({
                         }
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all cursor-pointer ${
                           sel
-                            ? 'border-slate-900 bg-slate-900/5 text-slate-900'
-                            : 'border-slate-200 text-slate-600 bg-white hover:border-slate-400'
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground bg-card hover:border-primary/40'
                         }`}
                       >
                         {sel && <Check className="w-3 h-3 shrink-0" />}
@@ -767,8 +1140,8 @@ export function PremiumOnboardingWizard({
                       onClick={() => setPrefs((p) => ({ ...p, startAvail: id }))}
                       className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all cursor-pointer ${
                         prefs.startAvail === id
-                          ? 'border-slate-900 bg-slate-900/5 text-slate-900'
-                          : 'border-slate-200 text-slate-600 hover:border-slate-400'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:border-primary/40'
                       }`}
                     >
                       {label}
@@ -789,49 +1162,68 @@ export function PremiumOnboardingWizard({
           {step === 3 && (
             <div className="text-sm text-slate-600 leading-relaxed prose prose-slate prose-sm max-w-none">
               <p className="text-slate-500 text-xs mb-4">
-                Effective May 2026 &middot; Please read each section and confirm
-                separately below.
+                Effective May 2026 &middot; Please read the agreement and confirm
+                your consents below.
               </p>
               <p className="mb-4">
                 Before your Managed Apply service is activated, please read this
-                Agreement in its entirety and confirm your authorization. Your
-                Managed Apply service activates only after you have checked all
-                four boxes below.
+                Agreement in its entirety. Your Managed Apply service activates
+                only after you confirm the required consents at the bottom of
+                this page.
               </p>
 
-              {CONSENT_SECTIONS.map((section) => (
-                <div key={section.key}>
+              {AGREEMENT_SECTIONS.map((section) => (
+                <div key={section.number}>
                   <h3 className="text-base font-semibold text-slate-900 mt-5 mb-2">
                     {section.number}) {section.title}
                   </h3>
                   {section.body}
-                  <label
-                    htmlFor={`consent-${section.key}`}
-                    className="mt-2 mb-2 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 cursor-pointer hover:bg-slate-100 transition-colors"
-                  >
-                    <Checkbox
-                      id={`consent-${section.key}`}
-                      checked={checked[section.key]}
-                      onCheckedChange={(v) =>
-                        setChecked((prev) => ({ ...prev, [section.key]: v === true }))
-                      }
-                      className="mt-0.5"
-                    />
-                    <span className="text-[13px] leading-snug text-slate-700">
-                      {section.checkboxLabel}
-                    </span>
-                  </label>
                 </div>
               ))}
 
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <h3 className="text-base font-semibold text-slate-900 mb-3">
+                  Your Consents
+                </h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  All consents below are required to activate Managed Apply.
+                </p>
+                <div className="flex flex-col gap-2">
+                  {CONSENT_ITEMS.map((item) => (
+                    <label
+                      key={item.key}
+                      htmlFor={`consent-${item.key}`}
+                      className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 cursor-pointer hover:bg-slate-100 transition-colors"
+                    >
+                      <Checkbox
+                        id={`consent-${item.key}`}
+                        checked={consents[item.key]}
+                        onCheckedChange={(v) =>
+                          setConsents((prev) => ({ ...prev, [item.key]: v === true }))
+                        }
+                        className="mt-0.5"
+                      />
+                      <span className="text-[13px] leading-snug text-slate-700">
+                        {item.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {consentError && (
+                  <div className="flex items-center gap-2 text-red-500 mt-3">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <p className="text-[13px]">{consentError}</p>
+                  </div>
+                )}
+              </div>
+
               <p className="italic text-slate-500 text-xs border-t border-slate-200 pt-3 mt-6">
-                By checking the four boxes above and clicking "Confirm &amp;
-                Activate Managed Apply," you acknowledge that you have read,
-                understood, and agree to be bound by the Screna AI Premium
-                Membership Agreement (Sections 1&ndash;9) in its entirety; that
-                you are at least eighteen (18) years of age; and that you accept
-                full legal responsibility for the accuracy of all information
-                submitted to prospective employers on your behalf.
+                By checking the boxes above and clicking "Confirm &amp; Activate
+                Managed Apply," you acknowledge that you have read, understood,
+                and agree to be bound by this Agreement in its entirety; that
+                you are at least eighteen (18) years of age; and that you
+                accept full legal responsibility for the accuracy of all
+                information submitted to prospective employers on your behalf.
               </p>
             </div>
           )}
@@ -868,7 +1260,7 @@ export function PremiumOnboardingWizard({
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={!canAdvanceFromStep1 || resumeState === 'uploading'}
-                className="bg-slate-900 text-white hover:bg-slate-800"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 Continue
               </Button>
@@ -879,7 +1271,7 @@ export function PremiumOnboardingWizard({
                 type="button"
                 onClick={handleSavePrefsAndContinue}
                 disabled={savingPrefs}
-                className="bg-slate-900 text-white hover:bg-slate-800"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {savingPrefs && <Loader2 className="size-4 animate-spin" />}
                 Save &amp; Continue
@@ -890,8 +1282,8 @@ export function PremiumOnboardingWizard({
               <Button
                 type="button"
                 onClick={handleConfirm}
-                disabled={!allChecked || isCompleting}
-                className="bg-slate-900 text-white hover:bg-slate-800"
+                disabled={!requiredConsentsAccepted || isCompleting}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {isCompleting && <Loader2 className="size-4 animate-spin" />}
                 Confirm &amp; Activate Managed Apply

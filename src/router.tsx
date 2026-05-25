@@ -30,6 +30,7 @@ import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
 import PaymentSuccess from './pages/PaymentSuccess';
+import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
 import { HomePage } from './pages/newDesign/home/home';
@@ -121,6 +122,7 @@ export const router = createBrowserRouter([
       { path: '/settings', element: <SettingsPage /> },
       { path: '/billing', element: <BillingPage /> },
       { path: '/payment-success', element: <PaymentSuccess /> },
+      { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
       { path: '/messages', element: <MessageCenterPage /> },

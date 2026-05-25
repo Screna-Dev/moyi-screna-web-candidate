@@ -12,6 +12,7 @@ import { getMentors, applyMentor, getCalendarAuthUrl, connectCalendar } from '..
 import { getProfile } from '../../services/ProfileServices';
 import type { ProfileData } from '../../types/profile';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Office hours ─────────────────────────────────────────────────────────────
 // dayOfWeek follows ISO 8601: 1 = Monday … 7 = Sunday.
@@ -420,6 +421,9 @@ export function MentorshipMarketplacePage() {
     careerBackground: [] as { company: string; role: string; startYear: string; endYear: string }[],
     officeHours: [] as OfficeHour[],
   });
+  const { user } = useAuth();
+  const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
+
   const resetMentorModal = () => {
     setMentorStep(1);
     setCalendarConnected(false);
@@ -654,10 +658,9 @@ export function MentorshipMarketplacePage() {
         <div className="flex items-start justify-between gap-6">
           <div>
             <div className="flex items-center gap-2.5 mb-2.5">
-              <h1
-                className="font-semibold text-slate-900 text-[40px]"
-                style={{ letterSpacing: '-0.025em' }}
-              >Mentorship Market Space</h1>
+              <h1 className="text-[#0F172A] font-bold text-[40px] font-[family-name:var(--font-serif)]">
+                Mentorship Market Space
+              </h1>
               {isMember && (
                 null
               )}
@@ -733,10 +736,11 @@ export function MentorshipMarketplacePage() {
               </div>
               <button
                 onClick={() => setIsBecomeMentorOpen(true)}
-                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/25 bg-primary/6 text-primary text-[13px] hover:bg-primary/12 hover:border-primary/40 transition-all duration-150 whitespace-nowrap"
+                disabled={isAlreadyMentor}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/25 bg-primary/6 text-primary text-[13px] hover:bg-primary/12 hover:border-primary/40 transition-all duration-150 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary/6 disabled:hover:border-primary/25"
                 style={{ fontWeight: 500 }}
               >
-                Apply to Become a Mentor
+                {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor'}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1222,10 +1226,11 @@ export function MentorshipMarketplacePage() {
                 </div>
                 <button
                   onClick={() => setIsBecomeMentorOpen(true)}
-                  className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/25 bg-primary/6 text-primary text-[13px] hover:bg-primary/12 hover:border-primary/40 transition-all duration-150 whitespace-nowrap"
+                  disabled={isAlreadyMentor}
+                  className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/25 bg-primary/6 text-primary text-[13px] hover:bg-primary/12 hover:border-primary/40 transition-all duration-150 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary/6 disabled:hover:border-primary/25"
                   style={{ fontWeight: 500 }}
                 >
-                  Apply to Become a Mentor
+                  {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor'}
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>

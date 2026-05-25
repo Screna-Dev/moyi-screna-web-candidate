@@ -132,6 +132,24 @@ export const upsertJobsPreferences = (preferences) => {
   return API.put('/apply/candidates/preferences', preferences);
 };
 
+/**
+ * Record one or more document_type consents for the current candidate.
+ * @param {Array<{document_type: string, document_version: string, agreed: boolean}>} consents
+ * @returns {Promise} API response
+ */
+export const recordCandidateConsent = (consents) => {
+  return API.post('/apply/candidates/consent', { consents });
+};
+
+/**
+ * Get current user's onboarding status (resume_uploaded, preferences_set,
+ * consent_agreed, completed).
+ * @returns {Promise} API response
+ */
+export const getOnboardingStatus = () => {
+  return API.get('/apply/candidates/onboarding-status');
+};
+
 // Export as default object for easier imports
 const ProfileService = {
   // Resume profile
@@ -151,6 +169,8 @@ const ProfileService = {
   // Jobs preferences
   getJobsPreferences,
   upsertJobsPreferences,
+  recordCandidateConsent,
+  getOnboardingStatus,
 };
 
 export default ProfileService;
