@@ -137,7 +137,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
   // ── Target Role state ──
   const [roleMode, setRoleMode] = useState<'view' | 'edit'>('view');
-  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [roleQuery, setRoleQuery] = useState('');
 
   // ── Work Authorization state ──
@@ -238,11 +238,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     getProfilePreferences().then((res: { data: { data?: UserPreferences } }) => {
       const data = (res.data?.data ?? res.data) as UserPreferences;
       setUserPrefs(data);
-      const firstRole = data?.target_roles?.[0];
-      if (firstRole) {
+      if (data?.target_roles?.length) {
         const allRoles = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles);
-        const match = allRoles.find(r => r.label.toLowerCase() === firstRole.toLowerCase());
-        if (match) setSelectedRoleId(match.id);
+        const ids = data.target_roles
+          .map(label => allRoles.find(r => r.label.toLowerCase() === label.toLowerCase())?.id)
+          .filter((id): id is string => Boolean(id));
+        if (ids.length) setSelectedRoleIds(ids);
       }
       if (data?.target_companies) setSpecificCompanies(data.target_companies);
       if (data?.company_size_categories) {
@@ -275,10 +276,20 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       .filter(cat => cat.roles.length > 0);
   }, [roleQuery]);
 
-  // Label of the currently highlighted option in the edit UI (used when saving)
-  const selectedRoleLabel = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(r => r.id === selectedRoleId)?.label ?? '';
+  // Labels of the currently selected options in the edit UI (used when saving)
+  const selectedRoleLabels = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles)
+    .filter(r => selectedRoleIds.includes(r.id))
+    .map(r => r.label);
 
-  const displayRole = userPrefs?.target_roles?.[0] ?? selectedRoleLabel;
+  const toggleRole = (id: string) => {
+    setSelectedRoleIds(prev =>
+      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+    );
+  };
+
+  const displayRole = userPrefs?.target_roles?.length
+    ? userPrefs.target_roles.join(', ')
+    : selectedRoleLabels.join(', ');
 
   const totalCompanyCount = selectedCategories.length + specificCompanies.length;
 
@@ -343,8 +354,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
   const handleRoleConfirm = () => {
     setRoleMode('view');
-    const newRole = selectedRoleLabel;
-    const updated: UserPreferences = { ...(userPrefs ?? {}), target_roles: [newRole] };
+    const updated: UserPreferences = { ...(userPrefs ?? {}), target_roles: selectedRoleLabels };
     setUserPrefs(updated);
     saveProfilePreferences(updated).catch(() => {});
   };
@@ -614,6 +624,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
           {!loadingPreferences && roleMode === 'edit' && (
             <div className="px-5 py-4 flex flex-col gap-3">
+              <p className="text-xs text-muted-foreground">Select all that apply</p>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
@@ -629,11 +640,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{cat.label}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {cat.roles.map(role => {
-                        const sel = selectedRoleId === role.id;
+                        const sel = selectedRoleIds.includes(role.id);
                         return (
                           <button
                             key={role.id}
-                            onClick={() => setSelectedRoleId(role.id)}
+                            onClick={() => toggleRole(role.id)}
                             className={`px-3 py-1.5 rounded-full border text-sm transition-all ${
                               sel
                                 ? 'border-primary bg-primary/10 text-primary'
@@ -650,13 +661,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               </div>
               <button
                 onClick={handleRoleConfirm}
-                disabled={!selectedRoleLabel}
+                disabled={selectedRoleLabels.length === 0}
                 className="disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ ...primaryButtonStyle, width: '100%', justifyContent: 'center', height: 36, marginTop: 4 }}
                 onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
               >
-                Confirm Role <ArrowRight className="w-3.5 h-3.5" />
+                Confirm Roles <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           )}

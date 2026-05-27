@@ -25,7 +25,7 @@ import {
 interface UserProfile {
   careerStage: string;
   primaryGoal: string;
-  targetRole: string;
+  targetRoles: string[];
   companyType: string[];
   timeline: string;
   biggestChallenge: string[];
@@ -394,7 +394,16 @@ function StepTargetRole({
   onNext: () => void;
   onBack: () => void;
 }) {
-  const canProceed = profile.targetRole && profile.timeline;
+  const canProceed = profile.targetRoles.length > 0 && profile.timeline;
+
+  const toggleTargetRole = (id: string) => {
+    const current = profile.targetRoles || [];
+    if (current.includes(id)) {
+      setProfile({ targetRoles: current.filter((r) => r !== id) });
+    } else {
+      setProfile({ targetRoles: [...current, id] });
+    }
+  };
 
   const toggleCompanyType = (id: string) => {
     const current = profile.companyType || [];
@@ -436,16 +445,17 @@ function StepTargetRole({
       <div className="w-full mb-6">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[13px] font-semibold text-[hsl(222,22%,15%)]">
-            Target role <span className="text-[hsl(221,91%,60%)]">*</span>
+            Target role <span className="text-[hsl(221,91%,60%)]">*</span>{' '}
+            <span className="text-[12px] font-normal text-[hsl(222,12%,60%)]">(select all that apply)</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {TARGET_ROLES.map(({ id, label, icon: Icon }) => {
-            const isSelected = profile.targetRole === id;
+            const isSelected = (profile.targetRoles || []).includes(id);
             return (
               <button
                 key={id}
-                onClick={() => setProfile({ targetRole: id })}
+                onClick={() => toggleTargetRole(id)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-[13px] font-medium transition-all duration-200 ${
                   isSelected
                     ? 'bg-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)] text-white shadow-[0_2px_8px_rgba(67,118,248,0.25)]'
@@ -705,7 +715,11 @@ function StepAISynthesis({ onDone }: { onDone: () => void }) {
 }
 
 function StepCommandCenter({ profile }: { profile: UserProfile }) {
-  const roleLabel = TARGET_ROLES.find((r) => r.id === profile.targetRole)?.label || 'Software Engineer';
+  const roleLabel =
+    profile.targetRoles
+      ?.map((id) => TARGET_ROLES.find((r) => r.id === id)?.label)
+      .filter(Boolean)
+      .join(', ') || 'Software Engineer';
   const stageLabel = CAREER_STAGES.find((s) => s.id === profile.careerStage)?.label || 'Early Career';
   const timelineLabel = TIMELINES.find((t) => t.id === profile.timeline)?.label || '1–3 months';
 
@@ -873,7 +887,7 @@ export function OnboardingProcessPage() {
   const [profile, setProfile] = useState<UserProfile>({
     careerStage: '',
     primaryGoal: '',
-    targetRole: '',
+    targetRoles: [],
     companyType: [],
     timeline: '',
     biggestChallenge: [],
