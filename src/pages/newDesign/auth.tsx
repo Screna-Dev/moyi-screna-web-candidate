@@ -225,6 +225,7 @@ function PrivacyContent() {
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo') || '';
+  const referralCode = searchParams.get('referral_code') || '';
   const [isLogin, setIsLogin] = useState(searchParams.get('login') === 'true');
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
@@ -291,7 +292,7 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle(!isLogin, returnTo);
+      loginWithGoogle(!isLogin, returnTo, referralCode);
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');

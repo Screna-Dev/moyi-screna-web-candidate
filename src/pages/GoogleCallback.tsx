@@ -5,6 +5,7 @@ import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
+import PaymentService from '@/services/PaymentServices';
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -73,6 +74,7 @@ export default function GoogleCallback() {
         // Extract tokens based on your API structure
         const accessToken = data.data?.accessToken || data.accessToken;
         const refreshToken = data.data?.refreshToken || data.refreshToken;
+        const isFirstLogin = data.data?.isFirstLogin ?? data.isFirstLogin ?? false;
         
         if (!accessToken) {
           console.error('No token in response. Full response:', data);
@@ -97,19 +99,37 @@ export default function GoogleCallback() {
           description: 'You have successfully signed in with Google.',
         });
 
-        // Parse returnTo from state param
+        // Parse returnTo and referralCode from state param
         const rawState = searchParams.get('state') || '';
         let returnTo = '';
+        let referralCode = '';
         try {
           const parsed = JSON.parse(decodeURIComponent(rawState));
           returnTo = parsed.returnTo || '';
+          referralCode = parsed.referralCode || '';
         } catch {
           // ignore parse errors
         }
 
-        // Check whether this user has already completed onboarding
-        const onboarded = await hasCompletedOnboarding();
-        if (!onboarded) {
+        // Redeem referral code if one was passed through the OAuth flow
+        if (referralCode) {
+          try {
+            await PaymentService.redeemCode(referralCode);
+            toast({
+              title: 'Referral applied!',
+              description: `Your referral code ${referralCode} has been redeemed.`,
+            });
+          } catch (redeemErr: any) {
+            console.error('Failed to redeem referral code:', redeemErr);
+            toast({
+              title: 'Referral code not applied',
+              description: redeemErr.response?.data?.message || 'We could not redeem your referral code.',
+              variant: 'destructive',
+            });
+          }
+        }
+
+        if (isFirstLogin) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           navigate(returnTo || '/dashboard');

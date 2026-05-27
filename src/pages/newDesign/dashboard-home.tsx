@@ -223,7 +223,7 @@ function StatCardSkeleton() {
 
 function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
   const isPremium = plan === 'premium';
-  const colCount = isPremium ? 5 : 2;
+  const colCount = isPremium ? 4 : 2;
   const learningSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
   const sessionsSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
 
@@ -245,14 +245,12 @@ function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStat
           <StatCard label="Sessions Completed" value={stats.sessionsCompleted ?? '—'} sub={sessionsSub} icon={<IconCheck />} />
           {isPremium && (
             <>
-              <div style={{ position: 'relative' }}>
-                <StatCard
-                  label="Applications This Period"
-                  value={stats.applicationsThisPeriod ?? '—'}
-                  sub={`↗ ${stats.applicationsDelta ?? '—'} vs prior period`}
-                  icon={<IconSend />}
-                />
-              </div>
+              <StatCard
+                label="Applications This Period"
+                value={stats.applicationsThisPeriod ?? '—'}
+                sub={`↗ ${stats.applicationsDelta ?? '—'} vs prior period`}
+                icon={<IconSend />}
+              />
               <StatCard
                 label="Avg. Daily Applications"
                 value={stats.avgDailyApplications ?? '—'}
