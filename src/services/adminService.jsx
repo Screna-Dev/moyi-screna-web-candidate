@@ -256,6 +256,105 @@ export const getAuditLogs = (params = {}) => {
   return API.get(`${BASE_URL}/audit-logs`, { params });
 };
 
+// ============================================
+// PGS Management APIs
+// ============================================
+
+const PGS_URL = '/pgs/admin';
+
+/**
+ * List PGS members (paginated, with aggregated stats per member).
+ * @param {Object} params
+ * @param {string} [params.search] - Search by name, email, or slug
+ * @param {"ACTIVE"|"ARCHIVED"} [params.status]
+ * @param {"LV0"|"LV1"|"LV2"|"LV3"} [params.level]
+ * @param {number} [params.page=0]
+ * @param {number} [params.size=20]
+ */
+export const listPgsMembers = (params = {}) => {
+  return API.get(PGS_URL, { params });
+};
+
+/**
+ * Get full detail for a single PGS member.
+ * @param {string} id - PGS member UUID
+ */
+export const getPgsMember = (id) => {
+  return API.get(`${PGS_URL}/${id}`);
+};
+
+/**
+ * Create a new PGS member (also provisions the redeem code).
+ * @param {Object} body
+ * @param {string} body.fullName
+ * @param {string} body.email
+ * @param {"LV0"|"LV1"|"LV2"|"LV3"} body.level
+ * @param {string} body.referralSlug
+ * @param {"WISE"|"ALIPAY"|"PAYPAL"} body.payoutMethod
+ * @param {string} [body.schoolCommunity]
+ * @param {string} [body.startDate] - ISO date (YYYY-MM-DD)
+ */
+export const createPgsMember = (body) => {
+  return API.post(PGS_URL, body);
+};
+
+/**
+ * Update editable fields of a PGS member. referralSlug cannot be changed.
+ * If isActive changes, the redeem code is synced automatically.
+ * @param {string} id
+ * @param {Object} body - { fullName, email, level, payoutMethod, isActive, schoolCommunity, startDate, internalNotes }
+ */
+export const updatePgsMember = (id, body) => {
+  return API.put(`${PGS_URL}/${id}`, body);
+};
+
+/**
+ * Archive a PGS member. This is permanent and deactivates their redeem code.
+ * @param {string} id
+ */
+export const archivePgsMember = (id) => {
+  return API.post(`${PGS_URL}/${id}/archive`);
+};
+
+/**
+ * List users attributed to this PGS member's referral slug.
+ * @param {string} id - PGS member UUID
+ * @param {Object} [params]
+ * @param {string} [params.search] - Search by user name or email
+ * @param {number} [params.page=0]
+ * @param {number} [params.size=20]
+ */
+export const listPgsMemberUsers = (id, params = {}) => {
+  return API.get(`${PGS_URL}/${id}/users`, { params });
+};
+
+/**
+ * Get aggregated stats for a single PGS member.
+ * @param {string} id
+ */
+export const getPgsMemberStats = (id) => {
+  return API.get(`${PGS_URL}/${id}/stats`);
+};
+
+/**
+ * Get global PGS stats across all members matching the filter.
+ * @param {"ACTIVE_ENABLED"|"ACTIVE_DISABLED"|"NOT_ARCHIVED"|"ARCHIVED"} [filterStatus]
+ */
+export const getPgsGlobalStats = (filterStatus) => {
+  return API.get(`${PGS_URL}/stats`, {
+    params: filterStatus ? { filterStatus } : {},
+  });
+};
+
+/**
+ * Generate a unique referral slug suggestion from a full name.
+ * Admin can modify before submitting.
+ * @param {string} fullName
+ */
+export const generatePgsSlug = (fullName) => {
+  return API.get(`${PGS_URL}/slug/generate`, { params: { fullName } });
+};
+
 const adminService = {
   // User Management
   getUserOverview,
@@ -281,6 +380,16 @@ const adminService = {
   deleteRedeemCode,
   // Audit Logs
   getAuditLogs,
+  // PGS Management
+  listPgsMembers,
+  getPgsMember,
+  createPgsMember,
+  updatePgsMember,
+  archivePgsMember,
+  listPgsMemberUsers,
+  getPgsMemberStats,
+  getPgsGlobalStats,
+  generatePgsSlug,
 };
 
 export default adminService;

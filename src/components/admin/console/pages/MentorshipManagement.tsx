@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
@@ -8,6 +8,20 @@ import { Drawer } from "../ui/Drawer";
 import { DrawerField, DrawerDivider } from "../ui/DrawerField";
 import { Modal } from "../ui/Modal";
 import { EmptyState } from "../ui/EmptyState";
+import {
+  listMentors,
+  getMentor,
+  onboardMentor,
+  updateMentorProfile,
+  updateMentorStatus,
+  createMentorTopic,
+  updateMentorTopic,
+  listBookings,
+  adminCancelBooking,
+  adminRescheduleBooking,
+  listDisputes,
+  resolveDispute,
+} from "../../../../services/mentorshipAdminService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,7 +52,12 @@ type ServiceOffering = {
   expertiseTags: string[];
   description: string;
   notes: string;
+  topicId?: string;
+  price30min?: number;
+  price60min?: number;
 };
+
+type ApiStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 type Mentor = {
   id: string;
@@ -51,6 +70,8 @@ type Mentor = {
   rate30: number;
   rate60: number;
   status: "Pending" | "Active" | "Suspend";
+  apiStatus?: ApiStatus;
+  statusReason?: string;
   calConnected: boolean;
   sessions: number;
   revenue: number;
@@ -58,86 +79,138 @@ type Mentor = {
   offerings: ServiceOffering[];
 };
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── API ↔ UI mappers ─────────────────────────────────────────────────────────
 
-const mentors: Mentor[] = [
-  {
-    id: "m1", name: "Zhang Wei", email: "zhang.wei@screna.io", password: "ZW@secure2024",
-    expertiseTags: ["System Design", "Backend", "Behavioral"],
-    rate30: 65, rate60: 120, status: "Active", calConnected: true, sessions: 8, revenue: 3840, unpaid: 320,
-    offerings: [
-      { typeId: "mock-interview",    enabled: true,  rate: 120, pricingType: "per-hour",    duration: 60, expertiseTags: ["System Design", "Backend", "Behavioral"], description: "Full mock interview with detailed feedback.", notes: "" },
-      { typeId: "resume-review",     enabled: true,  rate: 90,  pricingType: "per-session", duration: 45, expertiseTags: ["Backend"], description: "Resume and LinkedIn profile review.", notes: "" },
-      { typeId: "career-strategy",   enabled: false, rate: 120, pricingType: "per-hour",    duration: 60, expertiseTags: [], description: "", notes: "" },
-      { typeId: "offer-negotiation", enabled: false, rate: 120, pricingType: "per-session", duration: 45, expertiseTags: [], description: "", notes: "" },
-    ],
-  },
-  {
-    id: "m2", name: "Lisa Park", email: "lisa.park@screna.io", password: "LP@secure2024",
-    expertiseTags: ["Product Strategy", "PM Interview", "Leadership"],
-    rate30: 80, rate60: 150, status: "Active", calConnected: true, sessions: 5, revenue: 3000, unpaid: 150,
-    offerings: [
-      { typeId: "mock-interview",    enabled: true,  rate: 150, pricingType: "per-hour",    duration: 60, expertiseTags: ["PM Interview"], description: "PM interview prep with real FAANG-style questions.", notes: "" },
-      { typeId: "resume-review",     enabled: true,  rate: 100, pricingType: "per-session", duration: 45, expertiseTags: ["Product Strategy"], description: "PM resume and LinkedIn review.", notes: "" },
-      { typeId: "career-strategy",   enabled: true,  rate: 150, pricingType: "per-hour",    duration: 60, expertiseTags: ["Leadership", "Product Strategy"], description: "Career strategy for aspiring PMs.", notes: "" },
-      { typeId: "offer-negotiation", enabled: false, rate: 150, pricingType: "per-session", duration: 45, expertiseTags: [], description: "", notes: "" },
-    ],
-  },
-  {
-    id: "m3", name: "Marcus Chen", email: "marcus.chen@screna.io", password: "MC@secure2024",
-    expertiseTags: ["ML", "Data Science", "System Design"],
-    rate30: 95, rate60: 180, status: "Active", calConnected: false, sessions: 3, revenue: 2160, unpaid: 0,
-    offerings: [
-      { typeId: "mock-interview",    enabled: true,  rate: 180, pricingType: "per-hour",    duration: 60, expertiseTags: ["ML", "Data Science"], description: "ML/DS technical interviews.", notes: "Preferred: ML systems focus" },
-      { typeId: "resume-review",     enabled: false, rate: 150, pricingType: "per-session", duration: 45, expertiseTags: [], description: "", notes: "" },
-      { typeId: "career-strategy",   enabled: false, rate: 180, pricingType: "per-hour",    duration: 60, expertiseTags: [], description: "", notes: "" },
-      { typeId: "offer-negotiation", enabled: false, rate: 180, pricingType: "per-session", duration: 45, expertiseTags: [], description: "", notes: "" },
-    ],
-  },
-  {
-    id: "m4", name: "Jennifer Kim", email: "jennifer.kim@screna.io", password: "JK@secure2024",
-    expertiseTags: ["Frontend", "React", "System Design"],
-    rate30: 55, rate60: 100, status: "Pending", calConnected: true, sessions: 0, revenue: 0, unpaid: 0,
-    offerings: [
-      { typeId: "mock-interview",    enabled: true,  rate: 100, pricingType: "per-hour",    duration: 60, expertiseTags: ["Frontend Arch", "System Design"], description: "Mock frontend technical interview.", notes: "" },
-      { typeId: "resume-review",     enabled: true,  rate: 80,  pricingType: "per-session", duration: 45, expertiseTags: ["Frontend", "React"], description: "UI/UX focused resume review.", notes: "" },
-      { typeId: "career-strategy",   enabled: false, rate: 100, pricingType: "per-hour",    duration: 60, expertiseTags: [], description: "", notes: "" },
-      { typeId: "offer-negotiation", enabled: false, rate: 100, pricingType: "per-session", duration: 45, expertiseTags: [], description: "", notes: "" },
-    ],
-  },
-  {
-    id: "m5", name: "David Wang", email: "david.wang@screna.io", password: "DW@secure2024",
-    expertiseTags: ["Finance", "Quant", "Leadership"],
-    rate30: 100, rate60: 200, status: "Active", calConnected: true, sessions: 12, revenue: 9600, unpaid: 0,
-    offerings: [
-      { typeId: "mock-interview",    enabled: true,  rate: 200, pricingType: "per-hour",    duration: 60, expertiseTags: ["Finance", "Quant"], description: "Quant and finance interview prep.", notes: "" },
-      { typeId: "resume-review",     enabled: true,  rate: 150, pricingType: "per-session", duration: 45, expertiseTags: ["Finance"], description: "Finance-focused resume review.", notes: "" },
-      { typeId: "career-strategy",   enabled: true,  rate: 200, pricingType: "per-hour",    duration: 60, expertiseTags: ["Leadership", "Finance"], description: "Career strategy for finance / quant roles.", notes: "" },
-      { typeId: "offer-negotiation", enabled: true,  rate: 200, pricingType: "per-session", duration: 45, expertiseTags: ["Finance"], description: "Salary and offer negotiation for finance roles.", notes: "" },
-    ],
-  },
-];
+const STATUS_API_TO_UI: Record<ApiStatus, Mentor["status"]> = {
+  PENDING: "Pending",
+  APPROVED: "Active",
+  REJECTED: "Suspend",
+  SUSPENDED: "Suspend",
+};
 
-const sessions = [
-  { id: "S-001", student: "Emily Zhang", mentor: "Zhang Wei",   serviceType: "Mock Interview",       time: "May 20, 2PM", status: "Upcoming",  payment: 120, refundEligible: true,  within48h: true  },
-  { id: "S-002", student: "Marcus Liu",  mentor: "Lisa Park",   serviceType: "Career Strategy",      time: "May 19, 4PM", status: "Completed", payment: 150, refundEligible: false, within48h: false },
-  { id: "S-003", student: "Sarah Chen",  mentor: "Marcus Chen", serviceType: "Mock Interview",       time: "May 22, 7PM", status: "Upcoming",  payment: 180, refundEligible: true,  within48h: false },
-  { id: "S-004", student: "Ryan Torres", mentor: "Zhang Wei",   serviceType: "Resume & LinkedIn Review", time: "May 18, 3PM", status: "Cancelled", payment: 0,   refundEligible: false, within48h: false },
-  { id: "S-005", student: "Priya Patel", mentor: "Marcus Chen", serviceType: "Mock Interview",       time: "May 21, 6PM", status: "Upcoming",  payment: 180, refundEligible: true,  within48h: true  },
-  { id: "S-006", student: "Kevin Li",    mentor: "David Wang",  serviceType: "Offer & Salary Negotiation", time: "May 17, 5PM", status: "Completed", payment: 200, refundEligible: false, within48h: false },
-];
+function mapApiMentor(api: any): Mentor {
+  const apiTopics: any[] = Array.isArray(api?.topics) ? api.topics : [];
+  const activeTopics = apiTopics.filter((t) => t?.active);
+  const price30s = activeTopics.map((t) => Number(t?.price30min) || 0).filter((n) => n > 0);
+  const price60s = activeTopics.map((t) => Number(t?.price60min) || 0).filter((n) => n > 0);
+  const rate30 = price30s.length ? Math.min(...price30s) : 0;
+  const rate60 = price60s.length ? Math.min(...price60s) : 0;
 
-const reschedules = [
-  { id: "R-001", student: "Emily Zhang", mentor: "Zhang Wei",   originalTime: "May 20, 2:00PM - 3:00PM", newTime: "May 20, 4:00PM - 5:00PM", reason: "Work conflict — sprint planning added last minute", within48h: true,  status: "Requested"  },
-  { id: "R-002", student: "Kevin Li",    mentor: "David Wang",  originalTime: "May 23, 5:00PM - 5:30PM", newTime: "May 24, 1:00PM - 1:30PM", reason: "Family emergency — need to move to next week",      within48h: false, status: "Requested"  },
-  { id: "R-003", student: "Sarah Chen",  mentor: "Marcus Chen", originalTime: "May 22, 7:00PM - 8:00PM", newTime: "May 23, 6:00PM - 7:00PM", reason: "Travel schedule changed",                           within48h: false, status: "Approved" },
-];
+  const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
+    const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
+    return {
+      typeId: t.id,
+      enabled: !!matched && !!matched.active,
+      rate: Number(matched?.price60min) || 0,
+      pricingType: "per-hour",
+      duration: 60,
+      expertiseTags: [],
+      description: matched?.description || "",
+      notes: "",
+      topicId: matched?.id,
+      price30min: Number(matched?.price30min) || 0,
+      price60min: Number(matched?.price60min) || 0,
+    };
+  });
 
-const disputes = [
-  { id: "D-019", student: "Ryan Torres", mentor: "Zhang Wei",   session: "S-004", reason: "Session ended 20 min early. Mentor was distracted.", amount: 120, evidence: "Screenshot attached", status: "Open",     created: "May 18" },
-  { id: "D-018", student: "Aisha Kumar", mentor: "Lisa Park",   session: "S-008", reason: "Mentor no-showed. Session was never started.",        amount: 150, evidence: "Calendar screenshot",  status: "Approved", created: "May 15" },
-  { id: "D-017", student: "Tom Wu",      mentor: "Marcus Chen", session: "S-002", reason: "Content was generic and not personalized.",           amount: 180, evidence: "Chat transcript",      status: "Rejected", created: "May 10" },
-];
+  return {
+    id: api?.id || "",
+    name: api?.name || "",
+    email: api?.email || "",
+    bio: api?.bio || "",
+    timezone: api?.googleTimezone || "",
+    expertiseTags: Array.isArray(api?.expertiseTags) ? api.expertiseTags : [],
+    rate30,
+    rate60,
+    status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
+    apiStatus: (api?.status as ApiStatus) || "PENDING",
+    statusReason: api?.statusReason || "",
+    calConnected: !!api?.calendarConnected,
+    sessions: 0,
+    revenue: 0,
+    unpaid: 0,
+    offerings,
+  };
+}
+
+type Session = {
+  id: string;
+  student: string;
+  mentor: string;
+  mentorId?: string;
+  serviceType: string;
+  time: string;
+  rawStart?: string;
+  status: string;
+  payment: number;
+  refundEligible: boolean;
+  within48h: boolean;
+};
+
+function mapApiBooking(api: any): Session {
+  const statusMap: Record<string, string> = {
+    PENDING: "Upcoming",
+    CONFIRMED: "Upcoming",
+    COMPLETED: "Completed",
+    CANCELLED: "Cancelled",
+    EXPIRED: "Cancelled",
+  };
+  const start = api?.startTime ? new Date(api.startTime) : null;
+  const now = new Date();
+  const within48h = !!start && (start.getTime() - now.getTime()) > 0 && (start.getTime() - now.getTime()) < 48 * 60 * 60 * 1000;
+  const display = start
+    ? start.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : "—";
+  const amount = Number(api?.amountCents) || 0;
+  const apiStatus = (api?.status || "").toUpperCase();
+  return {
+    id: api?.id || "",
+    student: api?.studentName || api?.studentId || "—",
+    mentor: api?.mentorName || "—",
+    mentorId: api?.mentorId,
+    serviceType: api?.topicTitle || "—",
+    time: display,
+    rawStart: api?.startTime,
+    status: statusMap[apiStatus] || apiStatus || "—",
+    payment: Math.round(amount / 100),
+    refundEligible: apiStatus === "PENDING" || apiStatus === "CONFIRMED",
+    within48h,
+  };
+}
+
+type Dispute = {
+  id: string;
+  student: string;
+  mentor: string;
+  session: string;
+  reason: string;
+  amount: number;
+  evidence: string;
+  status: string;
+  created: string;
+};
+
+function mapApiDispute(api: any): Dispute {
+  const statusMap: Record<string, string> = {
+    PENDING: "Open",
+    APPROVED: "Approved",
+    REJECTED: "Rejected",
+  };
+  const created = api?.createdAt ? new Date(api.createdAt) : null;
+  return {
+    id: api?.id || "",
+    student: api?.studentName || "—",
+    mentor: api?.mentorName || "—",
+    session: api?.bookingId || "—",
+    reason: api?.description || api?.reason || "—",
+    amount: Math.round((Number(api?.amountCents) || 0) / 100),
+    evidence: api?.reason || "—",
+    status: statusMap[(api?.status || "").toUpperCase()] || "Open",
+    created: created ? created.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—",
+  };
+}
+
+const reschedules: Array<{ id: string; student: string; mentor: string; originalTime: string; newTime: string; reason: string; within48h: boolean; status: string }> = [];
 
 const platformServiceTypes = [
   { id: "mock-interview",    label: "Mock Interview",              activeMentors: 3, status: "Active", description: "" },
@@ -381,8 +454,9 @@ function ServiceOfferingsSection({
 
 // ─── Add Mentor Wizard ───────────────────────────────────────────────────────
 
-function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose: () => void; onComplete: (m: Mentor) => void }) {
+function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose: () => void; onComplete: () => void }) {
   const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<Partial<Mentor>>({
     name: "", email: "", password: "", bio: "", expertiseTags: [], rate30: 50, rate60: 100, unpaid: 0,
     offerings: ALL_SERVICE_TYPES.map(t => ({
@@ -395,23 +469,41 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
   const next = () => setStep(s => Math.min(s + 1, 4));
   const prev = () => setStep(s => Math.max(s - 1, 1));
 
-  const handleComplete = () => {
-    const newMentor: Mentor = {
-      id: `m${Date.now()}`,
-      name: form.name || "New Mentor",
-      email: form.email || "",
-      bio: form.bio || "",
-      expertiseTags: form.expertiseTags || [],
-      rate30: form.rate30 || 50,
-      rate60: form.rate60 || 100,
-      status: "Pending",
-      calConnected: false,
-      sessions: 0,
-      revenue: 0,
-      unpaid: 0,
-      offerings: form.offerings || []
-    };
-    onComplete(newMentor);
+  const handleComplete = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const topics = (form.offerings || [])
+        .filter((o) => o.enabled)
+        .map((o) => {
+          const label = ALL_SERVICE_TYPES.find((t) => t.id === o.typeId)?.label || o.typeId;
+          return {
+            title: label,
+            description: o.description || "",
+            price30min: Math.max(0, Math.round(Number(form.rate30) || 0)),
+            price60min: Math.max(0, Math.round(Number(form.rate60) || 0)),
+            bothPricesSet: true,
+          };
+        });
+      await onboardMentor({
+        name: form.name || "",
+        email: form.email || "",
+        password: form.password || "",
+        bio: form.bio || "",
+        headline: "",
+        expertiseTags: form.expertiseTags || [],
+        company: "",
+        title: "",
+        yearsOfExperience: 0,
+        topics,
+      });
+      toast.success("Mentor onboarded successfully");
+      onComplete();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to onboard mentor");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, display: "block" };
@@ -437,7 +529,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
               style={{ ...primaryBtn, width: 100, justifyContent: "center", opacity: (step === 1 && (!form.email || !form.password)) ? 0.5 : 1, cursor: (step === 1 && (!form.email || !form.password)) ? "not-allowed" : "pointer" }}
             >Next</button>
           ) : (
-            <button onClick={handleComplete} style={{ ...primaryBtn, width: 140, justifyContent: "center" }}>Send Invitation</button>
+            <button onClick={handleComplete} disabled={submitting} style={{ ...primaryBtn, width: 140, justifyContent: "center", opacity: submitting ? 0.6 : 1, cursor: submitting ? "not-allowed" : "pointer" }}>{submitting ? "Sending..." : "Send Invitation"}</button>
           )}
         </>
       }
@@ -595,7 +687,8 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
 // ─── Mentor Directory ──────────────────────────────────────────────────────────
 
 function MentorDirectory() {
-  const [mentorList, setMentorList] = useState(mentors);
+  const [mentorList, setMentorList] = useState<Mentor[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters]   = useState<Record<string, string>>({ status: "all" });
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<Mentor | null>(null);
@@ -610,21 +703,143 @@ function MentorDirectory() {
   const inputStyle: React.CSSProperties = { width: "100%", height: 32, padding: "0 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", boxSizing: "border-box" };
   const selectStyle: React.CSSProperties = { ...inputStyle, cursor: "pointer" };
 
+  const loadMentors = useCallback(async () => {
+    setLoading(true);
+    try {
+      const apiStatusFilter =
+        filters.status === "pending" ? "PENDING" :
+        filters.status === "active"  ? "APPROVED" :
+        filters.status === "suspend" ? "SUSPENDED" : undefined;
+      const params: Record<string, any> = { page: 0, size: 100 };
+      if (apiStatusFilter) params.status = apiStatusFilter;
+      const res = await listMentors(params);
+      const content = res?.data?.data?.content || [];
+      setMentorList(content.map(mapApiMentor));
+    } catch (err: any) {
+      console.error("Failed to load mentors", err);
+      toast.error(err?.response?.data?.message || "Failed to load mentors");
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.status]);
+
+  useEffect(() => { loadMentors(); }, [loadMentors]);
+
   const filtered = mentorList.filter((m) => {
     if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filters.status !== "all" && m.status.toLowerCase() !== filters.status) return false;
     return true;
   });
 
-  const updateOfferings = (mentorId: string, offerings: ServiceOffering[]) => {
-    setMentorList((prev) => prev.map((m) => m.id === mentorId ? { ...m, offerings } : m));
-    setSelected((prev) => prev?.id === mentorId ? { ...prev, offerings } : prev);
+  const syncOfferingToTopic = async (mentorId: string, prev: ServiceOffering, next: ServiceOffering) => {
+    const serviceLabel = ALL_SERVICE_TYPES.find((t) => t.id === next.typeId)?.label || next.typeId;
+    const payload = {
+      title: serviceLabel,
+      description: next.description || "",
+      price30min: Math.max(0, Math.round(Number(next.price30min) || Number(next.rate) || 0)),
+      price60min: Math.max(0, Math.round(Number(next.price60min) || Number(next.rate) || 0)),
+      active: next.enabled,
+      pricesConsistent: true,
+      bothPricesSet: true,
+    };
+    try {
+      if (next.topicId) {
+        await updateMentorTopic(mentorId, next.topicId, payload);
+      } else if (next.enabled) {
+        const res = await createMentorTopic(mentorId, payload);
+        const newTopicId = res?.data?.data?.id;
+        if (newTopicId) {
+          next.topicId = newTopicId;
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to sync topic", err);
+      toast.error(err?.response?.data?.message || "Failed to update service");
+      throw err;
+    }
   };
 
-  const openDetail = (m: Mentor) => {
+  const updateOfferings = async (mentorId: string, offerings: ServiceOffering[]) => {
+    const current = mentorList.find((m) => m.id === mentorId);
+    if (!current) return;
+    setMentorList((prev) => prev.map((m) => m.id === mentorId ? { ...m, offerings } : m));
+    setSelected((prev) => prev?.id === mentorId ? { ...prev, offerings } : prev);
+    for (const next of offerings) {
+      const prevOffering = current.offerings.find((o) => o.typeId === next.typeId);
+      if (!prevOffering) continue;
+      const changed =
+        prevOffering.enabled !== next.enabled ||
+        prevOffering.description !== next.description ||
+        prevOffering.rate !== next.rate ||
+        prevOffering.price30min !== next.price30min ||
+        prevOffering.price60min !== next.price60min;
+      if (changed) {
+        try { await syncOfferingToTopic(mentorId, prevOffering, next); } catch { /* toast already shown */ }
+      }
+    }
+  };
+
+  const openDetail = async (m: Mentor) => {
     setSelected(m);
     setEditForm(m);
     setIsEditing(false);
+    try {
+      const res = await getMentor(m.id);
+      const detail = res?.data?.data;
+      if (detail) {
+        const mapped = mapApiMentor(detail);
+        setSelected(mapped);
+        setEditForm(mapped);
+        setMentorList((prev) => prev.map((x) => x.id === mapped.id ? mapped : x));
+      }
+    } catch (err) {
+      console.error("Failed to load mentor detail", err);
+    }
+  };
+
+  const approveMentor = async (m: Mentor) => {
+    try {
+      await updateMentorStatus(m.id, { status: "APPROVED" });
+      toast.success(`${m.name} approved successfully`);
+      await loadMentors();
+      if (selected?.id === m.id) setSelected({ ...m, status: "Active", apiStatus: "APPROVED" });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to approve mentor");
+    }
+  };
+
+  const denyMentor = async (m: Mentor, reason: string) => {
+    try {
+      await updateMentorStatus(m.id, { status: "REJECTED", reason });
+      toast.success(`${m.name} denied`);
+      await loadMentors();
+      setSelected(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to deny mentor");
+    }
+  };
+
+  const saveProfile = async (form: Mentor) => {
+    try {
+      await updateMentorProfile(form.id, {
+        bio: form.bio || "",
+        headline: "",
+        expertiseTags: form.expertiseTags || [],
+      });
+      const apiStatusFromUi: Record<Mentor["status"], ApiStatus> = {
+        Pending: "PENDING",
+        Active: "APPROVED",
+        Suspend: "SUSPENDED",
+      };
+      const targetApiStatus = apiStatusFromUi[form.status];
+      if (form.apiStatus && targetApiStatus && targetApiStatus !== form.apiStatus) {
+        await updateMentorStatus(form.id, { status: targetApiStatus });
+      }
+      toast.success("Profile saved");
+      await loadMentors();
+      setIsEditing(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save profile");
+    }
   };
 
   return (
@@ -633,10 +848,9 @@ function MentorDirectory() {
         <AddMentorWizard
           open={isAddOpen}
           onClose={() => setIsAddOpen(false)}
-          onComplete={(newMentor) => {
-            setMentorList([newMentor, ...mentorList]);
+          onComplete={async () => {
             setIsAddOpen(false);
-            toast.success("Mentor invited successfully");
+            await loadMentors();
           }}
         />
       )}
@@ -767,8 +981,7 @@ function MentorDirectory() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (window.confirm(`Are you sure you want to approve ${m.name}?`)) {
-                                    setMentorList(prev => prev.map(item => item.id === m.id ? { ...item, status: "Active" } : item));
-                                    toast.success(`${m.name} approved successfully`);
+                                    approveMentor(m);
                                   }
                                 }}
                                 style={{ ...primaryBtn, height: 26, fontSize: 11, background: C.green, borderColor: C.green }}
@@ -812,10 +1025,7 @@ function MentorDirectory() {
               <button style={{ ...secondaryBtn, flex: 1, justifyContent: "center" }} onClick={() => setIsEditing(false)}>Cancel</button>
               <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => {
                 if (editForm) {
-                  setMentorList(prev => prev.map(m => m.id === editForm.id ? editForm : m));
-                  setSelected(editForm);
-                  setIsEditing(false);
-                  toast.success("Profile saved");
+                  saveProfile(editForm);
                 }
               }}>Save changes</button>
             </>
@@ -824,10 +1034,8 @@ function MentorDirectory() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (window.confirm(`Are you sure you want to approve ${selected.name}?`)) {
-                    setMentorList(prev => prev.map(item => item.id === selected.id ? { ...item, status: "Active" } : item));
-                    setSelected({ ...selected, status: "Active" });
-                    toast.success(`${selected.name} approved successfully`);
+                  if (selected && window.confirm(`Are you sure you want to approve ${selected.name}?`)) {
+                    approveMentor(selected);
                   }
                 }}
                 style={{ ...primaryBtn, flex: 1, justifyContent: "center", background: C.green, borderColor: C.green }}
@@ -1043,14 +1251,55 @@ function MentorDirectory() {
             
             <div>
                <label style={labelStyle}>Service Settings</label>
-               <ServiceOfferingsSection 
-                 offerings={editForm.offerings} 
-                 onChange={(updated) => setEditForm({...editForm, offerings: updated})} 
+               <ServiceOfferingsSection
+                 offerings={editForm.offerings}
+                 onChange={(updated) => setEditForm({...editForm, offerings: updated})}
                />
             </div>
           </div>
         )}
       </Drawer>
+
+      {pendingDeny && (
+        <Modal
+          open
+          onClose={() => { setPendingDeny(null); setDenyReason(""); }}
+          title={`Deny ${pendingDeny.name}?`}
+          width={420}
+          footer={
+            <>
+              <button onClick={() => { setPendingDeny(null); setDenyReason(""); }} style={secondaryBtn}>Cancel</button>
+              <button
+                onClick={() => {
+                  const m = pendingDeny;
+                  const reason = denyReason;
+                  setPendingDeny(null);
+                  setDenyReason("");
+                  denyMentor(m, reason);
+                }}
+                style={{ ...primaryBtn, background: C.red, borderColor: C.red }}
+              >
+                Confirm deny
+              </button>
+            </>
+          }
+        >
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
+            Denying this mentor will reject their application and remove the MENTOR role from their account. Provide an optional reason.
+          </div>
+          <textarea
+            autoFocus
+            value={denyReason}
+            onChange={(e) => setDenyReason(e.target.value)}
+            placeholder="Reason for denial (optional)"
+            style={{ width: "100%", height: 80, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", resize: "none", outline: "none", boxSizing: "border-box" }}
+          />
+        </Modal>
+      )}
+
+      {loading && (
+        <div style={{ position: "absolute", inset: 0, display: "none" }} />
+      )}
     </div>
   );
 }
@@ -1060,13 +1309,63 @@ function MentorDirectory() {
 function SessionsTab() {
   const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", mentor: "all" });
   const [search, setSearch]     = useState("");
-  const [selected, setSelected] = useState<typeof sessions[0] | null>(null);
+  const [selected, setSelected] = useState<Session | null>(null);
+  const [sessionList, setSessionList] = useState<Session[]>([]);
+  const [, setLoading] = useState(false);
 
-  const filtered = sessions.filter((s) => {
+  const loadBookings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const statusMap: Record<string, string | undefined> = {
+        all: undefined,
+        upcoming: "CONFIRMED",
+        completed: "COMPLETED",
+        cancelled: "CANCELLED",
+      };
+      const params: Record<string, any> = { page: 0, size: 100 };
+      const apiStatus = statusMap[filters.status];
+      if (apiStatus) params.status = apiStatus;
+      const res = await listBookings(params);
+      const content = res?.data?.data?.content || [];
+      setSessionList(content.map(mapApiBooking));
+    } catch (err: any) {
+      console.error("Failed to load bookings", err);
+      toast.error(err?.response?.data?.message || "Failed to load sessions");
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.status]);
+
+  useEffect(() => { loadBookings(); }, [loadBookings]);
+
+  const filtered = sessionList.filter((s) => {
     if (search && !s.student.toLowerCase().includes(search.toLowerCase()) && !s.mentor.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filters.status !== "all" && s.status.toLowerCase() !== filters.status) return false;
+    if (filters.refund === "eligible" && !s.refundEligible) return false;
     return true;
   });
+
+  const cancelSession = async (id: string) => {
+    try {
+      await adminCancelBooking(id);
+      toast.success("Session cancelled");
+      await loadBookings();
+      setSelected(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to cancel session");
+    }
+  };
+
+  const rescheduleSession = async (s: Session) => {
+    const input = window.prompt("New start time (ISO 8601, e.g. 2026-06-01T15:00:00Z):", s.rawStart || "");
+    if (!input) return;
+    try {
+      await adminRescheduleBooking(s.id, input);
+      toast.success("Session rescheduled");
+      await loadBookings();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to reschedule");
+    }
+  };
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -1128,9 +1427,9 @@ function SessionsTab() {
                   <td style={TD}><span style={badge(s.refundEligible ? "amber" : "gray")}>{s.refundEligible ? "Eligible" : "No"}</span></td>
                   <td style={TD}>
                     <div style={{ display: "flex", gap: 5 }}>
-                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); toast.success("Reschedule initiated"); }}>Reschedule</button>
+                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); rescheduleSession(s); }}>Reschedule</button>
                       {s.status !== "Cancelled" && (
-                        <button style={{ ...ghostBtn, color: C.red }} onClick={(e) => { e.stopPropagation(); toast.error("Session cancelled"); }}>Cancel</button>
+                        <button style={{ ...ghostBtn, color: C.red }} onClick={(e) => { e.stopPropagation(); if (window.confirm(`Cancel session ${s.id}? This will issue a refund if applicable.`)) cancelSession(s.id); }}>Cancel</button>
                       )}
                     </div>
                   </td>
@@ -1148,9 +1447,9 @@ function SessionsTab() {
         width={300}
         footer={
           <>
-            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => toast.success("Mentor notified")}>Notify mentor</button>
+            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => selected && rescheduleSession(selected)}>Reschedule</button>
             {selected?.status !== "Cancelled" && (
-              <button style={{ ...secondaryBtn, flex: 1, justifyContent: "center", color: C.red, borderColor: C.redBorder }} onClick={() => toast.error("Session cancelled")}>Cancel session</button>
+              <button style={{ ...secondaryBtn, flex: 1, justifyContent: "center", color: C.red, borderColor: C.redBorder }} onClick={() => selected && window.confirm(`Cancel session ${selected.id}?`) && cancelSession(selected.id)}>Cancel session</button>
             )}
           </>
         }
@@ -1284,21 +1583,52 @@ function InternalNoteSection({ disputeId }: { disputeId: string }) {
 }
 
 function DisputesTab() {
-  const [list, setList]         = useState(disputes);
+  const [list, setList]         = useState<Dispute[]>([]);
   const [filters, setFilters]   = useState<Record<string, string>>({ status: "all" });
-  const [selected, setSelected] = useState<typeof disputes[0] | null>(null);
+  const [selected, setSelected] = useState<Dispute | null>(null);
   const [search, setSearch]     = useState("");
+  const [, setLoading]          = useState(false);
+
+  const loadDisputes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const statusMap: Record<string, string | undefined> = {
+        all: undefined,
+        open: "PENDING",
+        approved: "APPROVED",
+        rejected: "REJECTED",
+      };
+      const params: Record<string, any> = { page: 0, size: 100 };
+      const apiStatus = statusMap[filters.status];
+      if (apiStatus) params.status = apiStatus;
+      const res = await listDisputes(params);
+      const content = res?.data?.data?.content || [];
+      setList(content.map(mapApiDispute));
+    } catch (err: any) {
+      console.error("Failed to load disputes", err);
+      toast.error(err?.response?.data?.message || "Failed to load disputes");
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.status]);
+
+  useEffect(() => { loadDisputes(); }, [loadDisputes]);
 
   const filtered = list.filter((d) => {
     if (search && !d.student.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filters.status !== "all" && d.status.toLowerCase() !== filters.status) return false;
     return true;
   });
 
-  const update = (id: string, status: string) => {
-    setList((prev) => prev.map((d) => d.id === id ? { ...d, status } : d));
-    setSelected((prev) => prev?.id === id ? { ...prev, status } : prev);
-    status === "Approved" ? toast.success("Refund approved") : toast.error("Dispute rejected");
+  const update = async (id: string, status: string) => {
+    const resolution = status === "Approved" ? "APPROVED" : "REJECTED";
+    try {
+      await resolveDispute(id, { resolution });
+      status === "Approved" ? toast.success("Refund approved") : toast.error("Dispute rejected");
+      await loadDisputes();
+      setSelected(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update dispute");
+    }
   };
 
   return (
@@ -1546,10 +1876,10 @@ export function MentorshipManagement() {
   const [tab, setTab] = useState<TabId>("mentors");
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: "mentors",       label: "Mentor directory",    count: mentors.length },
-    { id: "sessions",      label: "Sessions",            count: sessions.length },
+    { id: "mentors",       label: "Mentor directory" },
+    { id: "sessions",      label: "Sessions" },
     { id: "reschedule",    label: "Reschedule / Cancel", count: reschedules.filter((r) => r.status === "Requested").length },
-    { id: "disputes",      label: "Disputes",            count: disputes.filter((d) => d.status === "Open").length },
+    { id: "disputes",      label: "Disputes" },
     { id: "service-types", label: "Service types" },
   ];
 
