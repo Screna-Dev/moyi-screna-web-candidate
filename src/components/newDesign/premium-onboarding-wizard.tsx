@@ -79,13 +79,13 @@ const CONSENT_ITEMS: ConsentItem[] = [
   },
   {
     key: 'PRIVACY_POLICY',
-    required: true,
+    required: false,
     label:
       'I consent to Screna sharing the information in my Application Profile with prospective employers and third-party application platforms as described in the Privacy Policy.',
   },
   {
     key: 'CREDENTIAL_STORAGE_CONSENT',
-    required: true,
+    required: false,
     label:
       'I consent to Screna securely storing the third-party application credentials I provide, solely for the purpose of submitting job applications on my behalf.',
   },
@@ -1186,7 +1186,7 @@ export function PremiumOnboardingWizard({
                   Your Consents
                 </h3>
                 <p className="text-xs text-slate-500 mb-3">
-                  All consents below are required to activate Managed Apply.
+                  The first two consents are required to activate Managed Apply. The rest are optional.
                 </p>
                 <div className="flex flex-col gap-2">
                   {CONSENT_ITEMS.map((item) => (
@@ -1204,7 +1204,13 @@ export function PremiumOnboardingWizard({
                         className="mt-0.5"
                       />
                       <span className="text-[13px] leading-snug text-slate-700">
+                        {item.required && (
+                          <span className="text-red-500 font-semibold">* </span>
+                        )}
                         {item.label}
+                        {!item.required && (
+                          <span className="text-slate-400"> (optional)</span>
+                        )}
                       </span>
                     </label>
                   ))}

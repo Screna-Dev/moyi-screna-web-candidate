@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  CheckCircle2, ChevronDown,
-  MapPin,
+  CheckCircle2, ChevronDown, Clock,
+  MapPin, Pencil, Plus, Search,
   Sparkles,
   Briefcase, X, Lock, RefreshCw,
   SendHorizonal,
@@ -17,8 +17,41 @@ import { Link } from 'react-router';
 import { ApplicationProfileContent } from './application-profile-tab';
 import { PremiumOnboardingWizard } from './premium-onboarding-wizard';
 import JobService from '@/services/JobServices';
-import { getOnboardingStatus, getProfilePreferences } from '@/services/ProfileServices';
+import { getOnboardingStatus, getProfilePreferences, saveProfilePreferences } from '@/services/ProfileServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
+
+const ROLE_SUGGESTIONS = [
+  // Product Manager roles (original list)
+  'Product Manager',
+  'Senior Product Manager',
+  'Group Product Manager',
+  'Staff Product Manager',
+  'Technical Product Manager',
+  'Growth Product Manager',
+  'Director of Product',
+  'Principal PM',
+  'Associate Product Manager',
+  // Engineering / data / other roles
+  'Software Engineer',
+  'AI',
+  'Research',
+  'Software Developer',
+  'Machine Learning',
+  'Data Analyst',
+  'Data Scientist',
+  'Hardware',
+  'Embedded',
+  'Security',
+  'Data Engineer',
+  'Quant',
+  'Mobile',
+  'Full Stack',
+  // Stage
+  'Intern',
+  'New Grad',
+  'Associate',
+  'Co-op',
+];
 
 const formatRecTimeAgo = (iso?: string): string => {
   if (!iso) return '';
@@ -255,10 +288,19 @@ export function JobApplyTab() {
   const [isTimeframeOpen, setIsTimeframeOpen] = useState(false);
   const timeframeRef = useRef<HTMLDivElement>(null);
 
+  const [isRolesOpen, setIsRolesOpen] = useState(false);
+  const rolesRef = useRef<HTMLDivElement>(null);
+
+  const [isEditingRoles, setIsEditingRoles] = useState(false);
+  const [editRoles, setEditRoles] = useState<string[]>([]);
+  const [roleSearch, setRoleSearch] = useState('');
+  const [savingRoles, setSavingRoles] = useState(false);
+
   const [isDelegateUpgradeOpen, setIsDelegateUpgradeOpen] = useState(false);
 
   const [delegatedJobsState, setDelegatedJobsState] = useState<DelegatedJob[]>([]);
   const [profileTargetRoles, setProfileTargetRoles] = useState<string[]>([]);
+  const [profilePreferences, setProfilePreferences] = useState<any>(null);
   const appsInitRef = useRef(false);
   const profileRolesInitRef = useRef(false);
 
@@ -293,6 +335,7 @@ export function JobApplyTab() {
         const res: any = await getProfilePreferences();
         const data = res?.data?.data ?? res?.data;
         const roles = Array.isArray(data?.target_roles) ? data.target_roles : [];
+        setProfilePreferences(data ?? null);
         setProfileTargetRoles(roles);
       } catch (e) {
         console.error('Failed to load profile target roles:', e);
@@ -304,10 +347,56 @@ export function JobApplyTab() {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (timeframeRef.current && !timeframeRef.current.contains(e.target as Node)) setIsTimeframeOpen(false);
+      if (rolesRef.current && !rolesRef.current.contains(e.target as Node)) setIsRolesOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const openEditRoles = async () => {
+    setRoleSearch('');
+    setIsRolesOpen(false);
+    setEditRoles([...profileTargetRoles]);
+    setIsEditingRoles(true);
+    // Pull the latest preferences so we edit/save against current server state.
+    try {
+      const res: any = await getProfilePreferences();
+      const data = res?.data?.data ?? res?.data;
+      const roles = Array.isArray(data?.target_roles) ? data.target_roles : profileTargetRoles;
+      setProfilePreferences(data ?? null);
+      setProfileTargetRoles(roles);
+      setEditRoles([...roles]);
+    } catch (e) {
+      console.error('Failed to load profile preferences:', e);
+    }
+  };
+
+  const addEditRole = (role: string) => {
+    const trimmed = role.trim();
+    if (trimmed.length < 2) return;
+    if (editRoles.some((r) => r.toLowerCase() === trimmed.toLowerCase())) return;
+    setEditRoles((prev) => [...prev, trimmed]);
+    setRoleSearch('');
+  };
+
+  const removeEditRole = (role: string) => {
+    setEditRoles((prev) => prev.filter((r) => r !== role));
+  };
+
+  const saveEditRoles = async () => {
+    setSavingRoles(true);
+    try {
+      await saveProfilePreferences({ ...(profilePreferences ?? {}), target_roles: editRoles });
+      setProfileTargetRoles(editRoles);
+      setProfilePreferences((prev: any) => ({ ...(prev ?? {}), target_roles: editRoles }));
+      setIsEditingRoles(false);
+    } catch (e) {
+      console.error('Failed to save target roles:', e);
+      toast.error('Could not save target roles. Please try again.');
+    } finally {
+      setSavingRoles(false);
+    }
+  };
 
   const [delegatingIds, setDelegatingIds] = useState<Set<string>>(new Set());
 
@@ -511,18 +600,46 @@ export function JobApplyTab() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm text-muted-foreground shrink-0">Showing Results For</span>
-                <div className="flex items-center flex-wrap gap-1.5">
-                  {profileTargetRoles.length === 0 ? (
-                    <span className="text-sm text-muted-foreground italic">No target role set in profile</span>
-                  ) : (
-                    profileTargetRoles.map((role) => (
-                      <span
-                        key={role}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm bg-primary/10 text-primary border border-primary/20 font-medium"
+                <div className="relative" ref={rolesRef}>
+                  <button
+                    onClick={() => setIsRolesOpen((v) => !v)}
+                    className="flex items-center gap-1.5 bg-white border border-border rounded-full px-3 py-1.5 hover:bg-muted transition-colors"
+                  >
+                    <span className="text-sm font-medium text-foreground">
+                      {profileTargetRoles.length === 0 ? 'No target role set' : 'All target roles'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isRolesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isRolesOpen && (
+                    <div className="absolute top-full left-0 mt-1.5 w-[300px] bg-card border border-border rounded-xl shadow-lg z-30 overflow-hidden">
+                      {profileTargetRoles.length === 0 ? (
+                        <div className="px-3.5 py-2.5 text-sm text-muted-foreground italic">
+                          No target role set in profile
+                        </div>
+                      ) : (
+                        <div className="py-1.5 max-h-[260px] overflow-y-auto">
+                          {profileTargetRoles.map((role) => (
+                            <div
+                              key={role}
+                              className="flex items-center gap-2.5 px-3.5 py-2 text-sm text-foreground"
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                              <span className="flex-1 min-w-0 truncate">{role}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="h-px bg-border" />
+                      <button
+                        onClick={openEditRoles}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                       >
-                        {role}
-                      </span>
-                    ))
+                        <Pencil className="w-3.5 h-3.5 shrink-0" />
+                        Edit target roles
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -730,6 +847,137 @@ export function JobApplyTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Edit target roles drawer ── */}
+      {isEditingRoles && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => !savingRoles && setIsEditingRoles(false)}>
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px]" />
+
+          {/* Panel */}
+          <div
+            className="relative w-[400px] max-w-full h-full bg-card border-l border-border shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Job Preferences</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Edit target job titles</p>
+              </div>
+              <button
+                onClick={() => setIsEditingRoles(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-card hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+              {/* Current target roles */}
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2.5">Current target roles</p>
+                {editRoles.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">No roles added yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {editRoles.map((role) => (
+                      <div
+                        key={role}
+                        title={role}
+                        className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full border border-primary/30 bg-primary/[0.08] text-sm text-primary font-medium max-w-[200px]"
+                      >
+                        <span className="truncate">{role}</span>
+                        <button
+                          onClick={() => removeEditRole(role)}
+                          className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-primary/50 hover:text-primary hover:bg-primary/15 transition-colors"
+                          aria-label={`Remove ${role}`}
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add job titles — from suggestions only */}
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2.5">Add job titles</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    value={roleSearch}
+                    onChange={(e) => setRoleSearch(e.target.value)}
+                    placeholder="Search job titles…"
+                    className="w-full pl-9 pr-9 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                  />
+                  {roleSearch.length > 0 && (
+                    <button
+                      onClick={() => setRoleSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Clear input"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Suggestion list */}
+                {(() => {
+                  const suggestions = ROLE_SUGGESTIONS.filter(
+                    (r) =>
+                      r.toLowerCase().includes(roleSearch.trim().toLowerCase()) &&
+                      !editRoles.some((er) => er.toLowerCase() === r.toLowerCase()),
+                  );
+                  if (suggestions.length === 0) {
+                    return (
+                      <p className="mt-2.5 text-xs text-muted-foreground pl-1">No matching roles.</p>
+                    );
+                  }
+                  return (
+                    <div className="mt-2 border border-border rounded-lg overflow-hidden divide-y divide-border max-h-[260px] overflow-y-auto">
+                      {suggestions.map((role) => (
+                        <button
+                          key={role}
+                          onClick={() => addEditRole(role)}
+                          className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left text-foreground hover:bg-muted/40 transition-colors"
+                        >
+                          <span>{role}</span>
+                          <Plus className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                <p className="mt-2.5 text-xs text-muted-foreground">
+                  Select from the suggested job titles above.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-5 py-4 border-t border-border shrink-0 flex items-center gap-3">
+              <button
+                onClick={saveEditRoles}
+                disabled={savingRoles}
+                className="flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {savingRoles ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                onClick={() => setIsEditingRoles(false)}
+                disabled={savingRoles}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

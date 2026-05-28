@@ -37,7 +37,7 @@ import { HomePage } from './pages/newDesign/home/home';
 import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { ContactPage } from './pages/newDesign/contact';
-import Admin from './pages/Admin';
+import AdminConsole from './components/admin/console/AdminConsole';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
 import AdminRoute from './components/AdminRoute';
@@ -195,7 +195,7 @@ export const router = createBrowserRouter([
       { path: '*', element: <ErrorBoundary /> },
 
       // admin — only accessible to users with role ADMIN
-      { path: '/admin', element: <AdminRoute><Admin /></AdminRoute> },
+      { path: '/admin', element: <AdminRoute><AdminConsole /></AdminRoute> },
       { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
       { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
     ],

@@ -38,7 +38,7 @@ interface PageMeta {
   last: boolean;
 }
 
-export default function AdminAuditLogs() {
+export function AuditLogsPanel() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [pageMeta, setPageMeta] = useState<PageMeta | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -130,8 +130,7 @@ export default function AdminAuditLogs() {
   const errorLogs = logs.filter((l) => l.statusCode >= 400).length;
 
   return (
-    <DashboardLayout headerTitle="Audit Logs">
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -293,6 +292,13 @@ export default function AdminAuditLogs() {
           </CardContent>
         </Card>
       </div>
+  );
+}
+
+export default function AdminAuditLogs() {
+  return (
+    <DashboardLayout headerTitle="Audit Logs">
+      <AuditLogsPanel />
     </DashboardLayout>
   );
 }

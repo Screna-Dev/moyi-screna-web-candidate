@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { CSSProperties } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
@@ -1699,7 +1699,13 @@ export function DashboardHome({
 
 // ─── Page wrapper ────────────────────────────────────────────────────────────
 export function DashboardHomePage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+
+  // Admins don't use the candidate dashboard — send them to the admin console.
+  if (!isLoading && user?.role === 'ADMIN') {
+    return <Navigate to="/admin" replace />;
+  }
+
   const nameParts = (user?.name || '').trim().split(' ');
   const userData: UserData | null = user
     ? {
