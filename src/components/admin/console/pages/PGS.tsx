@@ -157,6 +157,82 @@ const labelStyle: React.CSSProperties = {
   letterSpacing: "0.06em", marginBottom: 5,
 };
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const daysInMonth = (year: number, month: number) => new Date(year, month, 0).getDate();
+
+function DateDropdown({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const parseValue = (v: string): [string, string, string] => {
+    const iso = v ? v.slice(0, 10) : "";
+    if (!iso) return ["", "", ""];
+    const parts = iso.split("-");
+    return [parts[0] || "", parts[1] || "", parts[2] || ""];
+  };
+
+  const [y, setY] = useState(() => parseValue(value)[0]);
+  const [m, setM] = useState(() => parseValue(value)[1]);
+  const [d, setD] = useState(() => parseValue(value)[2]);
+
+  useEffect(() => {
+    if (value) {
+      const [ny, nm, nd] = parseValue(value);
+      setY(ny); setM(nm); setD(nd);
+    }
+  }, [value]);
+
+  const currentYear = new Date().getFullYear();
+  const years: number[] = [];
+  for (let i = currentYear + 1; i >= currentYear - 10; i--) years.push(i);
+
+  const update = (ny: string, nm: string, nd: string) => {
+    setY(ny); setM(nm); setD(nd);
+    if (!ny || !nm || !nd) {
+      onChange("");
+      return;
+    }
+    const maxDay = daysInMonth(parseInt(ny), parseInt(nm));
+    const dayNum = Math.min(parseInt(nd), maxDay);
+    onChange(`${ny}-${nm.padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`);
+  };
+
+  const selectStyle: React.CSSProperties = {
+    height: 36, padding: "0 28px 0 10px",
+    background: "#fff", border: "1px solid #E5E7EB",
+    borderRadius: 7, fontSize: 13, fontFamily: "'Inter', sans-serif",
+    color: C.text, outline: "none", boxSizing: "border-box",
+    appearance: "none", cursor: "pointer",
+    backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 8px center",
+  };
+
+  const maxDay = y && m ? daysInMonth(parseInt(y), parseInt(m)) : 31;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.3fr 1fr", gap: 6 }}>
+      <select value={y} onChange={e => update(e.target.value, m, d)} style={selectStyle}>
+        <option value="">Year</option>
+        {years.map(yr => <option key={yr} value={String(yr)}>{yr}</option>)}
+      </select>
+      <select value={m} onChange={e => update(y, e.target.value, d)} style={selectStyle}>
+        <option value="">Month</option>
+        {MONTHS.map((name, i) => (
+          <option key={name} value={String(i + 1).padStart(2, "0")}>{name}</option>
+        ))}
+      </select>
+      <select value={d} onChange={e => update(y, m, e.target.value)} style={selectStyle}>
+        <option value="">Day</option>
+        {Array.from({ length: maxDay }, (_, i) => i + 1).map(day => (
+          <option key={day} value={String(day).padStart(2, "0")}>{day}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function PGS() {
@@ -819,7 +895,7 @@ export function PGS() {
                   </div>
                   <div>
                     <label style={{ ...labelStyle, color: "#6B7280" }}>Start Date</label>
-                    <input value={form.startDate} onChange={e => setForm(f => ({...f, startDate: e.target.value}))} type="text" placeholder="MM/DD/YYYY" style={{ ...inputStyle, height: 36, background: "#fff", borderColor: "#E5E7EB" }} />
+                    <DateDropdown value={form.startDate} onChange={v => setForm(f => ({...f, startDate: v}))} />
                   </div>
                 </div>
               </div>
@@ -961,7 +1037,7 @@ export function PGS() {
                   </div>
                   <div>
                     <label style={{ ...labelStyle, color: "#6B7280" }}>Start Date</label>
-                    <input value={editForm.startDate} onChange={e => setEditForm(f => ({...f, startDate: e.target.value}))} type="text" placeholder="MM/DD/YYYY" style={{ ...inputStyle, height: 36, background: "#fff", borderColor: "#E5E7EB" }} />
+                    <DateDropdown value={editForm.startDate} onChange={v => setEditForm(f => ({...f, startDate: v}))} />
                   </div>
                 </div>
               </div>
