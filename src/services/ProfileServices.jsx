@@ -120,6 +120,18 @@ export const saveProfilePreferences = (preferences) => {
   return API.post(`${BASE_URL}/preferences`, preferences);
 };
 
+/**
+ * Save onboarding user insights. Body shape (lowercase enum values):
+ *   target_roles, goal_clarity_level (know_exactly | deciding_between | exploring),
+ *   company_size_categories (faang | large | mid_size | startup), target_companies,
+ *   job_search_stage (just_exploring | actively_applying | interviewing | urgent_assistance),
+ *   priority_needs (ai_interview_practice | strategic_planning | expert_feedback |
+ *                   referrals_and_job_search | not_sure_yet).
+ */
+export const saveUserInsights = (insights) => {
+  return API.post(`${BASE_URL}/user-insights`, insights);
+};
+
 // ============================================
 // Jobs / Application Preferences APIs  (/apply/candidates/preferences)
 // ============================================
@@ -166,6 +178,7 @@ const ProfileService = {
   // Profile preferences
   getProfilePreferences,
   saveProfilePreferences,
+  saveUserInsights,
   // Jobs preferences
   getJobsPreferences,
   upsertJobsPreferences,

@@ -4,9 +4,10 @@ import { Loader2 } from 'lucide-react';
 
 interface AdminRouteProps {
   children: React.ReactNode;
+  allowedRoles?: string[];
 }
 
-export default function AdminRoute({ children }: AdminRouteProps) {
+export default function AdminRoute({ children, allowedRoles = ['ADMIN'] }: AdminRouteProps) {
   const { user, isLoading } = useAuth();
   const location = useLocation();
 
@@ -22,7 +23,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  if (user.role !== 'ADMIN') {
+  if (!user.role || !allowedRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
 

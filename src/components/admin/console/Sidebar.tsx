@@ -32,12 +32,15 @@ export type Page =
 interface SidebarProps {
   currentPage: Page;
   onPageChange: (page: Page) => void;
+  userRole?: string;
 }
 
-const sections: {
+type SidebarSection = {
   label?: string;
   items: { id: Page; label: string; icon: React.ElementType; badge?: string }[];
-}[] = [
+};
+
+const sections: SidebarSection[] = [
   {
     items: [
       { id: "command-center",      label: "Command Center",      icon: LayoutDashboard },
@@ -76,7 +79,19 @@ const sections: {
   },
 ];
 
-export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
+export function Sidebar({ currentPage, onPageChange, userRole }: SidebarProps) {
+  const role = (userRole || "").toUpperCase();
+  const visibleSections: SidebarSection[] = sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (role === "OPS") return item.id === "resume-applications";
+        // Non-OPS (ADMIN, etc.): hide the OPS-only Job Applications tab
+        return item.id !== "resume-applications";
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+
   return (
     <aside
       style={{
@@ -141,7 +156,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px 12px" }}>
-        {sections.map((section, si) => (
+        {visibleSections.map((section, si) => (
           <div key={si} style={{ marginBottom: 4 }}>
             {section.label && (
               <div

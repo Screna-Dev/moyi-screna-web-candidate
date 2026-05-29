@@ -257,6 +257,153 @@ export const getAuditLogs = (params = {}) => {
 };
 
 // ============================================
+// User → Ops Assignment APIs
+// ============================================
+
+const USER_OPS_URL = '/apply/admin/user-ops-assignments';
+
+/**
+ * List candidate → ops assignments (filterable).
+ * @param {Object} [params]
+ * @param {string} [params.userId]
+ * @param {string} [params.opsUserId]
+ * @param {boolean} [params.includeRevoked]
+ * @param {number} [params.offset]
+ */
+export const listUserOpsAssignments = (params = {}) => {
+  return API.get(USER_OPS_URL, { params });
+};
+
+/**
+ * Assign or re-assign a candidate to an ops operator.
+ * @param {Object} body
+ * @param {string} body.user_id
+ * @param {string} body.ops_user_id
+ */
+export const assignUserToOps = (body) => {
+  return API.put(USER_OPS_URL, body);
+};
+
+/**
+ * Revoke the active candidate → ops mapping for a user.
+ * @param {string} userId
+ */
+export const revokeUserOpsAssignment = (userId) => {
+  return API.delete(`${USER_OPS_URL}/${userId}`);
+};
+
+// ============================================
+// Ops Account APIs
+// ============================================
+
+/**
+ * Sign up a new Ops account (admin-created).
+ * Password must satisfy the shared policy in src/lib/passwordPolicy.tsx
+ * (≥8 chars, uppercase, lowercase, digit, special char). Validate client-side
+ * before calling.
+ * @param {Object} body
+ * @param {string} body.email - Email address (max 128 chars)
+ * @param {string} body.password
+ * @param {string} body.name - Full name (max 512 chars)
+ * @returns {Promise} API response
+ */
+export const opsSignup = (body) => {
+  return API.post(`${BASE_URL}/ops/signup`, body);
+};
+
+// ============================================
+// Ops Console - Tickets & Applications APIs
+// ============================================
+
+const OPS_TICKETS_URL = '/apply/ops/tickets';
+const OPS_APPLICATIONS_URL = '/apply/ops/applications';
+
+/**
+ * List ops tickets (filterable, sortable, paginated).
+ * @param {Object} [params]
+ * @param {"OPEN"|"CLAIMED"|"IN_PROGRESS"|"COMPLETED"|"FAILED"} [params.status]
+ * @param {string} [params.assignedTo]
+ * @param {string} [params.userId] - Filter by candidate user_id (if backend supports)
+ * @param {string} [params.sort] - e.g. "priority"
+ * @param {number} [params.limit]
+ * @param {number} [params.offset]
+ */
+export const listOpsTickets = (params = {}) => {
+  return API.get(OPS_TICKETS_URL, { params });
+};
+
+/**
+ * Ticket detail — aggregate of ticket + application + job + candidate.
+ * @param {string} ticketId
+ */
+export const getOpsTicket = (ticketId) => {
+  return API.get(`${OPS_TICKETS_URL}/${ticketId}`);
+};
+
+/**
+ * Atomic claim — OPEN → CLAIMED (assigned to caller).
+ * @param {string} ticketId
+ */
+export const claimOpsTicket = (ticketId) => {
+  return API.post(`${OPS_TICKETS_URL}/${ticketId}/claim`);
+};
+
+/**
+ * Start work — ticket CLAIMED → IN_PROGRESS + application QUEUED → IN_PROGRESS.
+ * @param {string} ticketId
+ */
+export const startOpsTicket = (ticketId) => {
+  return API.post(`${OPS_TICKETS_URL}/${ticketId}/start`);
+};
+
+/**
+ * Mark application submitted (multipart with screenshot).
+ * App IN_PROGRESS → SUBMITTED + ticket → COMPLETED.
+ * @param {string} applicationId
+ * @param {File|Blob} screenshot - Application screenshot (PNG/JPEG/WebP/PDF, ≤10 MB)
+ * @param {Object} [opts]
+ * @param {string} [opts.notes]
+ * @param {string} [opts.browserbase_session_id]
+ */
+export const markApplicationSubmitted = (applicationId, screenshot, opts = {}) => {
+  const form = new FormData();
+  form.append('screenshot', screenshot);
+  return API.post(
+    `${OPS_APPLICATIONS_URL}/${applicationId}/mark-submitted`,
+    form,
+    {
+      params: {
+        ...(opts.notes ? { notes: opts.notes } : {}),
+        ...(opts.browserbase_session_id ? { browserbase_session_id: opts.browserbase_session_id } : {}),
+      },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
+  );
+};
+
+/**
+ * Mark application failed (multipart, screenshot optional).
+ * App IN_PROGRESS → FAILED + ticket → FAILED.
+ * @param {string} applicationId
+ * @param {Object} args
+ * @param {string} args.failure_reason
+ * @param {string} args.layer
+ * @param {File|Blob} [args.screenshot] - Optional failure screenshot
+ */
+export const markApplicationFailed = (applicationId, { failure_reason, layer, screenshot } = {}) => {
+  const form = new FormData();
+  if (screenshot) form.append('screenshot', screenshot);
+  return API.post(
+    `${OPS_APPLICATIONS_URL}/${applicationId}/mark-failed`,
+    form,
+    {
+      params: { failure_reason, layer },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
+  );
+};
+
+// ============================================
 // PGS Management APIs
 // ============================================
 
@@ -390,6 +537,19 @@ const adminService = {
   getPgsMemberStats,
   getPgsGlobalStats,
   generatePgsSlug,
+  // Ops Account
+  opsSignup,
+  // User → Ops Assignments
+  listUserOpsAssignments,
+  assignUserToOps,
+  revokeUserOpsAssignment,
+  // Ops Console - Tickets
+  listOpsTickets,
+  getOpsTicket,
+  claimOpsTicket,
+  startOpsTicket,
+  markApplicationSubmitted,
+  markApplicationFailed,
 };
 
 export default adminService;

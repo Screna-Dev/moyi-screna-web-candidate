@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/newDesign/ui/button';
 import { Input } from '@/components/newDesign/ui/input';
@@ -224,9 +224,17 @@ function PrivacyContent() {
 
 export function AuthPage() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const isRegisterRoute = location.pathname === '/register';
   const returnTo = searchParams.get('returnTo') || '';
-  const referralCode = searchParams.get('referral_code') || '';
-  const [isLogin, setIsLogin] = useState(searchParams.get('login') === 'true');
+  const referralCode =
+    searchParams.get('ref') ||
+    searchParams.get('referral_code') ||
+    searchParams.get('referralCode') ||
+    '';
+  const [isLogin, setIsLogin] = useState(
+    isRegisterRoute ? false : searchParams.get('login') === 'true'
+  );
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -254,7 +262,7 @@ export function AuthPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      if (user?.role === 'ADMIN') {
+      if (user?.role === 'ADMIN' || user?.role === 'OPS') {
         navigate('/admin', { replace: true });
       } else {
         navigate(returnTo || '/dashboard', { replace: true });
@@ -340,9 +348,9 @@ export function AuthPage() {
         if (loggedInUser?.role === 'CANDIDATE') {
           navigate(returnTo || '/dashboard');
         }
-        if (loggedInUser?.role === 'ADMIN') navigate('/admin');
+        if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') navigate('/admin');
       } else {
-        await signup(email, password, name);
+        await signup(email, password, name, referralCode || undefined);
         setRegisteredEmail(email);
         setIsNewSignup(true);
         setShowVerification(true);
@@ -418,7 +426,7 @@ export function AuthPage() {
           navigate(onboardingDest);
           return;
         }
-        if (loggedInUser?.role === 'ADMIN') {
+        if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
           navigate('/admin');
           return;
         }
@@ -778,17 +786,19 @@ export function AuthPage() {
                   </div>
                 )}
 
-                {/* Toggle login/signup */}
-                <div className="text-center text-sm text-slate-500">
-                  {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
-                  <button
-                    type="button"
-                    onClick={handleToggle}
-                    className="text-blue-600 hover:text-blue-700 hover:underline font-semibold"
-                  >
-                    {isLogin ? 'Sign Up' : 'Log In'}
-                  </button>
-                </div>
+                {/* Toggle login/signup — hidden on /register (signup-only) */}
+                {!isRegisterRoute && (
+                  <div className="text-center text-sm text-slate-500">
+                    {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
+                    <button
+                      type="button"
+                      onClick={handleToggle}
+                      className="text-blue-600 hover:text-blue-700 hover:underline font-semibold"
+                    >
+                      {isLogin ? 'Sign Up' : 'Log In'}
+                    </button>
+                  </div>
+                )}
               </form>
             </>
           )}

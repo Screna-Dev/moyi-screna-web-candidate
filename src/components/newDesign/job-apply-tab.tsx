@@ -299,6 +299,8 @@ export function JobApplyTab() {
   const [isDelegateUpgradeOpen, setIsDelegateUpgradeOpen] = useState(false);
 
   const [delegatedJobsState, setDelegatedJobsState] = useState<DelegatedJob[]>([]);
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [monthlyLimit, setMonthlyLimit] = useState(0);
   const [profileTargetRoles, setProfileTargetRoles] = useState<string[]>([]);
   const [profilePreferences, setProfilePreferences] = useState<any>(null);
   const appsInitRef = useRef(false);
@@ -318,11 +320,23 @@ export function JobApplyTab() {
     }
   };
 
+  const fetchApplicationsCount = async () => {
+    try {
+      const res: any = await JobService.getApplicationsCount();
+      const data = res?.data?.data ?? {};
+      setAppliedCount(Number(data.count) || 0);
+      setMonthlyLimit(Number(data.monthly_limit) || 0);
+    } catch (e) {
+      console.error('Failed to load applications count:', e);
+    }
+  };
+
   useEffect(() => {
     if (onboardingState !== 'complete') return;
     if (appsInitRef.current) return;
     appsInitRef.current = true;
     fetchApplications();
+    fetchApplicationsCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingState]);
 
@@ -415,6 +429,7 @@ export function JobApplyTab() {
       await JobService.acceptRecommendation(recId);
       setRecommendedJobs(prev => prev.filter(j => j.id !== recId));
       await fetchApplications();
+      fetchApplicationsCount();
       setActiveTab('delegated');
       toast.success('Job delegated successfully!', {
         description: `${recTitle} at ${recCompany} has been sent to your advisor.`,
@@ -775,15 +790,15 @@ export function JobApplyTab() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-foreground" style={{ fontWeight: 500 }}>Delegation Progress</span>
                 <span className="text-sm tabular-nums" style={{ fontWeight: 700 }}>
-                  <span className="text-primary">{delegatedJobsState.length}</span>
-                  <span className="text-muted-foreground" style={{ fontWeight: 400 }}> / {recsTotal}</span>
+                  <span className="text-primary">{appliedCount}</span>
+                  <span className="text-muted-foreground" style={{ fontWeight: 400 }}> / {monthlyLimit}</span>
                 </span>
               </div>
               <div className="w-full h-[9px] rounded-full bg-muted overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-700 ease-out"
                   style={{
-                    width: `${recsTotal > 0 ? Math.min(100, (delegatedJobsState.length / recsTotal) * 100) : 0}%`,
+                    width: `${monthlyLimit > 0 ? Math.min(100, (appliedCount / monthlyLimit) * 100) : 0}%`,
                     background: 'linear-gradient(90deg, var(--color-primary) 0%, #6fa4fa 100%)',
                   }}
                 />

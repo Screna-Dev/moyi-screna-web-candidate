@@ -104,6 +104,7 @@ export const router = createBrowserRouter([
       { path: '/pricing', element: <PricingPage /> },
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
+      { path: '/register', element: <AuthPage /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
@@ -194,8 +195,8 @@ export const router = createBrowserRouter([
         },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin — only accessible to users with role ADMIN
-      { path: '/admin', element: <AdminRoute><AdminConsole /></AdminRoute> },
+      // admin — ADMIN sees full console; OPS sees only Job Applications
+      { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },
       { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
       { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
     ],

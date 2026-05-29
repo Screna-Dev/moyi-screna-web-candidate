@@ -1,15 +1,44 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { C, badge, card, TH, TD, primaryBtn, secondaryBtn, searchInput, filterChip } from "../ui/styles";
 import { Users, FileText, Search, Filter, UserCog, Bot, TerminalSquare, AlertCircle, CheckCircle2, ChevronRight, Activity, Calendar, FileDown, MoreHorizontal, Plus, Trash2, UserPlus } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { FilterBar } from "../ui/FilterBar";
+import { adminService } from "@/services";
+import { validatePassword, PasswordRequirements } from "@/lib/passwordPolicy";
 
-// Dummy Data
-const DUMMY_OPS = [
-  { id: "O-01", name: "Alice Chen", role: "Ops Manager", scope: "Application Only + Mentorship", assignedUsers: 45, pending: 12, avatar: "A" },
-  { id: "O-02", name: "Brian Smith", role: "Customer Support", scope: "Application Only", assignedUsers: 20, pending: 2, avatar: "B" },
-  { id: "O-03", name: "Carla Gomez", role: "Customer Support", scope: "Application Only + Mentorship", assignedUsers: 38, pending: 5, avatar: "C" },
-];
+const extractErr = (e: any, fallback: string) =>
+  e?.response?.data?.message || e?.message || fallback;
+
+type OpsMember = {
+  id: string;
+  name: string;
+  email?: string;
+  role: string;
+  scope: string;
+  assignedUsers: number;
+  pending: number;
+  avatar: string;
+};
+
+const hasOpsRole = (u: any): boolean => {
+  const roles: string[] = u?.roles ?? (u?.role ? [u.role] : []);
+  return roles.map((r) => String(r).toUpperCase()).includes("OPS");
+};
+
+const toOpsMember = (u: any): OpsMember => {
+  const name = (u.name || u.email || u.id || "").toString();
+  return {
+    id: u.id,
+    name,
+    email: u.email,
+    role: "Ops",
+    scope: "Application Only",
+    assignedUsers: 0,
+    pending: 0,
+    avatar: (name.trim()[0] || "?").toUpperCase(),
+  };
+};
 
 const DUMMY_USERS = [
   { id: "U-100", name: "David Kim", plan: "Premium", ops: "Alice Chen", status: "Active", pendingReview: 2, scope: "Mentorship", lastActive: "2 hrs ago" },
@@ -32,17 +61,112 @@ export function OpsManager() {
   const [role, setRole] = useState<"Ops Manager" | "Customer Support Management">("Ops Manager");
   const [activeTab, setActiveTab] = useState<"Ops Team" | "Users">("Ops Team");
   
-  const [selectedOps, setSelectedOps] = useState<typeof DUMMY_OPS[0] | null>(null);
+  const [selectedOps, setSelectedOps] = useState<OpsMember | null>(null);
   const [assignUser, setAssignUser] = useState<typeof DUMMY_USERS[0] | null>(null);
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [newMember, setNewMember] = useState({ email: "", password: "", name: "" });
+  const [creatingMember, setCreatingMember] = useState(false);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [assigning, setAssigning] = useState(false);
+  const [opsMembers, setOpsMembers] = useState<OpsMember[]>([]);
+  const [opsLoading, setOpsLoading] = useState(false);
+
+  const loadAssignments = useCallback(async () => {
+    try {
+      const res = await adminService.listUserOpsAssignments({ includeRevoked: false });
+      const items: Array<{ user_id: string; ops_user_id: string; revoked_at?: string | null }> =
+        res.data?.data?.items ?? [];
+      const map: Record<string, string> = {};
+      for (const a of items) {
+        if (!a.revoked_at) map[a.user_id] = a.ops_user_id;
+      }
+      setAssignments(map);
+    } catch {
+      setAssignments({});
+    }
+  }, []);
+
+  const loadOpsMembers = useCallback(async () => {
+    setOpsLoading(true);
+    try {
+      const res = await adminService.searchUsers({ roleType: "OPS", size: 200 });
+      const items: any[] = res.data?.data?.content ?? [];
+      setOpsMembers(items.filter(hasOpsRole).map(toOpsMember));
+    } catch {
+      setOpsMembers([]);
+    } finally {
+      setOpsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAssignments(); }, [loadAssignments]);
+  useEffect(() => { loadOpsMembers(); }, [loadOpsMembers]);
+
+  const closeAddMember = () => {
+    setIsAddingMember(false);
+    setNewMember({ email: "", password: "", name: "" });
+  };
+
+  const handleCreateMember = async () => {
+    const email = newMember.email.trim();
+    const password = newMember.password;
+    const name = newMember.name.trim();
+
+    if (!email || !password || !name) {
+      toast.error("Email, password, and name are required");
+      return;
+    }
+    if (email.length > 128) {
+      toast.error("Email must be at most 128 characters");
+      return;
+    }
+    const passwordErrors = validatePassword(password);
+    if (passwordErrors.length > 0) {
+      toast.error(passwordErrors[0]);
+      return;
+    }
+    if (name.length > 512) {
+      toast.error("Name must be at most 512 characters");
+      return;
+    }
+
+    setCreatingMember(true);
+    try {
+      await adminService.opsSignup({ email, password, name });
+      toast.success(`Ops account created for ${name}`);
+      closeAddMember();
+      await loadOpsMembers();
+    } catch (e: any) {
+      toast.error(extractErr(e, "Failed to create Ops account"));
+    } finally {
+      setCreatingMember(false);
+    }
+  };
 
   // Determine allowed scope based on role
   const allowedScope = role === "Ops Manager" ? "Application Only + Mentorship" : "Application Only";
   const canSeeCore = role === "Ops Manager";
 
+  // Derive per-ops assigned-user counts from the active assignments map.
+  const assignedCounts: Record<string, number> = {};
+  for (const opsId of Object.values(assignments)) {
+    assignedCounts[opsId] = (assignedCounts[opsId] || 0) + 1;
+  }
+  const opsWithCounts: OpsMember[] = opsMembers.map(o => ({
+    ...o,
+    assignedUsers: assignedCounts[o.id] || 0,
+  }));
+
   // Filtered data based on role
-  const visibleOps = DUMMY_OPS.filter(o => canSeeCore ? true : o.scope === "Application Only");
-  const visibleUsers = DUMMY_USERS.filter(u => canSeeCore ? true : u.scope === "Application Only");
+  const visibleOps = opsWithCounts.filter(o => canSeeCore ? true : o.scope === "Application Only");
+  const visibleUsers = DUMMY_USERS
+    .filter(u => canSeeCore ? true : u.scope === "Application Only")
+    .map(u => {
+      const opsId = assignments[u.id];
+      if (!opsId) return u;
+      const ops = opsWithCounts.find(o => o.id === opsId);
+      return { ...u, ops: ops?.name ?? opsId };
+    });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bgPage }}>
@@ -133,9 +257,19 @@ export function OpsManager() {
               {visibleOps.map(o => (
                 <button
                   key={o.id}
-                  onClick={() => {
-                    alert(`${assignUser.name} assigned to ${o.name}`);
-                    setAssignUser(null);
+                  disabled={assigning}
+                  onClick={async () => {
+                    setAssigning(true);
+                    try {
+                      await adminService.assignUserToOps({ user_id: assignUser.id, ops_user_id: o.id });
+                      toast.success(`${assignUser.name} assigned to ${o.name}`);
+                      setAssignUser(null);
+                      await loadAssignments();
+                    } catch (e: any) {
+                      toast.error(extractErr(e, "Failed to assign"));
+                    } finally {
+                      setAssigning(false);
+                    }
                   }}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
@@ -157,12 +291,42 @@ export function OpsManager() {
         )}
       </Drawer>
 
-      <Drawer open={isAddingMember} onClose={() => setIsAddingMember(false)} title="Add Ops Member" width={400}>
+      <Drawer open={isAddingMember} onClose={closeAddMember} title="Add Ops Member" width={400}>
         <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
           <div>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>Full Name</label>
-            <input type="text" placeholder="e.g. Jane Doe" style={{ ...searchInput, width: "100%", height: 36, paddingLeft: 12 }} />
+            <input
+              type="text"
+              placeholder="e.g. Jane Doe"
+              value={newMember.name}
+              onChange={(e) => setNewMember(m => ({ ...m, name: e.target.value }))}
+              style={{ ...searchInput, width: "100%", height: 36, paddingLeft: 12 }}
+            />
           </div>
+          <div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>Email</label>
+            <input
+              type="email"
+              placeholder="jane@screna.ai"
+              value={newMember.email}
+              onChange={(e) => setNewMember(m => ({ ...m, email: e.target.value }))}
+              style={{ ...searchInput, width: "100%", height: 36, paddingLeft: 12 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>Password</label>
+            <input
+              type="password"
+              value={newMember.password}
+              onChange={(e) => setNewMember(m => ({ ...m, password: e.target.value }))}
+              style={{ ...searchInput, width: "100%", height: 36, paddingLeft: 12 }}
+            />
+            {newMember.password.length > 0 && (
+              <PasswordRequirements password={newMember.password} />
+            )}
+          </div>
+          {/* Role & Permission and Assigned Scope are not yet supported by the backend.
+              Re-enable when opsSignup accepts role / scope fields.
           <div>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8 }}>Role & Permission</label>
             <select style={{ ...searchInput, width: "100%", height: 36, paddingLeft: 12, appearance: "auto" }}>
@@ -180,12 +344,22 @@ export function OpsManager() {
               This determines which user accounts this member can access and manage.
             </div>
           </div>
+          */}
           <div style={{ marginTop: 12, display: "flex", gap: 12, justifyContent: "flex-end" }}>
-            <button onClick={() => setIsAddingMember(false)} style={{ ...secondaryBtn, height: 36, padding: "0 16px" }}>Cancel</button>
-            <button onClick={() => {
-              alert("Member added successfully!");
-              setIsAddingMember(false);
-            }} style={{ ...primaryBtn, height: 36, padding: "0 16px" }}>Create Member</button>
+            <button onClick={closeAddMember} style={{ ...secondaryBtn, height: 36, padding: "0 16px" }}>Cancel</button>
+            <button
+              onClick={handleCreateMember}
+              disabled={creatingMember || validatePassword(newMember.password).length > 0 || !newMember.email.trim() || !newMember.name.trim()}
+              style={{
+                ...primaryBtn,
+                height: 36,
+                padding: "0 16px",
+                opacity: (creatingMember || validatePassword(newMember.password).length > 0 || !newMember.email.trim() || !newMember.name.trim()) ? 0.6 : 1,
+                cursor: creatingMember ? "not-allowed" : "pointer",
+              }}
+            >
+              {creatingMember ? "Creating..." : "Create Member"}
+            </button>
           </div>
         </div>
       </Drawer>
@@ -193,7 +367,7 @@ export function OpsManager() {
   );
 }
 
-function OverviewTab({ canSeeCore, users, ops, onAssignUser }: { canSeeCore: boolean, users: typeof DUMMY_USERS, ops: typeof DUMMY_OPS, onAssignUser: (u: any) => void }) {
+function OverviewTab({ canSeeCore, users, ops, onAssignUser }: { canSeeCore: boolean, users: typeof DUMMY_USERS, ops: OpsMember[], onAssignUser: (u: any) => void }) {
   const pendingCount = users.reduce((acc, u) => acc + u.pendingReview, 0);
   const unassigned = users.filter(u => u.ops === "Unassigned").length;
 
@@ -281,10 +455,12 @@ function SummaryCard({ title, value, trend, variant = "default" }: { title: stri
   );
 }
 
-function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: typeof DUMMY_OPS, onViewOps: (o: any) => void, onAddMember: () => void }) {
+function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewOps: (o: OpsMember) => void, onAddMember: () => void }) {
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [opsList, setOpsList] = useState(ops);
+  const [opsList, setOpsList] = useState<OpsMember[]>(ops);
+
+  useEffect(() => { setOpsList(ops); }, [ops]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {

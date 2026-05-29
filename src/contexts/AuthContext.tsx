@@ -20,7 +20,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  signup: (email: string, password: string, name: string, referralCode?: string) => Promise<void>;
   loginWithGoogle: (fromSignup?: boolean, returnTo?: string, referralCode?: string) => void;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
@@ -191,9 +191,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async (email: string, password: string, name: string, referralCode?: string) => {
     try {
-      await API.post('/auth/signup', { email, password, name });
+      const payload: Record<string, string> = { email, password, name };
+      if (referralCode) payload.referralCode = referralCode;
+      await API.post('/auth/signup', payload);
     } catch (error: any) {
       if (error.response?.data?.errorCode === 'EMAIL_NOT_VERIFIED' || 
           error.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED') {

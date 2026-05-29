@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
   Search, Plus, ExternalLink, Upload, CheckSquare, Square,
@@ -8,8 +8,73 @@ import {
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, filterChip, card, searchInput } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { EmptyState } from "../ui/EmptyState";
-import { ApplicationProfileVault, getProfileSummary } from "../ui/ApplicationProfileVault";
-import { copyText } from "../ui/clipboard";
+import { adminService } from "@/services";
+
+const extractErr = (e: any, fallback: string) =>
+  e?.response?.data?.message || e?.message || fallback;
+
+type ApiTicket = {
+  ticket_id: string;
+  user_id?: string;
+  application_id?: string;
+  status: string;
+  priority?: number;
+  assigned_to?: string | null;
+  company_name?: string;
+  role_title?: string;
+  location_str?: string;
+  posted_at?: string;
+  claimed_at?: string;
+  sla_due_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type UiTicket = {
+  id: string;
+  applicationId?: string;
+  priority?: number;
+  status: string;
+  company?: string;
+  role?: string;
+  ats?: string;
+  owner?: string;
+  proof?: string;
+  updated?: string;
+  startedAt?: string;
+  lastActivity?: string;
+  location?: string;
+  created?: string;
+  submittedAt?: string;
+  reviewStatus?: string;
+  failureReason?: string;
+  failedAt?: string;
+  failedBy?: string;
+  attempts?: number;
+  nextStep?: string;
+  url?: string;
+};
+
+const formatTime = (iso?: string) => {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+};
+
+const normalizeTicket = (t: ApiTicket): UiTicket => ({
+  id: t.ticket_id,
+  applicationId: t.application_id,
+  priority: t.priority,
+  status: t.status,
+  company: t.company_name,
+  role: t.role_title,
+  location: t.location_str,
+  owner: t.assigned_to || "Unassigned",
+  created: formatTime(t.created_at),
+  updated: formatTime(t.updated_at),
+  startedAt: formatTime(t.claimed_at),
+});
 
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   "OPEN": "amber",
@@ -36,163 +101,15 @@ function renderProof(proof: string) {
   return <span style={{ color: C.textSub }}>—</span>;
 }
 
-const users = [
-  { id: "u1", name: "Emily Zhang",  targetRole: "SWE → FAANG",       ops: "Alex Kim",    openTickets: 8,  progress: { done: 38,  total: 200 }, status: "New", visa: "H1B",     locations: ["SF", "Seattle", "Remote"], salary: "$180k–$220k", resumeStatus: "Approved",        companies: ["Google", "Meta", "Amazon"], notes: "Strong distributed systems. Prioritize L5+. Avoid startups.",   jobTitles: ["Software Engineer", "Staff SWE", "Platform Engineer"] },
-  { id: "u2", name: "Marcus Liu",   targetRole: "PM → Series B",      ops: "Jennifer Wu", openTickets: 12, progress: { done: 12,  total: 100 }, status: "Needs review", visa: "Citizen", locations: ["NYC", "Boston"],           salary: "$160k–$180k", resumeStatus: "Awaiting review", companies: ["Stripe", "Notion"],         notes: "Resume needs updating. Waiting on latest version.",            jobTitles: ["Product Manager", "Senior PM", "Group PM"] },
-  { id: "u3", name: "Sarah Chen",   targetRole: "Data Eng → Big Tech", ops: "Alex Kim",   openTickets: 3,  progress: { done: 67,  total: 200 }, status: "New", visa: "GC",      locations: ["Seattle", "Remote"],       salary: "$160k–$200k", resumeStatus: "Approved",        companies: ["Microsoft", "Google"],     notes: "On track. Prefers morning Ops hours.",                         jobTitles: ["Data Engineer", "Staff Data Engineer", "Analytics Engineer"] },
-  { id: "u4", name: "Ryan Torres",  targetRole: "Backend → Staff",     ops: "Unassigned",  openTickets: 0,  progress: { done: 0,   total: 150 }, status: "Unclaimed",   visa: "Citizen", locations: ["Austin", "Remote"],        salary: "$200k+",     resumeStatus: "Not uploaded",    companies: [],                          notes: "",                                                             jobTitles: ["Backend Engineer", "Staff Engineer"] },
-  { id: "u5", name: "Priya Patel",  targetRole: "ML Eng → FAANG",      ops: "Jennifer Wu", openTickets: 5,  progress: { done: 67,  total: 200 }, status: "New", visa: "OPT",     locations: ["SF Bay Area"],            salary: "$200k+",     resumeStatus: "Approved",        companies: ["Google", "Meta", "OpenAI"], notes: "OPT deadline 4 months. Prioritize sponsorship.",               jobTitles: ["ML Engineer", "Research Engineer", "Applied Scientist"] },
-];
-
-const ticketsByUser: Record<string, any[]> = {
-  u1: [
-    { id: "T-001", priority: 220, status: "IN_PROGRESS", company: "Anthropic", role: "Research Engineer, Alignment", ats: "Greenhouse", owner: "Alex Kim", proof: "—", updated: "2h ago", startedAt: "5/18/2026, 6:24 PM", lastActivity: "2h ago" },
-    { id: "T-002", priority: 200, status: "OPEN", company: "Stripe", role: "Senior Product Manager, Payments", ats: "Greenhouse", owner: "Unassigned", proof: "—", updated: "Today", location: "New York, NY", created: "Today" },
-    { id: "T-003", priority: 180, status: "OPEN", company: "Figma", role: "Software Engineer, Multiplayer", ats: "Greenhouse", owner: "Unassigned", proof: "—", updated: "Yesterday", location: "San Francisco, CA", created: "Yesterday" },
-    { id: "T-004", priority: 100, status: "COMPLETED", company: "Notion", role: "Machine Learning Engineer, AI", ats: "Lever", owner: "ops-bob", proof: "Uploaded", updated: "May 18", location: "New York, NY", completedAt: "May 18, 2026", finalStatus: "Completed", submittedBy: "ops-bob" },
-    { id: "T-005", priority: 100, status: "FAILED", company: "Linear", role: "Product Designer", owner: "Alex Kim", proof: "—", updated: "May 17", failureReason: "Missing candidate information", failedBy: "Alex Kim", failedAt: "May 17, 2026", attempts: 1, nextStep: "Request user update" },
-    { id: "T-006", priority: 150, status: "OPEN", company: "Airbnb", role: "Staff Engineer", ats: "Workday", owner: "Unassigned", location: "Remote", created: "2 days ago" },
-    { id: "T-007", priority: 140, status: "OPEN", company: "Apple", role: "Software Engineer", ats: "Workday", owner: "Unassigned", location: "Cupertino, CA", created: "3 days ago" },
-    { id: "T-008", priority: 160, status: "IN_PROGRESS", company: "Netflix", role: "Senior SWE", ats: "Lever", owner: "Alex Kim", proof: "—", updated: "30m ago", startedAt: "Today, 9:10 AM", lastActivity: "30m ago" },
-    { id: "T-009", priority: 160, status: "SUBMITTED", company: "Netflix", role: "Senior SWE", ats: "Lever", owner: "Alex Kim", proof: "Uploaded", updated: "1h ago", submittedBy: "Alex Kim", submittedAt: "May 19, 2026, 3:42 PM", reviewStatus: "Pending review" },
-    { id: "T-010", priority: 100, status: "OPEN", company: "Notion", role: "Machine Learning Engineer, AI", ats: "Lever", owner: "Unassigned", location: "New York, NY", created: "Yesterday" }
-  ]
-};
-
-const APP_PROFILE_SECTIONS = [
-  {
-    title: "1. Job Preference",
-    fields: [
-      { label: "Desired Salary", value: "$120K – $160K / yr" },
-      { label: "Employment Type", value: "Full-time" },
-      { label: "Work Mode", value: "Remote, Hybrid" },
-      { label: "Preferred Cities", value: "San Francisco, CA / New York, NY" },
-      { label: "Shift Preference", value: "Day (9am–5pm)" },
-      { label: "Willing to Relocate", value: "Yes" },
-      { label: "Willing to Travel", value: "Up to 25%" },
-    ]
-  },
-  {
-    title: "2. Personal Information",
-    fields: [
-      { label: "First Name", value: "Alex" },
-      { label: "Middle Name", value: "—" },
-      { label: "Last Name", value: "Johnson" },
-      { label: "Email", value: "alex.johnson@gmail.com" },
-      { label: "Phone", value: "+1 (415) 555-0192" },
-      { label: "Application Password", value: "Sup3rS3cr3t", isSensitive: true },
-    ]
-  },
-  {
-    title: "3. Residential Information",
-    fields: [
-      { label: "Address Line 1", value: "123 Market Street" },
-      { label: "Address Line 2", value: "Apt 4B" },
-      { label: "City", value: "San Francisco" },
-      { label: "State", value: "CA" },
-      { label: "Country", value: "United States" },
-      { label: "ZIP Code", value: "94105" },
-    ]
-  },
-  {
-    title: "5. Education",
-    fields: [
-      { label: "Degree", value: "Bachelor's" },
-      { label: "Major", value: "Computer Science" },
-      { label: "School", value: "UC Berkeley" },
-      { label: "Duration", value: "Aug 2019 – May 2023" },
-    ]
-  },
-  {
-    title: "6. Online Presence",
-    fields: [
-      { label: "LinkedIn", value: "linkedin.com/in/alexjohnson" },
-      { label: "GitHub", value: "github.com/alexjohnson" },
-      { label: "Portfolio / Website", value: "alexjohnson.dev" },
-    ]
-  },
-  {
-    title: "7. Job Application Profile",
-    fields: [
-      { label: "U.S. Citizen", value: "No" },
-      { label: "Authorized to Work", value: "Yes" },
-      { label: "Needs Sponsorship", value: "Yes" },
-      { label: "Visa Type", value: "F-1 OPT" },
-      { label: "Earliest Start Date", value: "Immediately" },
-      { label: "Overtime Available", value: "Yes" },
-      { label: "Security Clearance", value: "None" },
-      { label: "Languages", value: "English, Mandarin" },
-    ]
-  },
-  {
-    title: "8. Miscellaneous / EEO",
-    fields: [
-      { label: "Veteran Status", value: "No" },
-      { label: "Ethnicity", value: "Asian" },
-      { label: "Gender", value: "Male" },
-      { label: "Sexual Orientation", value: "Prefer not to say" },
-      { label: "Disability Status", value: "No" },
-      { label: "Driving License", value: "Yes" },
-      { label: "License Expiry", value: "2026-11-30" },
-    ]
-  },
-  {
-    title: "9. Compliance & Legal",
-    warning: "These answers are used for ATS auto-fill and are never shared with employers independently.",
-    fields: [
-      { label: "Relatives at Company", value: "No" },
-      { label: "Previously Employed Here", value: "No" },
-      { label: "Government Affiliation", value: "No" },
-    ]
-  }
-];
-
-function FieldRow({ label, value, isSensitive = false }: { label: string; value: string; isSensitive?: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(value);
-  const [revealed, setRevealed] = useState(!isSensitive);
-  const [hover, setHover] = useState(false);
-  
-  return (
-    <div 
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}
-    >
-       <div style={{ fontSize: 11, color: C.textSub, width: 140, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</div>
-       {editing ? (
-         <div style={{ flex: 1, display: "flex", gap: 6 }}>
-           <input value={val} onChange={e => setVal(e.target.value)} style={{ ...searchInput, height: 26, fontSize: 12, padding: "0 8px" }} />
-           <button onClick={() => setEditing(false)} style={{ ...primaryBtn, height: 26, padding: "0 10px", fontSize: 11 }}>Save</button>
-           <button onClick={() => setEditing(false)} style={{ ...secondaryBtn, height: 26, padding: "0 10px", fontSize: 11 }}>Cancel</button>
-         </div>
-       ) : (
-         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minWidth: 0 }}>
-           <div style={{ fontSize: 12, color: C.text, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-             {isSensitive && !revealed ? "••••••••" : val}
-             {isSensitive && (
-               <div style={{ fontSize: 10, color: C.textSub, marginTop: 2 }}>Sensitive field. This action will be logged.</div>
-             )}
-           </div>
-           <div style={{ display: "flex", gap: 4, opacity: hover ? 1 : 0, transition: "opacity 150ms" }}>
-             {isSensitive && (
-               <button onClick={() => setRevealed(!revealed)} style={iconBtn} title={revealed ? "Hide" : "Reveal"}>
-                 <Eye size={13} />
-               </button>
-             )}
-             <button onClick={() => setEditing(true)} style={iconBtn} title="Edit"><Edit2 size={13} /></button>
-             <button onClick={() => { copyText(val); toast.success("Copied to clipboard"); }} style={iconBtn} title="Copy"><Copy size={13} /></button>
-           </div>
-         </div>
-       )}
-    </div>
-  );
-}
-
-const iconBtn = { 
-  background: C.bgSubtle, border: `1px solid ${C.border}`, cursor: "pointer", 
-  color: C.textSub, display: "flex", alignItems: "center", justifyContent: "center", 
-  width: 26, height: 26, borderRadius: 6 
+type UiUser = {
+  id: string;
+  name: string;
+  ops: string;
+  status: string;
+  progress: { done: number; total: number };
+  visa?: string;
+  locations: string[];
+  jobTitles: string[];
 };
 
 function TicketStatusRulesPanel({ isOpsManager }: { isOpsManager: boolean }) {
@@ -235,22 +152,49 @@ function TicketStatusRulesPanel({ isOpsManager }: { isOpsManager: boolean }) {
 export function ResumeApplications() {
   const [userSearch, setUserSearch]     = useState("");
   const [userFilters, setUserFilters]   = useState<Record<string, string>>({ owner: "all", status: "all" });
-  const [selectedUserId, setSelectedUserId] = useState("u1");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState("All");
-  
-  const [userList, setUserList]         = useState(users);
+
+  const [userList, setUserList]         = useState<UiUser[]>([]);
   const [role, setRole]                 = useState<"Ops Manager" | "Customer Support">("Ops Manager");
 
   const [showProofModal, setShowProofModal] = useState(false);
   const [showFailedModal, setShowFailedModal] = useState(false);
   const [proofNotes, setProofNotes] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const proofFileInputRef = useRef<HTMLInputElement | null>(null);
   const [failReason, setFailReason] = useState("Job closed");
+  const [failLayer, setFailLayer] = useState("submission");
+  const [failScreenshot, setFailScreenshot] = useState<File | null>(null);
+  const failFileInputRef = useRef<HTMLInputElement | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  const [liveTickets, setLiveTickets] = useState<UiTicket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const refreshTickets = useCallback(async () => {
+    if (!selectedUserId) return;
+    setTicketsLoading(true);
+    try {
+      const res = await adminService.listOpsTickets({ userId: selectedUserId });
+      const items: ApiTicket[] = res.data?.data?.items ?? [];
+      // Safety: if backend doesn't filter by userId, narrow client-side.
+      const filtered = items.filter(t => !t.user_id || t.user_id === selectedUserId);
+      setLiveTickets(filtered.map(normalizeTicket));
+    } catch {
+      setLiveTickets([]);
+    } finally {
+      setTicketsLoading(false);
+    }
+  }, [selectedUserId]);
+
+  useEffect(() => { refreshTickets(); }, [refreshTickets]);
+
   const isOpsManager = role === "Ops Manager";
-  const selectedUser = userList.find((u) => u.id === selectedUserId)!;
-  const allTickets   = ticketsByUser[selectedUserId] ?? [];
+  const selectedUser = userList.find((u) => u.id === selectedUserId);
+  const allTickets: UiTicket[] = liveTickets;
   const ticket = allTickets.find((t) => t.id === selectedTicket);
 
   const filteredUsers = userList.filter((u) => {
@@ -278,10 +222,16 @@ export function ResumeApplications() {
     return t.status.toLowerCase() === activeTab.toLowerCase();
   });
 
-  function handleClaim(id: string, e: React.MouseEvent) {
+  async function handleClaim(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (confirm("Start this ticket? This ticket will be assigned to you and moved to In Progress.")) {
+    if (!confirm("Start this ticket? This ticket will be assigned to you and moved to In Progress.")) return;
+    try {
+      await adminService.claimOpsTicket(id);
+      await adminService.startOpsTicket(id);
       toast.success("Ticket started");
+      await refreshTickets();
+    } catch (err: any) {
+      toast.error(extractErr(err, "Failed to start ticket"));
     }
   }
 
@@ -411,7 +361,11 @@ export function ResumeApplications() {
       </div>
 
       {/* ── RIGHT: Main Workspace ─────────────────────────────── */}
-      {!ticket ? (
+      {!selectedUser ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: C.bgPage }}>
+          <EmptyState icon={<User size={32} />} message="Select a user from the queue to view their tickets." />
+        </div>
+      ) : !ticket ? (
         // VIEW 1: Selected User Ticket Workspace
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bgPage, overflow: "hidden" }}>
           {/* Header */}
@@ -427,10 +381,10 @@ export function ResumeApplications() {
             <div style={{ display: "flex", gap: 8 }}>
               <button style={secondaryBtn} onClick={() => setShowProfileModal(true)}>View full profile</button>
               <button style={secondaryBtn} onClick={() => toast.info("Export data")}>Export</button>
-              
+
             </div>
           </div>
-          
+
           <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
             {/* Top Cards Row */}
             <div style={{ display: "flex", gap: 24, marginBottom: 24, alignItems: "flex-start" }}>
@@ -442,11 +396,11 @@ export function ResumeApplications() {
                 </div>
                 <div style={{ width: 300 }}>
                   <div style={{ height: 8, background: C.border, borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${(selectedUser.progress.done / selectedUser.progress.total)*100}%`, height: "100%", background: C.blue }} />
+                    <div style={{ width: `${selectedUser.progress.total > 0 ? (selectedUser.progress.done / selectedUser.progress.total)*100 : 0}%`, height: "100%", background: C.blue }} />
                   </div>
                 </div>
               </div>
-              
+
               <TicketStatusRulesPanel isOpsManager={isOpsManager} />
             </div>
             
@@ -655,62 +609,26 @@ export function ResumeApplications() {
                   <Shield size={16} color={C.blue} />
                   Candidate Application Profile
                 </div>
-                
-                {/* User Meta */}
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", fontSize: 12, color: C.textSub }}>
-                   <div><strong style={{color: C.text}}>Name:</strong> {selectedUser.name}</div>
-                   <div><strong style={{color: C.text}}>User ID:</strong> {selectedUser.id.toUpperCase()}</div>
-                   <div><strong style={{color: C.text}}>Email:</strong> {selectedUser.name.toLowerCase().replace(' ', '.')}@gmail.com</div>
-                   <div><strong style={{color: C.text}}>Phone:</strong> +1 (415) 555-0192</div>
-                   <div style={{ gridColumn: "1 / -1" }}><strong style={{color: C.text}}>Target roles:</strong> {selectedUser.jobTitles.join(", ")}</div>
-                   <div style={{ gridColumn: "1 / -1" }}><strong style={{color: C.text}}>Target locations:</strong> {selectedUser.locations.join(", ")}</div>
-                   <div><strong style={{color: C.text}}>Auth:</strong> {selectedUser.visa}</div>
-                   <div><strong style={{color: C.text}}>Owner:</strong> {selectedUser.ops}</div>
+                  <div><strong style={{ color: C.text }}>Name:</strong> {selectedUser.name}</div>
+                  <div><strong style={{ color: C.text }}>User ID:</strong> {selectedUser.id}</div>
+                  {selectedUser.jobTitles?.length > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target roles:</strong> {selectedUser.jobTitles.join(", ")}</div>
+                  )}
+                  {selectedUser.locations?.length > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target locations:</strong> {selectedUser.locations.join(", ")}</div>
+                  )}
+                  {selectedUser.visa && <div><strong style={{ color: C.text }}>Auth:</strong> {selectedUser.visa}</div>}
+                  <div><strong style={{ color: C.text }}>Owner:</strong> {selectedUser.ops}</div>
                 </div>
                 <button onClick={() => setShowProfileModal(true)} style={{ ...ghostBtn, padding: 0, color: C.blue, marginTop: 12, fontSize: 12 }}>
                   View full profile <ExternalLink size={12} style={{marginLeft: 4}} />
                 </button>
               </div>
-              
-              <div style={{ padding: "24px", flex: 1 }}>
-                 {APP_PROFILE_SECTIONS.map(sec => (
-                   <div key={sec.title} style={{ marginBottom: 32 }}>
-                     <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>{sec.title}</div>
-                     {sec.warning && (
-                       <div style={{ fontSize: 11, color: C.textSub, background: C.bgSubtle, padding: "8px 12px", borderRadius: 6, marginBottom: 12 }}>
-                         {sec.warning}
-                       </div>
-                     )}
-                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                       {sec.fields.map(f => (
-                         <FieldRow key={f.label} label={f.label} value={f.value} isSensitive={f.isSensitive} />
-                       ))}
-                     </div>
-                   </div>
-                 ))}
 
-                 {/* Work Experience */}
-                 <div style={{ marginBottom: 32 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>4. Work Experience</div>
-                    {[
-                      { title: "Product Manager Intern — Stripe", loc: "San Francisco, CA", type: "Internship", dur: "Jun 2023 – Aug 2023", desc: "Led cross-functional initiatives to improve payment conversion rates. Collaborated with engineering and design on new checkout flows." },
-                      { title: "Software Engineer Intern — Figma", loc: "San Francisco, CA", type: "Internship", dur: "Jun 2022 – Aug 2022", desc: "Developed new plugin API features and improved editor performance by 15%." }
-                    ].map(exp => (
-                      <div key={exp.title} style={{ ...card, padding: 16, marginBottom: 12 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{exp.title}</div>
-                        <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>{exp.loc} · {exp.type} · {exp.dur}</div>
-                        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{exp.desc}</div>
-                      </div>
-                    ))}
-                 </div>
-                 
-                 {/* Empty states */}
-                 {["10. Certifications", "11. Security Information", "12. Suggestions to Screna"].map(title => (
-                   <div key={title} style={{ marginBottom: 32 }}>
-                     <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>{title}</div>
-                     <div style={{ fontSize: 12, color: C.textSub, fontStyle: "italic" }}>No {title.split(' ')[1].toLowerCase()} added yet.</div>
-                   </div>
-                 ))}
+              <div style={{ padding: "24px", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <EmptyState icon={<FileText size={28} />} message="Candidate profile details will load here once wired to the ticket detail API." />
               </div>
             </div>
             
@@ -720,23 +638,21 @@ export function ResumeApplications() {
                <div style={{ ...card, padding: "16px 20px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                  <div>
                    <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{ticket.company} - {ticket.role}</div>
-                   <div style={{ fontSize: 13, color: C.textSub }}>ATS: {ticket.ats || "Unknown"} · Location: {ticket.location || "Remote"}</div>
+                   <div style={{ fontSize: 13, color: C.textSub }}>ATS: {ticket.ats || "—"} · Location: {ticket.location || "—"}</div>
                  </div>
-                 <a href={ticket.url || "https://example.com"} target="_blank" rel="noreferrer" style={{ ...secondaryBtn, height: 32, textDecoration: "none", color: C.blue }}>
-                   <ExternalLink size={14} /> Open in new tab
-                 </a>
+                 {ticket.url && (
+                   <a href={ticket.url} target="_blank" rel="noreferrer" style={{ ...secondaryBtn, height: 32, textDecoration: "none", color: C.blue }}>
+                     <ExternalLink size={14} /> Open in new tab
+                   </a>
+                 )}
                </div>
-               
+
                {/* Browser Placeholder */}
                <div style={{ flex: 1, border: `2px dashed ${C.border}`, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bgWhite }}>
                   <ExternalLink size={32} color={C.textSub} style={{ marginBottom: 16 }} />
                   <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, color: C.text }}>Browserbase session — placeholder</div>
                   <div style={{ color: C.textSub, fontSize: 13, marginBottom: 4 }}>When this ticket is started, the live browser session will embed here.</div>
-                  <div style={{ color: C.textSub, fontSize: 13, marginBottom: 16 }}>Not wired yet.</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 8 }}>
-                     <span style={{ fontSize: 13, color: C.textSub }}>URL:</span>
-                     <a href="http://xxxx.com" target="_blank" rel="noreferrer" style={{ fontSize: 13, color: C.blue, textDecoration: "none", fontWeight: 500 }}>http://xxxx.com</a>
-                  </div>
+                  <div style={{ color: C.textSub, fontSize: 13 }}>Not wired yet.</div>
                </div>
             </div>
           </div>
@@ -760,25 +676,84 @@ export function ResumeApplications() {
           <div style={{ ...card, width: 440, padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 600 }}>Upload submission proof</div>
             <div style={{ fontSize: 13, color: C.textSub }}>Upload a screenshot or confirmation file showing that the application was successfully submitted.</div>
-            
-            <div style={{ height: 120, border: `2px dashed ${C.border}`, borderRadius: 8, background: C.bgSubtle, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => toast.info("Select file")}>
+
+            <input
+              ref={proofFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              style={{ display: "none" }}
+              onChange={e => {
+                const f = e.target.files?.[0] ?? null;
+                if (f && f.size > 10 * 1024 * 1024) {
+                  toast.error("File must be ≤ 10 MB");
+                  return;
+                }
+                setProofFile(f);
+              }}
+            />
+            <div
+              style={{ height: 120, border: `2px dashed ${proofFile ? C.blue : C.border}`, borderRadius: 8, background: C.bgSubtle, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              onClick={() => proofFileInputRef.current?.click()}
+            >
               <Upload size={24} color={C.textSub} style={{ marginBottom: 8 }} />
-              <div style={{ fontSize: 13, fontWeight: 500, color: C.blue }}>Click to upload or drag and drop</div>
-              <div style={{ fontSize: 11, color: C.textSub }}>PNG, JPG, PDF up to 10MB</div>
+              {proofFile ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{proofFile.name}</div>
+                  <div style={{ fontSize: 11, color: C.textSub }}>Click to replace</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.blue }}>Click to upload or drag and drop</div>
+                  <div style={{ fontSize: 11, color: C.textSub }}>PNG, JPG, PDF up to 10MB</div>
+                </>
+              )}
             </div>
-            
+
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block" }}>Notes (Optional)</label>
-              <textarea 
+              <textarea
                 value={proofNotes} onChange={e => setProofNotes(e.target.value)}
-                placeholder="Add submission confirmation notes..." 
-                style={{ ...searchInput, height: 80, padding: 12, resize: "none" }} 
+                placeholder="Add submission confirmation notes..."
+                style={{ ...searchInput, height: 80, padding: 12, resize: "none" }}
               />
             </div>
-            
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4 }}>
-              <button onClick={() => setShowProofModal(false)} style={{ ...secondaryBtn, height: 36, padding: "0 20px" }}>Cancel</button>
-              <button onClick={() => { setShowProofModal(false); toast.success("Proof uploaded. Ticket marked as submitted."); }} style={{ ...primaryBtn, height: 36, padding: "0 20px" }}>Upload proof & mark submitted</button>
+              <button onClick={() => { setShowProofModal(false); setProofFile(null); setProofNotes(""); }} style={{ ...secondaryBtn, height: 36, padding: "0 20px" }}>Cancel</button>
+              <button
+                disabled={submitting || !proofFile || !ticket?.applicationId}
+                onClick={async () => {
+                  if (!ticket?.applicationId) {
+                    toast.error("This ticket has no linked application");
+                    return;
+                  }
+                  if (!proofFile) {
+                    toast.error("Please select a screenshot");
+                    return;
+                  }
+                  setSubmitting(true);
+                  try {
+                    await adminService.markApplicationSubmitted(
+                      ticket.applicationId,
+                      proofFile,
+                      { notes: proofNotes || undefined }
+                    );
+                    toast.success("Proof uploaded. Ticket marked as submitted.");
+                    setShowProofModal(false);
+                    setProofFile(null);
+                    setProofNotes("");
+                    setSelectedTicket(null);
+                    await refreshTickets();
+                  } catch (err: any) {
+                    toast.error(extractErr(err, "Failed to mark submitted"));
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                style={{ ...primaryBtn, height: 36, padding: "0 20px", opacity: (submitting || !proofFile) ? 0.6 : 1 }}
+              >
+                {submitting ? "Submitting..." : "Upload proof & mark submitted"}
+              </button>
             </div>
           </div>
         </div>
@@ -789,7 +764,7 @@ export function ResumeApplications() {
           <div style={{ ...card, width: 400, padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 600 }}>Mark ticket as failed?</div>
             <div style={{ fontSize: 13, color: C.textSub }}>Use this only when the application cannot be completed. This will return the ticket for review.</div>
-            
+
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block" }}>Failure reason</label>
               <select value={failReason} onChange={e => setFailReason(e.target.value)} style={{ ...searchInput, height: 36, paddingLeft: 12 }}>
@@ -800,21 +775,87 @@ export function ResumeApplications() {
                 <option>Other</option>
               </select>
             </div>
-            
+
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block" }}>Notes</label>
-              <textarea placeholder="Provide details..." style={{ ...searchInput, height: 80, padding: 12, resize: "none" }} />
+              <label style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block" }}>Layer</label>
+              <select value={failLayer} onChange={e => setFailLayer(e.target.value)} style={{ ...searchInput, height: 36, paddingLeft: 12 }}>
+                <option value="auth">auth</option>
+                <option value="form">form</option>
+                <option value="captcha">captcha</option>
+                <option value="ats">ats</option>
+                <option value="submission">submission</option>
+                <option value="system">system</option>
+                <option value="unknown">unknown</option>
+              </select>
             </div>
-            
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block" }}>Screenshot (Optional)</label>
+              <input
+                ref={failFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                style={{ display: "none" }}
+                onChange={e => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && f.size > 10 * 1024 * 1024) {
+                    toast.error("File must be ≤ 10 MB");
+                    return;
+                  }
+                  setFailScreenshot(f);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => failFileInputRef.current?.click()}
+                style={{ ...secondaryBtn, height: 36, padding: "0 12px", display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <Upload size={14} /> {failScreenshot ? failScreenshot.name : "Attach screenshot"}
+              </button>
+            </div>
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4 }}>
-              <button onClick={() => setShowFailedModal(false)} style={{ ...secondaryBtn, height: 36, padding: "0 20px" }}>Cancel</button>
-              <button onClick={() => { setShowFailedModal(false); toast.success("Ticket marked as failed"); }} style={{ ...primaryBtn, height: 36, padding: "0 20px", background: C.red }}>Mark failed</button>
+              <button
+                onClick={() => { setShowFailedModal(false); setFailScreenshot(null); }}
+                style={{ ...secondaryBtn, height: 36, padding: "0 20px" }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submitting || !ticket?.applicationId}
+                onClick={async () => {
+                  if (!ticket?.applicationId) {
+                    toast.error("This ticket has no linked application");
+                    return;
+                  }
+                  setSubmitting(true);
+                  try {
+                    await adminService.markApplicationFailed(ticket.applicationId, {
+                      failure_reason: failReason,
+                      layer: failLayer,
+                      screenshot: failScreenshot ?? undefined,
+                    });
+                    toast.success("Ticket marked as failed");
+                    setShowFailedModal(false);
+                    setFailScreenshot(null);
+                    setSelectedTicket(null);
+                    await refreshTickets();
+                  } catch (err: any) {
+                    toast.error(extractErr(err, "Failed to mark ticket as failed"));
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                style={{ ...primaryBtn, height: 36, padding: "0 20px", background: C.red, opacity: submitting ? 0.6 : 1 }}
+              >
+                {submitting ? "Saving..." : "Mark failed"}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {showProfileModal && (
+      {showProfileModal && selectedUser && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
           <div style={{ ...card, width: 680, maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "20px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgPage, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
@@ -824,56 +865,18 @@ export function ResumeApplications() {
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{selectedUser.name}</div>
-                  <div style={{ fontSize: 12, color: C.textSub }}>{selectedUser.jobTitles[0]}</div>
+                  {selectedUser.jobTitles?.[0] && (
+                    <div style={{ fontSize: 12, color: C.textSub }}>{selectedUser.jobTitles[0]}</div>
+                  )}
                 </div>
               </div>
               <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textSub }}>
                 <X size={20} />
               </button>
             </div>
-            
-            <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-                <Shield size={16} color={C.blue} />
-                Candidate Application Profile
-              </div>
 
-              {APP_PROFILE_SECTIONS.map(sec => (
-                <div key={sec.title} style={{ marginBottom: 32 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>{sec.title}</div>
-                  {sec.warning && (
-                    <div style={{ fontSize: 11, color: C.textSub, background: C.bgSubtle, padding: "8px 12px", borderRadius: 6, marginBottom: 12 }}>
-                      {sec.warning}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {sec.fields.map(f => (
-                      <FieldRow key={f.label} label={f.label} value={f.value} isSensitive={f.isSensitive} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              <div style={{ marginBottom: 32 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>4. Work Experience</div>
-                {[
-                  { title: "Product Manager Intern — Stripe", loc: "San Francisco, CA", type: "Internship", dur: "Jun 2023 – Aug 2023", desc: "Led cross-functional initiatives to improve payment conversion rates. Collaborated with engineering and design on new checkout flows." },
-                  { title: "Software Engineer Intern — Figma", loc: "San Francisco, CA", type: "Internship", dur: "Jun 2022 – Aug 2022", desc: "Developed new plugin API features and improved editor performance by 15%." }
-                ].map(exp => (
-                  <div key={exp.title} style={{ ...card, padding: 16, marginBottom: 12 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{exp.title}</div>
-                    <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>{exp.loc} · {exp.type} · {exp.dur}</div>
-                    <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{exp.desc}</div>
-                  </div>
-                ))}
-              </div>
-              
-              {["10. Certifications", "11. Security Information", "12. Suggestions to Screna"].map(title => (
-                <div key={title} style={{ marginBottom: 32 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>{title}</div>
-                  <div style={{ fontSize: 12, color: C.textSub, fontStyle: "italic" }}>No {title.split(' ')[1].toLowerCase()} added yet.</div>
-                </div>
-              ))}
+            <div style={{ padding: 24, overflowY: "auto", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 240 }}>
+              <EmptyState icon={<Shield size={28} />} message="Candidate profile details will load here once wired to the ticket detail API." />
             </div>
           </div>
         </div>

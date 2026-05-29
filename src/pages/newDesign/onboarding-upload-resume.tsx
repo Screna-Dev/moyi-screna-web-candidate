@@ -7,7 +7,7 @@ import {
   Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
   Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2,
 } from 'lucide-react';
-import { uploadResume, updateProfile, saveProfilePreferences, getJobTitleRecommendations } from '@/services/ProfileServices';
+import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
@@ -1537,19 +1537,19 @@ function ScreenAnalysisTransition({
   );
 }
 
-// ─── Field mappings for POST /profile/preferences ────────────────────────────
+// ─── Field mappings for POST /profile/user-insights ──────────────────────────
 
 function toGoalClarityLevel(roleClarity: string): string {
-  if (roleClarity === 'exact') return 'KNOW_EXACTLY';
-  if (roleClarity === 'few') return 'DECIDING_BETWEEN';
-  return 'EXPLORING';
+  if (roleClarity === 'exact') return 'know_exactly';
+  if (roleClarity === 'few') return 'deciding_between';
+  return 'exploring';
 }
 
 const COMPANY_TYPE_LABEL_MAP: Record<string, string> = {
-  'FAANG / Big tech':          'FAANG',
-  'Large enterprises':         'LARGE',
-  'Mid-sized companies':       'MID_SIZE',
-  'Startups / Small companies':'STARTUP',
+  'FAANG / Big tech':          'faang',
+  'Large enterprises':         'large',
+  'Mid-sized companies':       'mid_size',
+  'Startups / Small companies':'startup',
 };
 
 const TYPE_LABEL_SET = new Set(Object.keys(COMPANY_TYPE_LABEL_MAP));
@@ -1564,27 +1564,27 @@ function toSpecificCompanies(targetCompanies: string[]): string[] {
 
 function toJobSearchStage(jobStatus: string): string {
   const map: Record<string, string> = {
-    exploring: 'JUST_EXPLORING',
-    applying:  'ACTIVELY_APPLYING',
-    interviews:'INTERVIEWING',
-    final:     'INTERVIEWING',
-    urgent:    'URGENT_ASSISTANCE',
+    exploring: 'just_exploring',
+    applying:  'actively_applying',
+    interviews:'interviewing',
+    final:     'interviewing',
+    urgent:    'urgent_assistance',
   };
-  return map[jobStatus] ?? 'JUST_EXPLORING';
+  return map[jobStatus] ?? 'just_exploring';
 }
 
 function toPriorityNeeds(helpPreference: string): string[] {
   const helpMap: Record<string, string> = {
-    ai:       'AI_INTERVIEW_PRACTICE',
-    plan:     'STRATEGIC_PLANNING',
-    expert:   'EXPERT_FEEDBACK',
-    referrals:'REFERRALS_AND_JOB_SEARCH',
-    unsure:   'NOT_SURE_YET',
+    ai:       'ai_interview_practice',
+    plan:     'strategic_planning',
+    expert:   'expert_feedback',
+    referrals:'referrals_and_job_search',
+    unsure:   'not_sure_yet',
   };
   const ids = helpPreference.split(',').map(s => s.trim()).filter(Boolean);
-  if (!ids.length) return ['NOT_SURE_YET'];
+  if (!ids.length) return ['not_sure_yet'];
   const mapped = [...new Set(ids.map(id => helpMap[id]).filter(Boolean))];
-  return mapped.length ? mapped : ['NOT_SURE_YET'];
+  return mapped.length ? mapped : ['not_sure_yet'];
 }
 
 // ─── Main flow controller ─────────────────────────────────────────────────────
@@ -1666,7 +1666,7 @@ export function OnboardingUploadResumePage() {
         .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
         .filter(Boolean);
       if (roleLabels.length > 0) {
-        saveProfilePreferences({
+        saveUserInsights({
           target_roles: roleLabels,
           goal_clarity_level: toGoalClarityLevel(data.roleClarity),
           company_size_categories: toCompanyTypes(data.targetCompanies),
@@ -1674,9 +1674,9 @@ export function OnboardingUploadResumePage() {
           job_search_stage: toJobSearchStage(data.jobStatus),
           priority_needs: toPriorityNeeds(data.helpPreference),
         }).then((res) => {
-          console.log('[saveProfilePreferences] ✅ success', res?.data);
+          console.log('[saveUserInsights] ✅ success', res?.data);
         }).catch((err) => {
-          console.error('[saveProfilePreferences] ❌ failed', err?.response?.data ?? err);
+          console.error('[saveUserInsights] ❌ failed', err?.response?.data ?? err);
         });
       }
       goTo(7);

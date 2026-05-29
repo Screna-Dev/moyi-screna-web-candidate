@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Toaster } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar, type Page } from './Sidebar';
 import { Header } from './Header';
 import { CommandCenter } from './pages/CommandCenter';
@@ -52,7 +53,11 @@ function UsersAdminTab() {
   );
 }
 
-function PageContent({ page }: { page: Page }) {
+function PageContent({ page, isOps }: { page: Page; isOps: boolean }) {
+  // ADMIN must never see the OPS-only Job Applications page even if state drifts there.
+  if (page === 'resume-applications' && !isOps) {
+    return <CommandCenter />;
+  }
   switch (page) {
     case 'command-center':      return <CommandCenter />;
     case 'resume-applications': return <ResumeApplications />;
@@ -71,7 +76,9 @@ function PageContent({ page }: { page: Page }) {
 }
 
 export default function AdminConsole() {
-  const [page, setPage] = useState<Page>('command-center');
+  const { user } = useAuth();
+  const isOps = (user?.role || '').toUpperCase() === 'OPS';
+  const [page, setPage] = useState<Page>(isOps ? 'resume-applications' : 'command-center');
 
   return (
     <div
@@ -85,7 +92,7 @@ export default function AdminConsole() {
       }}
     >
       <Toaster position="bottom-right" />
-      <Sidebar currentPage={page} onPageChange={setPage} />
+      <Sidebar currentPage={page} onPageChange={setPage} userRole={user?.role} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <Header currentPage={page} />
@@ -101,7 +108,7 @@ export default function AdminConsole() {
             flexDirection: 'column',
           }}
         >
-          <PageContent page={page} />
+          <PageContent page={page} isOps={isOps} />
         </main>
       </div>
     </div>
