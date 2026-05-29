@@ -913,8 +913,8 @@ function Journey() {
 type BillingCycle = 'monthly' | 'quarterly';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$159', note: 'Billed $159 / month · cancel anytime' },
-  quarterly: { price: '$129', note: 'Billed $477 / quarter · cancel anytime' },
+  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
+  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
 };
 
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
