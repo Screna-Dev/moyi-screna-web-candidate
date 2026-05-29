@@ -256,6 +256,252 @@ export const getAuditLogs = (params = {}) => {
   return API.get(`${BASE_URL}/audit-logs`, { params });
 };
 
+// ============================================
+// User → Ops Assignment APIs
+// ============================================
+
+const USER_OPS_URL = '/apply/admin/user-ops-assignments';
+
+/**
+ * List candidate → ops assignments (filterable).
+ * @param {Object} [params]
+ * @param {string} [params.userId]
+ * @param {string} [params.opsUserId]
+ * @param {boolean} [params.includeRevoked]
+ * @param {number} [params.offset]
+ */
+export const listUserOpsAssignments = (params = {}) => {
+  return API.get(USER_OPS_URL, { params });
+};
+
+/**
+ * Assign or re-assign a candidate to an ops operator.
+ * @param {Object} body
+ * @param {string} body.user_id
+ * @param {string} body.ops_user_id
+ */
+export const assignUserToOps = (body) => {
+  return API.put(USER_OPS_URL, body);
+};
+
+/**
+ * Revoke the active candidate → ops mapping for a user.
+ * @param {string} userId
+ */
+export const revokeUserOpsAssignment = (userId) => {
+  return API.delete(`${USER_OPS_URL}/${userId}`);
+};
+
+// ============================================
+// Ops Account APIs
+// ============================================
+
+/**
+ * Sign up a new Ops account (admin-created).
+ * Password must satisfy the shared policy in src/lib/passwordPolicy.tsx
+ * (≥8 chars, uppercase, lowercase, digit, special char). Validate client-side
+ * before calling.
+ * @param {Object} body
+ * @param {string} body.email - Email address (max 128 chars)
+ * @param {string} body.password
+ * @param {string} body.name - Full name (max 512 chars)
+ * @returns {Promise} API response
+ */
+export const opsSignup = (body) => {
+  return API.post(`${BASE_URL}/ops/signup`, body);
+};
+
+// ============================================
+// Ops Console - Tickets & Applications APIs
+// ============================================
+
+const OPS_TICKETS_URL = '/apply/ops/tickets';
+const OPS_APPLICATIONS_URL = '/apply/ops/applications';
+
+/**
+ * List ops tickets (filterable, sortable, paginated).
+ * @param {Object} [params]
+ * @param {"OPEN"|"CLAIMED"|"IN_PROGRESS"|"COMPLETED"|"FAILED"} [params.status]
+ * @param {string} [params.assignedTo]
+ * @param {string} [params.userId] - Filter by candidate user_id (if backend supports)
+ * @param {string} [params.sort] - e.g. "priority"
+ * @param {number} [params.limit]
+ * @param {number} [params.offset]
+ */
+export const listOpsTickets = (params = {}) => {
+  return API.get(OPS_TICKETS_URL, { params });
+};
+
+/**
+ * Ticket detail — aggregate of ticket + application + job + candidate.
+ * @param {string} ticketId
+ */
+export const getOpsTicket = (ticketId) => {
+  return API.get(`${OPS_TICKETS_URL}/${ticketId}`);
+};
+
+/**
+ * Atomic claim — OPEN → CLAIMED (assigned to caller).
+ * @param {string} ticketId
+ */
+export const claimOpsTicket = (ticketId) => {
+  return API.post(`${OPS_TICKETS_URL}/${ticketId}/claim`);
+};
+
+/**
+ * Start work — ticket CLAIMED → IN_PROGRESS + application QUEUED → IN_PROGRESS.
+ * @param {string} ticketId
+ */
+export const startOpsTicket = (ticketId) => {
+  return API.post(`${OPS_TICKETS_URL}/${ticketId}/start`);
+};
+
+/**
+ * Mark application submitted (multipart with screenshot).
+ * App IN_PROGRESS → SUBMITTED + ticket → COMPLETED.
+ * @param {string} applicationId
+ * @param {File|Blob} screenshot - Application screenshot (PNG/JPEG/WebP/PDF, ≤10 MB)
+ * @param {Object} [opts]
+ * @param {string} [opts.notes]
+ * @param {string} [opts.browserbase_session_id]
+ */
+export const markApplicationSubmitted = (applicationId, screenshot, opts = {}) => {
+  const form = new FormData();
+  form.append('screenshot', screenshot);
+  return API.post(
+    `${OPS_APPLICATIONS_URL}/${applicationId}/mark-submitted`,
+    form,
+    {
+      params: {
+        ...(opts.notes ? { notes: opts.notes } : {}),
+        ...(opts.browserbase_session_id ? { browserbase_session_id: opts.browserbase_session_id } : {}),
+      },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
+  );
+};
+
+/**
+ * Mark application failed (multipart, screenshot optional).
+ * App IN_PROGRESS → FAILED + ticket → FAILED.
+ * @param {string} applicationId
+ * @param {Object} args
+ * @param {string} args.failure_reason
+ * @param {string} args.layer
+ * @param {File|Blob} [args.screenshot] - Optional failure screenshot
+ */
+export const markApplicationFailed = (applicationId, { failure_reason, layer, screenshot } = {}) => {
+  const form = new FormData();
+  if (screenshot) form.append('screenshot', screenshot);
+  return API.post(
+    `${OPS_APPLICATIONS_URL}/${applicationId}/mark-failed`,
+    form,
+    {
+      params: { failure_reason, layer },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
+  );
+};
+
+// ============================================
+// PGS Management APIs
+// ============================================
+
+const PGS_URL = '/pgs/admin';
+
+/**
+ * List PGS members (paginated, with aggregated stats per member).
+ * @param {Object} params
+ * @param {string} [params.search] - Search by name, email, or slug
+ * @param {"ACTIVE"|"ARCHIVED"} [params.status]
+ * @param {"LV0"|"LV1"|"LV2"|"LV3"} [params.level]
+ * @param {number} [params.page=0]
+ * @param {number} [params.size=20]
+ */
+export const listPgsMembers = (params = {}) => {
+  return API.get(PGS_URL, { params });
+};
+
+/**
+ * Get full detail for a single PGS member.
+ * @param {string} id - PGS member UUID
+ */
+export const getPgsMember = (id) => {
+  return API.get(`${PGS_URL}/${id}`);
+};
+
+/**
+ * Create a new PGS member (also provisions the redeem code).
+ * @param {Object} body
+ * @param {string} body.fullName
+ * @param {string} body.email
+ * @param {"LV0"|"LV1"|"LV2"|"LV3"} body.level
+ * @param {string} body.referralSlug
+ * @param {"WISE"|"ALIPAY"|"PAYPAL"} body.payoutMethod
+ * @param {string} [body.schoolCommunity]
+ * @param {string} [body.startDate] - ISO date (YYYY-MM-DD)
+ */
+export const createPgsMember = (body) => {
+  return API.post(PGS_URL, body);
+};
+
+/**
+ * Update editable fields of a PGS member. referralSlug cannot be changed.
+ * If isActive changes, the redeem code is synced automatically.
+ * @param {string} id
+ * @param {Object} body - { fullName, email, level, payoutMethod, isActive, schoolCommunity, startDate, internalNotes }
+ */
+export const updatePgsMember = (id, body) => {
+  return API.put(`${PGS_URL}/${id}`, body);
+};
+
+/**
+ * Archive a PGS member. This is permanent and deactivates their redeem code.
+ * @param {string} id
+ */
+export const archivePgsMember = (id) => {
+  return API.post(`${PGS_URL}/${id}/archive`);
+};
+
+/**
+ * List users attributed to this PGS member's referral slug.
+ * @param {string} id - PGS member UUID
+ * @param {Object} [params]
+ * @param {string} [params.search] - Search by user name or email
+ * @param {number} [params.page=0]
+ * @param {number} [params.size=20]
+ */
+export const listPgsMemberUsers = (id, params = {}) => {
+  return API.get(`${PGS_URL}/${id}/users`, { params });
+};
+
+/**
+ * Get aggregated stats for a single PGS member.
+ * @param {string} id
+ */
+export const getPgsMemberStats = (id) => {
+  return API.get(`${PGS_URL}/${id}/stats`);
+};
+
+/**
+ * Get global PGS stats across all members matching the filter.
+ * @param {"ACTIVE_ENABLED"|"ACTIVE_DISABLED"|"NOT_ARCHIVED"|"ARCHIVED"} [filterStatus]
+ */
+export const getPgsGlobalStats = (filterStatus) => {
+  return API.get(`${PGS_URL}/stats`, {
+    params: filterStatus ? { filterStatus } : {},
+  });
+};
+
+/**
+ * Generate a unique referral slug suggestion from a full name.
+ * Admin can modify before submitting.
+ * @param {string} fullName
+ */
+export const generatePgsSlug = (fullName) => {
+  return API.get(`${PGS_URL}/slug/generate`, { params: { fullName } });
+};
+
 const adminService = {
   // User Management
   getUserOverview,
@@ -281,6 +527,29 @@ const adminService = {
   deleteRedeemCode,
   // Audit Logs
   getAuditLogs,
+  // PGS Management
+  listPgsMembers,
+  getPgsMember,
+  createPgsMember,
+  updatePgsMember,
+  archivePgsMember,
+  listPgsMemberUsers,
+  getPgsMemberStats,
+  getPgsGlobalStats,
+  generatePgsSlug,
+  // Ops Account
+  opsSignup,
+  // User → Ops Assignments
+  listUserOpsAssignments,
+  assignUserToOps,
+  revokeUserOpsAssignment,
+  // Ops Console - Tickets
+  listOpsTickets,
+  getOpsTicket,
+  claimOpsTicket,
+  startOpsTicket,
+  markApplicationSubmitted,
+  markApplicationFailed,
 };
 
 export default adminService;

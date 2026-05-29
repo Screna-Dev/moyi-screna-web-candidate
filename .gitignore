@@ -32,3 +32,5 @@ dist-ssr
 .src/.claude
 .claude/
 .cursor/
+# Design reference bundle from claude.ai/design
+.design-ref/

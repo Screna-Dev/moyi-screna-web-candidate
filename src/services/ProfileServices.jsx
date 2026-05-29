@@ -97,23 +97,69 @@ export const getJobTitleRecommendations = () => {
   return API.get(`${BASE_URL}/job-title-recommendations`);
 };
 
+// ============================================
+// Profile Preferences APIs  (/profile/preferences)
+// ============================================
+
 /**
- * Save user insights collected during onboarding
- * @param {Object} insights
- * @param {string} insights.role - Target role (free text, max 100 chars)
- * @param {string} insights.goalClarityLevel - KNOW_EXACTLY | DECIDING_BETWEEN | EXPLORING
- * @param {string[]} insights.companyTypes - FAANG | LARGE | MID_SIZE | STARTUP
- * @param {string[]} insights.companies - Specific company names (optional)
- * @param {string} insights.jobSearchStage - JUST_EXPLORING | ACTIVELY_APPLYING | INTERVIEWING | FINAL_ROUNDS | URGENT_ASSISTANCE
- * @param {string[]} insights.priorityNeeds - AI_INTERVIEW_PRACTICE | STRATEGIC_PLANNING | EXPERT_FEEDBACK | REFERRAL_SUPPORT | NOT_SURE_YET
- * @returns {Promise} API response
+ * Get user profile preferences (replaces the removed /profile/user-insights)
+ * @returns {Promise} API response. data.target_roles, target_companies,
+ *   company_size_categories (FAANG | LARGE | MID_SIZE | STARTUP),
+ *   goal_clarity_level, job_search_stage, priority_needs, work_authorization.
+ */
+export const getProfilePreferences = () => {
+  return API.get(`${BASE_URL}/preferences`);
+};
+
+/**
+ * Save user profile preferences. Body uses snake_case to match apply node:
+ *   target_roles, goal_clarity_level, company_size_categories, target_companies,
+ *   job_search_stage, priority_needs, work_authorization.
+ */
+export const saveProfilePreferences = (preferences) => {
+  return API.post(`${BASE_URL}/preferences`, preferences);
+};
+
+/**
+ * Save onboarding user insights. Body shape (lowercase enum values):
+ *   target_roles, goal_clarity_level (know_exactly | deciding_between | exploring),
+ *   company_size_categories (faang | large | mid_size | startup), target_companies,
+ *   job_search_stage (just_exploring | actively_applying | interviewing | urgent_assistance),
+ *   priority_needs (ai_interview_practice | strategic_planning | expert_feedback |
+ *                   referrals_and_job_search | not_sure_yet).
  */
 export const saveUserInsights = (insights) => {
   return API.post(`${BASE_URL}/user-insights`, insights);
 };
 
-export const getUserInsights = () => {
-  return API.get(`${BASE_URL}/user-insights`);
+// ============================================
+// Jobs / Application Preferences APIs  (/apply/candidates/preferences)
+// ============================================
+
+export const getJobsPreferences = () => {
+  return API.get('/apply/candidates/preferences');
+};
+
+export const upsertJobsPreferences = (preferences) => {
+  return API.put('/apply/candidates/preferences', preferences);
+};
+
+/**
+ * Record one or more document_type consents for the current candidate.
+ * @param {Array<{document_type: string, document_version: string, agreed: boolean}>} consents
+ * @returns {Promise} API response
+ */
+export const recordCandidateConsent = (consents) => {
+  return API.post('/apply/candidates/consent', { consents });
+};
+
+/**
+ * Get current user's onboarding status (resume_uploaded, preferences_set,
+ * consent_agreed, completed).
+ * @returns {Promise} API response
+ */
+export const getOnboardingStatus = () => {
+  return API.get('/apply/candidates/onboarding-status');
 };
 
 // Export as default object for easier imports
@@ -129,7 +175,15 @@ const ProfileService = {
   uploadAvatar,
   changePassword,
   getJobTitleRecommendations,
+  // Profile preferences
+  getProfilePreferences,
+  saveProfilePreferences,
   saveUserInsights,
+  // Jobs preferences
+  getJobsPreferences,
+  upsertJobsPreferences,
+  recordCandidateConsent,
+  getOnboardingStatus,
 };
 
 export default ProfileService;

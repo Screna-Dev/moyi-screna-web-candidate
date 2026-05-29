@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -14,20 +14,13 @@ import {
   Bookmark,
   MoreHorizontal,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
-import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
-import { Button } from '../../components/newDesign/ui/button';
-import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { Button } from '@/components/newDesign/ui/button';
+import { getMyPosts, getMyComments, getMySavedPosts } from '@/services/CommunityService';
 
 // ─── Color Mappings ────────────────────────────────────
-const ROLE_COLORS: Record<string, string> = {
-  'Software Engineer': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Product Manager': 'bg-violet-50 text-violet-700 border-violet-200',
-  'Data Scientist': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Engineering Manager': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Product Designer': 'bg-pink-50 text-pink-700 border-pink-200',
-};
-
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
   Published: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   'Under Review': { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' },
@@ -36,7 +29,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
 
 // ─── Types ─────────────────────────────────────────────
 interface Post {
-  id: number;
+  id: string | number;
   company: string;
   role: string;
   round: string;
@@ -49,7 +42,7 @@ interface Post {
 }
 
 interface CommentItem {
-  id: number;
+  id: string | number;
   postTitle: string;
   postCompany: string;
   content: string;
@@ -59,7 +52,7 @@ interface CommentItem {
 }
 
 interface SavedPost {
-  id: number;
+  id: string | number;
   company: string;
   role: string;
   round: string;
@@ -70,143 +63,117 @@ interface SavedPost {
   questions: number;
 }
 
-// ─── Mock Data ─────────────────────────────────────────
-const MOCK_POSTS: Post[] = [
-  {
-    id: 1,
-    company: 'Google',
-    role: 'Software Engineer',
-    round: 'Onsite - System Design',
-    status: 'Published',
-    date: 'Feb 28, 2026',
-    likes: 142,
-    comments: 38,
-    questions: 4,
-    views: 4280,
-  },
-  {
-    id: 7,
-    company: 'Stripe',
-    role: 'Software Engineer',
-    round: 'Onsite - Coding',
-    status: 'Draft',
-    date: 'Mar 10, 2026',
-    likes: 0,
-    comments: 0,
-    questions: 2,
-    views: 0,
-  },
-  {
-    id: 8,
-    company: 'Meta',
-    role: 'Product Manager',
-    round: 'Product Sense',
-    status: 'Published',
-    date: 'Jan 15, 2026',
-    likes: 97,
-    comments: 52,
-    questions: 3,
-    views: 3150,
-  },
-  {
-    id: 9,
-    company: 'Amazon',
-    role: 'Software Engineer',
-    round: 'Onsite - Behavioral',
-    status: 'Published',
-    date: 'Dec 3, 2025',
-    likes: 64,
-    comments: 19,
-    questions: 5,
-    views: 1920,
-  },
-  {
-    id: 10,
-    company: 'Apple',
-    role: 'Software Engineer',
-    round: 'Onsite - System Design',
-    status: 'Under Review',
-    date: 'Mar 12, 2026',
-    likes: 0,
-    comments: 0,
-    questions: 3,
-    views: 0,
-  },
-];
+// ─── API → UI mapping ──────────────────────────────────
+// Backend returns status as: PENDING | APPROVED | DRAFT | REJECTED (etc.).
+// The UI uses Published / Under Review / Draft (sentence-case).
+function mapPostStatus(raw: unknown): 'Published' | 'Under Review' | 'Draft' {
+  const s = String(raw ?? '').toUpperCase();
+  if (s === 'APPROVED' || s === 'PUBLISHED') return 'Published';
+  if (s === 'PENDING' || s === 'IN_REVIEW') return 'Under Review';
+  return 'Draft';
+}
 
-const MOCK_COMMENTS: CommentItem[] = [
-  {
-    id: 101,
-    postTitle: 'Google · Software Engineer · Onsite - System Design',
-    postCompany: 'Google',
-    content: 'Thanks for sharing this! The system design round is exactly what I\'m prepping for. Did they expect you to write pseudocode for the OT algorithm?',
-    date: '2 hours ago',
-    likes: 24,
-    referencedQuestion: 'Design a real-time collaborative document editor',
-  },
-  {
-    id: 102,
-    postTitle: 'Stripe · Software Engineer · Onsite - Coding',
-    postCompany: 'Stripe',
-    content: 'Stripe interviews are uniquely practical. The debugging exercise was interesting — they gave actual production-like code to fix.',
-    date: '3 days ago',
-    likes: 18,
-    referencedQuestion: null,
-  },
-  {
-    id: 103,
-    postTitle: 'Netflix · Data Scientist · Technical Phone Screen',
-    postCompany: 'Netflix',
-    content: 'Great writeup on the experimentation framework questions. I had a very similar experience last month.',
-    date: '1 week ago',
-    likes: 12,
-    referencedQuestion: 'Design an A/B test for a new recommendation algo',
-  },
-];
+function formatPostDate(iso?: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-const MOCK_SAVED: SavedPost[] = [
-  {
-    id: 201,
-    company: 'Apple',
-    role: 'Engineering Manager',
-    round: 'Onsite - Behavioral / Leadership',
-    author: 'Daniel W.',
-    date: 'Mar 2026',
-    likes: 92,
-    comments: 31,
-    questions: 3,
-  },
-  {
-    id: 202,
-    company: 'Netflix',
-    role: 'Data Scientist',
-    round: 'Technical Phone Screen',
-    author: 'Priya R.',
-    date: 'Dec 2025',
-    likes: 68,
-    comments: 21,
-    questions: 2,
-  },
-  {
-    id: 203,
-    company: 'Microsoft',
-    role: 'Software Engineer',
-    round: 'Onsite - System Design',
-    author: 'Anonymous',
-    date: 'Feb 2026',
-    likes: 156,
-    comments: 44,
-    questions: 4,
-  },
-];
+function formatRelative(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
+  if (isNaN(ms)) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} day${day === 1 ? '' : 's'} ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk} week${wk === 1 ? '' : 's'} ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ApiPost — fields the backend returns from GET /community/posts/me
+interface ApiPost {
+  id: string;
+  user?: { id?: string; name?: string };
+  company?: string;
+  role?: string;
+  level?: string;
+  round?: string;
+  date?: string;
+  outcome?: string;
+  location?: string;
+  questions?: Array<{ id?: string; seq?: number; label?: string; title?: string; categories?: string[]; notes?: string }>;
+  summary?: string;
+  status?: string;
+  isAnonymous?: boolean;
+  likeCount?: number;
+  saveCount?: number;
+  commentCount?: number;
+  liked?: boolean;
+  saved?: boolean;
+  createdAt?: string;
+}
+
+interface ApiComment {
+  id: string;
+  postId?: string;
+  questionSeq?: number;
+  questionTitle?: string;
+  content?: string;
+  status?: string;
+  isAnonymous?: boolean;
+  createdAt?: string;
+}
+
+function mapApiPost(p: ApiPost): Post {
+  return {
+    id: p.id,
+    company: p.company ?? 'Unknown',
+    role: p.role ?? 'Unknown role',
+    round: p.round ?? '—',
+    status: mapPostStatus(p.status),
+    date: formatPostDate(p.createdAt ?? p.date),
+    likes: p.likeCount ?? 0,
+    comments: p.commentCount ?? 0,
+    questions: Array.isArray(p.questions) ? p.questions.length : 0,
+    views: p.saveCount ?? 0, // API has no views field — show saves instead
+  };
+}
+
+function mapApiComment(c: ApiComment): CommentItem {
+  return {
+    id: c.id,
+    postTitle: c.questionTitle ?? 'Comment on post',
+    postCompany: '',
+    content: c.content ?? '',
+    date: formatRelative(c.createdAt),
+    likes: 0,
+    referencedQuestion: c.questionTitle ?? null,
+  };
+}
+
+function mapApiSavedPost(p: ApiPost): SavedPost {
+  const author = p.isAnonymous ? 'Anonymous' : (p.user?.name ?? 'Anonymous');
+  return {
+    id: p.id,
+    company: p.company ?? 'Unknown',
+    role: p.role ?? 'Unknown role',
+    round: p.round ?? '—',
+    author,
+    date: formatPostDate(p.createdAt ?? p.date),
+    likes: p.likeCount ?? 0,
+    comments: p.commentCount ?? 0,
+    questions: Array.isArray(p.questions) ? p.questions.length : 0,
+  };
+}
 
 type TabKey = 'posts' | 'comments' | 'saved';
-
-const TABS: { key: TabKey; label: string; icon: React.ReactNode; count: number }[] = [
-  { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: MOCK_POSTS.length },
-  { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: MOCK_COMMENTS.length },
-  { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: MOCK_SAVED.length },
-];
 
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -215,11 +182,81 @@ export function MyContributionsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
-  const [actionMenuOpen, setActionMenuOpen] = useState<number | null>(null);
+  const [actionMenuOpen, setActionMenuOpen] = useState<string | number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Published' | 'Under Review' | 'Draft'>('All');
 
+  // Live data from the backend
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [savedLoading, setSavedLoading] = useState(true);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPosts() {
+      try {
+        const res = await getMyPosts({ page: 0, size: 50 });
+        if (cancelled) return;
+        const content: ApiPost[] = res.data?.data?.content ?? [];
+        setPosts(content.map(mapApiPost));
+        setPostsError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setPostsError(e instanceof Error ? e.message : 'Failed to load posts');
+        setPosts([]);
+      } finally {
+        if (!cancelled) setPostsLoading(false);
+      }
+    }
+    async function loadComments() {
+      try {
+        const res = await getMyComments({ page: 0, size: 50 });
+        if (cancelled) return;
+        const content: ApiComment[] = res.data?.data?.content ?? [];
+        setComments(content.map(mapApiComment));
+        setCommentsError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setCommentsError(e instanceof Error ? e.message : 'Failed to load comments');
+        setComments([]);
+      } finally {
+        if (!cancelled) setCommentsLoading(false);
+      }
+    }
+    async function loadSaved() {
+      try {
+        const res = await getMySavedPosts();
+        if (cancelled) return;
+        const content: ApiPost[] = res.data?.data?.content ?? [];
+        setSavedPosts(content.map(mapApiSavedPost));
+        setSavedError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setSavedError(e instanceof Error ? e.message : 'Failed to load saved posts');
+        setSavedPosts([]);
+      } finally {
+        if (!cancelled) setSavedLoading(false);
+      }
+    }
+    loadPosts();
+    loadComments();
+    loadSaved();
+    return () => { cancelled = true; };
+  }, []);
+
+  const TABS: { key: TabKey; label: string; icon: React.ReactNode; count: number }[] = [
+    { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: posts.length },
+    { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: comments.length },
+    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: savedPosts.length },
+  ];
+
   // Filtered posts
-  const filteredPosts = MOCK_POSTS.filter(p => {
+  const filteredPosts = posts.filter(p => {
     if (statusFilter !== 'All' && p.status !== statusFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -232,13 +269,13 @@ export function MyContributionsPage() {
     return true;
   });
 
-  const filteredComments = MOCK_COMMENTS.filter(c => {
+  const filteredComments = comments.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return c.content.toLowerCase().includes(q) || c.postTitle.toLowerCase().includes(q);
   });
 
-  const filteredSaved = MOCK_SAVED.filter(s => {
+  const filteredSaved = savedPosts.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -301,7 +338,7 @@ export function MyContributionsPage() {
 
         {/* ─── Controls Bar ─── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
-          <div className="relative flex-1 max-w-sm">
+          {/* <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
             <input
               type="text"
@@ -314,11 +351,11 @@ export function MyContributionsPage() {
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 h-9 rounded-xl border border-[hsl(220,16%,90%)] bg-white text-sm focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 outline-none transition-all"
             />
-          </div>
+          </div> */}
 
           {activeTab === 'posts' && (
             <div className="flex items-center gap-2">
-              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (
+              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (        
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -338,7 +375,11 @@ export function MyContributionsPage() {
         {/* ─── Posts Tab ─── */}
         {activeTab === 'posts' && (
           <div>
-            {filteredPosts.length === 0 ? (
+            {postsLoading ? (
+              <LoadingState />
+            ) : postsError ? (
+              <ErrorState message={postsError} />
+            ) : filteredPosts.length === 0 ? (
               <EmptyState
                 title="No interview experiences yet"
                 description="Share your interview journey to help others prepare — and track your contributions here."
@@ -360,7 +401,6 @@ export function MyContributionsPage() {
                 <div className="divide-y divide-[hsl(220,16%,94%)]">
                   {filteredPosts.map((post, i) => {
                     const status = STATUS_STYLES[post.status];
-                    const roleColor = ROLE_COLORS[post.role] || 'bg-slate-50 text-slate-600 border-slate-200';
                     const isMenuOpen = actionMenuOpen === post.id;
 
                     return (
@@ -380,7 +420,9 @@ export function MyContributionsPage() {
                               className="block group/link"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <CompanyLogo company={post.company} size="sm" />
+                                <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)] shrink-0">
+                                  {post.company[0]}
+                                </div>
                                 <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover/link:text-[hsl(221,91%,60%)] transition-colors truncate">
                                   {post.company} · {post.role}
                                 </h3>
@@ -476,7 +518,9 @@ export function MyContributionsPage() {
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <Link to={`/experience/${post.id}`} className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <CompanyLogo company={post.company} size="sm" className="w-6 h-6" />
+                                <div className="w-6 h-6 rounded-md bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
+                                  {post.company[0]}
+                                </div>
                                 <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
                                   {post.company} · {post.role}
                                 </h3>
@@ -528,7 +572,11 @@ export function MyContributionsPage() {
         {/* ─── Comments Tab ─── */}
         {activeTab === 'comments' && (
           <div>
-            {filteredComments.length === 0 ? (
+            {commentsLoading ? (
+              <LoadingState />
+            ) : commentsError ? (
+              <ErrorState message={commentsError} />
+            ) : filteredComments.length === 0 ? (
               <EmptyState
                 title="No comments yet"
                 description="Join the conversation on interview experiences shared by the community."
@@ -590,7 +638,11 @@ export function MyContributionsPage() {
         {/* ─── Saved Tab ─── */}
         {activeTab === 'saved' && (
           <div>
-            {filteredSaved.length === 0 ? (
+            {savedLoading ? (
+              <LoadingState />
+            ) : savedError ? (
+              <ErrorState message={savedError} />
+            ) : filteredSaved.length === 0 ? (
               <EmptyState
                 title="No saved posts yet"
                 description="Save interview experiences from the community to reference them later during your prep."
@@ -599,39 +651,38 @@ export function MyContributionsPage() {
               />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredSaved.map((saved, i) => {
-                  const roleColor = ROLE_COLORS[saved.role] || 'bg-slate-50 text-slate-600 border-slate-200';
-                  return (
-                    <motion.div
-                      key={saved.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.04 }}
+                {filteredSaved.map((saved, i) => (
+                  <motion.div
+                    key={saved.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                  >
+                    <Link
+                      to={`/experience/${saved.id}`}
+                      className="block bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 hover:border-[hsl(221,91%,60%)]/20 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all group"
                     >
-                      <Link
-                        to={`/experience/${saved.id}`}
-                        className="block bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 hover:border-[hsl(221,91%,60%)]/20 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all group"
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <CompanyLogo company={saved.company} size="sm" />
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors truncate">
-                              {saved.company} · {saved.role}
-                            </h4>
-                          </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
+                          {saved.company[0]}
                         </div>
-                        <p className="text-xs text-[hsl(222,12%,50%)] mb-3 pl-9">
-                          {saved.round} · {saved.questions} questions · by {saved.author}
-                        </p>
-                        <div className="flex items-center gap-3 pl-9 text-[11px] text-[hsl(222,12%,55%)]">
-                          <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" />{saved.likes}</span>
-                          <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{saved.comments}</span>
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{saved.date}</span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors truncate">
+                            {saved.company} · {saved.role}
+                          </h4>
                         </div>
-                      </Link>
-                    </motion.div>
-                  );
-                })}
+                      </div>
+                      <p className="text-xs text-[hsl(222,12%,50%)] mb-3 pl-9">
+                        {saved.round} · {saved.questions} questions · by {saved.author}
+                      </p>
+                      <div className="flex items-center gap-3 pl-9 text-[11px] text-[hsl(222,12%,55%)]">
+                        <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" />{saved.likes}</span>
+                        <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{saved.comments}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{saved.date}</span>
+                      </div>
+                    </Link>
+                  </motion.div>
+                ))}
               </div>
             )}
           </div>
@@ -673,7 +724,9 @@ export function MyContributionsPage() {
                 </p>
                 <div className="bg-[hsl(220,20%,98%)] rounded-xl border border-[hsl(220,16%,92%)] p-3 mb-5">
                   <div className="flex items-center gap-2">
-                    <CompanyLogo company={deleteTarget.company} size="sm" className="w-6 h-6" />
+                    <div className="w-6 h-6 rounded-md bg-white border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
+                      {deleteTarget.company[0]}
+                    </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
                         {deleteTarget.company} · {deleteTarget.role}
@@ -709,6 +762,29 @@ export function MyContributionsPage() {
         </AnimatePresence>
       </div>
     </DashboardLayout>
+  );
+}
+
+// ─── Loading State ─────────────────────────────────────
+function LoadingState() {
+  return (
+    <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-12 flex flex-col items-center gap-3">
+      <Loader2 className="w-6 h-6 text-[hsl(221,91%,60%)] animate-spin" />
+      <p className="text-sm text-[hsl(222,12%,50%)]">Loading…</p>
+    </div>
+  );
+}
+
+// ─── Error State ───────────────────────────────────────
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="bg-white rounded-2xl border border-red-100 p-8 text-center">
+      <div className="w-12 h-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-3">
+        <AlertTriangle className="w-5 h-5 text-red-500" />
+      </div>
+      <p className="text-sm text-[hsl(222,22%,15%)] font-medium mb-1">Couldn't load this content</p>
+      <p className="text-xs text-[hsl(222,12%,50%)] max-w-sm mx-auto">{message}</p>
+    </div>
   );
 }
 

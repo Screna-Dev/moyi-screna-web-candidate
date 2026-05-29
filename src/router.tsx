@@ -7,20 +7,20 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
 import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
-import JobBoardPage from './pages/newDesign/home/job-board';
-
+import JobBoardPage from './pages/newDesign/home/job-board'
 // Auth / onboarding pages
 import { AuthPage } from './pages/newDesign/auth';
+import { RefRedirect } from './pages/ref-redirect';
 import { SignupFlowPage } from './pages/newDesign/signup-flow';
 import { OnboardingPage } from './pages/newDesign/onboarding';
 
 // Dashboard / post-login pages
 import { DashboardPage } from './pages/newDesign/dashboard';
+import { DashboardHomePage } from './pages/newDesign/dashboard-home';
 import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
 import { AIMockPage } from './pages/newDesign/ai-mock';
 import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
 import { HistoryPage } from './pages/newDesign/history';
-import { JobsPage } from './pages/newDesign/jobs';
 import { ReferEarnPage } from './pages/newDesign/refer-earn';
 import { SettingsPage } from './pages/newDesign/settings';
 import { BillingPage } from './pages/newDesign/billing';
@@ -30,13 +30,15 @@ import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
 import { MyContributionsPage } from './pages/newDesign/my-contributions';
 import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
 import { HomePage } from './pages/newDesign/home/home';
 import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { ContactPage } from './pages/newDesign/contact';
-import Admin from './pages/Admin';
+import AdminConsole from './components/admin/console/AdminConsole';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
 import AdminAuditLogs from './pages/AdminAuditLogs';
 import AdminRoute from './components/AdminRoute';
@@ -103,6 +105,8 @@ export const router = createBrowserRouter([
       { path: '/pricing', element: <PricingPage /> },
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
+      { path: '/register', element: <AuthPage /> },
+      { path: '/pgs/ref/:slug', element: <RefRedirect /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
@@ -111,14 +115,18 @@ export const router = createBrowserRouter([
       { path: '/session-confirm', element: <SessionConfirmPage /> },
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
-      { path: '/dashboard', element: <DashboardPage /> },
+      { path: '/dashboard', element: <DashboardHomePage /> },
+      { path: '/profile', element: <DashboardPage /> },
+      { path: '/applications', element: <DashboardPage /> },
+      { path: '/dashboard/contributions', element: <DashboardPage /> },
       { path: '/contributions', element: <MyContributionsPage /> },
-      { path: '/jobs', element: <JobsPage /> },
       { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
       { path: '/history', element: <HistoryPage /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '/billing', element: <BillingPage /> },
+      { path: '/payment-success', element: <PaymentSuccess /> },
+      { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
       { path: '/messages', element: <MessageCenterPage /> },
@@ -189,8 +197,8 @@ export const router = createBrowserRouter([
         },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin — only accessible to users with role ADMIN
-      { path: '/admin', element: <AdminRoute><Admin /></AdminRoute> },
+      // admin — ADMIN sees full console; OPS sees only Job Applications
+      { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },
       { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
       { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
     ],

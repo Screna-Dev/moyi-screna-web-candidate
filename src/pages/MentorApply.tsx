@@ -84,7 +84,7 @@ export default function MentorApply() {
   const handleSubmit = () => {
     updateField('status', 'pending');
     alert('Your mentor application has been submitted and is under review. Typical review time: 1–3 business days.');
-    navigate('/mentor/dashboard');
+    navigate('/marketplace');
   };
 
   return (

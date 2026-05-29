@@ -1,29 +1,35 @@
-import { useState, useEffect, ReactNode, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard,
   Settings,
-  Menu,
   Briefcase,
-  FileText,
   Gift,
-  ArrowLeft,
   Coins,
   Home,
   LogOut,
   MessageSquare,
   ChevronDown,
-  Bot,
+  FileText,
   History,
-  Target,
+  User,
+  Sparkles,
   ShieldCheck,
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from './ui/sheet';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { JobApplyTab } from './job-apply-tab';
+import { ProfileTab } from './profile-tab';
+import { DashboardHome } from '@/pages/newDesign/dashboard-home';
+
+function LearningActivityChart() {
+  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
+}
+function FreshFromCommunity() {
+  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
+}
 
 type UserData = {
   firstName?: string;
@@ -31,15 +37,18 @@ type UserData = {
   role?: string;
   experienceLevel?: string;
   targetCompanies?: string[];
-  avatar?: string;
 };
 
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  // { icon: Briefcase, label: 'Jobs', path: '/jobs' },
-  // { icon: FileText, label: 'My Contributions', path: '/contributions' },
+  { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
+  { icon: History, label: 'Training History', path: '/history' },
+  { icon: FileText, label: 'My Contributions', path: '/contributions' },
+];
+
+const sidebarAccountLinks = [
+  { icon: User, label: 'Profile', path: '/profile' },
   // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
-  { icon: History, label: 'Interview History', path: '/history' },
   { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
@@ -49,65 +58,130 @@ const adminSidebarLinks = [
   { icon: Settings, label: 'Audit Log', path: '/audit-logs' },
 ];
 
-function SidebarContent({ currentPath, creditBalance, isPlanLoading }: { currentPath: string; creditBalance: number; isPlanLoading: boolean }) {
-  const { user } = useAuth();
+function SidebarContent({ currentPath }: { currentPath: string }) {
+  const { planData } = useUserPlan();
+  const { user, logout } = useAuth();
+  const creditBalance = planData.permanentCreditBalance;
   const isAdmin = user?.role === 'ADMIN';
-  const links = isAdmin ? adminSidebarLinks : sidebarLinks;
+
+  if (isAdmin) {
+    return (
+      <div className="flex flex-col h-full bg-sidebar">
+        <nav className="px-3 pt-4 pb-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Admin</p>
+          <div className="space-y-0.5">
+            {adminSidebarLinks.map((item) => {
+              const isActive = currentPath === item.path;
+              return (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                  }`}
+                >
+                  <item.icon className="w-4 h-4 shrink-0" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+        <div className="px-3 pb-5 mt-auto shrink-0">
+          <button
+            onClick={logout}
+            className="flex items-center gap-3 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="text-sm">Logout</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Nav links */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {isAdmin && (
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Admin</p>
-        )}
-        {links.map((item) => {
-          const isActive = currentPath === item.path || (item.path === '/settings' && currentPath.startsWith('/settings'));
-          return (
-            <Link
-              key={item.label}
-              to={item.path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)]'
-                  : 'text-[hsl(222,12%,45%)] hover:bg-[hsl(220,18%,96%)] hover:text-[hsl(222,22%,15%)]'
-              }`}
-            >
-              <item.icon className="w-4.5 h-4.5 flex-shrink-0" />
-              <span className="text-sm">{item.label}</span>
-            </Link>
-          );
-        })}
+    <div className="flex flex-col h-full bg-sidebar">
+      {/* Nav links — Career group */}
+      <nav className="px-3 pt-4 pb-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Career</p>
+        <div className="space-y-0.5">
+          {sidebarLinks.map((item) => {
+            const isActive =
+              currentPath === item.path ||
+              (item.path === '/marketplace' && currentPath === '/marketplace');
+            return (
+              <Link
+                key={item.label}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                }`}
+              >
+                <item.icon className="w-4 h-4 shrink-0" />
+                <span className="text-sm">{item.label}</span>
+                {item.premiumOnly && (
+                  <Sparkles className="w-3 h-3 text-amber-500 ml-auto shrink-0" aria-label="Premium feature" />
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
-      {/* Bottom: Credits CTA (hidden for admins) */}
-      {!isAdmin && <div className="px-3 pb-5 space-y-2 mt-auto shrink-0">
-        <div className="rounded-xl bg-gradient-to-br from-[hsl(221,91%,60%)] to-[hsl(165,82%,51%)] p-4 text-white">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <Coins className="w-4 h-4" />
-              <span className="text-sm font-semibold">Credits</span>
-            </div>
-            {!isPlanLoading && (
-              <span className="text-sm font-bold tabular-nums">{creditBalance}</span>
-            )}
+      {/* Divider */}
+      <div className="mx-3 my-1 border-t border-border" />
+
+      {/* Nav links — Activity & Account group */}
+      <nav className="px-3 pb-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2 mt-2">Activity & Account</p>
+        <div className="space-y-0.5">
+          {sidebarAccountLinks.map((item) => {
+            const isActive =
+              currentPath === item.path ||
+              (item.path === '/settings' && currentPath.startsWith('/settings')) ||
+              (item.path === '/profile' && currentPath === '/profile');
+            return (
+              <Link
+                key={item.label}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                }`}
+              >
+                <item.icon className="w-4 h-4 shrink-0" />
+                <span className="text-sm">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Bottom: Credits / Upgrade */}
+      <div className="px-3 pb-5 mt-auto shrink-0">
+        <div className="rounded-md bg-primary p-4 text-primary-foreground">
+          <div className="flex items-center gap-2 mb-1">
+            <Coins className="w-4 h-4" />
+            <span className="text-sm font-medium">{creditBalance <= 5 ? 'Low on Credits' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}</span>
           </div>
-          <p className="text-xs text-white/80 mb-3 leading-relaxed">
-            {isPlanLoading
-              ? 'Loading your balance…'
-              : creditBalance === 0
-                ? 'You have no credits left. Top up to continue.'
-                : creditBalance <= 5
-                  ? 'Running low — top up to keep practicing.'
-                  : 'Top up credits to keep practicing mock interviews'}
+          <p className="text-xs text-primary-foreground/80 mb-3 leading-relaxed">
+            {creditBalance <= 5
+              ? 'Top up credits to keep practicing mock interviews'
+              : `You have ${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
           </p>
           <Link to="/pricing">
-            <button className="w-full py-1.5 bg-white text-[hsl(221,91%,55%)] rounded-lg text-xs font-semibold hover:bg-white/90 transition-colors">
-              {creditBalance === 0 ? 'Buy Credits Now' : 'Buy More Credits'}
+            <button className="w-full py-1.5 bg-background text-primary rounded-md text-xs font-medium hover:bg-background/90 transition-colors">
+              Buy Credits
             </button>
           </Link>
         </div>
-      </div>}
+      </div>
     </div>
   );
 }
@@ -119,16 +193,15 @@ function GlobalTopHeader({
   firstName,
   userData,
   currentPath,
-  creditBalance,
-  isPlanLoading,
 }: {
   firstName: string;
   userData: UserData | null;
   currentPath: string;
-  creditBalance: number;
-  isPlanLoading: boolean;
 }) {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const { planData } = useUserPlan();
+  const creditBalance = planData.permanentCreditBalance;
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
 
@@ -137,7 +210,6 @@ function GlobalTopHeader({
     : userData?.firstName
     ? userData.firstName[0].toUpperCase()
     : 'U';
-  const { user, logout } = useAuth();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -157,7 +229,6 @@ function GlobalTopHeader({
     navigate('/');
   };
 
-  // Check if a global nav link is "active"
   const isLinkActive = (path: string) => {
     if (path === '/job-board') return currentPath.startsWith('/job-board') || currentPath === '/jobs';
     if (path === '/mock-interview') return currentPath.includes('mock-interview') || currentPath.includes('ai-mock') || currentPath.includes('personalized-practice');
@@ -165,17 +236,50 @@ function GlobalTopHeader({
     return currentPath === path;
   };
 
+  // Shared dropdown item style — Navbar-style: serif title, no icon
+  const dropdownPanelClass = 'absolute top-full left-1/2 -translate-x-1/2 mt-3 w-64 bg-card border border-border rounded-xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5';
+  const dropdownItem = (to: string, title: string, desc: string, badge?: string) => (
+    <Link
+      key={to}
+      to={to}
+      className="flex flex-col gap-0.5 px-3.5 py-3 rounded-lg hover:bg-secondary transition-colors"
+    >
+      <span className="flex items-center gap-2">
+        <span
+          className="text-[15px] font-medium text-foreground leading-snug"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
+          {title}
+        </span>
+        {badge && (
+          <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-medium">{badge}</span>
+        )}
+      </span>
+      <span className="text-xs text-muted-foreground leading-relaxed">{desc}</span>
+    </Link>
+  );
+
+  if (user?.role === 'ADMIN') {
+    return (
+      <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
+        <Link to="/admin" className="flex items-center gap-2">
+          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+        </Link>
+      </header>
+    );
+  }
+
   return (
-    <header className="sticky z-50 bg-white/95 backdrop-blur-xl border-b border-[hsl(220,16%,90%)] h-14 flex items-center px-4 sm:px-6" style={{ top: 'var(--topbar-h, 0px)' }}>
+    <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
       {/* Left: Logo + Home */}
       <div className="flex items-center gap-3 shrink-0">
         <Link to="/dashboard" className="flex items-center gap-2">
           <img src={logoImg} alt="Screna" className="h-6 w-auto" />
         </Link>
-        <div className="w-px h-5 bg-slate-200" />
+        <div className="w-px h-5 bg-border" />
         <Link
           to="/"
-          className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors"
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
           title="Back to homepage"
         >
           <Home className="w-3.5 h-3.5" />
@@ -183,150 +287,72 @@ function GlobalTopHeader({
         </Link>
       </div>
 
-      {/* Center: Global Nav Links (matching landing page hierarchy) */}
+      {/* Center: Global Nav Links — Coach / Practice ▼ / Community ▼ / Pricing / FAQ */}
       <nav className="hidden md:flex items-center gap-5 mx-auto">
-        {/* Jobs — with dropdown */}
-        <div className="relative group">
-          
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-            <Link
-              to="/job-board"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                <Briefcase className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Find Jobs</div>
-                <div className="text-[11px] text-slate-500">Browse open positions</div>
-              </div>
-            </Link>
-          </div>
-        </div>
 
-        {/* Interview — with dropdown */}
+        {/* Coach (plain link) */}
+        <Link
+          to="/marketplace"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          Coach
+        </Link>
+
+        {/* Practice dropdown */}
         <div className="relative group">
           <button
-            className={`flex items-center gap-1 text-[13px] font-medium transition-colors duration-200 ${
-              isLinkActive('/mock-interview')
-                ? 'text-[hsl(221,91%,60%)]'
-                : 'text-slate-500 hover:text-blue-600'
-            }`}
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
           >
             Practice
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-            {/* <Link
-              to="/mock-interview"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Trending Roles</div>
-                <div className="text-[11px] text-slate-500">Practice for popular roles</div>
-              </div>
-            </Link> */}
-            <Link
-              to="/personalized-practice"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center group-hover/item:bg-violet-100 transition-colors shrink-0">
-                <Target className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Personalized Practice</div>
-                <div className="text-[11px] text-slate-500">AI-tailored mock sessions</div>
-              </div>
-            </Link>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/personalized-practice', 'Personalized Mock', 'AI-powered mock interviews tailored to your role and goals.')}
           </div>
         </div>
 
-        {/* Community — with dropdown */}
+        {/* Community dropdown */}
         <div className="relative group">
           <button
-            className={`flex items-center gap-1 text-[13px] font-medium transition-colors duration-200 ${
-              isLinkActive('/question-bank')
-                ? 'text-[hsl(221,91%,60%)]'
-                : 'text-slate-500 hover:text-blue-600'
-            }`}
+            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450, color: isLinkActive('/question-bank') ? '#2E5BFF' : '#2A2A2A' }}
           >
             Community
             <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
           </button>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5">
-            <Link
-              to="/interview-insights"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors group/item"
-            >
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover/item:bg-blue-100 transition-colors shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              </div>
-              <div>
-                <div className="text-[13px] font-semibold text-slate-900">Interview Insights</div>
-                <div className="text-[11px] text-slate-500">Real interview experiences</div>
-              </div>
-            </Link>
+          <div className={dropdownPanelClass}>
+            {dropdownItem('/interview-insights', 'Interview Insights', 'Learn from real interview experiences shared by other candidates.')}
           </div>
         </div>
 
-        {/* FAQ — flat link */}
-        <Link
-          to="/help"
-          className={`text-[13px] font-medium transition-colors duration-200 ${
-            isLinkActive('/help')
-              ? 'text-[hsl(221,91%,60%)]'
-              : 'text-slate-500 hover:text-blue-600'
-          }`}
-        >
-          FAQ
-        </Link>
-
-        {/* Pricing — flat link */}
         <Link
           to="/pricing"
-          className={`text-[13px] font-medium transition-colors duration-200 ${
-            isLinkActive('/pricing')
-              ? 'text-[hsl(221,91%,60%)]'
-              : 'text-slate-500 hover:text-blue-600'
-          }`}
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/pricing') ? '#2E5BFF' : '#2A2A2A' }}
         >
           Pricing
         </Link>
+
+        {/* FAQ — points to existing Help Center */}
+        <Link
+          to="/help"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: currentPath === '/help' ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          FAQ
+        </Link>
       </nav>
 
-      {/* Right: Credits + Avatar */}
+      {/* Right: Avatar */}
       <div className="flex items-center gap-3 shrink-0 ml-auto md:ml-0">
-        {userData?.role !== 'ADMIN' && (
-          <Link
-            to="/pricing"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
-            title="Buy more credits"
-          >
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-xs font-medium text-amber-700 tabular-nums">
-              {isPlanLoading ? '—' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}
-            </span>
-          </Link>
-        )}
-
-        {/* Avatar + Dropdown */}
         <div className="relative" ref={avatarRef}>
           <button
             onClick={() => setAvatarOpen((v) => !v)}
-            className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-semibold text-[12px] transition-all duration-200 text-white hover:opacity-90 ${
-              userData?.role === 'ADMIN'
-                ? 'bg-red-500 border-2 border-red-300 ring-2 ring-red-200'
-                : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
-            }`}
+            className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-all bg-primary text-primary-foreground hover:opacity-90"
           >
-            {userData?.avatar ? (
-              <img src={userData.avatar} alt={initials} className="w-full h-full object-cover" />
-            ) : (
-              initials
-            )}
+            {initials}
           </button>
 
           <AnimatePresence>
@@ -336,91 +362,29 @@ function GlobalTopHeader({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 6, scale: 0.97 }}
                 transition={{ duration: 0.15 }}
-                className="absolute top-full right-0 mt-2 w-56 bg-white/95 backdrop-blur-2xl rounded-xl shadow-xl shadow-slate-900/[0.08] border border-slate-100/80 overflow-hidden z-50 p-1.5 origin-top-right"
+                className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-md overflow-hidden z-50 p-1 origin-top-right"
               >
-                {/* User Info */}
-                <div className="px-3 py-2.5 border-b border-slate-100/60 mb-1">
-                  <p className="text-sm font-semibold text-slate-900 truncate">
-                    {userData?.firstName
-                      ? `${userData.firstName} ${userData.lastName || ''}`
-                      : 'My Account'}
+                <div className="px-3 py-2.5 border-b border-border mb-1">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {userData?.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'My Account'}
                   </p>
-                  {userData?.role !== 'ADMIN' && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <Coins className="w-3 h-3 text-amber-500" />
-                      <span className="text-xs text-slate-500">
-                        {isPlanLoading ? 'Loading…' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
-                      </span>
-                    </div>
-                  )}
-                  {userData?.role === 'ADMIN' && (
-                    <span className="inline-block mt-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Admin</span>
-                  )}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Coins className="w-3 h-3 text-primary" />
+                    <span className="text-xs text-muted-foreground">{`${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}</span>
+                  </div>
                 </div>
-
-                {userData?.role === 'ADMIN' ? (
-                  <>
-                    <Link
-                      to="/admin"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <ShieldCheck className="w-4 h-4 opacity-50" />
-                      Admin Dashboard
-                    </Link>
-                    <Link
-                      to="/redeem-code"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <Gift className="w-4 h-4 opacity-50" />
-                      Redeem Codes
-                    </Link>
-                    <Link
-                      to="/audit-logs"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <Settings className="w-4 h-4 opacity-50" />
-                      Audit Log
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      to="/dashboard"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <LayoutDashboard className="w-4 h-4 opacity-50" />
-                      Dashboard
-                    </Link>
-                    {/* <Link
-                      to="/messages"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <MessageSquare className="w-4 h-4 opacity-50" />
-                      Messages
-                    </Link> */}
-                    <Link
-                      to="/settings"
-                      onClick={() => setAvatarOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-                    >
-                      <Settings className="w-4 h-4 opacity-50" />
-                      Settings
-                    </Link>
-                  </>
-                )}
-
-                <div className="border-t border-slate-100/60 mt-1 pt-1">
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors"
-                  >
-                    <LogOut className="w-4 h-4 opacity-60" />
-                    Sign Out
+                <Link to="/dashboard" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <LayoutDashboard className="w-4 h-4 text-muted-foreground" /> Dashboard
+                </Link>
+                <Link to="/messages" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" /> Messages
+                </Link>
+                <Link to="/settings" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
+                  <Settings className="w-4 h-4 text-muted-foreground" /> Settings
+                </Link>
+                <div className="border-t border-border mt-1 pt-1">
+                  <button onClick={handleSignOut} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors">
+                    <LogOut className="w-4 h-4" /> Sign Out
                   </button>
                 </div>
               </motion.div>
@@ -433,6 +397,12 @@ function GlobalTopHeader({
 }
 
 // ════════════════════════════════════════════════════════
+// CAREER COMMAND CENTER
+// ════════════════════════════════════════════════════════
+function CareerCommandCenter({ userData }: { userData: UserData | null }) {
+  return <DashboardHome userData={userData} />;
+}
+// ════════════════════════════════════════════════════════
 // DASHBOARD LAYOUT
 // ════════════════════════════════════════════════════════
 interface DashboardLayoutProps {
@@ -441,22 +411,34 @@ interface DashboardLayoutProps {
   noSidebar?: boolean;
 }
 
-export function DashboardLayout({ children, headerTitle, noSidebar }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerTitle, noSidebar = false }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
   const [userData, setUserData] = useState<UserData | null>(null);
-  const { planData, isLoading: isPlanLoading } = useUserPlan();
-  const creditBalance = planData.permanentCreditBalance;
+
   useEffect(() => {
-    if (isLoading) return;
-    if (!user) {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    if (!token) {
       navigate('/auth');
-      return;
     }
-    const [firstName, ...rest] = (user.name || '').split(' ');
-    setUserData({ firstName, lastName: rest.join(' ') || undefined, role: user.role, avatar: user.avatar });
-  }, [user, isLoading, navigate]);
+  }, [navigate]);
+
+  useEffect(() => {
+    if (user) {
+      setUserData((prev) => {
+        const nameParts = (user.name || '').trim().split(' ');
+        const firstName = nameParts[0] || prev?.firstName || '';
+        const lastName = nameParts.slice(1).join(' ') || prev?.lastName || '';
+        return {
+          ...prev,
+          firstName,
+          lastName,
+          role: user.role || prev?.role,
+        };
+      });
+    }
+  }, [user]);
 
   const firstName = userData?.firstName || 'there';
   const hour = new Date().getHours();
@@ -464,76 +446,39 @@ export function DashboardLayout({ children, headerTitle, noSidebar }: DashboardL
   const displayTitle = headerTitle || `${greeting}, ${firstName}`;
 
   return (
-    <div className="min-h-screen bg-[hsl(220,20%,97%)] flex flex-col" style={{ paddingTop: 'var(--topbar-h, 0px)' }}>
-      {/* ── Global Top Header (full width) ── */}
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* ── Global Top Header ── */}
       <GlobalTopHeader
         firstName={firstName}
         userData={userData}
         currentPath={location.pathname}
-        creditBalance={creditBalance}
-        isPlanLoading={isPlanLoading}
       />
 
-      {noSidebar ? (
-        /* ── No-sidebar layout (full-width, like landing pages) ── */
-        <main className="flex-1">
-          {children}
-        </main>
-      ) : (
-        /* ── Below header: Sidebar + Content ── */
-        <div className="flex flex-1 min-h-0">
-          {/* Desktop Sidebar */}
-          <aside className="hidden lg:flex flex-col w-60 bg-white border-r border-[hsl(220,16%,90%)] sticky z-40 shrink-0 overflow-y-auto" style={{ top: 'calc(var(--topbar-h, 0px) + 3.5rem)', height: 'calc(100vh - 3.5rem - var(--topbar-h, 0px))' }}>
-            <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
+      {/* ── Below header: Sidebar + Content ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* Desktop Sidebar */}
+        {!noSidebar && (
+          <aside className="hidden lg:flex flex-col w-[220px] bg-sidebar border-r border-sidebar-border sticky top-[calc(var(--topbar-h)+3.5rem)] h-[calc(100vh-3.5rem-var(--topbar-h))] z-40 shrink-0 overflow-y-auto">
+            <SidebarContent currentPath={location.pathname} />
           </aside>
+        )}
 
-          {/* Main content */}
-          <main className="flex-1 flex flex-col min-w-0">
-            {/* Context sub-header: page title + breadcrumb */}
-            <div className="sticky z-20 bg-[hsl(220,20%,97%)]/90 backdrop-blur-sm border-b border-[hsl(220,16%,92%)] px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between" style={{ top: 'calc(var(--topbar-h, 0px) + 3.5rem)' }}>
-              <div className="flex items-center gap-3">
-                {/* Mobile sidebar trigger */}
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8">
-                      <Menu className="w-5 h-5 text-[hsl(222,22%,15%)]" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="p-0 w-72">
-                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                    <SheetDescription className="sr-only">Main navigation links</SheetDescription>
-                    <SidebarContent currentPath={location.pathname} creditBalance={creditBalance} isPlanLoading={isPlanLoading} />
-                  </SheetContent>
-                </Sheet>
-
-                <div>
-                  <p className="text-[11px] text-[hsl(222,12%,55%)] uppercase tracking-wider mb-0.5">
-                    {location.pathname === '/dashboard' ? 'Dashboard'
-                      : location.pathname.startsWith('/settings') || location.pathname.startsWith('/billing') ? 'PERSONAL'
-                      : location.pathname.slice(1).replace('-', ' ').replace('/', ' / ')}
-                  </p>
-                  <h1 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
-                    {displayTitle}
-                  </h1>
-                </div>
-              </div>
-
-              {/* Credits indicator */}
-              <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-                <Coins className="w-3.5 h-3.5 text-amber-500" />
-                <span className="tabular-nums">
-                  {isPlanLoading ? '—' : creditBalance} credit{!isPlanLoading && creditBalance === 1 ? '' : 's'}
-                </span>
-              </div>
-            </div>
-
-            {/* Page body */}
-            <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8 w-full max-w-5xl mx-auto">
-              {children}
-            </div>
-          </main>
-        </div>
-      )}
+        {/* Main content */}
+        <main className="flex-1 flex flex-col min-w-0 bg-background">
+          {/* Page body */}
+          <div className="flex-1 w-full max-w-[1600px] mx-auto px-[32px] pt-[20px] pb-[48px]">
+            {location.pathname === '/dashboard' ? (
+              <CareerCommandCenter userData={userData} />
+            ) : location.pathname === '/applications' ? (
+              <JobApplyTab />
+            ) : location.pathname === '/profile' ? (
+              <ProfileTab userData={userData} />
+            ) : (
+              children
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

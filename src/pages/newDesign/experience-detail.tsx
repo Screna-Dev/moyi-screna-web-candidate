@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useNavigate } from 'react-router';
 import {
   ArrowLeft,
   ThumbsUp,
@@ -26,16 +26,25 @@ import {
   ExternalLink,
   CircleAlert,
   ChevronsUpDown,
+  Coins,
 } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getPostAccessInfo, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+} from '../../components/newDesign/ui/alert-dialog';
 
 // ─── Color Mappings ────────────────────────────────────
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -165,13 +174,31 @@ function getQuestionHintStatus(
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════
+type AccessReason =
+  | 'OWNER'
+  | 'SUBSCRIBED'
+  | 'ALREADY_UNLOCKED'
+  | 'NO_COST'
+  | 'PAYMENT_REQUIRED'
+  | 'INSUFFICIENT_CREDITS';
+
+const FREE_REASONS: AccessReason[] = ['OWNER', 'SUBSCRIBED', 'ALREADY_UNLOCKED', 'NO_COST'];
+
 export function ExperienceDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
 
   // ── Post data ──
   const [post, setPost] = useState<ExperiencePost | null>(null);
   const [postLoading, setPostLoading] = useState(true);
+
+  // ── Access / pricing gate ──
+  const [creditCost, setCreditCost] = useState<number>(0);
+  const [creditBalance, setCreditBalance] = useState<number>(0);
+  const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
+  const [showInsufficient, setShowInsufficient] = useState(false);
+  const [confirmingPurchase, setConfirmingPurchase] = useState(false);
 
   // ── Comments ──
   const [comments, setComments] = useState<Comment[]>([]);
@@ -230,12 +257,55 @@ export function ExperienceDetailPage() {
         setExpandedQuestions(new Set(data.questions.map((q: PostQuestion) => q.id)));
         setAllExpanded(true);
       }
-    } catch {
-      // silent
+    } catch (err: any) {
+      if (err?.response?.data?.errorCode === 'INSUFFICIENT_CREDITS') {
+        toast.error('Not enough credits to view this post.');
+        setShowInsufficient(true);
+      }
     } finally {
       setPostLoading(false);
     }
   }, [id]);
+
+  const checkAccessAndFetch = useCallback(async () => {
+    if (!id) return;
+    setPostLoading(true);
+    try {
+      const res = await getPostAccessInfo(id);
+      const data = res.data?.data ?? res.data;
+      const reason: AccessReason = data?.reason;
+      setCreditCost(data?.creditCost ?? 0);
+      setCreditBalance(data?.creditBalance ?? 0);
+
+      if (FREE_REASONS.includes(reason)) {
+        await fetchPost();
+        return;
+      }
+      if (reason === 'PAYMENT_REQUIRED') {
+        setShowPaymentPrompt(true);
+        setPostLoading(false);
+        return;
+      }
+      if (reason === 'INSUFFICIENT_CREDITS') {
+        setShowInsufficient(true);
+        setPostLoading(false);
+        return;
+      }
+      setPostLoading(false);
+    } catch {
+      setPostLoading(false);
+    }
+  }, [id, fetchPost]);
+
+  const handleConfirmPurchase = useCallback(async () => {
+    setConfirmingPurchase(true);
+    try {
+      await fetchPost();
+      setShowPaymentPrompt(false);
+    } finally {
+      setConfirmingPurchase(false);
+    }
+  }, [fetchPost]);
 
   const fetchComments = useCallback(async () => {
     if (!id) return;
@@ -252,9 +322,9 @@ export function ExperienceDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    fetchPost();
+    checkAccessAndFetch();
     fetchComments();
-  }, [fetchPost, fetchComments]);
+  }, [checkAccessAndFetch, fetchComments]);
 
   // Check if current user is author (you'll need to add authorId to your post data)
   const isAuthor = currentUser?.id === (post as any)?.authorId;
@@ -487,6 +557,79 @@ export function ExperienceDetailPage() {
   };
 
 
+  const gateOverlays = (
+    <>
+      <AlertDialog open={showPaymentPrompt} onOpenChange={(open) => { if (!open) setShowPaymentPrompt(false); }}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-[hsl(221,91%,60%)]/10 flex items-center justify-center">
+                <Coins className="w-5 h-5 text-[hsl(221,91%,60%)]" />
+              </div>
+              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">View this post?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
+              This post costs <span className="font-semibold text-[hsl(222,22%,15%)]">{creditCost} {creditCost === 1 ? 'credit' : 'credits'}</span>.
+              <br />
+              Your balance: <span className="font-semibold text-[hsl(222,22%,15%)]">{creditBalance} {creditBalance === 1 ? 'credit' : 'credits'}</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setShowPaymentPrompt(false); navigate('/interview-insights'); }}
+              disabled={confirmingPurchase}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmPurchase}
+              disabled={confirmingPurchase}
+              className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
+            >
+              {confirmingPurchase ? <Loader2 className="w-4 h-4 animate-spin" /> : `Use ${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showInsufficient} onOpenChange={(open) => { if (!open) setShowInsufficient(false); }}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <CircleAlert className="w-5 h-5 text-amber-600" />
+              </div>
+              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">Not enough credits</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
+              You need <span className="font-semibold text-[hsl(222,22%,15%)]">{creditCost}</span> credits to view this post,
+              but your balance is <span className="font-semibold text-[hsl(222,22%,15%)]">{creditBalance}</span>.
+              <br />
+              Buy more credits or upgrade your plan for unlimited access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setShowInsufficient(false); navigate('/interview-insights'); }}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => navigate('/pricing')}
+              className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
+            >
+              Upgrade plan
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
   if (postLoading) {
     return (
       <div className="min-h-screen bg-white">
@@ -497,20 +640,23 @@ export function ExperienceDetailPage() {
           </div>
         </main>
         <Footer />
+        {gateOverlays}
       </div>
     );
   }
 
   if (!post) {
+    const gated = showPaymentPrompt || showInsufficient;
     return (
       <div className="min-h-screen bg-white">
         <Navbar />
         <main className="pt-24 pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
-            Post not found.
+            {gated ? 'Confirm to view this post.' : 'Post not found.'}
           </div>
         </main>
         <Footer />
+        {gateOverlays}
       </div>
     );
   }
@@ -1289,6 +1435,7 @@ export function ExperienceDetailPage() {
       </main>
 
       <Footer />
+      {gateOverlays}
     </div>
   );
 }

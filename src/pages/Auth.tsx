@@ -8,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
 import { Checkbox } from '@/components/newDesign/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
-import { Sparkles, Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Logo from "@/assets/logo.png"
+import { validatePassword, PasswordRequirements } from '@/lib/passwordPolicy';
 
 // Google Icon SVG Component
 const GoogleIcon = () => (
@@ -38,26 +39,6 @@ export default function Auth() {
   const { user, login, signup, loginWithGoogle, verifyEmail, resendVerificationCode } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  const validatePassword = (password: string) => {
-    const errors = [];
-    if (password.length < 8) {
-      errors.push("Password must be at least 8 characters long");
-    }
-    if (!/[A-Z]/.test(password)) {
-      errors.push("Password must contain at least one uppercase letter");
-    }
-    if (!/[a-z]/.test(password)) {
-      errors.push("Password must contain at least one lowercase letter");
-    }
-    if (!/\d/.test(password)) {
-      errors.push("Password must contain at least one number");
-    }
-    if (!/[^\w\s]/.test(password)) {
-      errors.push("Password must contain at least one special character: ^ $ * . [ ] { } ( ) ? - \" ! @ # % & / \\ , > < ' : ; | ~ ` + =");
-    }
-    return errors;
-  };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newPassword = e.target.value;
@@ -121,7 +102,7 @@ export default function Auth() {
         if (loggedInUser?.role === "CANDIDATE"){
           navigate('/profile');
         } 
-        if (loggedInUser?.role === "ADMIN"){
+        if (loggedInUser?.role === "ADMIN" || loggedInUser?.role === "OPS"){
           navigate('/admin');
         }
       } else {
@@ -540,34 +521,7 @@ export default function Auth() {
                       className={passwordErrors.length > 0 && password.length > 0 ? 'border-destructive' : ''}
                     />
                     
-                    {/* Password Requirements */}
-                    {password.length > 0 && (
-                      <div className="mt-3 space-y-2 text-sm">
-                        <div className="font-medium text-muted-foreground">Password Requirements:</div>
-                        <div className="space-y-1">
-                          <PasswordRequirement 
-                            met={password.length >= 8}
-                            text="At least 8 characters long"
-                          />
-                          <PasswordRequirement 
-                            met={/[A-Z]/.test(password)}
-                            text="Contains uppercase letter"
-                          />
-                          <PasswordRequirement 
-                            met={/[a-z]/.test(password)}
-                            text="Contains lowercase letter"
-                          />
-                          <PasswordRequirement 
-                            met={/\d/.test(password)}
-                            text="Contains number"
-                          />
-                          <PasswordRequirement 
-                            met={/[^\w\s]/.test(password)}
-                            text="Contains special character"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {password.length > 0 && <PasswordRequirements password={password} />}
                   </div>
                   <Button 
                     type="submit" 
@@ -624,18 +578,3 @@ export default function Auth() {
   );
 }
 
-// Helper component for password requirement indicators
-function PasswordRequirement({ met, text }: { met: boolean; text: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      {met ? (
-        <CheckCircle className="w-4 h-4 text-green-600" />
-      ) : (
-        <AlertCircle className="w-4 h-4 text-muted-foreground" />
-      )}
-      <span className={met ? 'text-green-600' : 'text-muted-foreground'}>
-        {text}
-      </span>
-    </div>
-  );
-}

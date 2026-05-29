@@ -26,14 +26,14 @@ export default function Jobs() {
   const navigate = useNavigate();
   
   // Use the user plan hook
-  const { 
-    planData, 
-    isLoading: isPlanLoading, 
-    isFree, 
-    canAccessJobs, 
-    canPushProfile 
+  const {
+    planData,
+    isLoading: isPlanLoading,
+    isElite,
+    canAccessJobs,
+    canPushProfile
   } = useUserPlan();
-  const { upgradeToPro, isChangingPlan } = useUpgradePrompt();
+  const { upgradeToElite, isChangingPlan } = useUpgradePrompt();
   
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -193,7 +193,7 @@ export default function Jobs() {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push your profile to recruiters.',
-        action: <Link to="/settings?tab=plan-usage"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings?tab=billing"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -214,7 +214,7 @@ export default function Jobs() {
       toast({
         title: 'Premium Required',
         description: 'Upgrade to push profiles.',
-        action: <Link to="/settings?tab=plan-usage"><Button size="sm">Upgrade Now</Button></Link>
+        action: <Link to="/settings?tab=billing"><Button size="sm">Upgrade Now</Button></Link>
       });
       return;
     }
@@ -264,7 +264,7 @@ export default function Jobs() {
   };
 
   const handleUpgrade = async () => {
-    await upgradeToPro();
+    await upgradeToElite();
   };
 
   // Handle active title change
@@ -314,8 +314,8 @@ export default function Jobs() {
     );
   }
 
-  // Show upgrade prompt for Free users
-  if (isFree) {
+  // Show upgrade prompt for non-Premium users
+  if (!isElite) {
     return (
       <TooltipProvider>
         <div className="min-h-screen bg-background p-6">
@@ -332,14 +332,14 @@ export default function Jobs() {
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 mx-auto mb-6 flex items-center justify-center">
                   <Crown className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-3">Upgrade to Access Job Matching</h2>
+                <h2 className="text-2xl font-bold mb-3">Upgrade to Premium to Access Job Matching</h2>
                 <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                  Pro and Elite members get access to our AI-powered job matching feature, 
+                  Premium members get access to our AI-powered job matching feature,
                   helping you find the perfect opportunities based on your skills and experience.
                 </p>
-                
+
                 <div className="bg-background rounded-lg p-6 mb-6 text-left max-w-md mx-auto">
-                  <h3 className="font-semibold mb-4">Pro Plan includes:</h3>
+                  <h3 className="font-semibold mb-4">Premium Plan includes:</h3>
                   <ul className="space-y-3">
                     <li className="flex items-start gap-3">
                       <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -379,12 +379,12 @@ export default function Jobs() {
                     ) : (
                       <>
                         <Crown className="w-4 h-4 mr-2" />
-                        Upgrade to Pro - $19.90/mo
+                        Upgrade to Premium
                       </>
                     )}
                   </Button>
                   <Button variant="outline" size="lg" asChild>
-                    <Link to="/settings?tab=plan-usage">View All Plans</Link>
+                    <Link to="/settings?tab=billing">View All Plans</Link>
                   </Button>
                 </div>
               </div>
@@ -710,7 +710,7 @@ export default function Jobs() {
                 <span className="text-lg font-bold text-primary">{planData.creditBalance}</span>
               </div>
               <Button variant="outline" size="sm" className="w-full mt-4" asChild>
-                <Link to="/settings?tab=plan-usage">
+                <Link to="/settings?tab=billing">
                   Buy More Credits
                 </Link>
               </Button>

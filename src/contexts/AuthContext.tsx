@@ -20,8 +20,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<User | null>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
-  loginWithGoogle: (fromSignup?: boolean, returnTo?: string) => void;
+  signup: (email: string, password: string, name: string, referralCode?: string) => Promise<void>;
+  loginWithGoogle: (fromSignup?: boolean, returnTo?: string, referralCode?: string) => void;
   logout: () => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendVerificationCode: (email: string) => Promise<void>;
@@ -140,6 +140,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        window.dispatchEvent(new Event('screna-auth-change'));
       }
     } finally {
       setIsLoading(false);
@@ -177,6 +178,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        window.dispatchEvent(new Event('screna-auth-change'));
         return userData;
       } else {
         const fallback: User = { id: '', email, name: '', avatar: '' };
@@ -189,9 +191,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async (email: string, password: string, name: string, referralCode?: string) => {
     try {
-      await API.post('/auth/signup', { email, password, name });
+      const payload: Record<string, string> = { email, password, name };
+      if (referralCode) payload.referralCode = referralCode;
+      await API.post('/auth/signup', payload);
     } catch (error: any) {
       if (error.response?.data?.errorCode === 'EMAIL_NOT_VERIFIED' || 
           error.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED') {
@@ -217,12 +221,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await API.post('/auth/resend-confirmation-code', { email });
   };
 
-  const loginWithGoogle = (fromSignup = false, returnTo = '') => {
+  const loginWithGoogle = (fromSignup = false, returnTo = '', referralCode = '') => {
     const clientId = "930330871717-0atvb2bigfithtl3d9pp9amer7u81klc.apps.googleusercontent.com";
     const redirectUri = `${window.location.origin}/auth/google/callback`;
     const scope = "openid email profile";
     const responseType = "code";
-    const state = encodeURIComponent(JSON.stringify({ flow: fromSignup ? 'signup' : 'login', returnTo }));
+    const state = encodeURIComponent(JSON.stringify({ flow: fromSignup ? 'signup' : 'login', returnTo, referralCode }));
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}` +

@@ -12,6 +12,10 @@ export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
 
+export const getPostAccessInfo = (postId) => {
+  return API.get(`/community/posts/${postId}/access-info`);
+};
+
 export const createPost = (data) => {
   return API.post('/community/posts', data);
 };
@@ -44,3 +48,16 @@ export const likePost = (postId) => API.put(`/community/posts/${postId}/like`);
 export const unlikePost = (postId) => API.delete(`/community/posts/${postId}/unlike`);
 export const savePost = (postId) => API.put(`/community/posts/${postId}/save`);
 export const unsavePost = (postId) => API.delete(`/community/posts/${postId}/unsave`);
+
+// Current user's contributions
+export const getMyPosts = (params = {}) => {
+  return API.get('/community/posts/me', { params });
+};
+
+export const getMyComments = (params = {}) => {
+  return API.get('/community/comments/me', { params });
+};
+
+export const getMySavedPosts = (params = {}) => {
+  return API.get('/community/posts/me/saved', { params });
+};

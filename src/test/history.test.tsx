@@ -231,7 +231,7 @@ describe('History - API integration', () => {
     render(<MemoryRouter><HistoryPage /></MemoryRouter>);
 
     await waitFor(() => {
-      expect(screen.getByText('Interview History')).toBeInTheDocument();
+      expect(screen.getByText('Training History')).toBeInTheDocument();
     });
   });
 
@@ -256,7 +256,7 @@ describe('History - View Report', () => {
     render(<MemoryRouter><HistoryPage /></MemoryRouter>);
 
     await waitFor(() => {
-      expect(screen.getByText('Interview History')).toBeInTheDocument();
+      expect(screen.getByText('Training History')).toBeInTheDocument();
     });
 
     // Trigger "View Report" for the first session
@@ -264,9 +264,9 @@ describe('History - View Report', () => {
     fireEvent.click(viewButtons[0]);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('/evaluation')
-      );
+      expect(mockNavigate).toHaveBeenCalled();
+      const firstCallUrl = mockNavigate.mock.calls[0]?.[0];
+      expect(firstCallUrl).toEqual(expect.stringContaining('/evaluation'));
     });
   });
 

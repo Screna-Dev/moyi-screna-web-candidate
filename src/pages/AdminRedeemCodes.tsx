@@ -63,7 +63,7 @@ interface PageMeta {
   last: boolean;
 }
 
-export default function AdminRedeemCodes() {
+export function RedeemCodesPanel() {
   const navigate = useNavigate();
   const [codes, setCodes] = useState<RedeemCode[]>([]);
   const [pageMeta, setPageMeta] = useState<PageMeta | null>(null);
@@ -212,8 +212,7 @@ export default function AdminRedeemCodes() {
   const notExpiredCodes = codes.filter((c) => new Date(c.expiresAt) > new Date()).length;
 
   return (
-    <DashboardLayout headerTitle="Redeem Codes">
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -556,6 +555,13 @@ export default function AdminRedeemCodes() {
           </CardContent>
         </Card>
       </div>
+  );
+}
+
+export default function AdminRedeemCodes() {
+  return (
+    <DashboardLayout headerTitle="Redeem Codes">
+      <RedeemCodesPanel />
     </DashboardLayout>
   );
 }

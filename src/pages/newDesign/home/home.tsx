@@ -5,22 +5,25 @@ import { Footer } from '@/components/newDesign/home/footer';
 
 // ── SVG helpers ───────────────────────────────────────────────────────────────
 const CheckFull = () => (
-  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[hsl(221,91%,60%)] text-white">
-    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+  <span
+    className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full bg-[hsl(221,91%,60%)] text-white"
+    style={{ boxShadow: '0 3px 10px -3px rgba(46,91,255,0.45)' }}
+  >
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
   </span>
 );
 const CheckMuted = () => (
-  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-400">
-    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+  <span className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full border border-slate-200 text-slate-400">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
   </span>
 );
 const XMark = () => (
-  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-50 text-red-400">
-    <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+  <span className="inline-flex items-center justify-center w-[26px] h-[26px] text-[#c8ccd3]">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
   </span>
 );
 const Note = ({ text }: { text: string }) => (
-  <span className="text-[11px] text-slate-400 italic">{text}</span>
+  <span className="text-[12px] font-[500] text-slate-400 tracking-[-0.005em] leading-[1.3] px-1 text-center">{text}</span>
 );
 const ArrowRight = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -451,27 +454,36 @@ function Hero() {
       </div>
 
       <div className="relative max-w-5xl mx-auto px-6 text-center">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)] mb-5 font-medium">
+        <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-7">
+          <span className="w-6 h-px bg-[#2E5BFF]" />
           AI · COMMUNITY · CAREER SUPPORT
         </p>
-        <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(38px,5.5vw,66px)] font-[500] leading-[1.08] tracking-[-0.02em] text-slate-900 mb-6 max-w-3xl mx-auto">
+        <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,7vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-7 max-w-[16ch] mx-auto">
           Cut the busywork. Focus on what{' '}
-          <em className="italic text-[hsl(221,91%,60%)]">actually</em>{' '}
+          <em className="italic text-[#4a4d57] font-[400]">actually</em>{' '}
           gets you the offer.
         </h1>
-        <p className="text-[17px] text-slate-500 leading-relaxed max-w-xl mx-auto mb-10">
+        <p className="text-[clamp(16px,1.5vw,19px)] text-[#4a4d57] leading-[1.55] max-w-[56ch] mx-auto mb-10">
           AI practice. Real community. Vetted mentors. 24/7 support. Everything you need to prep smarter — without reinventing the wheel every time.
         </p>
         <div className="flex items-center justify-center gap-4 mb-16 flex-wrap">
-          <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-7 rounded-full bg-[hsl(221,91%,60%)] text-white text-[15px] font-medium hover:bg-[hsl(221,91%,52%)] shadow-lg shadow-blue-600/25 transition-all duration-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/70"></span>
+          <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-5 rounded-full bg-[#2E5BFF] text-white text-[14px] font-[500] tracking-[-0.005em] hover:bg-[#1E48E6] hover:-translate-y-0.5 transition-all duration-200" style={{ boxShadow: '0 6px 18px -4px rgba(46,91,255,0.35)' }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-white" style={{ animation: 'breathe 1.8s ease-in-out infinite' }}></span>
             Start free
           </Link>
-          <a href="#pillars" className="inline-flex items-center gap-2 h-12 px-7 rounded-full border border-slate-200 text-slate-700 text-[15px] font-medium hover:border-slate-300 hover:bg-slate-50 transition-all duration-200">
+          <a href="#pillars" className="inline-flex items-center gap-2 h-[44px] px-2 text-[#0A0A0A] text-[14px] font-[500] tracking-[-0.005em] hover:text-[#2E5BFF] transition-colors duration-200 group">
             See how it works
-            <ArrowRight />
+            <span className="group-hover:translate-x-1 transition-transform duration-200">
+              <ArrowRight />
+            </span>
           </a>
         </div>
+        <style>{`
+          @keyframes breathe {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%      { opacity: 0.45; transform: scale(0.8); }
+          }
+        `}</style>
 
         {/* Hero visual: career progress tracker mockup */}
         <div className="relative max-w-4xl mx-auto">
@@ -485,8 +497,8 @@ function Hero() {
             Aditi's session · in 12 min
           </div>
           <div className="absolute -bottom-4 left-8 z-10 flex items-center gap-1.5 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12)' }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6</span>
-            <span className="text-slate-400 text-[11px]">mocks done this week</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6 this week</span>
+            <span className="text-slate-400 text-[11px]">mocks done</span>
           </div>
           {/* Scale tracker to fit container on all screen sizes */}
           <style>{`
@@ -611,32 +623,30 @@ function Pillars() {
   return (
     <section id="pillars" className="py-24 bg-white">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">
+        <div className="text-center mb-16">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
             The Screna system
           </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(28px,3.5vw,44px)] font-[500] leading-[1.15] text-slate-900 max-w-2xl mx-auto">
-            Everything you need to run a smarter job search{' '}
-            <em className="italic text-slate-600">— in one place.</em>
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[28ch] mx-auto">
+            Everything you need to run a smarter job search
+            <br />
+            — <em className="italic font-[400] text-[#4a4d57]">in one place.</em>
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
-          {PILLARS.map(({ icon, title, desc, link, linkLabel, shot }) => (
-            <article key={title} className="group relative bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-[hsl(221,91%,60%)]/40 hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300" style={{ boxShadow: '0 1px 3px rgba(10,10,10,0.06)' }}>
-              <div className="p-7 pb-5">
-                <div className="w-10 h-10 rounded-xl border border-slate-200 text-slate-700 group-hover:bg-[hsl(221,91%,60%)] group-hover:text-white group-hover:border-[hsl(221,91%,60%)] flex items-center justify-center mb-5 transition-all duration-300">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-[960px] mx-auto">
+          {PILLARS.map(({ icon, title, desc, shot }) => (
+            <article key={title} className="group relative bg-white border border-[#E8E8EA] rounded-[20px] overflow-hidden hover:border-[#D9E1FF] hover:-translate-y-1.5 transition-all duration-300 flex flex-col" style={{ boxShadow: '0 1px 3px rgba(10,10,10,0.04)' }}>
+              <div className="px-8 pt-8 pb-7 flex-1">
+                <div className="w-10 h-10 rounded-[10px] border border-[#E8E8EA] text-[#0A0A0A] group-hover:bg-[#2E5BFF] group-hover:text-white group-hover:border-[#2E5BFF] flex items-center justify-center mb-5 transition-all duration-300">
                   {icon}
                 </div>
-                <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[22px] font-[400] text-slate-900 mb-3 leading-snug tracking-[-0.01em]">{title}</h3>
-                <p className="text-[14px] text-slate-500 leading-relaxed mb-5">{desc}</p>
-                <Link to={link} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[hsl(221,91%,60%)] hover:underline">
-                  {linkLabel}
-                  <ArrowRight />
-                </Link>
+                <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[26px] font-[400] text-[#0A0A0A] mb-3.5 leading-[1.15] tracking-[-0.02em]">{title}</h3>
+                <p className="text-[14.5px] text-[#4a4d57] leading-[1.65]">{desc}</p>
               </div>
               {/* Mockup shot area */}
-              <div className="border-t border-slate-100 bg-[#F7F9FF] group-hover:bg-[#F0F3FF] transition-colors duration-300 flex justify-center items-end px-5 pt-5 overflow-hidden" style={{ minHeight: 240 }}>
+              <div className="border-t border-[#E8E8EA] bg-[#F7F7F7] group-hover:bg-[#F7F9FF] transition-colors duration-300 flex justify-center items-end px-6 pt-6 overflow-hidden" style={{ minHeight: 220 }}>
                 {shot}
               </div>
             </article>
@@ -715,54 +725,102 @@ function ComparisonTable() {
   return (
     <section className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">
+        {/* Section head — centered with eyebrow dash */}
+        <div className="text-center mb-16">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
             Compare job search platforms
           </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(26px,3.2vw,40px)] font-[500] leading-[1.2] text-slate-900 mb-3">
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4">
             How Screna compares to{' '}
-            <em className="italic text-slate-600">alternatives.</em>
+            <em className="italic font-[400] text-[#4a4d57]">alternatives.</em>
           </h2>
-          <p className="text-[15px] text-slate-500 max-w-xl mx-auto">
+          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
             See how Screna combines AI, community signals, and human support into one career command center.
           </p>
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="min-w-[720px]">
-            <div className="grid gap-0 mb-1" style={{ gridTemplateColumns: '1fr repeat(5, 100px)' }}>
+        {/* Unified grid table */}
+        <div className="max-w-[1100px] mx-auto overflow-x-auto">
+          <div
+            className="bg-white border border-slate-200 rounded-[20px] overflow-hidden min-w-[840px]"
+            style={{ boxShadow: '0 1px 2px rgba(10,10,10,0.03), 0 20px 50px -24px rgba(10,10,10,0.08)' }}
+          >
+            {/* Header row */}
+            <div
+              className="grid items-stretch border-b border-slate-200"
+              style={{
+                gridTemplateColumns: 'minmax(240px, 3fr) repeat(5, minmax(120px, 1fr))',
+                background: '#FAFBFD',
+              }}
+            >
               <div />
-              <div className="text-center">
-                <span className="inline-block bg-[hsl(221,91%,60%)] text-white text-[12px] font-semibold px-3 py-1.5 rounded-full">Screna</span>
+              <div
+                className="relative px-3.5 py-4 flex items-center justify-center text-center"
+                style={{ background: '#DCE7FF' }}
+              >
+                <span className="absolute left-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
+                <span className="absolute right-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
+                <span
+                  style={{ fontFamily: "'Playfair Display', serif", color: 'hsl(221,91%,42%)' }}
+                  className="text-[22px] font-[500] tracking-[-0.02em] leading-tight"
+                >
+                  Screna
+                </span>
               </div>
               {competitors.map((c) => (
-                <div key={c} className="text-center">
-                  <span className="text-[11px] font-medium text-slate-400">{c}</span>
+                <div key={c} className="px-3.5 py-4 flex items-center justify-center text-center">
+                  <span className="text-[14px] font-[600] text-slate-600 tracking-[-0.005em]">{c}</span>
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-              {CMP_DATA.map((group) => (
-                <div key={group.label}>
-                  <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100">
-                    <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-500 font-medium">{group.label}</p>
-                  </div>
-                  {group.rows.map((row, i) => (
-                    <div key={row.name} className={`grid items-center gap-0 px-5 py-3.5 ${i > 0 ? 'border-t border-slate-50' : ''}`} style={{ gridTemplateColumns: '1fr repeat(5, 100px)' }}>
-                      <div>
-                        <p className="text-[13px] font-medium text-slate-800">{row.name}</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{row.desc}</p>
-                      </div>
-                      {(['screna', 'scale', 'exponent', 'simplify', 'wonsulting'] as const).map((key) => (
-                        <div key={key} className="flex justify-center items-center">
-                          {renderCell(row[key])}
-                        </div>
-                      ))}
+
+            {/* Body — groups & rows */}
+            {CMP_DATA.map((group) => (
+              <div key={group.label}>
+                {/* Group label spans all columns */}
+                <div
+                  className="px-6 py-2.5 border-t border-slate-200 border-b border-slate-100"
+                  style={{ background: '#F4F5F8' }}
+                >
+                  <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-slate-500">
+                    {group.label}
+                  </span>
+                </div>
+                {/* Feature rows */}
+                {group.rows.map((row) => (
+                  <div
+                    key={row.name}
+                    className="grid items-stretch border-t border-slate-100 first:border-t-0"
+                    style={{ gridTemplateColumns: 'minmax(240px, 3fr) repeat(5, minmax(120px, 1fr))' }}
+                  >
+                    <div className="px-6 py-3 flex flex-col justify-center min-h-[64px]">
+                      <p className="text-[14.5px] font-[600] text-[#0A0A0A] leading-snug tracking-[-0.005em]">
+                        {row.name}
+                      </p>
+                      <p className="text-[12.5px] text-slate-400 mt-0.5 leading-[1.4]">{row.desc}</p>
                     </div>
-                  ))}
-                </div>
-              ))}
-            </div>
+                    {/* Highlighted Screna cell */}
+                    <div
+                      className="relative px-3.5 flex items-center justify-center min-h-[64px]"
+                      style={{ background: '#EAF1FF' }}
+                    >
+                      <span className="absolute left-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
+                      <span className="absolute right-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
+                      {renderCell(row.screna)}
+                    </div>
+                    {(['scale', 'exponent', 'simplify', 'wonsulting'] as const).map((key) => (
+                      <div
+                        key={key}
+                        className="px-3.5 flex items-center justify-center min-h-[64px]"
+                      >
+                        {renderCell(row[key])}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -786,14 +844,15 @@ function Journey() {
     <section className="py-24" style={{ background: 'linear-gradient(180deg, #FAFBFF 0%, #F7F9FF 100%)' }}>
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-16">
-          <p style={{ fontFamily: "'Inter', sans-serif" }} className="text-[11px] uppercase tracking-[0.14em] text-[hsl(221,91%,60%)] mb-5 font-semibold inline-flex items-center gap-2.5 before:content-[''] before:w-6 before:h-px before:bg-[hsl(221,91%,60%)] before:block">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
             Your full job search
           </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.1] tracking-[-0.02em] text-slate-900 mb-4 max-w-[22ch] mx-auto">
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-4 max-w-[22ch] mx-auto">
             From first application to first offer{' '}
-            <em className="italic text-slate-500">— stage by stage.</em>
+            <em className="italic font-[400] text-[#4a4d57]">— stage by stage.</em>
           </h2>
-          <p className="text-[17px] text-slate-500 leading-relaxed max-w-[54ch] mx-auto">
+          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
             Screna guides you from figuring out where you stand to celebrating your offer. Unlock more support as you go.
           </p>
         </div>
@@ -839,171 +898,327 @@ function Journey() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PRICING
 // ─────────────────────────────────────────────────────────────────────────────
-type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+type BillingCycle = 'monthly' | 'quarterly';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$199', note: 'Billed $199 / month · cancel anytime' },
-  quarterly: { price: '$159', note: 'Billed $477 / quarter · cancel anytime' },
-  annual:    { price: '$129',  note: 'Billed $1,548 / year · cancel anytime' },
+  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
+  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
 };
 
-const LIMITED_FEATURES = [
-  { ok: true,  text: 'AI mock interview (credits required)' },
-  { ok: true,  text: 'Limited Interview Insights' },
-  { ok: false, text: 'Resume submission & auto-apply' },
-  { ok: false, text: 'Mentor Marketplace' },
-  { ok: false, text: 'Cold email & recruiter outreach' },
-  { ok: false, text: 'Application tracking dashboard' },
+const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
+  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
+  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
+};
+
+const LIMITED_INCLUDED = [
+  'AI mock interview (credits required)',
+  'Limited Interview Insights',
 ];
 
-const FULL_GROUPS = [
+type FeatureItem = { text: string; ok: boolean };
+type TierFeatureGroup = { title: string; items: FeatureItem[] };
+
+// Limited Access — all disabled groups (matches Claude design)
+const LIMITED_GROUPS: TierFeatureGroup[] = [
   {
     title: 'Job search support',
-    items: ['Dedicated 1:1 job search advisor', 'Resume submission & auto-apply', 'Daily application progress updates', 'Application tracking dashboard'],
+    items: [
+      { text: 'Dedicated 1:1 job search human assistants', ok: false },
+      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'Daily application progress updates', ok: false },
+      { text: 'Updated & Personalized job recommendation list', ok: false },
+    ],
   },
   {
     title: 'Outreach & visibility',
-    items: ['Cold email & recruiter outreach (AI-generated)', 'Priority resume exposure'],
+    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
   },
   {
     title: 'Mentor access',
-    items: ['Full Mentor Marketplace', 'Mock interview, resume review, salary negotiation', 'Mentor reviews & ratings'],
+    items: [
+      { text: 'Mentor Marketplace', ok: false },
+      { text: 'Mock interview, resume review, salary negotiation', ok: false },
+      { text: 'Mentor reviews & ratings', ok: false },
+    ],
   },
   {
     title: 'Community benefits',
-    items: ['Interview Insights — full access', 'Weekly members-only live sessions', '2 annual networking events', 'Pre-interview warm-up reminders'],
+    items: [
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
+    ],
   },
 ];
 
+// Starter Plan — partial checks
+const STARTER_GROUPS: TierFeatureGroup[] = [
+  {
+    title: 'Job search support',
+    items: [
+      { text: 'AI Mock Interview — 300 credits / month', ok: true },
+      { text: 'Personal Question Bank', ok: true },
+      { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'Dedicated 1:1 job search human assistants', ok: false },
+      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'Daily application progress updates', ok: false },
+    ],
+  },
+  {
+    title: 'Outreach & visibility',
+    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
+  },
+  {
+    title: 'Mentor access',
+    items: [
+      { text: 'Mentorship Marketplace', ok: true },
+      { text: 'Mock interview, resume review, salary negotiation', ok: true },
+      { text: 'Mentor reviews & ratings', ok: true },
+    ],
+  },
+  {
+    title: 'Community benefits',
+    items: [
+      { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
+    ],
+  },
+];
+
+// Full Access (Premium) — all checks (matches Claude design)
+const FULL_GROUPS: TierFeatureGroup[] = [
+  {
+    title: 'Job search support',
+    items: [
+      { text: 'Dedicated 1:1 job search human assistants', ok: true },
+      { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
+      { text: 'Daily application progress updates', ok: true },
+      { text: 'Updated & Personalized job recommendation list', ok: true },
+    ],
+  },
+  {
+    title: 'Outreach & visibility',
+    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: true }],
+  },
+  {
+    title: 'Mentor access',
+    items: [
+      { text: 'Full Mentor Marketplace', ok: true },
+      { text: 'Mock interview, resume review, salary negotiation', ok: true },
+      { text: 'Mentor reviews & ratings', ok: true },
+    ],
+  },
+  {
+    title: 'Community benefits',
+    items: [
+      { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: true },
+      { text: '2 annual networking events', ok: true },
+      { text: 'Pre-interview warm-up reminders', ok: true },
+    ],
+  },
+];
+
+function TierCheck({ ok }: { ok: boolean }) {
+  return ok ? (
+    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-[#3B6FE8] text-white shrink-0 mt-px">
+      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+    </span>
+  ) : (
+    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#A0A0A0] shrink-0 mt-px">
+      <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+    </span>
+  );
+}
+
+function TierFeatureGroups({ groups }: { groups: TierFeatureGroup[] }) {
+  return (
+    <div className="flex flex-col">
+      {groups.map((g) => (
+        <section key={g.title} className="border-t border-[#E5E5E5] pt-4 pb-1">
+          <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0] mb-3">{g.title}</p>
+          <ul className="flex flex-col gap-[9px]">
+            {g.items.map((item) => (
+              <li
+                key={item.text}
+                className={`flex items-start gap-2.5 text-[13.5px] leading-[1.5] ${
+                  item.ok ? 'text-[#2A2A2A]' : 'text-[#A0A0A0]'
+                }`}
+              >
+                <TierCheck ok={item.ok} />
+                <span>{item.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function Pricing() {
   const [cycle, setCycle] = useState<BillingCycle>('quarterly');
+  const starter = STARTER_PRICES[cycle];
   const { price, note } = PRICES[cycle];
 
   return (
     <section id="pricing" className="py-24" style={{ background: '#F7F7F7' }}>
-      <div className="max-w-5xl mx-auto px-6">
-        {/* Step 01 block header */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-12 mb-12">
-          <div>
-            <div className="flex items-center gap-5 mb-3">
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[13px] font-[500] tracking-[0.04em] text-[hsl(221,91%,60%)] bg-[#F0F3FF] px-3 py-1 rounded-full">01</span>
-              <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[hsl(221,91%,60%)]">Membership</span>
-            </div>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(28px,3vw,36px)] font-[500] leading-[1.15] text-[#0A0A0A] tracking-[-0.01em]">
-              Plans for every stage of your{' '}
-              <em className="italic text-slate-500">job search.</em>
-            </h2>
-          </div>
-          <p className="text-[16px] text-[#4a4d57] leading-[1.55] md:self-end">
+      <div className="mx-auto px-8" style={{ maxWidth: 1160 }}>
+        {/* Section head */}
+        <div className="text-center mb-12">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
+            Pricing
+          </p>
+          <h2
+            style={{ fontFamily: "'Playfair Display', serif" }}
+            className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4"
+          >
+            Plans for every stage of your{' '}
+            <em className="italic font-[400] text-[#4a4d57]">job search.</em>
+          </h2>
+          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
             Start with self-serve AI practice, or upgrade to guided career support with mentorship and managed job search help.
           </p>
         </div>
 
         {/* Billing toggle */}
-        <div className="flex justify-center mb-10">
-          <div className="inline-flex items-stretch bg-[#F0F0F2] border border-[#E8E8EA] rounded-full p-1 gap-0.5">
-            {(['monthly', 'quarterly', 'annual'] as BillingCycle[]).map((c) => (
+        <div className="flex justify-center mb-9">
+          <div className="inline-flex items-stretch bg-[#F3F4F6] rounded-full p-1 gap-0">
+            {(['monthly', 'quarterly'] as BillingCycle[]).map((c) => (
               <button
                 key={c}
                 onClick={() => setCycle(c)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[13px] font-[500] transition-all duration-200 ${
-                  cycle === c ? 'bg-white text-[#0A0A0A] shadow-sm' : 'text-[#8a8f9a] hover:text-[#0A0A0A]'
+                className={`flex items-center gap-2 px-[18px] py-2 rounded-full text-[13px] font-[500] transition-all duration-200 ${
+                  cycle === c ? 'bg-white text-[#0A0A0A] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#6B6B6B] hover:text-[#0A0A0A]'
                 }`}
               >
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
-                  <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
-                    cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 20%</span>
-                )}
-                {c === 'annual' && (
-                  <span className={`text-[11px] font-[600] px-1.5 py-0.5 rounded-full transition-all ${
-                    cycle === c ? 'bg-[hsl(221,91%,60%)] text-white' : 'bg-[#E8E8EA] text-[#4a4d57]'
-                  }`}>Save 35%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
                 )}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Tier cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Limited Access */}
-          <div className="bg-white border border-[#E8E8EA] rounded-3xl p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-xl hover:shadow-blue-900/[0.08]">
-            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[32px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.01em]">Limited Access</h3>
-            <p className="text-[14.5px] text-[#4a4d57] mt-3 mb-0 max-w-[36ch] leading-[1.5]">Practice on your own schedule. No subscription required — buy credits when you need them.</p>
-            <div className="flex items-baseline gap-2 mt-6">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[64px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.02em]">$0</span>
-              <span className="text-[16px] text-[#4a4d57] font-[500]">no recurring charge</span>
+        {/* Tier cards — 3 across on desktop */}
+        <div className="grid grid-cols-1 min-[960px]:grid-cols-3 gap-6 items-stretch">
+          {/* ── Limited Access ─────────────────────── */}
+          <div className="bg-white border border-[#E5E5E5] rounded-2xl p-7 flex flex-col transition-all duration-300 hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)]" style={{ padding: '28px 24px' }}>
+            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Free Plan</p>
+            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Limited Access</h3>
+            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
+              Practice on your own schedule. No subscription required — buy credits when you need them.
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">$0</span>
+              <span className="text-[15px] text-[#6B6B6B] font-[500]">no recurring charge</span>
             </div>
-            <p className="text-[12.5px] text-[#8a8f9a] mt-1.5 mb-6">Pay only for the credits you use</p>
-            <div className="mb-7">
-              <Link to="/auth" className="flex items-center justify-center w-full h-[52px] rounded-full border-2 border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] text-[14.5px] font-[500] hover:bg-[hsl(221,91%,60%)] hover:text-white transition-colors duration-200">
-                Get started free
-              </Link>
-            </div>
-            <p className="text-[13px] font-[500] text-[hsl(221,91%,60%)] mb-5">What's included</p>
-            <ul className="space-y-3 flex-1">
-              {LIMITED_FEATURES.map(({ ok, text }) => (
-                <li key={text} className={`flex items-center gap-3 text-[14.5px] ${ok ? 'text-[#2A2A2A]' : 'text-[#c0c4cc]'}`}>
-                  {ok ? (
-                    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.4px] border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] shrink-0">
-                      <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.4px] border-[#E8E8EA] text-[#c0c4cc] shrink-0">
-                      <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-                    </span>
-                  )}
-                  {text}
+            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">Pay only for the credits you use</p>
+
+            <Link to="/auth" className="flex items-center justify-center w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] hover:border-[#0A0A0A] transition-colors duration-200 mb-6">
+              Get started free
+            </Link>
+
+            <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0] pt-4 border-t border-[#E5E5E5] mb-2 mt-2">
+              What's included
+            </p>
+            <ul className="flex flex-col gap-[9px] mb-1">
+              {LIMITED_INCLUDED.map((text) => (
+                <li key={text} className="flex items-start gap-2.5 text-[13px] leading-[1.5] text-[#0A0A0A]">
+                  <TierCheck ok />
+                  <span>{text}</span>
                 </li>
               ))}
             </ul>
+
+            <TierFeatureGroups groups={LIMITED_GROUPS} />
+
+            <div className="mt-auto pt-5">
+              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
+                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Credits</p>
+                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">Pay-as-you-go</p>
+                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">Buy a pack when you need it</p>
+              </div>
+            </div>
           </div>
 
-          {/* Full Access — light blue gradient */}
-          <div
-            className="relative rounded-3xl p-8 border border-[#D9E1FF] flex flex-col overflow-visible transition-all duration-300 hover:-translate-y-1"
-            style={{ background: 'linear-gradient(172deg, #fbfcff 0%, #F7F9FF 100%)', boxShadow: '0 24px 60px -32px rgba(46,91,255,0.35)' }}
-          >
-            <span className="absolute top-[-13px] left-9 bg-[hsl(221,91%,60%)] text-white text-[11px] font-[600] px-4 py-1.5 rounded-full tracking-[0.03em]">Recommended</span>
-            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[32px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.01em] mt-3">Full Access</h3>
-            <p className="text-[14.5px] text-[#4a4d57] mt-3 mb-0 max-w-[36ch] leading-[1.5]">The complete job search platform. Every feature, every service, one subscription.</p>
-            <div className="flex items-baseline gap-2 mt-6">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[64px] font-[500] text-[#0A0A0A] leading-none tracking-[-0.02em]">{price}</span>
-              <span className="text-[16px] text-[#4a4d57] font-[500]">/ month</span>
+          {/* ── Starter Plan ───────────────────────── */}
+          <div className="bg-white border border-[#E5E5E5] rounded-2xl flex flex-col transition-all duration-300 hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)]" style={{ padding: '28px 24px' }}>
+            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Starter Plan</p>
+            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Self-Guided Access</h3>
+            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
+              Practice smarter and job search independently. Built for self-driven candidates with the time to do it right.
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">{starter.price}</span>
+              <span className="text-[15px] text-[#6B6B6B] font-[500]">/ month</span>
             </div>
-            <p className="text-[12.5px] text-[#8a8f9a] mt-1.5 mb-6">{note}</p>
-            <div className="relative mb-7">
-              <button disabled className="block w-full h-[52px] rounded-full bg-[hsl(221,91%,60%)] text-white text-[14.5px] font-[500] opacity-60 cursor-not-allowed">
-                Start Premium
+            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{starter.note}</p>
+
+            <div className="relative mb-6">
+              <button disabled className="block w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] opacity-60 cursor-not-allowed">
+                Start Starter
               </button>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[hsl(221,91%,60%)] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
                 Coming soon
               </span>
             </div>
-            <p className="text-[13px] font-[500] text-[hsl(221,91%,60%)] mb-5">Everything in Limited Access, plus:</p>
-            <div className="space-y-5 flex-1">
-              {FULL_GROUPS.map(({ title, items }) => (
-                <div key={title}>
-                  <p className="text-[10.5px] font-[600] text-[#8a8f9a] uppercase tracking-[0.08em] mb-2.5">{title}</p>
-                  <ul className="space-y-2">
-                    {items.map((item) => (
-                      <li key={item} className="flex items-center gap-3 text-[14.5px] text-[#2A2A2A]">
-                        <span className="w-[18px] h-[18px] rounded-full bg-[hsl(221,91%,60%)] flex items-center justify-center shrink-0">
-                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-                        </span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+
+            <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
+
+            <TierFeatureGroups groups={STARTER_GROUPS} />
+
+            <div className="mt-auto pt-5">
+              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
+                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Included each month</p>
+                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">300 credits / mo</p>
+                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">1 credit = $0.28 = 1 min of AI mock interview (Audio mode)</p>
+              </div>
             </div>
-            <div className="mt-6 bg-white/70 border border-[#D9E1FF] rounded-xl p-4 flex flex-col gap-1">
-              <p className="text-[10.5px] font-[500] text-[#4a4d57] uppercase tracking-[0.08em]">Included each month</p>
-              <p style={{ fontFamily: "'Playfair Display', serif" }} className="text-[18px] font-[500] text-[#0A0A0A] tracking-[-0.01em]">300 credits / mo</p>
-              <p className="text-[12px] text-[#8a8f9a]">Use toward AI mocks and mentor sessions</p>
+          </div>
+
+          {/* ── Full Access — Recommended ───────────── */}
+          <div
+            className="relative rounded-2xl flex flex-col overflow-visible transition-all duration-300 bg-white"
+            style={{ padding: '28px 24px', border: '2px solid #3B6FE8', boxShadow: '0 18px 50px -28px rgba(59,111,232,0.35)' }}
+          >
+            <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[11px] font-[700] px-4 py-1 rounded-full tracking-[0.08em] uppercase whitespace-nowrap" style={{ boxShadow: '0 6px 18px -6px rgba(59,111,232,0.45)' }}>
+              Recommended
+            </span>
+            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Premium Membership</p>
+            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Full Access</h3>
+            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
+              The complete job search platform. Every feature, every service, one subscription.
+            </p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">{price}</span>
+              <span className="text-[15px] text-[#6B6B6B] font-[500]">/ month</span>
+            </div>
+            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{note}</p>
+
+            <div className="relative mb-6">
+              <button disabled className="block w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] opacity-60 cursor-not-allowed" style={{ border: '1.5px solid #3B6FE8' }}>
+                Start Premium
+              </button>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[10px] font-[600] tracking-[0.06em] uppercase px-2.5 py-1 rounded-full whitespace-nowrap">
+                Coming soon
+              </span>
+            </div>
+
+            <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
+
+            <TierFeatureGroups groups={FULL_GROUPS} />
+
+            <div className="mt-auto pt-5">
+              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
+                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Included each month</p>
+                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">500 credits / mo</p>
+                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">1 credit = $0.28 = 1 min of AI mock interview (Audio mode)</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1016,105 +1231,243 @@ function Pricing() {
 // CREDIT PACKS
 // ─────────────────────────────────────────────────────────────────────────────
 function CreditPacks() {
+  const ACCENT = 'hsl(221,91%,60%)';
   const [credits, setCredits] = useState(300);
-  const total = creditPrice(credits);
-  const per = total / credits;
-  const pct = ((credits - 150) / (1000 - 150)) * 100;
+  const customTotal = creditPrice(credits);
+  const customUnit = customTotal / credits;
+  const fillPct = ((credits - 150) / (1000 - 150)) * 100;
 
   return (
-    <section className="py-24" style={{ background: '#F7F7F7' }}>
+    <section id="credits" className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-5xl mx-auto px-6">
-        {/* Step 02 block header */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-12 mb-12">
-          <div>
-            <div className="flex items-center gap-5 mb-3">
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[13px] font-[500] tracking-[0.04em] text-[#4a4d57] bg-[#F7F7F7] border border-[#E8E8EA] px-3 py-1 rounded-full">02</span>
-              <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[#4a4d57]">Credit packs</span>
-            </div>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(28px,3vw,36px)] font-[500] leading-[1.15] text-[#0A0A0A] tracking-[-0.01em]">
-              Pay only for what you use.{' '}
-              <em className="italic text-slate-500">Refund after the mock.</em>
-            </h2>
-          </div>
-          <p className="text-[16px] text-[#4a4d57] leading-[1.55] md:self-end">
-            Flexible, controllable, low-commitment — perfect for "just a few sessions."
+        {/* Centered section head — eyebrow + Playfair title + sub */}
+        <div className="text-center mb-12">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
+            Credit packs
+          </p>
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4">
+            Pay only for what you use.{' '}
+            <em className="italic font-[400] text-[#4a4d57]">Refund after the mock.</em>
+          </h2>
+          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
+            Flexible, controllable, low-commitment — perfect for "just a few sessions." Or build a custom pack for bigger volume.
           </p>
         </div>
 
-        {/* Preset packs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+        {/* Pricing-block head — 2-column step / kicker / title / subhead */}
+        <div className="grid grid-cols-1 min-[820px]:grid-cols-[1fr_1.2fr] gap-12 items-start mb-7">
+          <div className="flex items-start gap-4">
+            <span
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              className="inline-flex items-center text-[13px] font-[500] tracking-[0.08em] text-[#4a4d57] bg-[#F7F7F7] border border-[#E8E8EA] rounded-full px-3 py-1.5 shrink-0"
+            >
+              02
+            </span>
+            <div>
+              <div className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[#4a4d57] mb-1">
+                Credit packs
+              </div>
+              <div
+                style={{ fontFamily: "'Playfair Display', serif" }}
+                className="text-[clamp(22px,2.5vw,28px)] font-[500] leading-[1.15] tracking-[-0.02em] text-[#0A0A0A]"
+              >
+                Pay-as-you-go
+              </div>
+            </div>
+          </div>
+          <p className="text-[14.5px] text-[#4a4d57] leading-[1.55] max-w-[44ch]">
+            For occasional practice or one-off mocks. Don't love the session? We'll refund the credits.
+          </p>
+        </div>
+
+        {/* Two preset packs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
           {[
-            { name: 'Trial', credits: 50, price: '$9.99', per: '$0.20', rate: '≈ 50 min of AI practice — try it once' },
+            { name: 'Trial',    credits: 50,  price: '$9.99',  per: '$0.20',   rate: '≈ 50 min of AI practice — try it once' },
             { name: 'Standard', credits: 100, price: '$14.99', per: '$0.1499', rate: '≈ 100 min of AI practice — a couple of full mocks' },
-          ].map(({ name, credits: c, price, per: perC, rate }) => (
-            <div key={name} className="bg-white border border-slate-200 rounded-2xl p-7 hover:border-[hsl(221,91%,60%)]/30 hover:shadow-lg hover:shadow-blue-900/[0.04] hover:-translate-y-1 transition-all duration-300">
-              <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-3">{name}</p>
-              <div className="flex items-baseline gap-2 mb-2">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[48px] font-[600] text-slate-900 leading-none">{c}</span>
-                <span className="text-[14px] text-slate-400">credits</span>
+          ].map((p) => (
+            <article key={p.name} className="h-full bg-white border border-[#E5E5E5] rounded-[18px] px-7 pt-7 pb-6 flex flex-col gap-1.5 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-[0_24px_60px_-28px_rgba(46,91,255,0.22)] transition-all">
+              <p className="text-[11px] font-mono tracking-[0.12em] uppercase text-[#6B6B6B] mb-1.5">{p.name}</p>
+              <div className="flex items-baseline gap-2">
+                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[48px] font-[600] leading-none tracking-[-0.02em] text-[#0A0A0A]">
+                  {p.credits}
+                </span>
+                <span className="text-[14px] text-[#6B6B6B] font-[500]">credits</span>
               </div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[24px] font-[600] text-slate-900">{price}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] text-slate-400">{perC} / credit</span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[26px] font-[600] text-[#0A0A0A]">
+                  {p.price}
+                </span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[12px] text-[#A0A0A0] tracking-[0.04em]">
+                  {p.per} / credit
+                </span>
               </div>
-              <p className="text-[12px] text-slate-400 mb-2">{rate}</p>
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-[hsl(221,91%,60%)]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(221,91%,60%)]"></span>
+              <p className="text-[12.5px] text-[#A0A0A0] mt-1">{p.rate}</p>
+              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-mono tracking-[0.04em] mt-3" style={{ color: ACCENT }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: ACCENT }} />
                 Refund after the mock
               </span>
-              <Link to="/pricing" className="mt-4 block w-full h-10 rounded-full border-2 border-slate-200 text-slate-700 text-[13px] font-medium hover:border-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,60%)] transition-all duration-200 text-center leading-[38px]">
-                Buy {c} credits
+              <Link
+                to="/pricing"
+                className="mt-4 flex items-center justify-center w-full rounded-full py-3 px-4 text-[14px] font-[500] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors"
+              >
+                Buy {p.credits} credits
               </Link>
-            </div>
+            </article>
           ))}
         </div>
 
-        {/* Custom slider */}
-        <div className="bg-gradient-to-br from-slate-50 to-blue-50/60 border border-[hsl(221,91%,60%)]/20 rounded-2xl p-8 shadow-lg shadow-blue-900/[0.05]">
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-6">
+        {/* Customize slider card */}
+        <div
+          className="rounded-[22px] p-8 md:px-9 mb-6"
+          style={{
+            background: 'linear-gradient(172deg, #fbfcff 0%, #F7F9FF 100%)',
+            border: '1px solid #D9E1FF',
+            boxShadow: '0 24px 60px -32px rgba(46,91,255,0.30)',
+          }}
+        >
+          <div className="flex flex-wrap items-end justify-between gap-6 mb-5">
             <div>
-              <p className="text-[11px] uppercase tracking-widest text-[hsl(221,91%,60%)] font-medium mb-2" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Customize</p>
-              <h3 className="text-[22px] font-semibold text-slate-900 mb-1">Need more than 100? Build your own pack.</h3>
-              <p className="text-[13px] text-slate-500">Slide to choose any amount from 150 to 1,000 credits. More credits = lower per-credit price.</p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-baseline gap-1">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[56px] font-[600] text-slate-900 leading-none">{credits.toLocaleString()}</span>
-                <span className="text-[14px] text-slate-400">credits</span>
+              <span
+                className="inline-block text-[10.5px] font-mono tracking-[0.12em] uppercase px-2 py-1 rounded-full"
+                style={{ color: ACCENT, background: 'rgba(255,255,255,0.7)' }}
+              >
+                Customize
+              </span>
+              <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(22px,2.4vw,28px)] font-[600] text-[#0A0A0A] leading-tight mt-2">
+                Need more than 100? Build your own pack.
               </div>
-              <p style={{ fontFamily: "'Playfair Display', serif" }} className="text-[22px] font-[600] text-[hsl(221,91%,60%)] mt-1">${total.toFixed(2)}</p>
-              <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] text-slate-400">${per.toFixed(4)} / credit</p>
+              <p className="text-[14px] text-[#6B6B6B] max-w-[38ch] mt-1.5">
+                Slide to choose any amount from 150 to 1,000 credits, in steps of 50. The more you buy, the lower the per-credit price.
+              </p>
+            </div>
+            <div className="text-right min-w-[180px]">
+              <div>
+                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[56px] font-[600] leading-none tracking-[-0.02em] text-[#0A0A0A]">
+                  {credits.toLocaleString()}
+                </span>
+                <span className="text-[14px] text-[#6B6B6B] ml-1.5 font-[500]">credits</span>
+              </div>
+              <div style={{ fontFamily: "'Playfair Display', serif", color: ACCENT }} className="text-[22px] font-[600] mt-1.5">
+                ${customTotal.toFixed(2)}
+              </div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11.5px] text-[#A0A0A0] tracking-[0.04em] mt-0.5">
+                ${customUnit.toFixed(4)} / credit
+              </div>
             </div>
           </div>
-          <div className="relative pb-6">
+
+          {/* Slider */}
+          <div className="relative pt-2 pb-8">
             <input
               type="range"
-              min={150} max={1000} step={50}
+              min={150}
+              max={1000}
+              step={50}
               value={credits}
               onChange={(e) => setCredits(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full cursor-pointer appearance-none outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[hsl(221,91%,60%)] [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-grab"
+              aria-label="Credits amount"
+              className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[22px] [&::-webkit-slider-thumb]:h-[22px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[hsl(221,91%,60%)] [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(46,91,255,0.3)] [&::-webkit-slider-thumb]:cursor-grab"
               style={{
-                background: `linear-gradient(to right, hsl(221,91%,60%) 0%, hsl(221,91%,60%) ${pct}%, #e2e8f0 ${pct}%, #e2e8f0 100%)`,
+                background: `linear-gradient(to right, ${ACCENT} 0%, ${ACCENT} ${fillPct}%, rgba(0,0,0,0.08) ${fillPct}%, rgba(0,0,0,0.08) 100%)`,
               }}
             />
-            <div className="absolute bottom-0 left-0 right-0 flex justify-between" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-              {['150', '300', '500', '750', '1,000'].map((t) => (
-                <span key={t} className="text-[10px] text-slate-400">{t}</span>
-              ))}
+            <div style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute inset-x-0 bottom-0 flex justify-between text-[10.5px] text-[#A0A0A0] tracking-[0.04em] pointer-events-none">
+              <span>150</span>
+              <span>300</span>
+              <span>500</span>
+              <span>750</span>
+              <span>1,000</span>
             </div>
           </div>
+
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex gap-5 flex-wrap text-[12px] text-slate-500">
+            <div className="flex gap-5 flex-wrap text-[12.5px] text-[#6B6B6B]">
               {['Credits never expire', 'Refund after the mock', 'Use across AI & mentor sessions'].map((n) => (
-                <span key={n} className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[hsl(221,91%,60%)]"></span>
+                <span key={n} className="inline-flex items-center gap-1.5">
+                  <span className="w-[5px] h-[5px] rounded-full" style={{ background: ACCENT }} />
                   {n}
                 </span>
               ))}
             </div>
-            <Link to="/pricing" className="inline-flex items-center gap-2 h-11 px-6 rounded-full bg-[hsl(221,91%,60%)] text-white text-[14px] font-medium hover:bg-[hsl(221,91%,52%)] shadow-md shadow-blue-600/25 transition-all duration-200">
-              Buy {credits.toLocaleString()} credits · ${total.toFixed(2)}
+            <Link
+              to="/pricing"
+              className="rounded-full px-6 py-3 text-[14px] font-[600] text-white transition-colors inline-flex items-center gap-2"
+              style={{ background: ACCENT }}
+            >
+              Buy {credits.toLocaleString()} credits · ${customTotal.toFixed(2)}
             </Link>
+          </div>
+        </div>
+
+        {/* Credits per minute card */}
+        <div className="bg-white border border-[#E5E5E5] rounded-2xl px-8 py-7">
+          <div>
+            <h3 className="text-[18px] font-[600] text-[#0A0A0A] tracking-[-0.005em] m-0">
+              Credits per minute
+            </h3>
+            <p className="text-[14px] text-[#6B6B6B] leading-[1.5] mt-1">
+              Different modes use credits at different rates.
+            </p>
+          </div>
+          <hr className="border-0 border-t border-[#E5E5E5] mt-5" />
+
+          {[
+            { mode: 'Voice mode', rate: '1 credit/min',    badge: '1×',
+              svg: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                  <rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/>
+                  <line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
+                </svg>
+              ),
+            },
+            { mode: 'Video mode', rate: '1.5 credits/min', badge: '1.5×',
+              svg: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                  <rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10.5l5-3v9l-5-3z"/>
+                </svg>
+              ),
+            },
+          ].map(({ mode, rate, badge, svg }) => (
+            <div key={mode} className="flex items-center py-5 border-b border-[#E5E5E5]">
+              <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: '#EEF0FF', color: '#5B6AD0' }}>
+                {svg}
+              </span>
+              <span className="text-[15px] font-[500] text-[#0A0A0A] ml-3.5">{mode}</span>
+              <span className="ml-auto flex items-center gap-2.5">
+                <span className="text-[14px] text-[#6B6B6B]">{rate}</span>
+                <span className="text-[12px] font-[600] px-2.5 py-0.5 rounded-full leading-[1.4]" style={{ background: '#EEF0FF', color: '#5B6AD0' }}>
+                  {badge}
+                </span>
+              </span>
+            </div>
+          ))}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 pt-4">
+            {[
+              'A 20-min Voice session uses 20 credits.',
+              'A 30-min Video session uses 45 credits.',
+            ].map((ex) => (
+              <div key={ex} className="flex items-start gap-2 text-[13px] text-[#6B6B6B] leading-[1.5]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#5B6AD0' }}>
+                  <circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/>
+                </svg>
+                <span>
+                  <b className="font-[600] text-[#6B6B6B]">Example:</b> {ex}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[10px] px-4 py-3 mt-4 flex items-start gap-2.5" style={{ background: '#F0FBF4' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#1A9E5C' }}>
+              <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><polyline points="21 3 21 8 16 8"/>
+              <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><polyline points="3 21 3 16 8 16"/>
+            </svg>
+            <span className="text-[13px] leading-[1.5]" style={{ color: '#1A9E5C' }}>
+              Only pay what you use. If you end a session early, unused credits are automatically refunded.
+            </span>
           </div>
         </div>
       </div>
@@ -1244,32 +1597,35 @@ const TESTIMONIALS = [
 
 function SocialProof() {
   return (
-    <section className="py-24 bg-slate-50/60">
+    <section className="py-24" style={{ background: '#F7F7F7' }}>
       <div className="max-w-6xl mx-auto px-6">
-        <div className="mb-14">
-          <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center">
-            Trusted by candidates accepted to
+        <div className="mb-16">
+          <p className="text-[12px] font-[600] uppercase tracking-[0.12em] text-[#8a8f9a] mb-6 text-center">
+            Trusted by job hunters who landed roles at
           </p>
           <LogoMarquee logos={UNIVERSITY_LOGOS} speed={22} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {TESTIMONIALS.map(({ quote, name, role, initials, bg }) => (
-            <article key={name} className="bg-white rounded-2xl border border-slate-200 p-7 hover:shadow-lg hover:shadow-slate-900/[0.04] hover:-translate-y-1 transition-all duration-300">
-              <div className="flex gap-0.5 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="hsl(221,91%,60%)" className="opacity-90">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                ))}
-              </div>
-              <p className="text-[14px] text-slate-700 leading-relaxed mb-6">"{quote}"</p>
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${bg} flex items-center justify-center text-[11px] font-semibold text-slate-600`}>
+            <article
+              key={name}
+              className="relative bg-white rounded-[20px] border border-[#E8E8EA] p-8 flex flex-col hover:border-[#D9E1FF] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-20px_rgba(46,91,255,0.15)] transition-all duration-300"
+            >
+              <span
+                aria-hidden
+                style={{ fontFamily: "'Playfair Display', serif" }}
+                className="absolute top-3 right-5 italic text-[80px] leading-none text-[#2E5BFF] pointer-events-none"
+              >&ldquo;</span>
+              <p style={{ fontFamily: "'Playfair Display', serif" }} className="text-[20px] font-[400] text-[#0A0A0A] leading-[1.4] tracking-[-0.01em] mb-7 flex-1 relative z-10">
+                &ldquo;{quote}&rdquo;
+              </p>
+              <div className="flex items-center gap-3 pt-5 border-t border-[#E8E8EA]">
+                <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${bg} flex items-center justify-center text-[13px] font-[600] text-[#3a4252]`}>
                   {initials}
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-slate-900">{name}</p>
-                  <p className="text-[11px] text-slate-400">{role}</p>
+                  <p className="text-[14px] font-[500] text-[#0A0A0A] leading-tight">{name}</p>
+                  <p className="text-[13px] text-[#4a4d57] mt-0.5">{role}</p>
                 </div>
               </div>
             </article>
@@ -1311,35 +1667,46 @@ function FAQ() {
 
   return (
     <section id="faq" className="py-24 bg-white">
-      <div className="max-w-5xl mx-auto px-6">
-        <div className="flex flex-col lg:flex-row gap-16">
-          <div className="lg:w-64 shrink-0">
-            <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.12em] text-[hsl(221,91%,60%)] mb-4">FAQ</p>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[500] text-[#0A0A0A] leading-[1.15] max-w-[12ch]">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-12 lg:gap-24 items-start">
+          <div>
+            <p className="inline-flex items-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+              <span className="w-6 h-px bg-[#2E5BFF]" />
+              FAQ
+            </p>
+            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[400] text-[#0A0A0A] leading-[1.05] tracking-[-0.02em] max-w-[12ch]">
               Questions people ask before signing up.
             </h2>
           </div>
-          <div className="flex-1 divide-y divide-slate-100">
-            {FAQ_ITEMS.map(({ q, a }, i) => (
-              <div key={q} className="py-4">
-                <button
-                  onClick={() => setOpen(open === i ? null : i)}
-                  className="flex items-center justify-between w-full text-left gap-4 group"
-                >
-                  <span className={`text-[18px] font-[500] transition-colors leading-[1.4] ${open === i ? 'text-[hsl(221,91%,60%)]' : 'text-[#0A0A0A] group-hover:text-[hsl(221,91%,60%)]'}`}>
-                    {q}
-                  </span>
-                  <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${open === i ? 'border-[hsl(221,91%,60%)] text-[hsl(221,91%,60%)] rotate-45' : 'border-slate-200 text-slate-400'}`}>
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M8 3v10M3 8h10"/>
-                    </svg>
-                  </span>
-                </button>
-                {open === i && (
-                  <p className="mt-3 text-[14px] text-slate-500 leading-relaxed">{a}</p>
-                )}
-              </div>
-            ))}
+          <div className="flex flex-col">
+            {FAQ_ITEMS.map(({ q, a }, i) => {
+              const isOpen = open === i;
+              return (
+                <div key={q} className="border-t border-[#E8E8EA] last:border-b py-6">
+                  <button
+                    onClick={() => setOpen(isOpen ? null : i)}
+                    className="flex items-center justify-between w-full text-left gap-6 group"
+                  >
+                    <span className={`text-[18px] font-[500] transition-colors leading-[1.4] ${isOpen ? 'text-[#2E5BFF]' : 'text-[#0A0A0A] group-hover:text-[#2E5BFF]'}`}>
+                      {q}
+                    </span>
+                    <span className="relative w-6 h-6 shrink-0">
+                      <span className="absolute left-0 right-0 top-1/2 h-px bg-[#0A0A0A]" />
+                      <span
+                        className="absolute top-0 bottom-0 left-1/2 w-px bg-[#0A0A0A] origin-center transition-transform duration-200"
+                        style={{ transform: isOpen ? 'translateX(-50%) scaleY(0)' : 'translateX(-50%) scaleY(1)' }}
+                      />
+                    </span>
+                  </button>
+                  <div
+                    className="overflow-hidden transition-all duration-300"
+                    style={{ maxHeight: isOpen ? 220 : 0, marginTop: isOpen ? 16 : 0 }}
+                  >
+                    <p className="text-[16px] text-[#4a4d57] leading-[1.6] max-w-[58ch]">{a}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1369,21 +1736,22 @@ function FinalCTA() {
         }}
       />
       <div className="relative max-w-3xl mx-auto px-6">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11px] uppercase tracking-[0.14em] text-white/55 mb-5">
+        <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase mb-5" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          <span className="w-6 h-px" style={{ background: 'rgba(255,255,255,0.6)' }} />
           Get started
         </p>
-        <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,6.5vw,84px)] font-[500] leading-[1.05] tracking-[-0.02em] text-white max-w-[18ch] mx-auto mb-6">
+        <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,6.5vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-white max-w-[18ch] mx-auto mb-6">
           Ready to run a smarter{' '}
-          <em className="italic" style={{ color: 'rgba(255,255,255,0.72)' }}>job search?</em>
+          <em className="italic font-[400]" style={{ color: 'rgba(255,255,255,0.72)' }}>job search?</em>
         </h2>
-        <p className="text-[18px] mb-11 max-w-[44ch] mx-auto" style={{ color: 'rgba(255,255,255,0.82)' }}>Start free in under 2 minutes.</p>
+        <p className="text-[18px] mb-11 max-w-[44ch] mx-auto leading-[1.55]" style={{ color: 'rgba(255,255,255,0.82)' }}>Start free in under 2 minutes.</p>
         <div className="inline-flex items-center justify-center gap-4 flex-wrap">
-          <Link to="/auth" className="inline-flex items-center gap-2 h-12 px-8 rounded-full bg-white text-[hsl(221,91%,55%)] text-[15px] font-semibold hover:bg-white/90 transition-all duration-200" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[hsl(221,91%,60%)]"></span>
+          <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-5 rounded-full bg-white text-[#0A0A0A] text-[14px] font-[500] tracking-[-0.005em] hover:-translate-y-0.5 transition-all duration-200" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#2E5BFF]" style={{ animation: 'breathe 1.8s ease-in-out infinite' }}></span>
             Start free
           </Link>
           <div className="relative inline-flex">
-            <a href="#" className="inline-flex items-center gap-2 h-12 px-8 rounded-full border border-white/25 text-white/85 text-[15px] font-[500] cursor-not-allowed opacity-60">
+            <a href="#" className="inline-flex items-center gap-2 h-[44px] px-2 text-[14px] font-[500] tracking-[-0.005em] cursor-not-allowed opacity-60" style={{ color: 'rgba(255,255,255,0.92)' }}>
               Book a consult
               <ArrowRight />
             </a>
