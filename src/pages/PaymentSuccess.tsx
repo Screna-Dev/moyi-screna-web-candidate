@@ -57,7 +57,7 @@ const PaymentSuccess = () => {
 
         <div className="space-y-3 pt-4">
           <Button asChild className="w-full" size="lg">
-            <Link to="/interview-prep">
+            <Link to="/personalized-practice">
               Start Practicing
               <ArrowRight className="w-4 h-4 ml-2" />
             </Link>
