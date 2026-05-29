@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { Loader2 } from 'lucide-react';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
+import { MembershipOnboardingModal } from '@/components/newDesign/membership-onboarding-modal';
+import { useAuth } from '@/contexts/AuthContext';
+import { PaymentService } from '@/services';
+import { useSubscription, type Tier } from '@/hooks/useSubscription';
 
 // ── SVG helpers ───────────────────────────────────────────────────────────────
 const CheckFull = () => (
@@ -458,14 +463,29 @@ function Hero() {
           <span className="w-6 h-px bg-[#2E5BFF]" />
           AI · COMMUNITY · CAREER SUPPORT
         </p>
-        <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,7vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-7 max-w-[16ch] mx-auto">
-          Cut the busywork. Focus on what{' '}
-          <em className="italic text-[#4a4d57] font-[400]">actually</em>{' '}
-          gets you the offer.
+        <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,7vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-9 max-w-[22ch] mx-auto">
+          Unlock career opportunities{' '}
+          <em className="italic text-[#4a4d57] font-[400]">10X closer</em>{' '}
+          with Industry Insiders.
         </h1>
-        <p className="text-[clamp(16px,1.5vw,19px)] text-[#4a4d57] leading-[1.55] max-w-[56ch] mx-auto mb-10">
-          AI practice. Real community. Vetted mentors. 24/7 support. Everything you need to prep smarter — without reinventing the wheel every time.
-        </p>
+        <ul className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 max-w-[1100px] mx-auto mb-10 px-2" aria-label="Why members choose Screna">
+          {[
+            'Full-time career managers own your pipeline',
+            'Vetted recruiter networks surface hidden roles',
+            'Industry coaches share insider intel',
+          ].map((feature) => (
+            <li key={feature} className="inline-flex items-center gap-2 text-[clamp(12px,0.95vw,14px)] font-[500] text-[#4a4d57] leading-[1.3] tracking-[-0.005em] whitespace-normal sm:whitespace-nowrap">
+              <span
+                aria-hidden="true"
+                className="inline-flex items-center justify-center flex-shrink-0 w-[18px] h-[18px] rounded-full text-[#2E5BFF]"
+                style={{ border: '1.5px solid #2E5BFF', background: 'rgba(255,255,255,0.5)' }}
+              >
+                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+              </span>
+              {feature}
+            </li>
+          ))}
+        </ul>
         <div className="flex items-center justify-center gap-4 mb-16 flex-wrap">
           <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-5 rounded-full bg-[#2E5BFF] text-white text-[14px] font-[500] tracking-[-0.005em] hover:bg-[#1E48E6] hover:-translate-y-0.5 transition-all duration-200" style={{ boxShadow: '0 6px 18px -4px rgba(46,91,255,0.35)' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-white" style={{ animation: 'breathe 1.8s ease-in-out infinite' }}></span>
@@ -537,9 +557,9 @@ function Hero() {
 // ─────────────────────────────────────────────────────────────────────────────
 function StatsBar() {
   const stats = [
-    { num: 200, suf: '+', label: 'Offers with the help of Screna' },
-    { num: 100, suf: '%', label: 'Real-time 1:1 support, 7 days a week' },
-    { num: 140, suf: '+', label: 'Targeted applications per week' },
+    { num: 300, suf: '+', label: 'Startups hiring right now' },
+    { num: 500, suf: '+', label: 'Recruiter connections' },
+    { num: 7000, suf: '+', label: 'Contract roles' },
   ];
   return (
     <section className="bg-white py-16" style={{ borderTop: '1px solid #F0F0F2', borderBottom: '1px solid #F0F0F2' }}>
@@ -702,14 +722,6 @@ const CMP_DATA: CmpGroup[] = [
       { name: 'Offer negotiation support', desc: 'Coaching on comp, sign-on, RSUs, and counter strategy.', screna: 'yes', scale: 'no', exponent: 'Limited', simplify: 'no', wonsulting: 'Add-on only' },
     ],
   },
-  {
-    label: 'Resume & profile',
-    rows: [
-      { name: 'Resume review by practitioner', desc: 'Reviewed by someone who actually hires for your role.', screna: 'yes', scale: 'Resume submission', exponent: 'no', simplify: 'no', wonsulting: 'muted' },
-      { name: 'Priority resume exposure', desc: 'Surface your profile to recruiters in our network.', screna: 'yes', scale: 'no', exponent: 'no', simplify: 'no', wonsulting: 'no' },
-      { name: 'LinkedIn / profile polish', desc: 'Positioning and keyword work for inbound reach.', screna: 'yes', scale: 'no', exponent: 'no', simplify: 'no', wonsulting: 'muted' },
-    ],
-  },
 ];
 
 function renderCell(val: Cell) {
@@ -832,11 +844,11 @@ function ComparisonTable() {
 // JOURNEY
 // ─────────────────────────────────────────────────────────────────────────────
 const STAGES = [
-  { num: '01', name: 'Understand', desc: 'Know where you stand. Resume analysis, role fit, gaps to close.' },
-  { num: '02', name: 'Practice', desc: 'AI mocks, personalized drills, real company questions.' },
-  { num: '03', name: 'Get support', desc: 'Mentors, coaches, and resume reviewers on demand.' },
-  { num: '04', name: 'Apply', desc: 'Track every application, get referrals through our network, stay organized.' },
-  { num: '05', name: 'Offer & grow', desc: 'Salary negotiation, onboarding prep, career strategy after day one.' },
+  { num: '01', name: 'Understand', desc: 'Know where to start. We analyze your resume, suggest the right titles, and match you to roles that fit your profile and goals.' },
+  { num: '02', name: 'Mock with AI', desc: 'Start training the moment interviews arrive. Practice instantly, get fast feedback, and improve through structured evaluation.' },
+  { num: '03', name: 'Get help from mentors', desc: 'Choose the right mentor for the right moment. Book flexible sessions on any topic and gain insider guidance on companies and roles.' },
+  { num: '04', name: 'Apply smartly', desc: 'Access curated opportunities plus 500+ startups, 300+ recruiter connections, and 7,000+ contract roles, with human assistants along the way.' },
+  { num: '05', name: 'Offer & Grow', desc: 'Interviews often begin in 2–3 months. With consistent training, many reach their target role in 6–8 months, then continue with negotiation and career growth.' },
 ];
 
 function Journey() {
@@ -901,13 +913,13 @@ function Journey() {
 type BillingCycle = 'monthly' | 'quarterly';
 
 const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
-  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
+  monthly:   { price: '$159', note: 'Billed $159 / month · cancel anytime' },
+  quarterly: { price: '$129', note: 'Billed $477 / quarter · cancel anytime' },
 };
 
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
-  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
+  monthly:   { price: '$29',  note: 'Billed $29 / month · cancel anytime' },
+  quarterly: { price: '$29',  note: 'Billed $87 / quarter · cancel anytime' },
 };
 
 const LIMITED_INCLUDED = [
@@ -956,7 +968,7 @@ const STARTER_GROUPS: TierFeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
-      { text: 'AI Mock Interview — 300 credits / month', ok: true },
+      { text: 'AI Mock Interview — 150 credits / month', ok: true },
       { text: 'Personal Question Bank', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
@@ -1059,9 +1071,66 @@ function TierFeatureGroups({ groups }: { groups: TierFeatureGroup[] }) {
 }
 
 function Pricing() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { subscription, subscribe, changeTier, isActing: isSubscribing } = useSubscription();
+
   const [cycle, setCycle] = useState<BillingCycle>('quarterly');
   const starter = STARTER_PRICES[cycle];
   const { price, note } = PRICES[cycle];
+
+  const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
+  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
+
+  const isActiveMember = subscription !== null && subscription.status !== 'canceled';
+
+  const handleSubscribe = async (plan: Tier) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    if (isActiveMember) {
+      navigate('/billing');
+      return;
+    }
+    setLoadingTier(plan);
+    try {
+      if (subscription && subscription.status === 'canceled') {
+        const ok = await changeTier(plan);
+        if (!ok) return;
+        if (plan === 'premium') {
+          navigate('/premium-onboarding');
+        } else {
+          setOnboardingTier(plan);
+        }
+      } else {
+        const url = await subscribe(plan, cycle);
+        if (url) {
+          window.location.href = url;
+        } else if (plan === 'premium') {
+          navigate('/premium-onboarding');
+        } else {
+          setOnboardingTier(plan);
+        }
+      }
+    } finally {
+      setLoadingTier(null);
+    }
+  };
+
+  const handleOnboardingClose = () => {
+    setOnboardingTier(null);
+    navigate('/billing');
+  };
+
+  const starterLabel = isActiveMember
+    ? (subscription!.plan === 'starter' ? 'Current plan' : 'Manage plan')
+    : 'Start Starter';
+  const premiumLabel = isActiveMember
+    ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
+    : 'Start Premium';
+  const starterDisabled = (isActiveMember && subscription!.plan === 'starter') || isSubscribing;
+  const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
 
   return (
     <section id="pricing" className="py-24" style={{ background: '#F7F7F7' }}>
@@ -1097,7 +1166,7 @@ function Pricing() {
               >
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 19%</span>
                 )}
               </button>
             ))}
@@ -1160,9 +1229,13 @@ function Pricing() {
             <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{starter.note}</p>
 
             <div className="relative mb-6">
-              <Link to="/pricing" className="block w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] text-center hover:bg-[#F7F7F7] transition-colors">
-                Start Starter
-              </Link>
+              <button
+                onClick={() => handleSubscribe('starter')}
+                disabled={starterDisabled}
+                className="flex items-center justify-center w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] text-center hover:bg-[#F7F7F7] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loadingTier === 'starter' ? <Loader2 className="w-4 h-4 animate-spin" /> : starterLabel}
+              </button>
             </div>
 
             <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
@@ -1172,7 +1245,7 @@ function Pricing() {
             <div className="mt-auto pt-5">
               <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
                 <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Included each month</p>
-                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">300 credits / mo</p>
+                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">150 credits / mo</p>
                 <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">1 credit = $0.28 = 1 min of AI mock interview (Audio mode)</p>
               </div>
             </div>
@@ -1198,9 +1271,14 @@ function Pricing() {
             <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{note}</p>
 
             <div className="relative mb-6">
-              <Link to="/pricing" className="block w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] text-center hover:bg-[#2E5BFF] transition-colors" style={{ border: '1.5px solid #3B6FE8' }}>
-                Start Premium
-              </Link>
+              <button
+                onClick={() => handleSubscribe('premium')}
+                disabled={premiumDisabled}
+                className="flex items-center justify-center w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] text-center hover:bg-[#2E5BFF] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ border: '1.5px solid #3B6FE8' }}
+              >
+                {loadingTier === 'premium' ? <Loader2 className="w-4 h-4 animate-spin" /> : premiumLabel}
+              </button>
             </div>
 
             <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
@@ -1217,6 +1295,196 @@ function Pricing() {
           </div>
         </div>
       </div>
+      <MembershipOnboardingModal
+        open={onboardingTier !== null}
+        tier={onboardingTier ?? 'starter'}
+        onClose={handleOnboardingClose}
+      />
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FREE VS PREMIUM (UPGRADE COMPARE)
+// ─────────────────────────────────────────────────────────────────────────────
+const UPGRADE_STAGES: {
+  step: string;
+  name: string;
+  badge: string;
+  badgeNum?: string;
+  free: string[];
+  premium: { text: string; bold?: string[] }[];
+}[] = [
+  {
+    step: 'Stage 01',
+    name: 'Resume & Job Search',
+    badge: 'More exposure',
+    badgeNum: '+73%',
+    free: [
+      'Search and apply manually on your own',
+      'Limited to public channels: LinkedIn, Indeed, company sites',
+      'No active follow-up after you submit',
+    ],
+    premium: [
+      { text: 'Guided application support with a real advisor', bold: ['real advisor'] },
+      { text: '10+ direct application channels', bold: ['10+ direct application channels'] },
+      { text: '500+ recruiter connections & 300+ startup openings', bold: ['500+ recruiter connections', '300+ startup openings'] },
+      { text: 'Mentor referral pathways into target companies' },
+    ],
+  },
+  {
+    step: 'Stage 02',
+    name: 'Interview Prep',
+    badge: 'First-round pass',
+    badgeNum: '+32%',
+    free: [
+      'Generic practice tools with no clear improvement path',
+      'Hard to know what to fix next',
+      'Feedback is fragmented across tools',
+    ],
+    premium: [
+      { text: 'AI voice mock 7 days × 24 hrs' },
+      { text: 'Sessions tuned to your resume and target role' },
+      { text: 'Large bank of real interview questions', bold: ['real interview questions'] },
+      { text: 'Detailed report with weaknesses + next steps', bold: ['weaknesses + next steps'] },
+      { text: 'Far lower cost than traditional mentor mocks' },
+    ],
+  },
+  {
+    step: 'Stage 03',
+    name: 'Final-Round Support',
+    badge: 'Offer rate',
+    badgeNum: '+25%',
+    free: [
+      'Cold LinkedIn outreach with low response rates',
+      'Limited insider guidance going in',
+      'Final performance depends heavily on luck',
+    ],
+    premium: [
+      { text: 'Direct access to a working mentor network', bold: ['working mentor network'] },
+      { text: 'Transparent pricing & traceable service' },
+      { text: 'Mentors review your full AI training history', bold: ['AI training history'] },
+      { text: '1:1 targeted prep before final rounds' },
+      { text: 'Firsthand, company-specific experience reuse' },
+    ],
+  },
+  {
+    step: 'Stage 04',
+    name: 'Offer & Beyond',
+    badge: 'Long-term support',
+    free: [
+      'Limited salary & onboarding information',
+      'Information asymmetry during negotiation',
+      'Little support after the offer lands',
+    ],
+    premium: [
+      { text: 'Internal community from people in the same role' },
+      { text: 'Stronger salary data behind your negotiation' },
+      { text: 'Continued access to the high-quality network' },
+      { text: 'Career talks & long-term growth beyond the first offer', bold: ['Career talks & long-term growth beyond the first offer'] },
+    ],
+  },
+];
+
+function renderBoldText(text: string, bold?: string[]) {
+  if (!bold || bold.length === 0) return text;
+  let parts: (string | { b: string })[] = [text];
+  bold.forEach((b) => {
+    const next: (string | { b: string })[] = [];
+    parts.forEach((part) => {
+      if (typeof part !== 'string') { next.push(part); return; }
+      const idx = part.indexOf(b);
+      if (idx === -1) { next.push(part); return; }
+      if (idx > 0) next.push(part.slice(0, idx));
+      next.push({ b });
+      const rest = part.slice(idx + b.length);
+      if (rest) next.push(rest);
+    });
+    parts = next;
+  });
+  return parts.map((p, i) =>
+    typeof p === 'string' ? <span key={i}>{p}</span> : <strong key={i} className="font-[500] text-[#0A0A0A]">{p.b}</strong>
+  );
+}
+
+function FreeVsPremium() {
+  return (
+    <section className="py-24 bg-white">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="text-center mb-14">
+          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
+            <span className="w-6 h-px bg-[#2E5BFF]" />
+            Free vs Premium
+          </p>
+          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-4 max-w-[22ch] mx-auto">
+            What changes when you{' '}
+            <em className="italic font-[400] text-[#4a4d57]">upgrade.</em>
+          </h2>
+          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
+            Premium changes how you move through the job search, not just what tools you can access.
+          </p>
+        </div>
+
+        <div className="bg-white border border-[#E8E8EA] rounded-[20px] overflow-hidden" style={{ boxShadow: '0 24px 60px -36px rgba(10,10,10,0.08)' }}>
+          {/* Header row */}
+          <div className="hidden md:grid border-b border-[#E8E8EA]" style={{ gridTemplateColumns: 'minmax(220px,1fr) 1.2fr 1.2fr', background: '#FAFBFD' }}>
+            <div className="px-7 py-5 self-center text-[10.5px] tracking-[0.14em] uppercase text-slate-500" style={{ fontFamily: "'JetBrains Mono', monospace" }}>By stage</div>
+            <div className="px-7 py-[18px] flex items-center gap-3 border-l border-[#E8E8EA]" style={{ fontFamily: "'Playfair Display', serif" }}>
+              <span className="text-[22px] font-[500] tracking-[-0.01em] text-[#0A0A0A]">Free</span>
+            </div>
+            <div className="px-7 py-[18px] flex items-center gap-3 border-l border-[#E8E8EA]" style={{ fontFamily: "'Playfair Display', serif", background: 'linear-gradient(180deg, #DCE7FF 0%, #EAF1FF 100%)' }}>
+              <span className="text-[22px] font-[500] tracking-[-0.01em]" style={{ color: 'hsl(221,91%,42%)' }}>Premium</span>
+              <span className="text-[10px] font-[700] tracking-[0.1em] uppercase px-2.5 py-1 rounded-full text-white" style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}>Recommended</span>
+            </div>
+          </div>
+
+          {/* Stage rows */}
+          {UPGRADE_STAGES.map((stage, idx) => (
+            <div key={stage.step} className={`grid md:grid-cols-[minmax(220px,1fr)_1.2fr_1.2fr] ${idx > 0 ? 'border-t border-[#F0F0F2]' : ''}`}>
+              {/* Stage label */}
+              <div className="px-7 py-8 md:border-r-0">
+                <div className="text-[11px] font-[500] tracking-[0.12em] uppercase text-slate-500 mb-2.5" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{stage.step}</div>
+                <h3 className="text-[clamp(22px,2.2vw,28px)] font-[400] leading-[1.15] tracking-[-0.015em] text-[#0A0A0A] mb-3.5" style={{ fontFamily: "'Playfair Display', serif" }}>{stage.name}</h3>
+                <span className="inline-flex items-center gap-1.5 text-[11.5px] font-[600] tracking-[0.01em] px-2.5 py-1 rounded-full whitespace-nowrap" style={{ background: '#EAF1FF', color: 'hsl(221,91%,38%)', border: '1px solid #C9D7F7' }}>
+                  <span className="w-[5px] h-[5px] rounded-full bg-[#2E5BFF]" />
+                  {stage.badge}
+                  {stage.badgeNum && <span className="ml-0.5 font-[700] tabular-nums">{stage.badgeNum}</span>}
+                </span>
+              </div>
+              {/* Free column */}
+              <div className="px-7 py-8 border-t md:border-t-0 md:border-l border-[#F0F0F2]">
+                <div className="md:hidden text-[10.5px] tracking-[0.14em] uppercase text-slate-500 mb-3.5" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Free</div>
+                <ul className="flex flex-col gap-3">
+                  {stage.free.map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-[14px] leading-[1.55] text-slate-500">
+                      <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full border border-[#E8E8EA] text-slate-400 mt-0.5">
+                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                      </span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* Premium column */}
+              <div className="relative px-7 py-8 border-t md:border-t-0 md:border-l border-[#F0F0F2]" style={{ background: '#EAF1FF' }}>
+                <span className="hidden md:block absolute top-0 left-0 bottom-0 w-[3px]" style={{ background: '#2E5BFF', opacity: 0.7 }} />
+                <span className="md:hidden block h-[3px] w-full absolute top-0 left-0" style={{ background: '#2E5BFF', opacity: 0.7 }} />
+                <div className="md:hidden text-[10.5px] tracking-[0.14em] uppercase mb-3.5" style={{ fontFamily: "'JetBrains Mono', monospace", color: 'hsl(221,91%,38%)' }}>Premium</div>
+                <ul className="flex flex-col gap-3">
+                  {stage.premium.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-[14px] leading-[1.55] font-[500] text-[#0A0A0A]">
+                      <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#2E5BFF] text-white mt-0.5">
+                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
+                      </span>
+                      <span>{renderBoldText(item.text, item.bold)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
@@ -1226,10 +1494,37 @@ function Pricing() {
 // ─────────────────────────────────────────────────────────────────────────────
 function CreditPacks() {
   const ACCENT = 'hsl(221,91%,60%)';
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [credits, setCredits] = useState(300);
+  const [loadingPack, setLoadingPack] = useState<'trial' | 'standard' | 'custom' | null>(null);
   const customTotal = creditPrice(credits);
   const customUnit = customTotal / credits;
   const fillPct = ((credits - 150) / (1000 - 150)) * 100;
+
+  const buyPack = async (
+    kind: 'trial' | 'standard' | 'custom',
+    fn: () => Promise<{ data?: { data?: { url?: string } } }>,
+  ) => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    setLoadingPack(kind);
+    try {
+      const response = await fn();
+      const url = response?.data?.data?.url;
+      if (url) window.location.href = url;
+    } catch (err) {
+      console.error('Payment error:', err);
+    } finally {
+      setLoadingPack(null);
+    }
+  };
+
+  const handleBuyTrial    = () => buyPack('trial',    () => PaymentService.purchaseStarterPack());
+  const handleBuyStandard = () => buyPack('standard', () => PaymentService.purchaseGrowthPack());
+  const handleBuyCustom   = () => buyPack('custom',   () => PaymentService.purchaseCustomPack(credits));
 
   return (
     <section id="credits" className="py-24" style={{ background: '#F7F7F7' }}>
@@ -1278,8 +1573,8 @@ function CreditPacks() {
         {/* Two preset packs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
           {[
-            { name: 'Trial',    credits: 50,  price: '$9.99',  per: '$0.20',   rate: '≈ 50 min of AI practice — try it once' },
-            { name: 'Standard', credits: 100, price: '$14.99', per: '$0.1499', rate: '≈ 100 min of AI practice — a couple of full mocks' },
+            { kind: 'trial' as const,    name: 'Trial',    credits: 50,  price: '$9.99',  per: '$0.20',   rate: '≈ 50 min of AI practice — try it once',                    handler: handleBuyTrial },
+            { kind: 'standard' as const, name: 'Standard', credits: 100, price: '$14.99', per: '$0.1499', rate: '≈ 100 min of AI practice — a couple of full mocks', handler: handleBuyStandard },
           ].map((p) => (
             <article key={p.name} className="h-full bg-white border border-[#E5E5E5] rounded-[18px] px-7 pt-7 pb-6 flex flex-col gap-1.5 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-[0_24px_60px_-28px_rgba(46,91,255,0.22)] transition-all">
               <p className="text-[11px] font-mono tracking-[0.12em] uppercase text-[#6B6B6B] mb-1.5">{p.name}</p>
@@ -1302,12 +1597,13 @@ function CreditPacks() {
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: ACCENT }} />
                 Refund after the mock
               </span>
-              <Link
-                to="/pricing"
-                className="mt-4 flex items-center justify-center w-full rounded-full py-3 px-4 text-[14px] font-[500] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors"
+              <button
+                onClick={p.handler}
+                disabled={loadingPack === p.kind}
+                className="mt-4 flex items-center justify-center w-full rounded-full py-3 px-4 text-[14px] font-[500] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Buy {p.credits} credits
-              </Link>
+                {loadingPack === p.kind ? <Loader2 className="w-4 h-4 animate-spin" /> : `Buy ${p.credits} credits`}
+              </button>
             </article>
           ))}
         </div>
@@ -1385,13 +1681,14 @@ function CreditPacks() {
                 </span>
               ))}
             </div>
-            <Link
-              to="/pricing"
-              className="rounded-full px-6 py-3 text-[14px] font-[600] text-white transition-colors inline-flex items-center gap-2"
+            <button
+              onClick={handleBuyCustom}
+              disabled={loadingPack === 'custom'}
+              className="rounded-full px-6 py-3 text-[14px] font-[600] text-white transition-colors inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ background: ACCENT }}
             >
-              Buy {credits.toLocaleString()} credits · ${customTotal.toFixed(2)}
-            </Link>
+              {loadingPack === 'custom' ? <Loader2 className="w-4 h-4 animate-spin" /> : `Buy ${credits.toLocaleString()} credits · $${customTotal.toFixed(2)}`}
+            </button>
           </div>
         </div>
 
@@ -1635,24 +1932,32 @@ function SocialProof() {
 // ─────────────────────────────────────────────────────────────────────────────
 const FAQ_ITEMS = [
   {
-    q: 'Is Screna free to start?',
-    a: 'Yes. Self-serve is free forever — AI mocks, resume analysis, community insights, and the application tracker. Upgrade only when you want mentor access or priority support.',
+    q: 'Is $219/month worth it?',
+    a: "It's not cheap — because this isn't a software subscription, it's a human-powered service. Membership includes 200+ manually reviewed, targeted applications per month, 48-hour resume feedback, AI Mock + real Mentor dual-track practice, a status tracking dashboard, and Discord community access. If each polished application takes you 30–60 minutes on your own, that's typically 40+ hours saved in a single month.",
   },
   {
-    q: 'Who are the mentors?',
-    a: 'Current and recent engineers, PMs, designers, and data professionals from the companies our members target. Every mentor is vetted and has hired for or interviewed in the role they coach on.',
+    q: "What if it doesn't work out — can I get a refund?",
+    a: 'Full refund within 3 days. After that, you can cancel at the end of your current billing period — no refund, but your service continues until it ends.',
   },
   {
-    q: 'Do you do the applying for me?',
-    a: "No. You drive your search — we back you up. On Managed Outcome, a strategist helps with referral outreach and pipeline hygiene, but the decisions, applications, and interviews are yours.",
+    q: "I haven't started applying yet. Is it too early?",
+    a: "It's never too early to prepare. Start with AI Mock and Interview Insights to get a baseline. When you need guidance, book a session with one of our mentors. When you're ready to apply, our ops team will step in to help you apply efficiently and improve your chances of landing interviews.",
   },
   {
-    q: 'How is Screna different from other AI job tools?',
-    a: "Most tools hand you generic AI feedback and disappear. Screna combines AI practice, peer-shared interview intel, and on-demand human mentors — so you get the scale of software and the judgment of people who've done the loops.",
+    q: "Who's actually submitting my applications — humans or bots?",
+    a: "Humans reviewing, AI assisting. Our ops team checks every application: whether the company sponsors your visa type, whether the JD actually matches your level (we won't send an entry-level candidate to a senior role), and whether the position is still open (filtering out ghost jobs). You can track every application in your Dashboard — no black box.",
   },
   {
-    q: 'What kinds of tech roles is Screna for?',
-    a: 'Early-career engineers (new grad through senior), product managers, product designers, and data roles. Our strongest coverage today is backend, ML/AI, and PM at FAANG and well-known tech companies.',
+    q: "I'm an international student who needs sponsorship. Can you handle that?",
+    a: "That's our core use case. The application process automatically filters out companies that don't sponsor, and matches roles to your visa status — OPT, STEM OPT, CPT, or cap-exempt.",
+  },
+  {
+    q: "What if my resume isn't ready?",
+    a: "Resume editing is a separate paid add-on — not required, but available. Just note: we can't start submitting applications until you have a finalized resume.",
+  },
+  {
+    q: 'How much time do I need to put in each week?',
+    a: 'We recommend 5–8 hours: 2–3 hours for Mock practice, 1–2 hours for Dashboard check-ins and OA responses, 1 hour for Mentor sessions as needed, and community and Insights on your own schedule. We take the applying, tracking, and research off your plate — the interview prep part is still yours to own.',
   },
 ];
 
@@ -1694,7 +1999,7 @@ function FAQ() {
                   </button>
                   <div
                     className="overflow-hidden transition-all duration-300"
-                    style={{ maxHeight: isOpen ? 220 : 0, marginTop: isOpen ? 16 : 0 }}
+                    style={{ maxHeight: isOpen ? 600 : 0, marginTop: isOpen ? 16 : 0 }}
                   >
                     <p className="text-[16px] text-[#4a4d57] leading-[1.6] max-w-[58ch]">{a}</p>
                   </div>
@@ -1770,6 +2075,7 @@ export function HomePage() {
         <ComparisonTable />
         <Journey />
         <Pricing />
+        <FreeVsPremium />
         <CreditPacks />
         <CallbackCTA />
         <SocialProof />

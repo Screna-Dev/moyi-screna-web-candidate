@@ -23,6 +23,7 @@ const linkClass =
 const headingClass = 'font-semibold text-[hsl(222,22%,15%)] text-sm mb-4';
 
 const PRODUCT_LINKS = [
+  { label: 'Coach', href: '/#pillars' },
   { label: 'Personalized Practice', href: '/personalized-practice' },
 ];
 
@@ -32,6 +33,7 @@ const COMMUNITY_LINKS = [
 ];
 
 const SUPPORT_LINKS = [
+  { label: 'Pricing', href: '/pricing' },
   { label: 'Help Center', href: '/help' },
   { label: 'Contact', href: '/contact' },
 ];
