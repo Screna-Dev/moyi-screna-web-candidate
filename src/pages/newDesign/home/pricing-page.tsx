@@ -26,17 +26,17 @@ const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check,
 
 // Membership tier prices (from Claude design / Screna Landing Page.html)
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
-  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
+  monthly:   { price: '$29', note: 'Billed $29 / month · cancel anytime' },
+  quarterly: { price: '$29', note: 'Billed $87 / quarter · cancel anytime' },
 };
 
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
-  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
+  monthly:   { price: '$159', note: 'Billed $159 / month · cancel anytime' },
+  quarterly: { price: '$129', note: 'Billed $477 / quarter · cancel anytime' },
 };
 
 const SAVE_BADGES: Partial<Record<BillingCycle, string>> = {
-  quarterly: 'Save 9%',
+  quarterly: 'Save 19%',
 };
 
 // Limited Access — plain list of what's included
@@ -88,7 +88,7 @@ const STARTER_GROUPS: FeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
-      { text: 'AI Mock Interview — 300 credits / month', ok: true },
+      { text: 'AI Mock Interview — 150 credits / month', ok: true },
       { text: 'Personal Question Bank', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
@@ -639,7 +639,7 @@ export function PricingPage() {
                       Included each month
                     </span>
                     <span className="text-[18px] font-[700] tracking-[-0.01em] leading-tight text-[#0A0A0A]">
-                      300 credits / mo
+                      150 credits / mo
                     </span>
                     <span className="text-[11px] text-[#6B6B6B] leading-[1.45]">
                       1 credit = $0.28 = 1 min of AI mock interview (Audio mode)
