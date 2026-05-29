@@ -106,7 +106,7 @@ export const router = createBrowserRouter([
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/register', element: <AuthPage /> },
-      { path: '/ref/:slug', element: <RefRedirect /> },
+      { path: '/pgs/ref/:slug', element: <RefRedirect /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/onboarding', element: <OnboardingPage /> },
