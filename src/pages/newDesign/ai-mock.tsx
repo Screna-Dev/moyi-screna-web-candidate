@@ -779,7 +779,9 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
             <CooldownScreen config={config} theme={theme} onComplete={() => {
               const interviewId = searchParams.get('interviewId');
               if (interviewId) endTrainingModule(interviewId).catch(() => {});
-              navigate(interviewId ? `/evaluation?interviewId=${interviewId}` : '/evaluation');
+              navigate(interviewId ? `/evaluation?interviewId=${interviewId}` : '/evaluation', {
+                state: { from: '/personalized-practice' },
+              });
             }} />
           </motion.div>
         )}

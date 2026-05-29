@@ -21,9 +21,52 @@ type OpsMember = {
   avatar: string;
 };
 
-const hasOpsRole = (u: any): boolean => {
-  const roles: string[] = u?.roles ?? (u?.role ? [u.role] : []);
-  return roles.map((r) => String(r).toUpperCase()).includes("OPS");
+type PremiumUser = {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  lastActiveAt: string;
+  subStatus: string;
+  tier: string;
+};
+
+type PremiumUserRow = PremiumUser & {
+  ops: string;
+  lastActive: string;
+};
+
+type PageMeta = {
+  pageNumber: number;
+  pageSize: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+};
+
+const formatRelativeTime = (iso?: string | null): string => {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 0) return "Just now";
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min} min${min > 1 ? "s" : ""} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr${hr > 1 ? "s" : ""} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day} day${day > 1 ? "s" : ""} ago`;
+  return new Date(iso).toLocaleDateString();
+};
+
+const subStatusBadgeColor = (s: string): "green" | "amber" | "gray" | "blue" => {
+  const v = (s || "").toUpperCase();
+  if (v === "ACTIVE" || v === "TRIALING") return "green";
+  if (v === "PAST_DUE" || v === "INCOMPLETE" || v === "UNPAID") return "amber";
+  if (v === "CANCELED" || v === "INCOMPLETE_EXPIRED") return "gray";
+  return "blue";
 };
 
 const toOpsMember = (u: any): OpsMember => {
@@ -40,13 +83,6 @@ const toOpsMember = (u: any): OpsMember => {
   };
 };
 
-const DUMMY_USERS = [
-  { id: "U-100", name: "David Kim", plan: "Premium", ops: "Alice Chen", status: "Active", pendingReview: 2, scope: "Mentorship", lastActive: "2 hrs ago" },
-  { id: "U-101", name: "Eva Wong", plan: "Starter", ops: "Brian Smith", status: "Onboarding", pendingReview: 1, scope: "Application Only", lastActive: "1 day ago" },
-  { id: "U-102", name: "Frank Wright", plan: "Premium", ops: "Unassigned", status: "Idle", pendingReview: 0, scope: "Application Only", lastActive: "3 days ago" },
-  { id: "U-103", name: "Grace Lee", plan: "Starter", ops: "Carla Gomez", status: "Active", pendingReview: 0, scope: "Mentorship", lastActive: "5 mins ago" },
-];
-
 const DUMMY_LOGS_OPS = [
   { id: "LO-01", time: "10:30 AM", ops: "Alice Chen", user: "David Kim", action: "Resume Review", status: "Completed" },
   { id: "LO-02", time: "09:15 AM", ops: "Brian Smith", user: "Eva Wong", action: "Initial Setup", status: "In Progress" },
@@ -62,7 +98,7 @@ export function OpsManager() {
   const [activeTab, setActiveTab] = useState<"Ops Team" | "Users">("Ops Team");
   
   const [selectedOps, setSelectedOps] = useState<OpsMember | null>(null);
-  const [assignUser, setAssignUser] = useState<typeof DUMMY_USERS[0] | null>(null);
+  const [assignUser, setAssignUser] = useState<PremiumUserRow | null>(null);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [newMember, setNewMember] = useState({ email: "", password: "", name: "" });
   const [creatingMember, setCreatingMember] = useState(false);
@@ -70,6 +106,12 @@ export function OpsManager() {
   const [assigning, setAssigning] = useState(false);
   const [opsMembers, setOpsMembers] = useState<OpsMember[]>([]);
   const [opsLoading, setOpsLoading] = useState(false);
+  const [opsPage, setOpsPage] = useState(0);
+  const [opsPageMeta, setOpsPageMeta] = useState<PageMeta | null>(null);
+  const [premiumUsers, setPremiumUsers] = useState<PremiumUser[]>([]);
+  const [premiumLoading, setPremiumLoading] = useState(false);
+  const [premiumPage, setPremiumPage] = useState(0);
+  const [premiumPageMeta, setPremiumPageMeta] = useState<PageMeta | null>(null);
 
   const loadAssignments = useCallback(async () => {
     try {
@@ -86,21 +128,43 @@ export function OpsManager() {
     }
   }, []);
 
-  const loadOpsMembers = useCallback(async () => {
+  const loadOpsMembers = useCallback(async (page: number) => {
     setOpsLoading(true);
     try {
-      const res = await adminService.searchUsers({ roleType: "OPS", size: 200 });
-      const items: any[] = res.data?.data?.content ?? [];
-      setOpsMembers(items.filter(hasOpsRole).map(toOpsMember));
-    } catch {
+      const res = await adminService.listOpsUsers(page);
+      const data = res.data?.data ?? {};
+      const items: any[] = data.content ?? [];
+      setOpsMembers(items.map(toOpsMember));
+      setOpsPageMeta(data.pageMeta ?? null);
+    } catch (e: any) {
+      toast.error(extractErr(e, "Failed to load Ops members"));
       setOpsMembers([]);
+      setOpsPageMeta(null);
     } finally {
       setOpsLoading(false);
     }
   }, []);
 
+  const loadPremiumUsers = useCallback(async (page: number) => {
+    setPremiumLoading(true);
+    try {
+      const res = await adminService.listPremiumUsers(page);
+      const data = res.data?.data ?? {};
+      const items: PremiumUser[] = data.content ?? [];
+      setPremiumUsers(items);
+      setPremiumPageMeta(data.pageMeta ?? null);
+    } catch (e: any) {
+      toast.error(extractErr(e, "Failed to load premium users"));
+      setPremiumUsers([]);
+      setPremiumPageMeta(null);
+    } finally {
+      setPremiumLoading(false);
+    }
+  }, []);
+
   useEffect(() => { loadAssignments(); }, [loadAssignments]);
-  useEffect(() => { loadOpsMembers(); }, [loadOpsMembers]);
+  useEffect(() => { loadOpsMembers(opsPage); }, [loadOpsMembers, opsPage]);
+  useEffect(() => { loadPremiumUsers(premiumPage); }, [loadPremiumUsers, premiumPage]);
 
   const closeAddMember = () => {
     setIsAddingMember(false);
@@ -135,7 +199,11 @@ export function OpsManager() {
       await adminService.opsSignup({ email, password, name });
       toast.success(`Ops account created for ${name}`);
       closeAddMember();
-      await loadOpsMembers();
+      if (opsPage === 0) {
+        await loadOpsMembers(0);
+      } else {
+        setOpsPage(0);
+      }
     } catch (e: any) {
       toast.error(extractErr(e, "Failed to create Ops account"));
     } finally {
@@ -159,14 +227,11 @@ export function OpsManager() {
 
   // Filtered data based on role
   const visibleOps = opsWithCounts.filter(o => canSeeCore ? true : o.scope === "Application Only");
-  const visibleUsers = DUMMY_USERS
-    .filter(u => canSeeCore ? true : u.scope === "Application Only")
-    .map(u => {
-      const opsId = assignments[u.id];
-      if (!opsId) return u;
-      const ops = opsWithCounts.find(o => o.id === opsId);
-      return { ...u, ops: ops?.name ?? opsId };
-    });
+  const visibleUsers: PremiumUserRow[] = premiumUsers.map(u => {
+    const opsId = assignments[u.id];
+    const ops = opsId ? opsWithCounts.find(o => o.id === opsId)?.name ?? opsId : "Unassigned";
+    return { ...u, ops, lastActive: formatRelativeTime(u.lastActiveAt) };
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bgPage }}>
@@ -217,8 +282,28 @@ export function OpsManager() {
 
       {/* Main Content Area */}
       <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
-        {activeTab === "Ops Team" && <OpsTeamTab ops={visibleOps} onViewOps={(o) => setSelectedOps(o)} onAddMember={() => setIsAddingMember(true)} />}
-        {activeTab === "Users" && <UsersTab canSeeCore={canSeeCore} users={visibleUsers} onAssignUser={(u) => setAssignUser(u)} />}
+        {activeTab === "Ops Team" && (
+          <OpsTeamTab
+            ops={visibleOps}
+            loading={opsLoading}
+            pageMeta={opsPageMeta}
+            page={opsPage}
+            onPageChange={setOpsPage}
+            onViewOps={(o) => setSelectedOps(o)}
+            onAddMember={() => setIsAddingMember(true)}
+          />
+        )}
+        {activeTab === "Users" && (
+          <UsersTab
+            canSeeCore={canSeeCore}
+            users={visibleUsers}
+            loading={premiumLoading}
+            pageMeta={premiumPageMeta}
+            page={premiumPage}
+            onPageChange={setPremiumPage}
+            onAssignUser={(u) => setAssignUser(u)}
+          />
+        )}
       </div>
 
       {/* Drawers */}
@@ -247,11 +332,11 @@ export function OpsManager() {
         )}
       </Drawer>
 
-      <Drawer open={!!assignUser} onClose={() => setAssignUser(null)} title={`Assign ${assignUser?.name}`} width={360}>
+      <Drawer open={!!assignUser} onClose={() => setAssignUser(null)} title={`Assign ${assignUser?.name || assignUser?.email || ""}`} width={360}>
         {assignUser && (
           <div style={{ padding: "0 24px 24px" }}>
             <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>
-              Select an Ops member to manage <strong>{assignUser.name}</strong>.
+              Select an Ops member to manage <strong>{assignUser.name || assignUser.email}</strong>.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {visibleOps.map(o => (
@@ -262,7 +347,7 @@ export function OpsManager() {
                     setAssigning(true);
                     try {
                       await adminService.assignUserToOps({ user_id: assignUser.id, ops_user_id: o.id });
-                      toast.success(`${assignUser.name} assigned to ${o.name}`);
+                      toast.success(`${assignUser.name || assignUser.email} assigned to ${o.name}`);
                       setAssignUser(null);
                       await loadAssignments();
                     } catch (e: any) {
@@ -367,100 +452,21 @@ export function OpsManager() {
   );
 }
 
-function OverviewTab({ canSeeCore, users, ops, onAssignUser }: { canSeeCore: boolean, users: typeof DUMMY_USERS, ops: OpsMember[], onAssignUser: (u: any) => void }) {
-  const pendingCount = users.reduce((acc, u) => acc + u.pendingReview, 0);
-  const unassigned = users.filter(u => u.ops === "Unassigned").length;
+type OpsTeamTabProps = {
+  ops: OpsMember[];
+  loading: boolean;
+  pageMeta: PageMeta | null;
+  page: number;
+  onPageChange: (page: number) => void;
+  onViewOps: (o: OpsMember) => void;
+  onAddMember: () => void;
+};
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Summary Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-        <SummaryCard title="Total Managed Users" value={users.length} trend="+12 this week" />
-        <SummaryCard title="Active Ops Team" value={ops.length} trend="Stable" />
-        <SummaryCard title="Unassigned Users" value={unassigned} variant={unassigned > 0 ? "warning" : "default"} />
-        <SummaryCard title="Pending Reviews" value={pendingCount} variant={pendingCount > 10 ? "danger" : "default"} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
-        {/* Left Col */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ ...card, padding: 20 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 16 }}>Ops Distribution</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={TH}>Ops Member</th>
-                  <th style={TH}>Assigned Users</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ops.map(o => (
-                  <tr key={o.id}>
-                    <td style={{ ...TD, display: "flex", alignItems: "center", gap: 8, height: "auto", padding: "10px 14px" }}>
-                      <div style={{ width: 24, height: 24, borderRadius: "50%", background: C.blueBg, color: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600 }}>
-                        {o.avatar}
-                      </div>
-                      <span style={{ fontWeight: 500 }}>{o.name}</span>
-                    </td>
-                    <td style={TD}>{o.assignedUsers}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Right Col */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ ...card, padding: 20 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 16 }}>Needs Attention</h3>
-            {unassigned > 0 ? (
-              <div style={{ background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.amber, fontWeight: 600, marginBottom: 4 }}>
-                  <AlertCircle size={16} />
-                  {unassigned} Unassigned Users
-                </div>
-                <div style={{ fontSize: 13, color: C.text, marginBottom: 12 }}>Users are waiting to be matched with an Ops owner.</div>
-                <button onClick={() => onAssignUser(users.find(u => u.ops === "Unassigned"))} style={{ ...primaryBtn, background: C.amber, borderColor: C.amber, height: 28, fontSize: 12 }}>Assign now</button>
-              </div>
-            ) : (
-              <div style={{ padding: 16, textAlign: "center", color: C.textMuted, fontSize: 13 }}>
-                No unassigned users.
-              </div>
-            )}
-            
-            {pendingCount > 0 && (
-              <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>Pending Reviews</span>
-                  <span style={{ ...badge("amber") }}>{pendingCount}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryCard({ title, value, trend, variant = "default" }: { title: string, value: string | number, trend?: string, variant?: "default" | "warning" | "danger" }) {
-  const valColor = variant === "danger" ? C.red : variant === "warning" ? C.amber : C.text;
-  return (
-    <div style={{ ...card, padding: 20 }}>
-      <div style={{ fontSize: 13, color: C.textMuted, fontWeight: 500, marginBottom: 8 }}>{title}</div>
-      <div style={{ fontSize: 28, fontWeight: 600, color: valColor, marginBottom: 4, letterSpacing: "-0.02em" }}>{value}</div>
-      {trend && <div style={{ fontSize: 12, color: C.textSub }}>{trend}</div>}
-    </div>
-  );
-}
-
-function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewOps: (o: OpsMember) => void, onAddMember: () => void }) {
+function OpsTeamTab({ ops, loading, pageMeta, page, onPageChange, onViewOps, onAddMember }: OpsTeamTabProps) {
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [opsList, setOpsList] = useState<OpsMember[]>(ops);
 
-  useEffect(() => { setOpsList(ops); }, [ops]);
+  useEffect(() => { setSelected(new Set()); }, [page, ops]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -471,17 +477,11 @@ function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewO
   };
 
   const toggleAll = () => {
-    if (selected.size === opsList.length) {
+    if (selected.size === ops.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(opsList.map(o => o.id)));
+      setSelected(new Set(ops.map(o => o.id)));
     }
-  };
-
-  const handleDelete = () => {
-    setOpsList(prev => prev.filter(o => !selected.has(o.id)));
-    setSelected(new Set());
-    setManaging(false);
   };
 
   const handleCancelManage = () => {
@@ -489,20 +489,21 @@ function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewO
     setSelected(new Set());
   };
 
+  const totalPages = pageMeta?.totalPages ?? 1;
+  const totalElements = pageMeta?.totalElements ?? ops.length;
+  const isFirst = pageMeta?.first ?? page === 0;
+  const isLast = pageMeta?.last ?? true;
+
   return (
     <div style={{ ...card, display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ padding: 16, borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: C.text }}>Ops Team Members</h2>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: C.textMuted, marginRight: 4 }}>
+            {loading ? "Loading..." : `${totalElements} ops member${totalElements === 1 ? "" : "s"}`}
+          </span>
           {managing ? (
-            <>
-              {selected.size > 0 && (
-                <button onClick={handleDelete} style={{ ...primaryBtn, height: 34, fontSize: 13, background: "#D9363E", gap: 6 }}>
-                  <Trash2 size={14} /> Delete {selected.size} member{selected.size > 1 ? "s" : ""}
-                </button>
-              )}
-              <button onClick={handleCancelManage} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Cancel</button>
-            </>
+            <button onClick={handleCancelManage} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Cancel</button>
           ) : (
             <>
               <button onClick={() => setManaging(true)} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Manage Members</button>
@@ -517,17 +518,25 @@ function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewO
             <tr>
               {managing && (
                 <th style={{ ...TH, width: 40, paddingLeft: 16 }}>
-                  <input type="checkbox" checked={selected.size === opsList.length && opsList.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} />
+                  <input type="checkbox" checked={selected.size === ops.length && ops.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} />
                 </th>
               )}
               <th style={TH}>Member</th>
+              <th style={TH}>Email</th>
               <th style={TH}>Scope</th>
               <th style={TH}>Assigned</th>
               <th style={TH}></th>
             </tr>
           </thead>
           <tbody>
-            {opsList.map(o => (
+            {!loading && ops.length === 0 && (
+              <tr>
+                <td colSpan={managing ? 6 : 5} style={{ ...TD, textAlign: "center", color: C.textMuted, padding: "32px 16px" }}>
+                  No Ops members found.
+                </td>
+              </tr>
+            )}
+            {ops.map(o => (
               <tr key={o.id} onClick={managing ? () => toggleSelect(o.id) : undefined} style={{ cursor: managing ? "pointer" : "default", background: selected.has(o.id) ? C.blueBg : undefined }}>
                 {managing && (
                   <td style={{ ...TD, width: 40, paddingLeft: 16, paddingTop: 20, paddingBottom: 20 }}>
@@ -536,12 +545,16 @@ function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewO
                 )}
                 <td style={{ ...TD, paddingTop: 20, paddingBottom: 20 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.blueBg, color: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600 }}>
+                      {o.avatar}
+                    </div>
                     <div>
                       <div style={{ fontWeight: 600, color: C.text }}>{o.name}</div>
                       <div style={{ fontSize: 12, color: C.textMuted }}>{o.role}</div>
                     </div>
                   </div>
                 </td>
+                <td style={{ ...TD, paddingTop: 20, paddingBottom: 20, color: C.textMuted }}>{o.email || "—"}</td>
                 <td style={{ ...TD, paddingTop: 20, paddingBottom: 20 }}><span style={badge(o.scope.includes("Mentorship") ? "purple" : "gray")}>{o.scope}</span></td>
                 <td style={{ ...TD, paddingTop: 20, paddingBottom: 20 }}>{o.assignedUsers} users</td>
                 <td style={{ ...TD, textAlign: "right", paddingTop: 20, paddingBottom: 20 }}>
@@ -552,28 +565,64 @@ function OpsTeamTab({ ops, onViewOps, onAddMember }: { ops: OpsMember[], onViewO
           </tbody>
         </table>
       </div>
+      {(totalPages > 1 || page > 0) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
+          <span style={{ fontSize: 12, color: C.textMuted }}>
+            Page {page + 1} of {Math.max(totalPages, 1)}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => onPageChange(Math.max(0, page - 1))}
+              disabled={isFirst || loading}
+              style={{ ...secondaryBtn, height: 30, fontSize: 12, opacity: (isFirst || loading) ? 0.5 : 1, cursor: (isFirst || loading) ? "not-allowed" : "pointer" }}
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => onPageChange(page + 1)}
+              disabled={isLast || loading}
+              style={{ ...secondaryBtn, height: 30, fontSize: 12, opacity: (isLast || loading) ? 0.5 : 1, cursor: (isLast || loading) ? "not-allowed" : "pointer" }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, users: typeof DUMMY_USERS, onAssignUser: (u: any) => void }) {
+type UsersTabProps = {
+  canSeeCore: boolean;
+  users: PremiumUserRow[];
+  loading: boolean;
+  pageMeta: PageMeta | null;
+  page: number;
+  onPageChange: (page: number) => void;
+  onAssignUser: (u: PremiumUserRow) => void;
+};
+
+function UsersTab({ canSeeCore, users, loading, pageMeta, page, onPageChange, onAssignUser }: UsersTabProps) {
   const [managing, setManaging] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [userList, setUserList] = useState(users);
+  const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filterPlan, setFilterPlan] = useState("All");
+  const [filterTier, setFilterTier] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterOps, setFilterOps] = useState("All");
 
-  const uniqueOps = Array.from(new Set(userList.map(u => u.ops)));
-  const activeFilterCount = [filterPlan, filterStatus, filterOps].filter(v => v !== "All").length;
+  useEffect(() => { setSelected(new Set()); }, [page, users]);
 
-  const visibleUsers = userList.filter(u => {
-    if (filterPlan !== "All" && u.plan !== filterPlan) return false;
-    if (filterStatus !== "All") {
-      const normalized = u.status === "Active" ? "Active" : "Idle";
-      if (normalized !== filterStatus) return false;
-    }
+  const uniqueTiers = Array.from(new Set(users.map(u => u.tier).filter(Boolean)));
+  const uniqueStatuses = Array.from(new Set(users.map(u => u.subStatus).filter(Boolean)));
+  const uniqueOps = Array.from(new Set(users.map(u => u.ops)));
+  const activeFilterCount = [filterTier, filterStatus, filterOps].filter(v => v !== "All").length;
+
+  const q = search.trim().toLowerCase();
+  const visibleUsers = users.filter(u => {
+    if (q && !(`${u.name} ${u.email}`.toLowerCase().includes(q))) return false;
+    if (filterTier !== "All" && u.tier !== filterTier) return false;
+    if (filterStatus !== "All" && u.subStatus !== filterStatus) return false;
     if (filterOps !== "All" && u.ops !== filterOps) return false;
     return true;
   });
@@ -594,16 +643,15 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
     }
   };
 
-  const handleDelete = () => {
-    setUserList(prev => prev.filter(u => !selected.has(u.id)));
-    setSelected(new Set());
-    setManaging(false);
-  };
-
   const handleCancelManage = () => {
     setManaging(false);
     setSelected(new Set());
   };
+
+  const totalPages = pageMeta?.totalPages ?? 1;
+  const totalElements = pageMeta?.totalElements ?? users.length;
+  const isFirst = pageMeta?.first ?? page === 0;
+  const isLast = pageMeta?.last ?? true;
 
   const filterSection = (label: string, options: string[], value: string, onChange: (v: string) => void) => (
     <div style={{ marginBottom: 14 }}>
@@ -623,7 +671,12 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
       <div style={{ padding: 16, borderBottom: `1px solid ${C.border}`, display: "flex", gap: 12, alignItems: "center" }}>
         <div style={{ position: "relative", width: 260 }}>
           <Search size={16} style={{ position: "absolute", left: 12, top: 9, color: C.textMuted }} />
-          <input placeholder="Search users..." style={{ ...searchInput, paddingLeft: 36, width: "100%", height: 34 }} />
+          <input
+            placeholder="Search by name or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...searchInput, paddingLeft: 36, width: "100%", height: 34 }}
+          />
         </div>
         <div style={{ position: "relative" }}>
           <button onClick={() => setFilterOpen(o => !o)} style={{ ...secondaryBtn, height: 34, border: activeFilterCount > 0 ? `1px solid ${C.blue}` : undefined, color: activeFilterCount > 0 ? C.blue : undefined }}>
@@ -631,11 +684,11 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
           </button>
           {filterOpen && (
             <div style={{ position: "absolute", top: 40, left: 0, zIndex: 100, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px hsl(222 22% 15% / 0.10)", padding: 16, width: 260 }}>
-              {filterSection("Plan & Scope", ["Premium", "Starter"], filterPlan, setFilterPlan)}
-              {filterSection("Status", ["Active", "Idle"], filterStatus, setFilterStatus)}
+              {uniqueTiers.length > 0 && filterSection("Tier", uniqueTiers, filterTier, setFilterTier)}
+              {uniqueStatuses.length > 0 && filterSection("Subscription", uniqueStatuses, filterStatus, setFilterStatus)}
               {filterSection("Assigned Ops", uniqueOps, filterOps, setFilterOps)}
               {activeFilterCount > 0 && (
-                <button onClick={() => { setFilterPlan("All"); setFilterStatus("All"); setFilterOps("All"); }} style={{ fontSize: 12, color: C.textMuted, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}>
+                <button onClick={() => { setFilterTier("All"); setFilterStatus("All"); setFilterOps("All"); }} style={{ fontSize: 12, color: C.textMuted, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 4 }}>
                   Clear all filters
                 </button>
               )}
@@ -643,20 +696,13 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
           )}
         </div>
         <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: C.textMuted }}>
+          {loading ? "Loading..." : `${totalElements} premium user${totalElements === 1 ? "" : "s"}`}
+        </span>
         {managing ? (
-          <>
-            {selected.size > 0 && (
-              <button onClick={handleDelete} style={{ ...primaryBtn, height: 34, background: "#D9363E", fontSize: 13, gap: 6 }}>
-                <Trash2 size={14} /> Delete {selected.size} user{selected.size > 1 ? "s" : ""}
-              </button>
-            )}
-            <button onClick={handleCancelManage} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Cancel</button>
-          </>
+          <button onClick={handleCancelManage} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Cancel</button>
         ) : (
-          <>
-            <button onClick={() => setManaging(true)} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Manage Users</button>
-            
-          </>
+          <button onClick={() => setManaging(true)} style={{ ...secondaryBtn, height: 34, fontSize: 13 }}>Manage Users</button>
         )}
       </div>
       <div style={{ flex: 1, overflow: "auto" }} onClick={() => filterOpen && setFilterOpen(false)}>
@@ -669,14 +715,21 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
                 </th>
               )}
               <th style={TH}>User</th>
-              <th style={TH}>Plan & Scope</th>
+              <th style={TH}>Tier</th>
               <th style={TH}>Assigned Ops</th>
-              <th style={TH}>Status</th>
+              <th style={TH}>Subscription</th>
               <th style={TH}>Last Active</th>
               <th style={TH}></th>
             </tr>
           </thead>
           <tbody>
+            {!loading && visibleUsers.length === 0 && (
+              <tr>
+                <td colSpan={managing ? 7 : 6} style={{ ...TD, textAlign: "center", color: C.textMuted, padding: "32px 16px" }}>
+                  No premium users found.
+                </td>
+              </tr>
+            )}
             {visibleUsers.map(u => (
               <tr key={u.id} onClick={managing ? () => toggleSelect(u.id) : undefined} style={{ cursor: managing ? "pointer" : "default", background: selected.has(u.id) ? C.blueBg : undefined }}>
                 {managing && (
@@ -684,23 +737,22 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
                     <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleSelect(u.id)} onClick={e => e.stopPropagation()} style={{ cursor: "pointer" }} />
                   </td>
                 )}
-                <td style={{ ...TD, fontWeight: 500 }}>{u.name}</td>
                 <td style={TD}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <span style={badge(u.plan === "Premium" ? "purple" : "gray")}>{u.plan}</span>
-                  </div>
+                  <div style={{ fontWeight: 500, color: C.text }}>{u.name || "—"}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>{u.email}</div>
+                </td>
+                <td style={TD}>
+                  <span style={badge("purple")}>{u.tier || "—"}</span>
                 </td>
                 <td style={TD}>
                   {u.ops === "Unassigned" ? (
                     <span style={badge("amber")}>Unassigned</span>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 13 }}>{u.ops}</span>
-                    </div>
+                    <span style={{ fontSize: 13 }}>{u.ops}</span>
                   )}
                 </td>
                 <td style={TD}>
-                  <span style={badge(u.status === "Active" ? "green" : "gray")}>{u.status === "Active" ? "Active" : "Idle"}</span>
+                  <span style={badge(subStatusBadgeColor(u.subStatus))}>{u.subStatus || "—"}</span>
                 </td>
                 <td style={{ ...TD, color: C.textMuted }}>{u.lastActive}</td>
                 <td style={{ ...TD, textAlign: "right" }}>
@@ -717,6 +769,29 @@ function UsersTab({ canSeeCore, users, onAssignUser }: { canSeeCore: boolean, us
           </tbody>
         </table>
       </div>
+      {(totalPages > 1 || page > 0) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
+          <span style={{ fontSize: 12, color: C.textMuted }}>
+            Page {page + 1} of {Math.max(totalPages, 1)}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => onPageChange(Math.max(0, page - 1))}
+              disabled={isFirst || loading}
+              style={{ ...secondaryBtn, height: 30, fontSize: 12, opacity: (isFirst || loading) ? 0.5 : 1, cursor: (isFirst || loading) ? "not-allowed" : "pointer" }}
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => onPageChange(page + 1)}
+              disabled={isLast || loading}
+              style={{ ...secondaryBtn, height: 30, fontSize: 12, opacity: (isLast || loading) ? 0.5 : 1, cursor: (isLast || loading) ? "not-allowed" : "pointer" }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

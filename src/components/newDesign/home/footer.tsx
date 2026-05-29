@@ -23,13 +23,13 @@ const linkClass =
 const headingClass = 'font-semibold text-[hsl(222,22%,15%)] text-sm mb-4';
 
 const PRODUCT_LINKS = [
-  { label: 'Coach', href: '/#pillars' },
+  { label: 'Coach', href: '/marketplace' },
   { label: 'Personalized Practice', href: '/personalized-practice' },
 ];
 
 const COMMUNITY_LINKS = [
   { label: 'Interview Insights', href: '/interview-insights' },
-  { label: 'Join our Discord', href: 'https://discord.gg/bujmRBnU' },
+  { label: 'Join our Discord', href: 'https://discord.gg/7FqHDtea5X' },
 ];
 
 const SUPPORT_LINKS = [
@@ -41,7 +41,7 @@ const SUPPORT_LINKS = [
 const SOCIAL_LINKS = [
   { icon: XIcon, label: 'X', href: 'https://x.com/ScrenaAI' },
   { icon: Linkedin, label: 'LinkedIn', href: 'https://www.linkedin.com/company/screnaai/' },
-  { icon: DiscordIcon, label: 'Discord', href: 'https://discord.gg/bujmRBnU' },
+  { icon: DiscordIcon, label: 'Discord', href: 'https://discord.gg/7FqHDtea5X' },
   { icon: Mail, label: 'Email', href: 'mailto:operations@screna.ai' },
 ];
 

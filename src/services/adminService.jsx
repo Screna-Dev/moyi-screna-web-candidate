@@ -292,6 +292,26 @@ export const revokeUserOpsAssignment = (userId) => {
   return API.delete(`${USER_OPS_URL}/${userId}`);
 };
 
+/**
+ * List premium subscribers (active, in good standing), ordered by first
+ * subscription date descending.
+ * @param {number} [page=0] - Zero-based page index
+ * @returns {Promise} API response with { data: { content: [{ id, email, name, createdAt, lastActiveAt, subStatus, tier }], pageMeta } }
+ */
+export const listPremiumUsers = (page = 0) => {
+  return API.get('/apply/admin/premium-users', { params: { page } });
+};
+
+/**
+ * List active users holding the OPS role (operators that candidates can be
+ * assigned to), ordered by creation date descending.
+ * @param {number} [page=0] - Zero-based page index
+ * @returns {Promise} API response with { data: { content: [{ id, email, name, status, createdAt, lastActiveAt }], pageMeta } }
+ */
+export const listOpsUsers = (page = 0) => {
+  return API.get('/apply/admin/ops-users', { params: { page } });
+};
+
 // ============================================
 // Ops Account APIs
 // ============================================
@@ -537,6 +557,10 @@ const adminService = {
   getPgsMemberStats,
   getPgsGlobalStats,
   generatePgsSlug,
+  // Premium Users
+  listPremiumUsers,
+  // Ops Users
+  listOpsUsers,
   // Ops Account
   opsSignup,
   // User → Ops Assignments

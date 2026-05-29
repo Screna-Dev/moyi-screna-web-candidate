@@ -558,13 +558,14 @@ export function EvaluationPage() {
 
   // ── Computed display data (API or mock fallback) ───
   // When interviewId is provided, never show placeholder data — wait for real data.
+  // Only include dimensions that were actually scored in this module (others are not practiced).
   const displayDimensions: Dimension[] = apiData?.scores
-    ? [
-        { id: 'resume_background', name: 'Background & Experience', icon: BookOpen, score: Math.round((apiData.scores.resume_background ?? 0)), status: dimensionStatus(Math.round((apiData.scores.resume_background ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
-        { id: 'domain_knowledge',  name: 'Domain Knowledge',        icon: Brain,    score: Math.round((apiData.scores.domain_knowledge  ?? 0)), status: dimensionStatus(Math.round((apiData.scores.domain_knowledge  ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
-        { id: 'technical_skills',  name: 'Technical Skills',        icon: Target,   score: Math.round((apiData.scores.technical_skills  ?? 0)), status: dimensionStatus(Math.round((apiData.scores.technical_skills  ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
-        { id: 'behavioral',        name: 'Behavioral Skills',       icon: Users,    score: Math.round((apiData.scores.behavioral        ?? 0)), status: dimensionStatus(Math.round((apiData.scores.behavioral        ?? 0))), reasoning: '', evidence: [], nextSteps: [] },
-      ]
+    ? ([
+        apiData.scores.resume_background != null && { id: 'resume_background', name: 'Background & Experience', icon: BookOpen, score: Math.round(apiData.scores.resume_background), status: dimensionStatus(Math.round(apiData.scores.resume_background)), reasoning: '', evidence: [], nextSteps: [] },
+        apiData.scores.domain_knowledge  != null && { id: 'domain_knowledge',  name: 'Domain Knowledge',        icon: Brain,    score: Math.round(apiData.scores.domain_knowledge),  status: dimensionStatus(Math.round(apiData.scores.domain_knowledge)),  reasoning: '', evidence: [], nextSteps: [] },
+        apiData.scores.technical_skills  != null && { id: 'technical_skills',  name: 'Technical Skills',        icon: Target,   score: Math.round(apiData.scores.technical_skills),  status: dimensionStatus(Math.round(apiData.scores.technical_skills)),  reasoning: '', evidence: [], nextSteps: [] },
+        apiData.scores.behavioral        != null && { id: 'behavioral',        name: 'Behavioral Skills',       icon: Users,    score: Math.round(apiData.scores.behavioral),        status: dimensionStatus(Math.round(apiData.scores.behavioral)),        reasoning: '', evidence: [], nextSteps: [] },
+      ].filter(Boolean) as Dimension[])
     : interviewId ? [] : DIMENSIONS;
 
   const displayQuestions: QuestionItem[] = apiData?.questions?.length

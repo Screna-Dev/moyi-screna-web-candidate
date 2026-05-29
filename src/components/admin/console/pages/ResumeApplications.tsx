@@ -17,17 +17,107 @@ type ApiTicket = {
   ticket_id: string;
   user_id?: string;
   application_id?: string;
+  job_id?: string;
   status: string;
   priority?: number;
+  handler_tier?: string;
   assigned_to?: string | null;
   company_name?: string;
   role_title?: string;
   location_str?: string;
   posted_at?: string;
+  freshness?: number;
+  candidate_first_name?: string;
+  candidate_last_name?: string;
   claimed_at?: string;
   sla_due_at?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+type ApiCandidatePreferences = {
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  target_roles?: string[];
+  target_locations?: string[];
+  work_modes?: string[];
+  employment_types?: string[];
+  work_authorization?: string;
+  needs_sponsorship?: string;
+  citizenship?: string;
+  linkedin_url?: string;
+  github_url?: string;
+  portfolio_url?: string;
+};
+
+type ApiTicketDetail = {
+  ticket?: {
+    ticket_id: string;
+    user_id?: string;
+    ticket_type?: string;
+    status: string;
+    priority?: number;
+    handler_tier?: string;
+    assigned_to?: string | null;
+    application_id?: string;
+    job_id?: string;
+    claimed_at?: string;
+    started_at?: string;
+    completed_at?: string;
+    sla_due_at?: string;
+    failure_reason?: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  application?: {
+    application_id?: string;
+    status?: string;
+    layer?: string;
+    resume_used_url?: string;
+    cover_letter_url?: string;
+    confirmation_url?: string;
+    confirmation_screenshot_url?: string;
+    attempts_count?: number;
+    last_failure_reason?: string;
+    last_failure_layer?: string;
+    queued_at?: string;
+    started_at?: string;
+    submitted_at?: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  job?: {
+    job_id?: string;
+    source?: string;
+    company_name?: string;
+    role_title?: string;
+    role_category?: string;
+    location_str?: string;
+    apply_url?: string;
+    ats_platform?: string;
+    sponsorship_ok?: boolean;
+    citizenship_required?: string;
+    salary_min?: number;
+    salary_max?: number;
+    salary_currency?: string;
+    posted_at?: string;
+  };
+  candidate?: {
+    user_id?: string;
+    preferences?: ApiCandidatePreferences;
+    resume_url?: string;
+    resume_profile?: {
+      full_name?: string;
+      headline?: string;
+      location?: string;
+      years_experience?: number;
+      seniority_level?: string;
+      summary?: string;
+    };
+  };
 };
 
 type UiTicket = {
@@ -170,27 +260,78 @@ export function ResumeApplications() {
   const failFileInputRef = useRef<HTMLInputElement | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  const [allTicketsRaw, setAllTicketsRaw] = useState<ApiTicket[]>([]);
   const [liveTickets, setLiveTickets] = useState<UiTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketDetail, setTicketDetail] = useState<ApiTicketDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const refreshTickets = useCallback(async () => {
-    if (!selectedUserId) return;
     setTicketsLoading(true);
     try {
-      const res = await adminService.listOpsTickets({ userId: selectedUserId });
+      const res = await adminService.listOpsTickets({});
       const items: ApiTicket[] = res.data?.data?.items ?? [];
-      // Safety: if backend doesn't filter by userId, narrow client-side.
-      const filtered = items.filter(t => !t.user_id || t.user_id === selectedUserId);
-      setLiveTickets(filtered.map(normalizeTicket));
+      setAllTicketsRaw(items);
     } catch {
-      setLiveTickets([]);
+      setAllTicketsRaw([]);
     } finally {
       setTicketsLoading(false);
     }
-  }, [selectedUserId]);
+  }, []);
 
   useEffect(() => { refreshTickets(); }, [refreshTickets]);
+
+  // Derive user queue from tickets grouped by candidate user_id.
+  useEffect(() => {
+    const byUser = new Map<string, ApiTicket[]>();
+    for (const t of allTicketsRaw) {
+      if (!t.user_id) continue;
+      const list = byUser.get(t.user_id) || [];
+      list.push(t);
+      byUser.set(t.user_id, list);
+    }
+    const users: UiUser[] = Array.from(byUser.entries()).map(([userId, userTickets]) => {
+      const first = userTickets[0];
+      const fullName = `${first.candidate_first_name || ""} ${first.candidate_last_name || ""}`.trim();
+      const done = userTickets.filter(t => t.status === "SUBMITTED" || t.status === "COMPLETED").length;
+      const status = userTickets.some(t => t.status === "FAILED") ? "FAILED"
+        : userTickets.some(t => t.status === "IN_PROGRESS") ? "IN_PROGRESS"
+        : userTickets.some(t => t.status === "OPEN") ? "OPEN"
+        : "COMPLETED";
+      return {
+        id: userId,
+        name: fullName || userId,
+        ops: first.assigned_to || "Unassigned",
+        status,
+        progress: { done, total: userTickets.length },
+        visa: undefined,
+        locations: [],
+        jobTitles: [],
+      };
+    });
+    setUserList(users);
+    setSelectedUserId(prev => {
+      if (users.length === 0) return "";
+      if (prev && users.some(u => u.id === prev)) return prev;
+      return users[0].id;
+    });
+  }, [allTicketsRaw]);
+
+  // Per-user ticket list (client-side filter — backend listOpsTickets has no userId param).
+  useEffect(() => {
+    if (!selectedUserId) { setLiveTickets([]); return; }
+    setLiveTickets(allTicketsRaw.filter(t => t.user_id === selectedUserId).map(normalizeTicket));
+  }, [allTicketsRaw, selectedUserId]);
+
+  // Load rich ticket detail (ticket + application + job + candidate) when a ticket is selected.
+  useEffect(() => {
+    if (!selectedTicket) { setTicketDetail(null); return; }
+    let cancelled = false;
+    adminService.getOpsTicket(selectedTicket)
+      .then((res: any) => { if (!cancelled) setTicketDetail(res.data?.data ?? null); })
+      .catch(() => { if (!cancelled) setTicketDetail(null); });
+    return () => { cancelled = true; };
+  }, [selectedTicket]);
 
   const isOpsManager = role === "Ops Manager";
   const selectedUser = userList.find((u) => u.id === selectedUserId);
@@ -579,7 +720,7 @@ export function ResumeApplications() {
                  <ChevronLeft size={16} /> Tickets
               </button>
               <div style={{ width: 1, height: 24, background: C.border }} />
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{ticket.company} · {ticket.role}</div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{(ticketDetail?.job?.company_name || ticket.company) || "—"} · {(ticketDetail?.job?.role_title || ticket.role) || "—"}</div>
               {renderBadge(ticket.status)}
               <div style={{ fontSize: 12, color: C.textSub }}>assigned ops: {ticket.owner}</div>
             </div>
@@ -598,12 +739,13 @@ export function ResumeApplications() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.amber, fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
                     <AlertCircle size={16} /> Failure Summary
                   </div>
-                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}><strong>Reason:</strong> {ticket.failureReason}</div>
-                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}><strong>Failed At:</strong> {ticket.failedAt} by {ticket.failedBy}</div>
-                  <div style={{ fontSize: 13, color: C.text }}><strong>Suggested Next Step:</strong> {ticket.nextStep}</div>
+                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}><strong>Reason:</strong> {ticketDetail?.application?.last_failure_reason || ticketDetail?.ticket?.failure_reason || "—"}</div>
+                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}><strong>Layer:</strong> {ticketDetail?.application?.last_failure_layer || "—"}</div>
+                  <div style={{ fontSize: 13, color: C.text, marginBottom: 4 }}><strong>Failed At:</strong> {formatTime(ticketDetail?.ticket?.completed_at) || "—"}</div>
+                  <div style={{ fontSize: 13, color: C.text }}><strong>Attempts:</strong> {ticketDetail?.application?.attempts_count ?? "—"}</div>
                 </div>
               )}
-              
+
               <div style={{ padding: "20px 24px", borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
                   <Shield size={16} color={C.blue} />
@@ -613,35 +755,75 @@ export function ResumeApplications() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", fontSize: 12, color: C.textSub }}>
                   <div><strong style={{ color: C.text }}>Name:</strong> {selectedUser.name}</div>
                   <div><strong style={{ color: C.text }}>User ID:</strong> {selectedUser.id}</div>
-                  {selectedUser.jobTitles?.length > 0 && (
-                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target roles:</strong> {selectedUser.jobTitles.join(", ")}</div>
+                  {ticketDetail?.candidate?.preferences?.email && (
+                    <div><strong style={{ color: C.text }}>Email:</strong> {ticketDetail.candidate.preferences.email}</div>
                   )}
-                  {selectedUser.locations?.length > 0 && (
-                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target locations:</strong> {selectedUser.locations.join(", ")}</div>
+                  {ticketDetail?.candidate?.preferences?.phone && (
+                    <div><strong style={{ color: C.text }}>Phone:</strong> {ticketDetail.candidate.preferences.phone}</div>
                   )}
-                  {selectedUser.visa && <div><strong style={{ color: C.text }}>Auth:</strong> {selectedUser.visa}</div>}
-                  <div><strong style={{ color: C.text }}>Owner:</strong> {selectedUser.ops}</div>
+                  {(ticketDetail?.candidate?.preferences?.target_roles?.length ?? 0) > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target roles:</strong> {ticketDetail!.candidate!.preferences!.target_roles!.join(", ")}</div>
+                  )}
+                  {(ticketDetail?.candidate?.preferences?.target_locations?.length ?? 0) > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Target locations:</strong> {ticketDetail!.candidate!.preferences!.target_locations!.join(", ")}</div>
+                  )}
+                  {ticketDetail?.candidate?.preferences?.work_authorization && (
+                    <div><strong style={{ color: C.text }}>Auth:</strong> {ticketDetail.candidate.preferences.work_authorization}</div>
+                  )}
+                  <div><strong style={{ color: C.text }}>Owner:</strong> {ticket.owner}</div>
                 </div>
                 <button onClick={() => setShowProfileModal(true)} style={{ ...ghostBtn, padding: 0, color: C.blue, marginTop: 12, fontSize: 12 }}>
                   View full profile <ExternalLink size={12} style={{marginLeft: 4}} />
                 </button>
               </div>
 
-              <div style={{ padding: "24px", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <EmptyState icon={<FileText size={28} />} message="Candidate profile details will load here once wired to the ticket detail API." />
+              <div style={{ padding: "20px 24px", flex: 1, overflowY: "auto" }}>
+                {ticketDetail?.candidate?.resume_profile ? (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                      <FileText size={14} color={C.blue} /> Resume Profile
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px", fontSize: 12, color: C.textSub }}>
+                      {ticketDetail.candidate.resume_profile.headline && (
+                        <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Headline:</strong> {ticketDetail.candidate.resume_profile.headline}</div>
+                      )}
+                      {ticketDetail.candidate.resume_profile.seniority_level && (
+                        <div><strong style={{ color: C.text }}>Seniority:</strong> {ticketDetail.candidate.resume_profile.seniority_level}</div>
+                      )}
+                      {typeof ticketDetail.candidate.resume_profile.years_experience === "number" && (
+                        <div><strong style={{ color: C.text }}>Years exp:</strong> {ticketDetail.candidate.resume_profile.years_experience}</div>
+                      )}
+                      {ticketDetail.candidate.resume_profile.location && (
+                        <div style={{ gridColumn: "1 / -1" }}><strong style={{ color: C.text }}>Location:</strong> {ticketDetail.candidate.resume_profile.location}</div>
+                      )}
+                      {ticketDetail.candidate.resume_profile.summary && (
+                        <div style={{ gridColumn: "1 / -1", lineHeight: 1.5 }}><strong style={{ color: C.text }}>Summary:</strong> {ticketDetail.candidate.resume_profile.summary}</div>
+                      )}
+                    </div>
+                    {ticketDetail.candidate.resume_url && (
+                      <a href={ticketDetail.candidate.resume_url} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding: 0, color: C.blue, marginTop: 12, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Download size={12} /> View resume
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+                    <EmptyState icon={<FileText size={28} />} message="Loading candidate profile..." />
+                  </div>
+                )}
               </div>
             </div>
-            
+
             {/* Right Column: Browser Panel */}
             <div style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", background: C.bgSubtle }}>
                {/* Metadata */}
                <div style={{ ...card, padding: "16px 20px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                  <div>
-                   <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{ticket.company} - {ticket.role}</div>
-                   <div style={{ fontSize: 13, color: C.textSub }}>ATS: {ticket.ats || "—"} · Location: {ticket.location || "—"}</div>
+                   <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{(ticketDetail?.job?.company_name || ticket.company) || "—"} - {(ticketDetail?.job?.role_title || ticket.role) || "—"}</div>
+                   <div style={{ fontSize: 13, color: C.textSub }}>ATS: {ticketDetail?.job?.ats_platform || "—"} · Location: {ticketDetail?.job?.location_str || ticket.location || "—"}</div>
                  </div>
-                 {ticket.url && (
-                   <a href={ticket.url} target="_blank" rel="noreferrer" style={{ ...secondaryBtn, height: 32, textDecoration: "none", color: C.blue }}>
+                 {ticketDetail?.job?.apply_url && (
+                   <a href={ticketDetail.job.apply_url} target="_blank" rel="noreferrer" style={{ ...secondaryBtn, height: 32, textDecoration: "none", color: C.blue }}>
                      <ExternalLink size={14} /> Open in new tab
                    </a>
                  )}
@@ -875,8 +1057,60 @@ export function ResumeApplications() {
               </button>
             </div>
 
-            <div style={{ padding: 24, overflowY: "auto", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 240 }}>
-              <EmptyState icon={<Shield size={28} />} message="Candidate profile details will load here once wired to the ticket detail API." />
+            <div style={{ padding: 24, overflowY: "auto", flex: 1, minHeight: 240 }}>
+              {ticketDetail?.candidate ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 18, fontSize: 13, color: C.text }}>
+                  {ticketDetail.candidate.preferences && (
+                    <section>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: C.text, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>Preferences</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
+                        {ticketDetail.candidate.preferences.email && <div><strong>Email:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.email}</span></div>}
+                        {ticketDetail.candidate.preferences.phone && <div><strong>Phone:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.phone}</span></div>}
+                        {ticketDetail.candidate.preferences.work_authorization && <div><strong>Work auth:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.work_authorization}</span></div>}
+                        {ticketDetail.candidate.preferences.needs_sponsorship && <div><strong>Sponsorship:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.needs_sponsorship}</span></div>}
+                        {(ticketDetail.candidate.preferences.target_roles?.length ?? 0) > 0 && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>Target roles:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.target_roles!.join(", ")}</span></div>
+                        )}
+                        {(ticketDetail.candidate.preferences.target_locations?.length ?? 0) > 0 && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>Target locations:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.target_locations!.join(", ")}</span></div>
+                        )}
+                        {(ticketDetail.candidate.preferences.work_modes?.length ?? 0) > 0 && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>Work modes:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.work_modes!.join(", ")}</span></div>
+                        )}
+                        {(ticketDetail.candidate.preferences.employment_types?.length ?? 0) > 0 && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>Employment:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.preferences.employment_types!.join(", ")}</span></div>
+                        )}
+                        {ticketDetail.candidate.preferences.linkedin_url && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>LinkedIn:</strong> <a href={ticketDetail.candidate.preferences.linkedin_url} target="_blank" rel="noreferrer" style={{ color: C.blue }}>{ticketDetail.candidate.preferences.linkedin_url}</a></div>
+                        )}
+                        {ticketDetail.candidate.preferences.github_url && (
+                          <div style={{ gridColumn: "1 / -1" }}><strong>GitHub:</strong> <a href={ticketDetail.candidate.preferences.github_url} target="_blank" rel="noreferrer" style={{ color: C.blue }}>{ticketDetail.candidate.preferences.github_url}</a></div>
+                        )}
+                      </div>
+                    </section>
+                  )}
+                  {ticketDetail.candidate.resume_profile && (
+                    <section>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: C.text, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>Resume</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
+                        {ticketDetail.candidate.resume_profile.headline && <div style={{ gridColumn: "1 / -1" }}><strong>Headline:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.resume_profile.headline}</span></div>}
+                        {typeof ticketDetail.candidate.resume_profile.years_experience === "number" && <div><strong>Years exp:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.resume_profile.years_experience}</span></div>}
+                        {ticketDetail.candidate.resume_profile.seniority_level && <div><strong>Seniority:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.resume_profile.seniority_level}</span></div>}
+                        {ticketDetail.candidate.resume_profile.summary && <div style={{ gridColumn: "1 / -1", lineHeight: 1.5 }}><strong>Summary:</strong> <span style={{ color: C.textSub }}>{ticketDetail.candidate.resume_profile.summary}</span></div>}
+                      </div>
+                      {ticketDetail.candidate.resume_url && (
+                        <a href={ticketDetail.candidate.resume_url} target="_blank" rel="noreferrer" style={{ ...secondaryBtn, height: 30, marginTop: 12, textDecoration: "none", color: C.blue, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Download size={14} /> Download resume
+                        </a>
+                      )}
+                    </section>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200 }}>
+                  <EmptyState icon={<Shield size={28} />} message="Loading candidate details..." />
+                </div>
+              )}
             </div>
           </div>
         </div>
