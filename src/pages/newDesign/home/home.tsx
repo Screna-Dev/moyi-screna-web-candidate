@@ -918,8 +918,8 @@ const PRICES: Record<BillingCycle, { price: string; note: string }> = {
 };
 
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29',  note: 'Billed $29 / month · cancel anytime' },
-  quarterly: { price: '$29',  note: 'Billed $87 / quarter · cancel anytime' },
+  monthly:   { price: '$29.9',  note: 'Billed $29.9 / month · cancel anytime' },
+  quarterly: { price: '$29.9',  note: 'Billed $89.7 / quarter · cancel anytime' },
 };
 
 const LIMITED_INCLUDED = [

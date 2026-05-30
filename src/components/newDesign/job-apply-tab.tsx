@@ -21,6 +21,21 @@ import { getOnboardingStatus, getProfilePreferences, saveProfilePreferences } fr
 import { useUserPlan } from '@/hooks/useUserPlan';
 
 const ROLE_SUGGESTIONS = [
+  // Engineering / data / other roles
+  'Software Engineer',
+  'AI',
+  'Machine Learning',
+  'Research',
+  'Software Developer',
+  'Data Analyst',
+  'Data Scientist',
+  'Hardware',
+  'Embedded',
+  'Security',
+  'Data Engineer',
+  'Quant',
+  'Mobile',
+  'Full Stack',
   // Product Manager roles (original list)
   'Product Manager',
   'Senior Product Manager',
@@ -31,21 +46,6 @@ const ROLE_SUGGESTIONS = [
   'Director of Product',
   'Principal PM',
   'Associate Product Manager',
-  // Engineering / data / other roles
-  'Software Engineer',
-  'AI',
-  'Research',
-  'Software Developer',
-  'Machine Learning',
-  'Data Analyst',
-  'Data Scientist',
-  'Hardware',
-  'Embedded',
-  'Security',
-  'Data Engineer',
-  'Quant',
-  'Mobile',
-  'Full Stack',
   // Stage
   'Intern',
   'New Grad',
@@ -69,14 +69,34 @@ const formatRecTimeAgo = (iso?: string): string => {
   return `${months} month${months > 1 ? 's' : ''} ago`;
 };
 
-const mapAppStatus = (raw?: string): 'Queued' | 'In Progress' | 'Submitted' => {
+const mapAppStatus = (raw?: string): 'Queued' | 'In Progress' | 'Submitted' | 'Failed' => {
   const s = (raw || '').toUpperCase().replace('-', '_');
-  if (s === 'IN_PROGRESS' || s === 'INPROGRESS') return 'In Progress';
-  if (s === 'SUBMITTED') return 'Submitted';
-  return 'Queued';
+  switch (s) {
+    case 'QUEUED': return 'Queued';
+    case 'IN_PROGRESS':
+    case 'INPROGRESS':
+       return 'In Progress';
+    case 'SUBMITTED': return 'Submitted';
+    case 'FAILED': return 'Failed';
+    default: return 'Queued';
+  }
 };
 
 const mapAppToDelegated = (a: any) => {
+  const company = a.company_name || 'Unknown';
+  console.log('a', a);
+  return {
+    id: String(a.application_id),
+    title: a.role_title || '',
+    company,
+    logoLetter: (company[0] || '?').toUpperCase(),
+    location: a.location_str || '',
+    note: a.note || '',
+    delegatedAgo: formatRecTimeAgo(a.queued_at || a.created_at),
+    status: mapAppStatus(a.status),
+  };
+};
+const mapAppToApplied = (a: any): AppliedJob => {
   const company = a.company_name || 'Unknown';
   return {
     id: String(a.application_id),
@@ -84,8 +104,7 @@ const mapAppToDelegated = (a: any) => {
     company,
     logoLetter: (company[0] || '?').toUpperCase(),
     location: a.location_str || '',
-    delegatedAgo: formatRecTimeAgo(a.queued_at || a.created_at),
-    status: mapAppStatus(a.status),
+    appliedAgo: formatRecTimeAgo(a.submitted_at || a.created_at),
   };
 };
 
@@ -133,7 +152,17 @@ type Job = {
   apply_url?: string;
 };
 
+function convertStatusToBadge(status: 'Queued' | 'In Progress' | 'Submitted' | 'Failed'): React.ReactNode {
+  switch (status) {
+    case 'Submitted': return <Badge variant="outline" className="bg-blue-100 text-blue-500 border-blue-500">Applied</Badge>;
+    case 'Failed': return <Badge variant="outline" className="bg-red-100 text-red-500 border-red-500">Failed</Badge>;
+    case 'In Progress':
+    case 'Queued':
+    default: return <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-500">Pending</Badge>;
+  }
+}
 type DelegatedJob = { id: string; title: string; company: string; logoLetter: string; location: string; delegatedAgo: string; status: 'Queued' | 'In Progress' | 'Submitted'; };
+type AppliedJob = { id: string; title: string; company: string; logoLetter: string; location: string; appliedAgo: string; };
 // ─── Reusable Pieces ───────────────────────────────────────────────────��───
 function CompanyAvatar({ letter, color = 'bg-primary text-primary-foreground', size = 'md' }: { letter: string; color?: string; size?: 'sm' | 'md' }) {
   const dim = size === 'sm' ? 'w-8 h-8 text-sm' : 'w-10 h-10 text-base';
@@ -143,6 +172,52 @@ function CompanyAvatar({ letter, color = 'bg-primary text-primary-foreground', s
     </div>
   );
 }
+function AppliedTab(
+  {
+  jobs}: { jobs: AppliedJob[] }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <div className="mb-4">
+        <h3 className="font-semibold text-foreground">Applied Jobs</h3>
+        <p className="text-sm text-muted-foreground">Jobs Screna's managed-apply workflow is handling on your behalf.</p>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Title</TableHead>
+            <TableHead>Company</TableHead>
+            <TableHead>Location</TableHead>
+            <TableHead>Applied</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {jobs.map((job) => (
+            <TableRow key={job.id} className="hover:bg-muted/30">
+              <TableCell>
+                <div className="flex items-center gap-3">
+                  <CompanyAvatar letter={job.logoLetter} size="sm" />
+                  <span className="font-medium text-foreground">{job.title}</span>
+                </div>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{job.company}</TableCell>
+              <TableCell className="text-muted-foreground">{job.location}</TableCell>
+              <TableCell className="text-muted-foreground">{job.appliedAgo}</TableCell>
+            </TableRow>
+          ))}
+          {jobs.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
+                No applied jobs. Hand a job to Screna to apply on your behalf.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 
 function DelegatedTab({ items }: { items: DelegatedJob[] }) {
   return (
@@ -159,6 +234,8 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
             <TableHead>Company</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Delegated</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Note</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -173,6 +250,8 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
               <TableCell className="text-muted-foreground">{job.company}</TableCell>
               <TableCell className="text-muted-foreground">{job.location}</TableCell>
               <TableCell className="text-muted-foreground">{job.delegatedAgo}</TableCell>
+              <TableCell className="text-muted-foreground">{ convertStatusToBadge(job.status)}</TableCell>
+              <TableCell className="text-muted-foreground">"N/A"</TableCell>
             </TableRow>
           ))}
           {items.length === 0 && (
@@ -299,6 +378,7 @@ export function JobApplyTab() {
   const [isDelegateUpgradeOpen, setIsDelegateUpgradeOpen] = useState(false);
 
   const [delegatedJobsState, setDelegatedJobsState] = useState<DelegatedJob[]>([]);
+  const [appliedJobsState, setAppliedJobsState] = useState<AppliedJob[]>([]);
   const [appliedCount, setAppliedCount] = useState(0);
   const [monthlyLimit, setMonthlyLimit] = useState(0);
   const [profileTargetRoles, setProfileTargetRoles] = useState<string[]>([]);
@@ -310,11 +390,14 @@ export function JobApplyTab() {
     try {
       const res: any = await JobService.getApplications({ offset: 0 });
       const items: any[] = res?.data?.data?.items ?? [];
-      const queuedOrInProgress: any[] = items.filter(a => {
-        const s = (a.status || '').toUpperCase().replace('-', '_');
-        return s === 'QUEUED' || s === 'IN_PROGRESS' || s === 'INPROGRESS';
+      const normalizeStatus = (a: any) => (a.status || '').toUpperCase().replace('-', '_');
+      const queuedOrInProgress = items.filter(a => {
+        const s = normalizeStatus(a);
+        return s === 'QUEUED' || s === 'IN_PROGRESS' || s === 'INPROGRESS' || s === 'SUBMITTED' || s === 'FAILED';
       });
+      const submitted = items.filter(a => normalizeStatus(a) === 'SUBMITTED');
       setDelegatedJobsState(queuedOrInProgress.map(mapAppToDelegated));
+      setAppliedJobsState(submitted.map(mapAppToApplied));
     } catch (e) {
       console.error('Failed to load applications:', e);
     }
@@ -587,7 +670,7 @@ export function JobApplyTab() {
     <div className="flex flex-col h-[calc(100vh-220px)] min-h-[600px]">
       {/* Top Tabs */}
       <div className="flex items-center gap-0.5 pb-3 px-0">
-        {['Search', 'Delegated', 'Application Profile'].map((tab) => {
+        {['Search', 'Delegated', 'Applied', 'Application Profile'].map((tab) => {
           const id = tab.toLowerCase().replace(/ /g, '-');
           const isActive = activeTab === id;
           return (
@@ -807,7 +890,29 @@ export function JobApplyTab() {
             <DelegatedTab items={delegatedJobsState} />
           </>
         )}
-
+        {activeTab === 'applied' && (
+          <>
+            <div className="mx-1 mb-4 px-4 py-3 rounded-xl border border-border bg-card">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-foreground" style={{ fontWeight: 500 }}>Delegation Progress</span>
+                <span className="text-sm tabular-nums" style={{ fontWeight: 700 }}>
+                  <span className="text-primary">{appliedCount}</span>
+                  <span className="text-muted-foreground" style={{ fontWeight: 400 }}> / {monthlyLimit}</span>
+                </span>
+              </div>
+              <div className="w-full h-[9px] rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{
+                    width: `${monthlyLimit > 0 ? Math.min(100, (appliedCount / monthlyLimit) * 100) : 0}%`,
+                    background: 'linear-gradient(90deg, var(--color-primary) 0%, #6fa4fa 100%)',
+                  }}
+                />
+              </div>
+            </div>
+            <AppliedTab jobs={appliedJobsState} />
+          </>
+        )}
         {activeTab === 'application-profile' && (
           <ApplicationProfileContent />
         )}
