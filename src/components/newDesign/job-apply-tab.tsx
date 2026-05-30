@@ -69,21 +69,29 @@ const formatRecTimeAgo = (iso?: string): string => {
   return `${months} month${months > 1 ? 's' : ''} ago`;
 };
 
-const mapAppStatus = (raw?: string): 'Queued' | 'In Progress' | 'Submitted' => {
+const mapAppStatus = (raw?: string): 'Queued' | 'In Progress' | 'Submitted' | 'Failed' => {
   const s = (raw || '').toUpperCase().replace('-', '_');
-  if (s === 'IN_PROGRESS' || s === 'INPROGRESS') return 'In Progress';
-  if (s === 'SUBMITTED') return 'Submitted';
-  return 'Queued';
+  switch (s) {
+    case 'QUEUED': return 'Queued';
+    case 'IN_PROGRESS':
+    case 'INPROGRESS':
+       return 'In Progress';
+    case 'SUBMITTED': return 'Submitted';
+    case 'FAILED': return 'Failed';
+    default: return 'Queued';
+  }
 };
 
 const mapAppToDelegated = (a: any) => {
   const company = a.company_name || 'Unknown';
+  console.log('a', a);
   return {
     id: String(a.application_id),
     title: a.role_title || '',
     company,
     logoLetter: (company[0] || '?').toUpperCase(),
     location: a.location_str || '',
+    note: a.note || '',
     delegatedAgo: formatRecTimeAgo(a.queued_at || a.created_at),
     status: mapAppStatus(a.status),
   };
@@ -96,7 +104,7 @@ const mapAppToApplied = (a: any): AppliedJob => {
     company,
     logoLetter: (company[0] || '?').toUpperCase(),
     location: a.location_str || '',
-    appliedAgo: formatRecTimeAgo(a.queued_at || a.created_at),
+    appliedAgo: formatRecTimeAgo(a.submitted_at || a.created_at),
   };
 };
 
@@ -144,6 +152,15 @@ type Job = {
   apply_url?: string;
 };
 
+function convertStatusToBadge(status: 'Queued' | 'In Progress' | 'Submitted' | 'Failed'): React.ReactNode {
+  switch (status) {
+    case 'Submitted': return <Badge variant="outline" className="bg-blue-100 text-blue-500 border-blue-500">Applied</Badge>;
+    case 'Failed': return <Badge variant="outline" className="bg-red-100 text-red-500 border-red-500">Failed</Badge>;
+    case 'In Progress':
+    case 'Queued':
+    default: return <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-500">Pending</Badge>;
+  }
+}
 type DelegatedJob = { id: string; title: string; company: string; logoLetter: string; location: string; delegatedAgo: string; status: 'Queued' | 'In Progress' | 'Submitted'; };
 type AppliedJob = { id: string; title: string; company: string; logoLetter: string; location: string; appliedAgo: string; };
 // ─── Reusable Pieces ───────────────────────────────────────────────────��───
@@ -217,6 +234,8 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
             <TableHead>Company</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Delegated</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Note</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -231,6 +250,8 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
               <TableCell className="text-muted-foreground">{job.company}</TableCell>
               <TableCell className="text-muted-foreground">{job.location}</TableCell>
               <TableCell className="text-muted-foreground">{job.delegatedAgo}</TableCell>
+              <TableCell className="text-muted-foreground">{ convertStatusToBadge(job.status)}</TableCell>
+              <TableCell className="text-muted-foreground">"N/A"</TableCell>
             </TableRow>
           ))}
           {items.length === 0 && (
@@ -372,7 +393,7 @@ export function JobApplyTab() {
       const normalizeStatus = (a: any) => (a.status || '').toUpperCase().replace('-', '_');
       const queuedOrInProgress = items.filter(a => {
         const s = normalizeStatus(a);
-        return s === 'QUEUED' || s === 'IN_PROGRESS' || s === 'INPROGRESS';
+        return s === 'QUEUED' || s === 'IN_PROGRESS' || s === 'INPROGRESS' || s === 'SUBMITTED' || s === 'FAILED';
       });
       const submitted = items.filter(a => normalizeStatus(a) === 'SUBMITTED');
       setDelegatedJobsState(queuedOrInProgress.map(mapAppToDelegated));
