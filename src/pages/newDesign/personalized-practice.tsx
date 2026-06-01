@@ -14,6 +14,8 @@ import {
   X,
   CheckCircle2,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   Crosshair,
   Loader2,
   AlertCircle,
@@ -28,6 +30,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../../components/newDesign/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../components/newDesign/ui/popover';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { GoalPage } from './goal-page';
@@ -340,6 +347,146 @@ function SignInModal({
 
 
 // ════════════════════════════════════════════════════════
+// ENGLISH DATE PICKER (locale-independent)
+// ════════════════════════════════════════════════════════
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const WEEKDAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function formatDateMDY(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return '';
+  return `${m}/${d}/${y}`;
+}
+
+function EnglishDatePicker({
+  value,
+  onChange,
+  minDate,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  minDate?: Date;
+}) {
+  const today = new Date();
+  const initialMonth = value
+    ? new Date(`${value}T00:00:00`)
+    : new Date(today.getFullYear(), today.getMonth(), 1);
+  const [viewYear, setViewYear] = useState(initialMonth.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialMonth.getMonth());
+  const [open, setOpen] = useState(false);
+
+  const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const minTime = minDate ? new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate()).getTime() : -Infinity;
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDayOfMonth; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const goPrev = () => {
+    if (viewMonth === 0) {
+      setViewYear(viewYear - 1);
+      setViewMonth(11);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+  const goNext = () => {
+    if (viewMonth === 11) {
+      setViewYear(viewYear + 1);
+      setViewMonth(0);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={`w-full h-11 text-sm bg-white border border-slate-200 rounded-xl pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 text-left relative ${
+            value ? 'text-slate-900' : 'text-slate-400'
+          }`}
+        >
+          <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          {value ? formatDateMDY(value) : 'Pick a date'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-3" align="start">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            type="button"
+            onClick={goPrev}
+            className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-600"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="text-sm font-semibold text-slate-900">
+            {MONTH_NAMES[viewMonth]} {viewYear}
+          </div>
+          <button
+            type="button"
+            onClick={goNext}
+            className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-600"
+            aria-label="Next month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-[11px] text-slate-400 mb-1">
+          {WEEKDAY_NAMES.map((w) => (
+            <div key={w} className="h-7 flex items-center justify-center font-medium">{w}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((d, i) => {
+            if (d === null) return <div key={i} className="h-8" />;
+            const cellTime = new Date(viewYear, viewMonth, d).getTime();
+            const disabled = cellTime < minTime;
+            const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(d)}`;
+            const isSelected = value === iso;
+            const isToday =
+              today.getFullYear() === viewYear &&
+              today.getMonth() === viewMonth &&
+              today.getDate() === d;
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  onChange(iso);
+                  setOpen(false);
+                }}
+                className={`h-8 text-sm rounded-md transition-colors ${
+                  isSelected
+                    ? 'bg-blue-600 text-white font-semibold'
+                    : disabled
+                    ? 'text-slate-300 cursor-not-allowed'
+                    : isToday
+                    ? 'bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // TARGET JOB MODAL
 // ════════════════════════════════════════════════════════
 
@@ -400,7 +547,7 @@ function TargetJobModal({
   };
 
   const handlePasteApply = async () => {
-    if (!jobTitle.trim()) return;
+    if (!jobTitle.trim() || !jobDescription.trim()) return;
     setIsCreatingPlan(true);
     setApiError(null);
     try {
@@ -589,7 +736,7 @@ function TargetJobModal({
             </div>
             <div>
               <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
-                Job Description
+                Job Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 placeholder="Paste the job description here..."
@@ -604,25 +751,11 @@ function TargetJobModal({
                 <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
                   Interview Date
                 </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={interviewDate}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9/]/g, '');
-                      if (v.length <= 10) setInterviewDate(v);
-                    }}
-                    lang="en"
-                    className="w-full h-11 text-sm bg-white border border-slate-200 rounded-xl pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 text-slate-500"
-                    placeholder="MM/DD/YYYY"
-                  />
-                  {!interviewDate && (
-                    <span className="absolute left-10 top-1/2 -translate-y-1/2 text-sm text-blue-400 pointer-events-none">
-                      Pick a date
-                    </span>
-                  )}
-                </div>
+                <EnglishDatePicker
+                  value={interviewDate}
+                  onChange={setInterviewDate}
+                  minDate={new Date()}
+                />
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
@@ -654,7 +787,7 @@ function TargetJobModal({
               </Button>
               <Button
                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!jobTitle.trim() || isCreatingPlan}
+                disabled={!jobTitle.trim() || !jobDescription.trim() || isCreatingPlan}
                 onClick={handlePasteApply}
               >
                 {isCreatingPlan ? (
