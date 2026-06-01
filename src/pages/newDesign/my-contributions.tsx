@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
-import { getMyPosts, getMyComments, getMySavedPosts } from '@/services/CommunityService';
+import { getMyPosts, getMyComments, getMySavedPosts, deletePost } from '@/services/CommunityService';
 
 // ─── Color Mappings ────────────────────────────────────
 const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
@@ -182,6 +182,8 @@ export function MyContributionsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = useState<string | number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Published' | 'Under Review' | 'Draft'>('All');
 
@@ -285,9 +287,19 @@ export function MyContributionsPage() {
     );
   });
 
-  const handleDelete = () => {
-    // In a real app, call API. Here we just close the dialog.
-    setDeleteTarget(null);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePost(String(deleteTarget.id));
+      setPosts(prev => prev.filter(p => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete post');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Close action menu on outside click
@@ -387,9 +399,9 @@ export function MyContributionsPage() {
                 ctaHref="/add-experience"
               />
             ) : (
-              <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] overflow-hidden shadow-sm">
+              <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] shadow-sm">
                 {/* Table header */}
-                <div className="hidden md:grid md:grid-cols-[1fr_130px_110px_140px_80px] gap-4 px-5 py-3 bg-[hsl(220,20%,98%)] border-b border-[hsl(220,16%,92%)] text-[11px] font-semibold text-[hsl(222,12%,50%)] uppercase tracking-wider">
+                <div className="hidden md:grid md:grid-cols-[1fr_130px_110px_140px_80px] gap-4 px-5 py-3 bg-[hsl(220,20%,98%)] border-b border-[hsl(220,16%,92%)] text-[11px] font-semibold text-[hsl(222,12%,50%)] uppercase tracking-wider rounded-t-2xl">
                   <span>Post</span>
                   <span>Status</span>
                   <span>Date</span>
@@ -409,7 +421,7 @@ export function MyContributionsPage() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: i * 0.03 }}
-                        className="group hover:bg-[hsl(220,20%,99%)] transition-colors"
+                        className="group hover:bg-[hsl(220,20%,99%)] transition-colors last:rounded-b-2xl"
                       >
                         {/* Desktop row */}
                         <div className="hidden md:grid md:grid-cols-[1fr_130px_110px_140px_80px] gap-4 px-5 py-4 items-center">
@@ -700,7 +712,7 @@ export function MyContributionsPage() {
               {/* Backdrop */}
               <div
                 className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(null); } }}
               />
 
               {/* Dialog */}
@@ -740,20 +752,35 @@ export function MyContributionsPage() {
                   All associated questions, AI hints, and community comments on this post will also be deleted. This action cannot be undone.
                 </p>
 
+                {deleteError && (
+                  <p className="text-xs text-red-600 text-center mb-3">{deleteError}</p>
+                )}
+
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
-                    onClick={() => setDeleteTarget(null)}
+                    onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
+                    disabled={deleting}
                     className="flex-1 rounded-xl h-10 text-sm border-[hsl(220,16%,90%)]"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={handleDelete}
+                    disabled={deleting}
                     className="flex-1 rounded-xl h-10 text-sm bg-red-600 hover:bg-red-700 text-white border-0 shadow-md shadow-red-500/20"
                   >
-                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                    Delete permanently
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        Deleting…
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                        Delete permanently
+                      </>
+                    )}
                   </Button>
                 </div>
               </motion.div>

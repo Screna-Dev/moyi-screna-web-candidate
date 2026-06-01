@@ -20,6 +20,10 @@ export const createPost = (data) => {
   return API.post('/community/posts', data);
 };
 
+export const deletePost = (postId) => {
+  return API.delete(`/community/posts/${postId}`);
+};
+
 export const getComments = (postId, query = {}) => {
   return API.get(`/community/posts/${postId}/comments`, { params: query });
 };

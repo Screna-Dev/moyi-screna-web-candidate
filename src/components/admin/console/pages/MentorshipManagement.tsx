@@ -1734,10 +1734,15 @@ function ServiceTypesTab() {
     setEditingId(id);
   };
 
+  const closeEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+  };
+
   const saveEdit = () => {
     if (!editForm) return;
     setTypes((prev) => prev.map((t) => t.id === editForm.id ? editForm : t));
-    setEditingId(null);
+    closeEdit();
     toast.success("Service type updated");
   };
 
@@ -1749,12 +1754,12 @@ function ServiceTypesTab() {
       {editForm && (
         <Modal
           open
-          onClose={() => setEditingId(null)}
+          onClose={closeEdit}
           title={`Edit service type — ${editForm.label}`}
           width={460}
           footer={
             <>
-              <button onClick={() => setEditingId(null)} style={secondaryBtn}>Cancel</button>
+              <button onClick={closeEdit} style={secondaryBtn}>Cancel</button>
               <button onClick={saveEdit} style={primaryBtn}>Save changes</button>
             </>
           }
