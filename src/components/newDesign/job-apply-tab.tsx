@@ -91,7 +91,7 @@ const mapAppToDelegated = (a: any) => {
     company,
     logoLetter: (company[0] || '?').toUpperCase(),
     location: a.location_str || '',
-    note: a.note || '',
+    note: a.last_failure_reason || '',
     delegatedAgo: formatRecTimeAgo(a.queued_at || a.created_at),
     status: mapAppStatus(a.status),
   };
@@ -161,7 +161,7 @@ function convertStatusToBadge(status: 'Queued' | 'In Progress' | 'Submitted' | '
     default: return <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-500">Pending</Badge>;
   }
 }
-type DelegatedJob = { id: string; title: string; company: string; logoLetter: string; location: string; delegatedAgo: string; status: 'Queued' | 'In Progress' | 'Submitted'; };
+type DelegatedJob = { id: string; title: string; company: string; logoLetter: string; location: string; delegatedAgo: string; status: 'Queued' | 'In Progress' | 'Submitted' | 'Failed'; note: string; };
 type AppliedJob = { id: string; title: string; company: string; logoLetter: string; location: string; appliedAgo: string; };
 // ─── Reusable Pieces ───────────────────────────────────────────────────��───
 function CompanyAvatar({ letter, color = 'bg-primary text-primary-foreground', size = 'md' }: { letter: string; color?: string; size?: 'sm' | 'md' }) {
@@ -251,7 +251,7 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
               <TableCell className="text-muted-foreground">{job.location}</TableCell>
               <TableCell className="text-muted-foreground">{job.delegatedAgo}</TableCell>
               <TableCell className="text-muted-foreground">{ convertStatusToBadge(job.status)}</TableCell>
-              <TableCell className="text-muted-foreground">"N/A"</TableCell>
+              <TableCell className="text-muted-foreground">{job.note || 'N/A'}</TableCell>
             </TableRow>
           ))}
           {items.length === 0 && (
