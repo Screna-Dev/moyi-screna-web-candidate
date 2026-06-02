@@ -1,9 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router';
-import {
-  Shield, Check, UploadCloud, Target, ArrowRight, Loader2, AlertCircle,
-} from 'lucide-react';
+
+import { Shield, Check, UploadCloud, Target, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/newDesign/ui/button';
 import { Card, CardContent } from '@/components/newDesign/ui/card';
 import {

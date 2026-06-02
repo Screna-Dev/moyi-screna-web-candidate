@@ -14,7 +14,7 @@ import {
 import LiveKitService from '@/services/LiveKitService';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import type { SessionCredentials } from '@/pages/newDesign/ai-mock';
-import { useCaptionAnimator, CaptionDisplay, CaptionToggleButton, useUserSpeechTranscript } from '@/components/newDesign/caption-display';
+import { useCaptionAnimator, useUserSpeechTranscript } from '@/components/newDesign/caption-display';
 
 // ─── Types ─────────────────────────────────────────────
 export type AIState = 'listening' | 'thinking' | 'speaking';

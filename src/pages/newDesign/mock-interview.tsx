@@ -1,20 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import {
-  Flame,
-  Users,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Info,
-  Lock,
-  Search,
-  X,
-  MessageSquare,
-  Zap,
-  ChevronDown,
-} from 'lucide-react';
+import { Flame, Users, ArrowRight, TrendingUp, TrendingDown, Minus, Info, Search, X, Zap, ChevronDown } from 'lucide-react';
 import { Navbar } from '../components/navbar';
 import { Footer } from '../components/footer';
 

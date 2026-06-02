@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router';
-import { Search, Filter, ChevronRight, Lock, Sparkles, ThumbsUp, MessageSquare, Share2, Bookmark, FolderOpen, Plus, Check, Loader2 } from 'lucide-react';
+import { Search, ChevronRight, Lock, Share2, Bookmark, FolderOpen, Plus, Check, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { searchQuestions } from '../../../services/QuestionBankService';
 import { CompanyLogo } from '../ui/company-logo';

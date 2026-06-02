@@ -1,29 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  Briefcase,
-  Shield,
-  Check,
-  Plus,
-  Trash2,
-  FileText,
-  Eye,
-  ChevronDown,
-  X,
-  Info,
-  User,
-  MapPin,
-  Calendar,
-  BarChart,
-  Clock,
-  Loader2,
-  AlertCircle,
-  Search,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Briefcase, Shield, Check, Plus, Trash2, FileText, ChevronDown, X, Info, User, MapPin, Calendar, BarChart, Clock, Loader2, AlertCircle, Search } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Input } from '../../components/newDesign/ui/input';
 import { Textarea } from '../../components/newDesign/ui/textarea';

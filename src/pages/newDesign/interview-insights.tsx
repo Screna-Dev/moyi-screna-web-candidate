@@ -25,7 +25,7 @@ import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
-import { ShareExperienceModal } from '../../components/newDesign/share-experience-modal';
+
 import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';

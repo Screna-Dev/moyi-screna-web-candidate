@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
 import { Checkbox } from '@/components/newDesign/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
-import { Sparkles, Loader2, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Logo from "@/assets/logo.png"
 import { validatePassword, PasswordRequirements } from '@/lib/passwordPolicy';

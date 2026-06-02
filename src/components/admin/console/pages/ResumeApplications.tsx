@@ -88,6 +88,8 @@ type ApiTicketDetail = {
     submitted_at?: string;
     created_at?: string;
     updated_at?: string;
+    live_view_url?: string;
+    browserbase_session_id?: string;
   };
   job?: {
     job_id?: string;
@@ -237,6 +239,128 @@ function TicketStatusRulesPanel({ isOpsManager }: { isOpsManager: boolean }) {
       )}
     </div>
   )
+}
+
+type BrowserSessionPanelProps = {
+  liveViewUrl?: string;
+  ticketStatus: string;
+};
+
+function BrowserSessionPanel({ liveViewUrl, ticketStatus }: BrowserSessionPanelProps) {
+  const [retryToken, setRetryToken] = useState(0);
+  const [phase, setPhase] = useState<"loading" | "loaded" | "timeout">("loading");
+
+  useEffect(() => {
+    if (!liveViewUrl) return;
+    setPhase("loading");
+    // X-Frame-Options / CSP blocks don't trigger onError, so fall back on a timeout.
+    const t = window.setTimeout(() => {
+      setPhase(prev => (prev === "loading" ? "timeout" : prev));
+    }, 12000);
+    return () => window.clearTimeout(t);
+  }, [liveViewUrl, retryToken]);
+
+  if (!liveViewUrl) {
+    const isTerminal = ticketStatus === "SUBMITTED" || ticketStatus === "COMPLETED" || ticketStatus === "FAILED";
+    return (
+      <div style={{ flex: 1, border: `2px dashed ${C.border}`, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bgWhite, padding: 24, textAlign: "center" }}>
+        <ExternalLink size={32} color={C.textSub} style={{ marginBottom: 16 }} />
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, color: C.text }}>
+          {isTerminal ? "No active browser session" : "Live session not available yet"}
+        </div>
+        <div style={{ color: C.textSub, fontSize: 13, maxWidth: 360 }}>
+          {isTerminal
+            ? "This ticket is closed. The Browserbase session was released when the application finished."
+            : "Start the ticket to launch a Browserbase session. The live view will embed here once it's ready."}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, background: C.bgWhite, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: `1px solid ${C.border}`, background: C.bgSubtle, gap: 12, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textSub, minWidth: 0 }}>
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: phase === "loaded" ? C.green : phase === "timeout" ? C.amber : C.gray,
+            flexShrink: 0,
+          }} />
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {phase === "loaded" && "Browserbase session live"}
+            {phase === "loading" && "Connecting to Browserbase session..."}
+            {phase === "timeout" && "Embedded view may be blocked — use Open in new window"}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => setRetryToken(t => t + 1)}
+            style={{ ...secondaryBtn, height: 28, fontSize: 12, padding: "0 10px", gap: 6 }}
+            title="Reload embedded session"
+          >
+            <RefreshCw size={12} /> Refresh
+          </button>
+          <a
+            href={liveViewUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...secondaryBtn, height: 28, fontSize: 12, padding: "0 10px", gap: 6, textDecoration: "none", color: C.blue, borderColor: C.blueBorder }}
+          >
+            <ExternalLink size={12} /> Open in new window
+          </a>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        <iframe
+          key={`${liveViewUrl}-${retryToken}`}
+          src={liveViewUrl}
+          title="Browserbase live view"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+          allow="clipboard-read; clipboard-write; fullscreen"
+          onLoad={() => setPhase("loaded")}
+          style={{ width: "100%", height: "100%", border: "none", display: "block", background: C.bgWhite }}
+        />
+        {phase === "loading" && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.9)", pointerEvents: "none" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <RefreshCw size={20} color={C.textSub} />
+              <div style={{ fontSize: 12, color: C.textSub }}>Connecting to live browser session...</div>
+            </div>
+          </div>
+        )}
+        {phase === "timeout" && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.95)", padding: 24 }}>
+            <div style={{ maxWidth: 380, textAlign: "center" }}>
+              <AlertCircle size={32} color={C.amber} style={{ marginBottom: 12 }} />
+              <div style={{ fontWeight: 600, fontSize: 14, color: C.text, marginBottom: 6 }}>Embedded view didn't respond</div>
+              <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16, lineHeight: 1.5 }}>
+                The browser session may be blocked from embedding by the ATS site's frame policy. Open it in a separate window to continue the application.
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                <button
+                  onClick={() => setRetryToken(t => t + 1)}
+                  style={{ ...secondaryBtn, height: 32, fontSize: 12, padding: "0 14px", gap: 6 }}
+                >
+                  <RefreshCw size={12} /> Retry embed
+                </button>
+                <a
+                  href={liveViewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ ...primaryBtn, height: 32, fontSize: 12, padding: "0 14px", gap: 6, textDecoration: "none" }}
+                >
+                  <ExternalLink size={12} /> Open in new window
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function ResumeApplications() {
@@ -829,13 +953,10 @@ export function ResumeApplications() {
                  )}
                </div>
 
-               {/* Browser Placeholder */}
-               <div style={{ flex: 1, border: `2px dashed ${C.border}`, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bgWhite }}>
-                  <ExternalLink size={32} color={C.textSub} style={{ marginBottom: 16 }} />
-                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, color: C.text }}>Browserbase session — placeholder</div>
-                  <div style={{ color: C.textSub, fontSize: 13, marginBottom: 4 }}>When this ticket is started, the live browser session will embed here.</div>
-                  <div style={{ color: C.textSub, fontSize: 13 }}>Not wired yet.</div>
-               </div>
+               <BrowserSessionPanel
+                 liveViewUrl={ticketDetail?.application?.live_view_url}
+                 ticketStatus={ticket.status}
+               />
             </div>
           </div>
           

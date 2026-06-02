@@ -1,18 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, LogOut, Settings, Users, Gift, Plus, Calendar, Coins, Loader2, RefreshCw } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
+import { Gift, Plus, Calendar, Coins, Loader2, RefreshCw } from 'lucide-react';
+
 import { Button } from '@/components/newDesign/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
 import { Input } from '@/components/newDesign/ui/input';
 import { Label } from '@/components/newDesign/ui/label';
 import { Badge } from '@/components/newDesign/ui/badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/newDesign/ui/dropdown-menu';
+
 import {
   Table,
   TableBody,

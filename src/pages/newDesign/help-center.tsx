@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, ChevronDown, BookOpen, Mic, UserCircle, Mail, ArrowRight, ShieldCheck, Layers } from 'lucide-react';
+import { Search, ChevronDown, BookOpen, UserCircle, ShieldCheck, Layers } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 

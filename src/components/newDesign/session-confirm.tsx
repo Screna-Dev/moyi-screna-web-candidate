@@ -1,24 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router';
-import {
-  ArrowLeft,
-  Clock,
-  Coins,
-  Zap,
-  Mic,
-  Video,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  ArrowRight,
-  BarChart2,
-  Users,
-  Sparkles,
-  BookOpen,
-  AlertCircle,
-  Check,
-} from 'lucide-react';
+import { ArrowLeft, Clock, Coins, Mic, Video, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Navbar } from './home/navbar';

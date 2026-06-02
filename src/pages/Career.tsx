@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/newDesign/ui/card';
 import { Button } from '@/components/newDesign/ui/button';
-import { Badge } from '@/components/newDesign/ui/badge';
-import { ArrowLeft, ExternalLink, BarChart3, Brain, Briefcase, Users, UserCheck } from 'lucide-react';
+
+import { ArrowLeft, BarChart3, Brain, Briefcase, Users, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface JobPosition {

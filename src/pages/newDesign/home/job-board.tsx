@@ -39,23 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/newDesign/ui/tooltip";
-import { 
-  Search, 
-  MapPin, 
-  Briefcase, 
-  DollarSign, 
-  Clock, 
-  Bookmark, 
-  Sparkles,
-  Zap,
-  Timer,
-  Mic,
-  Volume2,
-  ListChecks,
-  PlayCircle,
-  HelpCircle,
-  Lightbulb,
-} from 'lucide-react';
+import { Search, MapPin, Briefcase, DollarSign, Clock, Bookmark, Sparkles, Zap, Timer, Mic, ListChecks, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Mock Data for General Job Listings

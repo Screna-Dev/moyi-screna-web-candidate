@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/newDesign/ui/button";
 import { Badge } from "@/components/newDesign/ui/badge";
 import { Progress } from "@/components/newDesign/ui/progress";
-import { Slider } from "@/components/newDesign/ui/slider";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/newDesign/ui/tabs";
 import { Input } from "@/components/newDesign/ui/input";
 import { Label } from "@/components/newDesign/ui/label";

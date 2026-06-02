@@ -1,25 +1,5 @@
 import { useState } from 'react';
-import { 
-  BookOpen, 
-  CheckCircle2, 
-  ChevronRight, 
-  ExternalLink, 
-  MoreHorizontal, 
-  PlayCircle, 
-  Search,
-  Bookmark,
-  Trash2,
-  Filter,
-  Plus,
-  FolderPlus,
-  Clock,
-  LayoutGrid,
-  List as ListIcon,
-  GripVertical,
-  X,
-  Mic,
-  Type
-} from 'lucide-react';
+import { BookOpen, CheckCircle2, ChevronRight, MoreHorizontal, PlayCircle, Search, Bookmark, Trash2, Filter, Plus, FolderPlus, LayoutGrid, GripVertical, X, Mic, Type } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { Input } from '@/components/newDesign/ui/input';
@@ -34,27 +14,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/newDesign/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-  SheetClose,
-} from "@/components/newDesign/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from "@/components/newDesign/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/newDesign/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/newDesign/ui/dialog";
 import { Label } from "@/components/newDesign/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/newDesign/ui/radio-group";
-import { ScrollArea } from "@/components/newDesign/ui/scroll-area";
+
 import { toast } from "sonner";
 
 // Mock Data

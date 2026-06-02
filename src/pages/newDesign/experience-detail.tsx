@@ -1,33 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router';
-import {
-  ArrowLeft,
-  ThumbsUp,
-  MessageSquare,
-  Share2,
-  Bookmark,
-  Play,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Lightbulb,
-  Check,
-  Sparkles,
-  AlertCircle,
-  Loader2,
-  Flag,
-  CornerDownRight,
-  Hash,
-  X,
-  User,
-  Eye,
-  MapPin,
-  ExternalLink,
-  CircleAlert,
-  ChevronsUpDown,
-  Coins,
-} from 'lucide-react';
+import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, Eye, MapPin, ExternalLink, CircleAlert, ChevronsUpDown, Coins } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';

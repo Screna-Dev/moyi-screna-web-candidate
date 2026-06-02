@@ -1,12 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight,
-  ArrowRight, ArrowLeft, Sparkles, RefreshCw,
-  Code2, Brain, Layers, PenTool, Plus, Mic, Compass, UserCheck, HelpCircle,
-  Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2,
-} from 'lucide-react';
+import { UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight, ArrowRight, ArrowLeft, Sparkles, RefreshCw, Plus, Mic, Compass, UserCheck, HelpCircle, Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2 } from 'lucide-react';
 import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';

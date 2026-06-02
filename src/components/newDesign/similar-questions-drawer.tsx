@@ -1,14 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  X,
-  ArrowRight,
-  Users,
-  TrendingUp,
-  Sparkles,
-  ExternalLink,
-} from 'lucide-react';
+import { X, Sparkles, ExternalLink } from 'lucide-react';
 import { Button } from './ui/button';
 import { CompanyLogo } from './ui/company-logo';
 

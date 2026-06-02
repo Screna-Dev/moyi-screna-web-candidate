@@ -1,21 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Plus,
-  Eye,
-  Pencil,
-  Trash2,
-  ThumbsUp,
-  MessageSquare,
-  Clock,
-  Search,
-  FileText,
-  Bookmark,
-  MoreHorizontal,
-  AlertTriangle,
-  Loader2,
-} from 'lucide-react';
+import { Plus, Eye, Pencil, Trash2, ThumbsUp, MessageSquare, Clock, FileText, Bookmark, MoreHorizontal, AlertTriangle, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { getMyPosts, getMyComments, getMySavedPosts, deletePost } from '@/services/CommunityService';

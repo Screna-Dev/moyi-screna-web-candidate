@@ -1,20 +1,8 @@
-import {
-  X, Maximize2, Minimize2, RotateCcw,
-  ChevronRight, Target, TrendingUp, Brain,
-  MessageSquare, Users, Shield, Lightbulb, Crown,
-  Scale, Quote, ArrowRight, Zap, BookOpen, Dumbbell,
-  CheckCircle2, AlertTriangle, Clock, CalendarDays, Mic,
-  Play, Plus, Library, Video,
-  Pause, SkipForward, SkipBack, Volume2, FileText,
-  Download, Share2, ThumbsUp, CircleAlert,
-} from 'lucide-react';
+import { X, RotateCcw, ChevronRight, Target, TrendingUp, Brain, MessageSquare, Users, Shield, Lightbulb, Crown, Scale, Quote, ArrowRight, BookOpen, CheckCircle2, AlertTriangle, Clock, CalendarDays, Mic, Play, Video, Pause, SkipForward, SkipBack, Volume2, FileText, Download, Share2, ThumbsUp, CircleAlert } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-} from 'recharts';
+
 import { Button } from '@/components/newDesign/ui/button';
 import {
   Tooltip, TooltipTrigger, TooltipContent,
