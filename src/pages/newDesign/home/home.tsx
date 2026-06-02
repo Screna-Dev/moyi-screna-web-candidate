@@ -923,8 +923,8 @@ const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
 };
 
 const LIMITED_INCLUDED = [
-  'AI mock interview (credits required)',
-  'Limited Interview Insights',
+  'AI Mock Interview — 60 free credits for new users',
+  'Interview Insights — Limited access',
 ];
 
 type FeatureItem = { text: string; ok: boolean };
@@ -935,30 +935,21 @@ const LIMITED_GROUPS: TierFeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
-      { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
-      { text: 'Daily application progress updates', ok: false },
       { text: 'Updated & Personalized job recommendation list', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
+      { text: 'Application progress tracking dashboard', ok: false },
     ],
   },
   {
     title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
+    items: [{ text: 'Auto-apply', ok: false }],
   },
   {
     title: 'Mentor access',
     items: [
-      { text: 'Mentor Marketplace', ok: false },
+      { text: 'Mentorship Marketplace', ok: false },
       { text: 'Mock interview, resume review, salary negotiation', ok: false },
       { text: 'Mentor reviews & ratings', ok: false },
-    ],
-  },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
 ];
@@ -966,19 +957,22 @@ const LIMITED_GROUPS: TierFeatureGroup[] = [
 // Starter Plan — partial checks
 const STARTER_GROUPS: TierFeatureGroup[] = [
   {
-    title: 'Job search support',
+    title: 'AI & practice',
     items: [
       { text: 'AI Mock Interview — 150 credits / month', ok: true },
-      { text: 'Personal Question Bank', ok: true },
+    ],
+  },
+  {
+    title: 'Job search support',
+    items: [
       { text: 'Updated & Personalized job recommendation list', ok: true },
-      { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
-      { text: 'Daily application progress updates', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
+      { text: 'Application progress tracking dashboard', ok: false },
     ],
   },
   {
     title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
+    items: [{ text: 'Auto-apply', ok: false }],
   },
   {
     title: 'Mentor access',
@@ -992,9 +986,6 @@ const STARTER_GROUPS: TierFeatureGroup[] = [
     title: 'Community benefits',
     items: [
       { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
 ];
@@ -1002,22 +993,27 @@ const STARTER_GROUPS: TierFeatureGroup[] = [
 // Full Access (Premium) — all checks (matches Claude design)
 const FULL_GROUPS: TierFeatureGroup[] = [
   {
+    title: 'AI & practice',
+    items: [
+      { text: 'AI Mock Interview — 500 credits / month', ok: true },
+    ],
+  },
+  {
     title: 'Job search support',
     items: [
-      { text: 'Dedicated 1:1 job search human assistants', ok: true },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
-      { text: 'Daily application progress updates', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
+      { text: 'Application progress tracking dashboard', ok: true },
     ],
   },
   {
     title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: true }],
+    items: [{ text: 'Auto-apply', ok: true }],
   },
   {
     title: 'Mentor access',
     items: [
-      { text: 'Full Mentor Marketplace', ok: true },
+      { text: 'Mentorship Marketplace', ok: true },
       { text: 'Mock interview, resume review, salary negotiation', ok: true },
       { text: 'Mentor reviews & ratings', ok: true },
     ],
@@ -1026,9 +1022,6 @@ const FULL_GROUPS: TierFeatureGroup[] = [
     title: 'Community benefits',
     items: [
       { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: true },
-      { text: '2 annual networking events', ok: true },
-      { text: 'Pre-interview warm-up reminders', ok: true },
     ],
   },
 ];
@@ -1166,7 +1159,7 @@ function Pricing() {
               >
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 19%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
                 )}
               </button>
             ))}
