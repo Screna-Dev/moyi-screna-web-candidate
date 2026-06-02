@@ -7,35 +7,9 @@ import { Textarea } from '@/components/newDesign/ui/textarea';
 import { Switch } from '@/components/newDesign/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/newDesign/ui/dialog';
 import { toast } from 'sonner';
-import { 
-  Building2, 
-  Clock, 
-  CalendarDays,
-  Layers,
-  MessageSquare,
-  Lock,
-  Unlock,
-  ThumbsUp,
-  Sparkles,
-  Coins,
-  Eye,
-  Send,
-  Play,
-  ChevronLeft,
-  Award,
-  CheckCircle2,
-  Brain
-} from 'lucide-react';
+import { Building2, Clock, CalendarDays, Layers, MessageSquare, Lock, Unlock, ThumbsUp, Coins, Eye, Send, Play, ChevronLeft, Award, CheckCircle2, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { 
-  experienceLibrary, 
-  answersForExperience, 
-  currentUser, 
-  tierConfigs,
-  creditRules,
-  type Answer,
-  type InterviewQuestion
-} from '@/data/experienceMockData';
+import { experienceLibrary, answersForExperience, currentUser, tierConfigs, creditRules, type Answer } from '@/data/experienceMockData';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarInset } from '@/components/newDesign/ui/sidebar';
 

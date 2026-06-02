@@ -1,8 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import {
-  ChevronDown, Lock, Check, Calendar, Clock, ArrowRight,
-  Shield, BookOpen, ChevronRight, Sparkles, X, SlidersHorizontal,
-} from 'lucide-react';
+import { ChevronDown, Lock, Check, Calendar, Clock, ArrowRight, Shield, ChevronRight, Sparkles, X, SlidersHorizontal } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────

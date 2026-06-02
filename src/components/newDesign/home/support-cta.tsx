@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { ArrowRight, Mail } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router';
 export function SupportCTA() {
   return (

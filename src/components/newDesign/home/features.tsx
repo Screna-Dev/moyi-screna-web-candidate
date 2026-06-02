@@ -1,6 +1,6 @@
 import { motion, useInView } from 'motion/react';
 import { useRef } from 'react';
-import { Brain, Users, FileText, Target, Mic, MessageSquareText, TrendingUp, ArrowRight } from 'lucide-react';
+import { Users, Mic, MessageSquareText, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router';
 
 const features = [

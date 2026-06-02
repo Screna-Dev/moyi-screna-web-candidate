@@ -1,20 +1,7 @@
 import { useState } from 'react';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
-import { 
-  Bell, 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  ChevronRight, 
-  Search, 
-  Filter, 
-  MoreHorizontal,
-  Trash2,
-  Check,
-  Sparkles,
-  AlertCircle
-} from 'lucide-react';
+import { Bell, FileText, CheckCircle2, Clock, ChevronRight, Trash2, Check, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/newDesign/ui/button';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';

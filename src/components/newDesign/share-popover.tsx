@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+
 import { Link2, X as XIcon, Check } from 'lucide-react';
 import LinkedInIcon from '../../imports/LinkedIn';
 import XLogo from '../../imports/X';

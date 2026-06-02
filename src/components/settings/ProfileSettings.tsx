@@ -1,35 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
-import {
-  User,
-  Shield,
-  Bell,
-  CreditCard,
-  Globe,
-  LogOut,
-  ChevronRight,
-  Mail,
-  Lock,
-  Trash2,
-  Check,
-  Zap,
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  Sparkles,
-  Plus,
-  Minus,
-  Loader2,
-  Gift,
-  Clock,
-  AlertCircle,
-  Camera,
-  Receipt,
-  Download,
-  ChevronLeft,
-  ChevronRight as ChevronRightIcon
-} from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router';
+import { User, Bell, CreditCard, Globe, Mail, Lock, Check, Zap, TrendingUp, TrendingDown, Calendar, Sparkles, Plus, Minus, Loader2, Gift, Clock, Camera, Receipt, Download, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { Input } from '@/components/newDesign/ui/input';

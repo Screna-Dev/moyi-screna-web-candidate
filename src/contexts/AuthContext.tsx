@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
-import { safeCapture, safeIdentify } from '@/utils/posthog';
+import { safeIdentify } from '@/utils/posthog';
 import API from '@/services/api';
 import { getPersonalInfo } from '@/services/ProfileServices';
 

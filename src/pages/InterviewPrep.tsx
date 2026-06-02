@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/newDesign/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/newDesign/ui/tabs";
 import { Badge } from "@/components/newDesign/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/newDesign/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/newDesign/ui/alert-dialog";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/newDesign/ui/sheet";
+
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/newDesign/ui/alert-dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/newDesign/ui/sheet";
 import { ScrollArea } from "@/components/newDesign/ui/scroll-area";
-import { Label } from "@/components/newDesign/ui/label";
-import { Input } from "@/components/newDesign/ui/input";
-import { Textarea } from "@/components/newDesign/ui/textarea";
-import { Separator } from "@/components/newDesign/ui/separator";
+
+
+
+
 import { useToast } from "@/components/newDesign/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { usePostHog } from "posthog-js/react";
@@ -20,36 +20,7 @@ import { InterviewService, InterviewSessionService } from "@/services";
 import { useUserPlan, useUpgradePrompt } from "@/hooks/useUserPlan";
 import ResumeAnalysisDialog from "@/components/profile/ResumeAnalysisDialog";
 
-import {
-  Target,
-  Plus,
-  PlayCircle,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  Calendar,
-  FileText,
-  Video,
-  BookOpen,
-  Brain,
-  BarChart3,
-  Download,
-  Share2,
-  ChevronRight,
-  Loader2,
-  Trash2,
-  RefreshCw,
-  AlertCircle,
-  User,
-  ListChecks,
-  HelpCircle,
-  Sparkles,
-  ArrowRight,
-  Lock,
-  Crown,
-  Play,
-  MessageSquare,
-} from "lucide-react";
+import { Target, Plus, PlayCircle, CheckCircle2, Clock, TrendingUp, Calendar, FileText, Video, BookOpen, Brain, BarChart3, Loader2, Trash2, RefreshCw, AlertCircle, ListChecks, HelpCircle, Sparkles, ArrowRight, Lock, Crown, Play, MessageSquare } from "lucide-react";
 
 interface TargetJob {
   id: string;

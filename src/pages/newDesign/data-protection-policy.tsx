@@ -1,26 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Footer } from '@/components/newDesign/home/footer';
 import {Navbar} from '@/components/newDesign/home/navbar';
-import { 
-  Shield, 
-  Lock, 
-  Eye, 
-  Database, 
-  Users, 
-  Server, 
-  FileText, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
-  Key, 
-  Globe,
-  FileCheck,
-  UserCheck,
-  Trash2,
-  RefreshCw,
-  Building2,
-  Briefcase
-} from 'lucide-react';
+import { Shield, Lock, Database, Users, Server, FileText, AlertTriangle, CheckCircle, Clock, Key, Globe, FileCheck, UserCheck, Trash2, RefreshCw, Building2, Briefcase } from 'lucide-react';
 
 export function DataProtectionPolicy() {
   useEffect(() => {

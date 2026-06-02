@@ -3,11 +3,11 @@ import { Badge } from '@/components/newDesign/ui/badge';
 import { Card, CardContent } from '@/components/newDesign/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
 import type { AdminUser } from '@/data/adminMockData';
-import { CreditCard, Users, Brain, DollarSign, TrendingUp } from 'lucide-react';
+import { CreditCard, Users, TrendingUp } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';
 import { TrainingPlanTab } from './tabs/TrainingPlanTab';
 import { ReportsVideosTab } from './tabs/ReportsVideosTab';
-import { MentorSessionsTab } from './tabs/MentorSessionsTab';
+
 import { BillingTab } from './tabs/BillingTab';
 import { AdminActionsTab } from './tabs/AdminActionsTab';
 

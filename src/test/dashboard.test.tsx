@@ -3,8 +3,8 @@
  * Covers: Resume upload, Resume download, Profile edit, Quick actions, Recent sessions
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, waitFor } from '@testing-library/react';
+
 import { MemoryRouter } from 'react-router';
 import { createUserPlanMock } from '@/test/utils';
 import React from 'react';

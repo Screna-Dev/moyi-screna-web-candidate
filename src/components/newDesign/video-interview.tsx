@@ -1,23 +1,6 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  PhoneOff,
-  Lightbulb,
-  Clock,
-  MessageSquareText,
-  Eye,
-  EyeOff,
-  CircleDot,
-  AlertTriangle,
-  X,
-  FileText,
-  HelpCircle,
-  User,
-} from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Lightbulb, Clock, MessageSquareText, EyeOff, CircleDot, AlertTriangle, X, FileText, User } from 'lucide-react';
 import LiveKitService from '@/services/LiveKitService';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import type { SessionCredentials } from '@/pages/newDesign/ai-mock';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Gift, Sparkles, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const CREDITS_REWARD = 5;
 const AUTO_DISMISS_MS = 5000;

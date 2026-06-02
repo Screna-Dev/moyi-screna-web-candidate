@@ -1,26 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import {
-  Clock,
-  ArrowRight,
-  Zap,
-  BarChart2,
-  Building2,
-  Sparkles,
-  Lock,
-  User,
-  Target,
-  Plus,
-  X,
-  CheckCircle2,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Crosshair,
-  Loader2,
-  AlertCircle,
-  Trash2,
-} from 'lucide-react';
+import { Clock, ArrowRight, Zap, BarChart2, Building2, Sparkles, Lock, Target, Plus, CheckCircle2, Calendar, ChevronLeft, ChevronRight, Crosshair, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Badge } from '../../components/newDesign/ui/badge';
 import {

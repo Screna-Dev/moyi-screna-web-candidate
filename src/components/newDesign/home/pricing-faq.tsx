@@ -1,6 +1,6 @@
 import { motion, useInView } from 'motion/react';
 import { useRef } from 'react';
-import { HelpCircle } from 'lucide-react';
+
 import {
   Accordion,
   AccordionContent,

@@ -10,6 +10,7 @@ import FaqPage from './pages/newDesign/home/faq-page';
 import JobBoardPage from './pages/newDesign/home/job-board'
 // Auth / onboarding pages
 import { AuthPage } from './pages/newDesign/auth';
+import ForgotPassword from './pages/ForgetPassword';
 import { RefRedirect } from './pages/ref-redirect';
 import { SignupFlowPage } from './pages/newDesign/signup-flow';
 import { OnboardingPage } from './pages/newDesign/onboarding';
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/register', element: <AuthPage /> },
+      { path: '/forgot-password', element: <ForgotPassword /> },
       { path: '/pgs/ref/:slug', element: <RefRedirect /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },

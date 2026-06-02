@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Star, DollarSign, Clock, MapPin, GraduationCap, Calendar, Users, Filter, ExternalLink, XCircle, RefreshCw, CheckCircle2, LinkedinIcon, FileText } from 'lucide-react';
+import { Search, Star, DollarSign, Clock, MapPin, GraduationCap, Calendar, Users, ExternalLink, XCircle, RefreshCw, CheckCircle2, LinkedinIcon, FileText } from 'lucide-react';
 import { Input } from '@/components/newDesign/ui/input';
 import { Button } from '@/components/newDesign/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/newDesign/ui/card';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Eye, Lock, PlayCircle, Shield, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -10,8 +10,8 @@ import metaLogo from '../../../assets/Logo-group/Meta.svg';
 import amazonLogo from '../../../assets/Logo-group/Amazon.svg';
 import microsoftLogo from '../../../assets/Logo-group/Microsoft.svg';
 import appleLogo from '../../../assets/Logo-group/Apple.svg';
-import adobeLogo from '../../../assets/Logo-group/adobe.svg';
-import stripeLogo from '../../../assets/Logo-group/stripe.svg';
+
+
 import { ShinyButton } from '@/components/newDesign/ui/shiny-button';
 
 const companyLogos = [

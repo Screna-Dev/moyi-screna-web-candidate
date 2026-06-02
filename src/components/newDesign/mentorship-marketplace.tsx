@@ -1,10 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  FileText, Target, Mic, Search, TrendingUp, Globe,
-  Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal,
-  X, Check, Shield, Sparkles, ArrowRight, Lock,
-  Users, Plus, Minus, BookOpen, Star, MessageSquare, Loader2,
-} from 'lucide-react';
+import { FileText, Target, Mic, Search, TrendingUp, Globe, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal, X, Check, Shield, Sparkles, ArrowRight, Lock, Users, Plus, Star, Loader2 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';

@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'react-router';
-import {
-  User, Shield, Bell, CreditCard,
-  Mail, Lock, Check, CheckCircle2,
-  Eye, EyeOff, KeyRound, Send,
-  AlertCircle, Trash2, X, Loader2,
-} from 'lucide-react';
+import { User, Shield, CreditCard, Mail, Lock, CheckCircle2, Eye, EyeOff, KeyRound, Send, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
 import { Input } from '../../components/newDesign/ui/input';
 import { Label } from '../../components/newDesign/ui/label';

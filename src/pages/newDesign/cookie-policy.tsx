@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Footer } from '@/components/newDesign/home/footer';
 import { Navbar } from '@/components/newDesign/home/navbar';
-import { Cookie, Shield, Settings, BarChart3, AlertCircle, ExternalLink } from 'lucide-react';
+import { Cookie, Shield, Settings, BarChart3, AlertCircle } from 'lucide-react';
 
 export function CookiePolicy() {
   useEffect(() => {

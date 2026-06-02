@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Button } from '@/components/newDesign/ui/button';
+
 import { Card } from '@/components/newDesign/ui/card';
 import { UsersList } from '@/components/admin/UsersList';
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
