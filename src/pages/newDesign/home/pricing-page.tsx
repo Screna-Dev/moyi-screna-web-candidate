@@ -41,8 +41,8 @@ const SAVE_BADGES: Partial<Record<BillingCycle, string>> = {
 
 // Limited Access — plain list of what's included
 const LIMITED_INCLUDED = [
-  'AI Mock Interview — 60 free credits for new users',
-  'Interview Insights — Limited access',
+  'AI mock interview (credits required)',
+  'Limited Interview Insights',
 ];
 
 type FeatureRow = { text: string; ok: boolean };
@@ -53,23 +53,32 @@ const LIMITED_GROUPS: FeatureGroup[] = [
   {
     title: 'Job search support',
     items: [
-      { text: 'Updated & Personalized job recommendation list', ok: false },
+      { text: 'Dedicated 1:1 job search human assistants', ok: false },
       { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
-      { text: 'Application progress tracking dashboard', ok: false },
+      { text: 'Daily application progress updates', ok: false },
+      { text: 'Updated & Personalized job recommendation list', ok: false },
     ],
   },
   {
     title: 'Outreach & visibility',
     items: [
-      { text: 'Auto-apply', ok: false },
+      { text: 'We reach out to recruiters and request referrals for you', ok: false },
     ],
   },
   {
     title: 'Mentor access',
     items: [
-      { text: 'Mentorship Marketplace', ok: false },
+      { text: 'Mentor Marketplace', ok: false },
       { text: 'Mock interview, resume review, salary negotiation', ok: false },
       { text: 'Mentor reviews & ratings', ok: false },
+    ],
+  },
+  {
+    title: 'Community benefits',
+    items: [
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
 ];
@@ -77,23 +86,20 @@ const LIMITED_GROUPS: FeatureGroup[] = [
 // Starter Plan — partial checks
 const STARTER_GROUPS: FeatureGroup[] = [
   {
-    title: 'AI & practice',
-    items: [
-      { text: 'AI Mock Interview — 150 credits / month', ok: true },
-    ],
-  },
-  {
     title: 'Job search support',
     items: [
+      { text: 'AI Mock Interview — 150 credits / month', ok: true },
+      { text: 'Personal Question Bank', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'Dedicated 1:1 job search human assistants', ok: false },
       { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
-      { text: 'Application progress tracking dashboard', ok: false },
+      { text: 'Daily application progress updates', ok: false },
     ],
   },
   {
     title: 'Outreach & visibility',
     items: [
-      { text: 'Auto-apply', ok: false },
+      { text: 'We reach out to recruiters and request referrals for you', ok: false },
     ],
   },
   {
@@ -108,6 +114,9 @@ const STARTER_GROUPS: FeatureGroup[] = [
     title: 'Community benefits',
     items: [
       { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
 ];
@@ -115,29 +124,24 @@ const STARTER_GROUPS: FeatureGroup[] = [
 // Premium — all checks
 const PREMIUM_GROUPS: FeatureGroup[] = [
   {
-    title: 'AI & practice',
-    items: [
-      { text: 'AI Mock Interview — 500 credits / month', ok: true },
-    ],
-  },
-  {
     title: 'Job search support',
     items: [
-      { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'Dedicated 1:1 job search human assistants', ok: true },
       { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
-      { text: 'Application progress tracking dashboard', ok: true },
+      { text: 'Daily application progress updates', ok: true },
+      { text: 'Updated & Personalized job recommendation list', ok: true },
     ],
   },
   {
     title: 'Outreach & visibility',
     items: [
-      { text: 'Auto-apply', ok: true },
+      { text: 'We reach out to recruiters and request referrals for you', ok: true },
     ],
   },
   {
     title: 'Mentor access',
     items: [
-      { text: 'Mentorship Marketplace', ok: true },
+      { text: 'Full Mentor Marketplace', ok: true },
       { text: 'Mock interview, resume review, salary negotiation', ok: true },
       { text: 'Mentor reviews & ratings', ok: true },
     ],
@@ -146,6 +150,9 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
     title: 'Community benefits',
     items: [
       { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: true },
+      { text: '2 annual networking events', ok: true },
+      { text: 'Pre-interview warm-up reminders', ok: true },
     ],
   },
 ];
@@ -154,7 +161,7 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
 const FAQS = [
   {
     q: "What's the difference between Starter and Premium?",
-    a: 'Starter is built for candidates who prefer to job search independently. You get AI practice tools, full mentor access, and a personalized job list — but you handle applications yourself. Premium adds managed job search: we find roles and submit applications on your behalf (up to 200/month), plus Auto-apply and a progress tracking dashboard. If you want to move fast without doing everything yourself, Premium is the better fit.',
+    a: 'Starter is built for candidates who prefer to job search independently. You get AI practice tools, full mentor access, and a personalized job list — but you handle applications yourself. Premium adds a dedicated human team that finds roles, submits applications on your behalf (up to 200/month), and reaches out to recruiters for referrals. If you want to move fast without doing everything yourself, Premium is the better fit.',
   },
   {
     q: "What's your refund policy?",
