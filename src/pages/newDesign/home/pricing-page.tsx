@@ -26,17 +26,17 @@ const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check,
 
 // Membership tier prices (from Claude design / Screna Landing Page.html)
 const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29', note: 'Billed $29 / month · cancel anytime' },
-  quarterly: { price: '$29', note: 'Billed $87 / quarter · cancel anytime' },
+  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
+  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
 };
 
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$159', note: 'Billed $159 / month · cancel anytime' },
-  quarterly: { price: '$129', note: 'Billed $477 / quarter · cancel anytime' },
+  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
+  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
 };
 
 const SAVE_BADGES: Partial<Record<BillingCycle, string>> = {
-  quarterly: 'Save 19%',
+  quarterly: 'Save 9%',
 };
 
 // Limited Access — plain list of what's included
@@ -54,7 +54,7 @@ const LIMITED_GROUPS: FeatureGroup[] = [
     title: 'Job search support',
     items: [
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
       { text: 'Updated & Personalized job recommendation list', ok: false },
     ],
@@ -92,7 +92,7 @@ const STARTER_GROUPS: FeatureGroup[] = [
       { text: 'Personal Question Bank', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
     ],
   },
@@ -127,7 +127,7 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
     title: 'Job search support',
     items: [
       { text: 'Dedicated 1:1 job search human assistants', ok: true },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
     ],
@@ -161,7 +161,7 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
 const FAQS = [
   {
     q: "What's the difference between Starter and Premium?",
-    a: 'Starter is built for candidates who prefer to job search independently. You get AI practice tools, full mentor access, and a personalized job list — but you handle applications yourself. Premium adds a dedicated human team that finds roles, submits applications on your behalf (up to 500/month), and reaches out to recruiters for referrals. If you want to move fast without doing everything yourself, Premium is the better fit.',
+    a: 'Starter is built for candidates who prefer to job search independently. You get AI practice tools, full mentor access, and a personalized job list — but you handle applications yourself. Premium adds a dedicated human team that finds roles, submits applications on your behalf (up to 200/month), and reaches out to recruiters for referrals. If you want to move fast without doing everything yourself, Premium is the better fit.',
   },
   {
     q: "What's your refund policy?",

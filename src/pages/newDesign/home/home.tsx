@@ -936,7 +936,7 @@ const LIMITED_GROUPS: TierFeatureGroup[] = [
     title: 'Job search support',
     items: [
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
       { text: 'Updated & Personalized job recommendation list', ok: false },
     ],
@@ -972,7 +972,7 @@ const STARTER_GROUPS: TierFeatureGroup[] = [
       { text: 'Personal Question Bank', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
       { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: false },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
     ],
   },
@@ -1005,7 +1005,7 @@ const FULL_GROUPS: TierFeatureGroup[] = [
     title: 'Job search support',
     items: [
       { text: 'Dedicated 1:1 job search human assistants', ok: true },
-      { text: 'We find jobs and apply for you (500 applications/month)', ok: true },
+      { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
     ],
@@ -1166,7 +1166,7 @@ function Pricing() {
               >
                 {c.charAt(0).toUpperCase() + c.slice(1)}
                 {c === 'quarterly' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 19%</span>
+                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
                 )}
               </button>
             ))}
