@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   Search, Plus, ExternalLink, Upload, CheckSquare, Square,
   AlertCircle, X, Check, Flag, StickyNote, User, Copy, FileText,
-  Shield, Lock, Download, UserCog, RefreshCw, ChevronDown, ChevronRight, Eye, Edit2, ChevronLeft, MoreHorizontal, Clock, Info
+  Shield, Lock, Download, RefreshCw, ChevronDown, ChevronRight, Eye, Edit2, ChevronLeft, MoreHorizontal, Clock, Info
 } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, filterChip, card, searchInput } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
@@ -371,7 +371,6 @@ export function ResumeApplications() {
   const [activeTab, setActiveTab]       = useState("All");
 
   const [userList, setUserList]         = useState<UiUser[]>([]);
-  const [role, setRole]                 = useState<"Ops Manager" | "Customer Support">("Ops Manager");
 
   const [showProofModal, setShowProofModal] = useState(false);
   const [showFailedModal, setShowFailedModal] = useState(false);
@@ -457,18 +456,14 @@ export function ResumeApplications() {
     return () => { cancelled = true; };
   }, [selectedTicket]);
 
-  const isOpsManager = role === "Ops Manager";
+  const isOpsManager = false;
   const selectedUser = userList.find((u) => u.id === selectedUserId);
   const allTickets: UiTicket[] = liveTickets;
   const ticket = allTickets.find((t) => t.id === selectedTicket);
 
   const filteredUsers = userList.filter((u) => {
-    if (!isOpsManager && u.ops !== "Alex Kim") return false;
     if (userSearch && !u.name.toLowerCase().includes(userSearch.toLowerCase())) return false;
-    if (userFilters.owner !== "all") {
-      if (userFilters.owner === "me" && u.ops !== "Alex Kim") return false;
-      if (userFilters.owner === "unassigned" && u.ops !== "Unassigned") return false;
-    }
+    if (userFilters.owner === "unassigned" && u.ops !== "Unassigned") return false;
     if (userFilters.status !== "all" && u.status.toLowerCase().replace(/\s+/g, "-") !== userFilters.status) return false;
     return true;
   });
@@ -528,35 +523,6 @@ export function ResumeApplications() {
           <span style={{ fontSize: 13, fontWeight: 600, color: C.text, flexShrink: 0 }}>User Queue</span>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
             <span style={{ fontSize: 11, color: C.textSub, flexShrink: 0 }}>{filteredUsers.length} users</span>
-            <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-              <UserCog size={12} style={{ position: "absolute", left: 8, color: isOpsManager ? C.blue : C.textSub, pointerEvents: "none", zIndex: 1 }} />
-              <select
-                value={role}
-                onChange={(e) => {
-                  const newRole = e.target.value as "Ops Manager" | "Customer Support";
-                  setRole(newRole);
-                  if (newRole === "Customer Support") {
-                    setUserFilters((prev) => ({ ...prev, owner: prev.owner === "unassigned" ? "me" : prev.owner }));
-                    const currentUser = userList.find((u) => u.id === selectedUserId);
-                    if (currentUser && currentUser.ops === "Unassigned") {
-                      const firstVisible = userList.find((u) => u.ops !== "Unassigned");
-                      if (firstVisible) { setSelectedUserId(firstVisible.id); setSelectedTicket(null); }
-                    }
-                  }
-                }}
-                style={{
-                  height: 28, paddingLeft: 24, paddingRight: 8, borderRadius: 6,
-                  border: `1px solid ${isOpsManager ? C.blueBorder : C.border}`,
-                  background: isOpsManager ? C.blueBg : C.bgSubtle,
-                  color: isOpsManager ? C.blue : C.textMid,
-                  fontSize: 11, fontWeight: 600, fontFamily: "'Inter', sans-serif",
-                  cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none",
-                }}
-              >
-                <option value="Ops Manager">Ops Manager</option>
-                <option value="Customer Support">Customer Support</option>
-              </select>
-            </div>
           </div>
         </div>
 

@@ -34,7 +34,8 @@ interface MentorSession {
   initials: string; avatarBg: string; avatarUrl?: string;
   date: string; time: string; duration: string;
   coachingPlan: string;
-  reviewStatus: ReviewStatus; stars?: number; myNote?: string;
+  reviewStatus: ReviewStatus; stars?: number; reviewComment?: string;
+  myNote?: string; mentorNote?: string;
 }
 type TrainingEntry = AIMockSession | MentorSession;
 
@@ -49,7 +50,9 @@ interface Booking {
   startTime: string;
   status: BookingStatus;
   hasReview?: boolean;
+  review?: { overallRating: number; comment?: string | null } | null;
   studentNote?: string;
+  mentorNote?: string | null;
 }
 
 const AVATAR_BGS = [
@@ -91,8 +94,11 @@ function mapBookingsToMentorSessions(bookings: Booking[]): MentorSession[] {
         time: valid ? start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '',
         duration: b.durationMinutes ? `${b.durationMinutes} min` : '—',
         coachingPlan: b.topicTitle || '',
-        reviewStatus: b.hasReview ? 'Reviewed' : 'Pending Review',
+        reviewStatus: b.hasReview || b.review ? 'Reviewed' : 'Pending Review',
+        stars: b.review?.overallRating,
+        reviewComment: b.review?.comment ?? undefined,
         myNote: b.studentNote,
+        mentorNote: b.mentorNote ?? undefined,
       };
     });
 }
@@ -371,7 +377,7 @@ function MentorRow({
 }: {
   session: MentorSession;
   isLast: boolean;
-  onReviewed?: (bookingId: string, stars: number) => void;
+  onReviewed?: (bookingId: string, stars: number, comment?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [reviewStars, setReviewStars] = useState(0);
@@ -387,12 +393,13 @@ function MentorRow({
     setSubmitting(true);
     setSubmitError('');
     try {
+      const trimmed = reviewComment.trim();
       await submitMentorReview(session.id, {
         overallRating: reviewStars,
-        comment: reviewComment.trim() || undefined,
+        comment: trimmed || undefined,
       });
       setSubmitted(true);
-      onReviewed?.(session.id, reviewStars);
+      onReviewed?.(session.id, reviewStars, trimmed || undefined);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setSubmitError(msg ?? 'Failed to submit review. Please try again.');
@@ -498,11 +505,27 @@ function MentorRow({
                 </div>
               )}
 
+              {/* Mentor's Note */}
+              {session.mentorNote && (
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.55px] mb-1">Mentor's Note</p>
+                  <p className="text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: '13px' }}>{session.mentorNote}</p>
+                </div>
+              )}
+
               {/* Row 3: Star rating */}
               {session.stars && (
                 <div className="flex items-center gap-1.5">
                   <StarRating stars={session.stars} />
                   <span className="text-muted-foreground" style={{ fontSize: '12px' }}>{session.stars}.0 / 5.0</span>
+                </div>
+              )}
+
+              {/* Row 4: My review comment */}
+              {session.reviewComment && (
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.55px] mb-1">My Review</p>
+                  <p className="text-foreground leading-relaxed" style={{ fontSize: '13px' }}>{session.reviewComment}</p>
                 </div>
               )}
 
@@ -539,6 +562,14 @@ function MentorRow({
                   </p>
                 </div>
               </div>
+
+              {/* Mentor's Note */}
+              {session.mentorNote && (
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.55px] mb-1">Mentor's Note</p>
+                  <p className="text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: '13px' }}>{session.mentorNote}</p>
+                </div>
+              )}
 
               {submitted ? (
                 <div className="flex items-center gap-2 py-1">
@@ -918,9 +949,9 @@ export function HistoryPage() {
                           key={entry.id}
                           session={entry}
                           isLast={isLast}
-                          onReviewed={(bookingId, stars) =>
+                          onReviewed={(bookingId, stars, comment) =>
                             setMentorSessions(prev =>
-                              prev.map(m => m.id === bookingId ? { ...m, reviewStatus: 'Reviewed', stars } : m)
+                              prev.map(m => m.id === bookingId ? { ...m, reviewStatus: 'Reviewed', stars, reviewComment: comment } : m)
                             )
                           }
                         />;

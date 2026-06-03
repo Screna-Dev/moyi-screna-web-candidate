@@ -37,3 +37,11 @@ export const getCalendarAuthUrl = (redirectUri) =>
   API.get('/mentorship/mentor/calendar/authorize', { params: { redirectUri } });
 export const connectCalendar = (payload) =>
   API.post('/mentorship/mentor/calendar/connect', payload);
+
+// ─── Mentor-side topic / booking management ──────────────────────────────────
+export const createMyTopic = (payload) =>
+  API.post('/mentorship/profile/topics', payload);
+export const updateMyTopic = (topicId, payload) =>
+  API.put(`/mentorship/profile/topics/${topicId}`, payload);
+export const updateBookingMentorNote = (bookingId, note) =>
+  API.patch(`/mentorship/profile/bookings/${bookingId}/note`, { note });

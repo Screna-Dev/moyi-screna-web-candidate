@@ -28,6 +28,51 @@ const OFFICE_HOUR_DAYS: { value: number; label: string }[] = [
   { value: 7, label: 'Sunday' },
 ];
 
+function OnboardingChecklist({
+  calendarConnected,
+  topicsCreated,
+  statusReason,
+}: {
+  calendarConnected: boolean;
+  topicsCreated: number;
+  statusReason?: string;
+}) {
+  const items = [
+    { label: 'Application submitted', done: true, hint: 'Mentor role granted — under review' },
+    { label: 'Connect Google Calendar', done: calendarConnected, hint: 'Required so candidates can book sessions' },
+    { label: 'At least one active service', done: topicsCreated > 0, hint: topicsCreated > 0 ? `${topicsCreated} service${topicsCreated === 1 ? '' : 's'} configured` : 'Profile stays in review until at least one service is enabled' },
+  ];
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-[12px] text-muted-foreground uppercase tracking-wider mb-3">Before you go live</p>
+      <ul className="flex flex-col gap-3">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-3">
+            <span
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                item.done ? 'bg-primary text-primary-foreground' : 'border border-border bg-secondary'
+              }`}
+            >
+              {item.done && <Check className="w-3 h-3" />}
+            </span>
+            <div className="flex flex-col">
+              <span className={`text-[13px] ${item.done ? 'text-foreground' : 'text-foreground'}`} style={{ fontWeight: 500 }}>
+                {item.label}
+              </span>
+              <span className="text-[12px] text-muted-foreground leading-relaxed">{item.hint}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {statusReason && (
+        <p className="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          {statusReason}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── API Types ─────────────────────────────────────────────────────────────────
 
 interface ApiMentor {
@@ -410,11 +455,18 @@ export function MentorshipMarketplacePage() {
   const [mentorError, setMentorError] = useState('');
   const [profilePrefilled, setProfilePrefilled] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [topicsCreated, setTopicsCreated] = useState(0);
   const [mentorForm, setMentorForm] = useState({
     headline: '', currentRole: '', currentCompany: '', yearsOfExperience: '',
     bio: '', expertiseTags: [] as string[], expertiseInput: '',
     careerBackground: [] as { company: string; role: string; startYear: string; endYear: string }[],
     officeHours: [] as OfficeHour[],
+    topics: [
+      { title: 'Mock Interview',              enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+      { title: 'Resume & LinkedIn Review',    enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+      { title: 'Career Strategy Session',     enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+      { title: 'Offer & Salary Negotiation',  enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+    ] as Array<{ title: string; enabled: boolean; price30: string; price60: string; description: string; mentorNote: string }>,
   });
   const { user } = useAuth();
   const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
@@ -425,11 +477,18 @@ export function MentorshipMarketplacePage() {
     setMentorSubmitted(false);
     setMentorError('');
     setProfilePrefilled(false);
+    setTopicsCreated(0);
     setMentorForm({
       headline: '', currentRole: '', currentCompany: '', yearsOfExperience: '',
       bio: '', expertiseTags: [], expertiseInput: '',
       careerBackground: [],
       officeHours: [],
+      topics: [
+        { title: 'Mock Interview',              enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+        { title: 'Resume & LinkedIn Review',    enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+        { title: 'Career Strategy Session',     enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+        { title: 'Offer & Salary Negotiation',  enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
+      ],
     });
   };
 
@@ -552,6 +611,16 @@ export function MentorshipMarketplacePage() {
     setMentorSubmitting(true);
     setMentorError('');
     try {
+      const enabledTopics = mentorForm.topics
+        .filter(t => t.enabled)
+        .map(t => ({
+          title: t.title,
+          description: t.description,
+          mentorNote: t.mentorNote,
+          price30min: Math.max(0, Math.round((parseFloat(t.price30) || 0) * 100)),
+          price60min: Math.max(0, Math.round((parseFloat(t.price60) || 0) * 100)),
+          bothPricesSet: true,
+        }));
       await applyMentor({
         bio: mentorForm.bio,
         headline: mentorForm.headline,
@@ -566,8 +635,9 @@ export function MentorshipMarketplacePage() {
           endYear: e.endYear ? parseInt(e.endYear) : undefined,
         })),
         officeHours: mentorForm.officeHours,
+        ...(enabledTopics.length > 0 ? { topics: enabledTopics } : {}),
       });
-
+      setTopicsCreated(enabledTopics.length);
       setMentorSubmitted(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -1250,7 +1320,7 @@ export function MentorshipMarketplacePage() {
                     {mentorSubmitted ? 'Application Submitted' : 'Become a Mentor'}
                   </h2>
                   {!mentorSubmitted && (
-                    <p className="text-muted-foreground text-[12px] mt-0.5">Step {mentorStep} of 5</p>
+                    <p className="text-muted-foreground text-[12px] mt-0.5">Step {mentorStep} of 6</p>
                   )}
                 </div>
                 <button
@@ -1264,7 +1334,7 @@ export function MentorshipMarketplacePage() {
               {/* Step indicator */}
               {!mentorSubmitted && (
                 <div className="flex gap-1.5 px-6 pt-4 shrink-0">
-                  {[1, 2, 3, 4, 5].map(s => (
+                  {[1, 2, 3, 4, 5, 6].map(s => (
                     <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= mentorStep ? 'bg-primary' : 'bg-border'}`} />
                   ))}
                 </div>
@@ -1292,16 +1362,22 @@ export function MentorshipMarketplacePage() {
 
                 {/* ── Final success state (submitted + calendar connected) ── */}
                 {mentorSubmitted && calendarConnected && (
-                  <div className="flex flex-col items-center text-center py-6 gap-4">
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Check className="w-7 h-7 text-primary" />
+                  <div className="flex flex-col gap-5 py-2">
+                    <div className="flex flex-col items-center text-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Check className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-foreground text-[16px] mb-1.5" style={{ fontWeight: 600 }}>You're all set!</h3>
+                        <p className="text-muted-foreground text-[13px] leading-relaxed">
+                          Your application is under review. We'll reach out within a few business days.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-foreground text-[16px] mb-2" style={{ fontWeight: 600 }}>You're all set!</h3>
-                      <p className="text-muted-foreground text-[13.5px] leading-relaxed">
-                        Your application is under review. We'll reach out within a few business days.
-                      </p>
-                    </div>
+                    <OnboardingChecklist
+                      calendarConnected={calendarConnected}
+                      topicsCreated={topicsCreated}
+                    />
                   </div>
                 )}
 
@@ -1353,6 +1429,11 @@ export function MentorshipMarketplacePage() {
                         )}
                       </button>
                     </div>
+
+                    <OnboardingChecklist
+                      calendarConnected={calendarConnected}
+                      topicsCreated={topicsCreated}
+                    />
 
                     {mentorError && (
                       <p className="text-[12.5px] text-destructive">{mentorError}</p>
@@ -1560,8 +1641,104 @@ export function MentorshipMarketplacePage() {
                   </div>
                 )}
 
-                {/* ── Step 5: Review + Submit ── */}
+                {/* ── Step 5: Services & Rates ── */}
                 {!mentorSubmitted && mentorStep === 5 && (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <p className="text-foreground text-[14px]" style={{ fontWeight: 500 }}>Services you'll offer</p>
+                      <p className="text-muted-foreground text-[12.5px] leading-relaxed mt-1">
+                        Enable at least one service. You can edit pricing, descriptions, and prep notes anytime later.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {mentorForm.topics.map((t, idx) => (
+                        <div
+                          key={idx}
+                          className={`rounded-xl border transition-colors ${t.enabled ? 'border-primary/40 bg-primary/[4%]' : 'border-border bg-secondary/20'}`}
+                        >
+                          <div className="flex items-center justify-between px-3 py-2.5">
+                            <span className={`text-[13px] ${t.enabled ? 'text-foreground' : 'text-muted-foreground'}`} style={{ fontWeight: 500 }}>
+                              {t.title}
+                            </span>
+                            <label className="flex items-center cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={t.enabled}
+                                onChange={() => setMentorForm(f => ({
+                                  ...f,
+                                  topics: f.topics.map((tt, i) => i === idx ? { ...tt, enabled: !tt.enabled } : tt),
+                                }))}
+                                className="w-4 h-4 rounded border-border text-primary focus:ring-1 focus:ring-ring cursor-pointer"
+                              />
+                            </label>
+                          </div>
+                          {t.enabled && (
+                            <div className="px-3 pb-3 flex flex-col gap-2.5 border-t border-border/50 pt-2.5">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 30 min ($)</p>
+                                  <input
+                                    type="number" min={0}
+                                    value={t.price30}
+                                    onChange={e => setMentorForm(f => ({
+                                      ...f,
+                                      topics: f.topics.map((tt, i) => i === idx ? { ...tt, price30: e.target.value } : tt),
+                                    }))}
+                                    className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 60 min ($)</p>
+                                  <input
+                                    type="number" min={0}
+                                    value={t.price60}
+                                    onChange={e => setMentorForm(f => ({
+                                      ...f,
+                                      topics: f.topics.map((tt, i) => i === idx ? { ...tt, price60: e.target.value } : tt),
+                                    }))}
+                                    className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Description (shown to students)</p>
+                                <textarea
+                                  rows={2}
+                                  value={t.description}
+                                  onChange={e => setMentorForm(f => ({
+                                    ...f,
+                                    topics: f.topics.map((tt, i) => i === idx ? { ...tt, description: e.target.value } : tt),
+                                  }))}
+                                  placeholder="What students get from this session…"
+                                  className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Note to student after booking (optional)</p>
+                                <textarea
+                                  rows={2}
+                                  value={t.mentorNote}
+                                  onChange={e => setMentorForm(f => ({
+                                    ...f,
+                                    topics: f.topics.map((tt, i) => i === idx ? { ...tt, mentorNote: e.target.value } : tt),
+                                  }))}
+                                  placeholder="How to prepare, what to bring, links to read…"
+                                  className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {mentorForm.topics.every(t => !t.enabled) && (
+                      <p className="text-[12px] text-muted-foreground">Enable at least one service so students can book you.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Step 6: Review + Submit ── */}
+                {!mentorSubmitted && mentorStep === 6 && (
                   <div className="flex flex-col gap-5">
                     <div>
                       <p className="text-foreground text-[14px]" style={{ fontWeight: 500 }}>Ready to submit?</p>
@@ -1603,7 +1780,7 @@ export function MentorshipMarketplacePage() {
                   >
                     {mentorStep === 1 ? 'Cancel' : '← Back'}
                   </button>
-                  {mentorStep < 5 ? (
+                  {mentorStep < 6 ? (
                     <button
                       onClick={() => setMentorStep(s => s + 1)}
                       disabled={

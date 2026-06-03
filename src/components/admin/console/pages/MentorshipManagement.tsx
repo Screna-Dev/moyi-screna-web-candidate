@@ -52,6 +52,7 @@ type ServiceOffering = {
   expertiseTags: string[];
   description: string;
   notes: string;
+  mentorNote: string;
   topicId?: string;
   price30min?: number;
   price60min?: number;
@@ -107,6 +108,7 @@ function mapApiMentor(api: any): Mentor {
       expertiseTags: [],
       description: matched?.description || "",
       notes: "",
+      mentorNote: matched?.mentorNote || "",
       topicId: matched?.id,
       price30min: Number(matched?.price30min) || 0,
       price60min: Number(matched?.price60min) || 0,
@@ -145,6 +147,8 @@ type Session = {
   payment: number;
   refundEligible: boolean;
   within48h: boolean;
+  mentorNote?: string;
+  studentNote?: string;
 };
 
 function mapApiBooking(api: any): Session {
@@ -175,6 +179,8 @@ function mapApiBooking(api: any): Session {
     payment: Math.round(amount / 100),
     refundEligible: apiStatus === "PENDING" || apiStatus === "CONFIRMED",
     within48h,
+    mentorNote: api?.mentorNote ?? undefined,
+    studentNote: api?.studentNote ?? undefined,
   };
 }
 
@@ -335,6 +341,17 @@ function ServiceEditModal({
         />
       </div>
 
+      {/* Mentor note — shown to student after booking */}
+      <div style={row}>
+        <label style={labelStyle}>Note to students (sent after booking)</label>
+        <textarea
+          value={form.mentorNote}
+          onChange={(e) => setForm((f) => ({ ...f, mentorNote: e.target.value }))}
+          placeholder="How students should prepare, what to bring, links to read first..."
+          style={{ ...inputStyle, height: 68, padding: "8px 10px", resize: "none", lineHeight: 1.5 }}
+        />
+      </div>
+
       {/* Internal notes */}
       <div>
         <label style={labelStyle}>Internal notes (Ops only)</label>
@@ -462,7 +479,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
     offerings: ALL_SERVICE_TYPES.map(t => ({
       typeId: t.id,
       enabled: t.id === "mock-interview" || t.id === "resume-review",
-      rate: 100, pricingType: "per-hour", duration: 60, expertiseTags: [], description: "", notes: ""
+      rate: 100, pricingType: "per-hour", duration: 60, expertiseTags: [], description: "", notes: "", mentorNote: ""
     }))
   });
 
@@ -480,8 +497,9 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           return {
             title: label,
             description: o.description || "",
-            price30min: Math.max(0, Math.round(Number(form.rate30) || 0)),
-            price60min: Math.max(0, Math.round(Number(form.rate60) || 0)),
+            mentorNote: o.mentorNote || "",
+            price30min: Math.max(0, Math.round((Number(form.rate30) || 0) * 100)),
+            price60min: Math.max(0, Math.round((Number(form.rate60) || 0) * 100)),
             bothPricesSet: true,
           };
         });
@@ -735,6 +753,7 @@ function MentorDirectory() {
     const payload = {
       title: serviceLabel,
       description: next.description || "",
+      mentorNote: next.mentorNote || "",
       price30min: Math.max(0, Math.round(Number(next.price30min) || Number(next.rate) || 0)),
       price60min: Math.max(0, Math.round(Number(next.price60min) || Number(next.rate) || 0)),
       active: next.enabled,
@@ -769,6 +788,7 @@ function MentorDirectory() {
       const changed =
         prevOffering.enabled !== next.enabled ||
         prevOffering.description !== next.description ||
+        prevOffering.mentorNote !== next.mentorNote ||
         prevOffering.rate !== next.rate ||
         prevOffering.price30min !== next.price30min ||
         prevOffering.price60min !== next.price60min;
@@ -1307,7 +1327,7 @@ function MentorDirectory() {
 // ─── Sessions ──────────────────────────────────────────────────────────────────
 
 function SessionsTab() {
-  const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", mentor: "all" });
+  const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", when: "all", mentor: "all" });
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<Session | null>(null);
   const [sessionList, setSessionList] = useState<Session[]>([]);
@@ -1325,6 +1345,8 @@ function SessionsTab() {
       const params: Record<string, any> = { page: 0, size: 100 };
       const apiStatus = statusMap[filters.status];
       if (apiStatus) params.status = apiStatus;
+      if (filters.when === "past") params.past = true;
+      else if (filters.when === "upcoming") params.past = false;
       const res = await listBookings(params);
       const content = res?.data?.data?.content || [];
       setSessionList(content.map(mapApiBooking));
@@ -1334,7 +1356,7 @@ function SessionsTab() {
     } finally {
       setLoading(false);
     }
-  }, [filters.status]);
+  }, [filters.status, filters.when]);
 
   useEffect(() => { loadBookings(); }, [loadBookings]);
 
@@ -1372,6 +1394,7 @@ function SessionsTab() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <FilterBar
           filters={[
+            { key: "when", label: "When", options: [{ value: "all", label: "All" }, { value: "upcoming", label: "Upcoming" }, { value: "past", label: "Past" }] },
             { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "upcoming", label: "Upcoming" }, { value: "completed", label: "Completed" }, { value: "cancelled", label: "Cancelled" }] },
             { key: "refund", label: "Refund eligible", options: [{ value: "all", label: "All" }, { value: "eligible", label: "Eligible" }] },
           ]}
@@ -1464,6 +1487,8 @@ function SessionsTab() {
             <DrawerDivider />
             <DrawerField label="Status"  value={<span style={badge(sessionStatusVariant(selected.status))}>{selected.status}</span>} />
             <DrawerField label="Refund"  value={<span style={badge(selected.refundEligible ? "amber" : "gray")}>{selected.refundEligible ? "Eligible" : "Not eligible"}</span>} />
+            {selected.mentorNote && <DrawerField label="Mentor note" value={selected.mentorNote} />}
+            {selected.studentNote && <DrawerField label="Student note" value={selected.studentNote} />}
             {selected.within48h && (
               <div style={{ padding: "8px 10px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7, fontSize: 11, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
                 <AlertTriangle size={12} /> Request is within 48-hour window

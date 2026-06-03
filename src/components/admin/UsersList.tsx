@@ -119,6 +119,7 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
     const roleMap: Record<string, string> = {
       all: '',
       Candidate: 'CANDIDATE',
+      Mentor: 'MENTOR',
       Admin: 'ADMIN',
     };
     setFilters((prev) => ({ ...prev, roleType: roleMap[value] || '' }));
@@ -177,6 +178,9 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
       case 'CANDIDATE':
       case 'Candidate':
         return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
+      case 'MENTOR':
+      case 'Mentor':
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
       case 'ADMIN':
       case 'Admin':
         return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200';
@@ -210,7 +214,7 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
   };
 
   const getRoleDisplayValue = () => {
-    const map: Record<string, string> = { CANDIDATE: 'Candidate', ADMIN: 'Admin' };
+    const map: Record<string, string> = { CANDIDATE: 'Candidate', MENTOR: 'Mentor', ADMIN: 'Admin' };
     return map[filters.roleType] || 'all';
   };
 
@@ -236,6 +240,7 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="Candidate">Candidate</SelectItem>
+              <SelectItem value="Mentor">Mentor</SelectItem>
               <SelectItem value="Admin">Admin</SelectItem>
             </SelectContent>
           </Select>

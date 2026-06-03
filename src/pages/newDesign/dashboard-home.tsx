@@ -730,6 +730,7 @@ type Booking = {
   meetingLink?: string;
   mentorAvgRating?: number;
   studentNote?: string;
+  mentorNote?: string | null;
 };
 
 function getInitials(name?: string): string {
@@ -920,6 +921,12 @@ function MentorshipCard({ plan }: { plan: Plan }) {
               <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Session topic</div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary }}>{nextSession.topicTitle}</div>
+              </div>
+            )}
+            {nextSession.mentorNote && (
+              <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Mentor's note — how to prepare</div>
+                <div style={{ fontSize: 12, color: T.textPrimary, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{nextSession.mentorNote}</div>
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginBottom: 10 }}>
