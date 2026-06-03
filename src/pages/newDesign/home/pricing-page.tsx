@@ -25,11 +25,6 @@ const ACCENT = 'hsl(221,91%,60%)'; // brand blue #2E5BFF — slider, refund dot,
 const PRICING_ACCENT = '#3B6FE8';  // pricing-card accent — badge, CTA, check, save chip
 
 // Membership tier prices (from Claude design / Screna Landing Page.html)
-const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29.9', note: 'Billed $29.9 / month · cancel anytime' },
-  quarterly: { price: '$29.9', note: 'Billed $89.7 / quarter · cancel anytime' },
-};
-
 const PREMIUM_PRICES: Record<BillingCycle, { price: string; note: string }> = {
   monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
   quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
@@ -57,6 +52,10 @@ const LIMITED_GROUPS: FeatureGroup[] = [
       { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
       { text: 'Updated & Personalized job recommendation list', ok: false },
+      { text: 'Interview Insights — full access', ok: false },
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
   {
@@ -73,52 +72,6 @@ const LIMITED_GROUPS: FeatureGroup[] = [
       { text: 'Mentor reviews & ratings', ok: false },
     ],
   },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
-    ],
-  },
-];
-
-// Starter Plan — partial checks
-const STARTER_GROUPS: FeatureGroup[] = [
-  {
-    title: 'Job search support',
-    items: [
-      { text: 'AI Mock Interview — 150 credits / month', ok: true },
-      { text: 'Personal Question Bank', ok: true },
-      { text: 'Updated & Personalized job recommendation list', ok: true },
-      { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
-      { text: 'Daily application progress updates', ok: false },
-    ],
-  },
-  {
-    title: 'Outreach & visibility',
-    items: [
-      { text: 'We reach out to recruiters and request referrals for you', ok: false },
-    ],
-  },
-  {
-    title: 'Mentor access',
-    items: [
-      { text: 'Mentorship Marketplace', ok: true },
-      { text: 'Mock interview, resume review, salary negotiation', ok: true },
-      { text: 'Mentor reviews & ratings', ok: true },
-    ],
-  },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
-    ],
-  },
 ];
 
 // Premium — all checks
@@ -130,6 +83,10 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
       { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: true },
+      { text: '2 annual networking events', ok: true },
+      { text: 'Pre-interview warm-up reminders', ok: true },
     ],
   },
   {
@@ -146,22 +103,13 @@ const PREMIUM_GROUPS: FeatureGroup[] = [
       { text: 'Mentor reviews & ratings', ok: true },
     ],
   },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: true },
-      { text: '2 annual networking events', ok: true },
-      { text: 'Pre-interview warm-up reminders', ok: true },
-    ],
-  },
 ];
 
 // Pricing FAQ (from Pricing.html)
 const FAQS = [
   {
-    q: "What's the difference between Starter and Premium?",
-    a: 'Starter is built for candidates who prefer to job search independently. You get AI practice tools, full mentor access, and a personalized job list — but you handle applications yourself. Premium adds a dedicated human team that finds roles, submits applications on your behalf (up to 200/month), and reaches out to recruiters for referrals. If you want to move fast without doing everything yourself, Premium is the better fit.',
+    q: "What's the difference between the Free Plan and Premium?",
+    a: 'The Free Plan lets you try Screna with pay-as-you-go credits for AI mock interviews and limited Interview Insights — you handle your job search entirely on your own. Premium is the complete job search platform: a dedicated human team finds roles and submits applications on your behalf (up to 200/month), reaches out to recruiters for referrals, gives you a personalized job list, full mentor access, and members-only community benefits. If you want to move fast without doing everything yourself, Premium is the right fit.',
   },
   {
     q: "What's your refund policy?",
@@ -192,8 +140,8 @@ const FAQS = [
     a: 'You only pay for the minutes you actually used. If a 20-minute session ends after 12 minutes, the remaining 8 minutes of credits are automatically refunded to your balance — no action needed.',
   },
   {
-    q: 'Does the Mentorship Marketplace work the same way on Starter and Premium?',
-    a: 'Yes. Both Starter and Premium plans get full access to the Mentorship Marketplace — mock interviews, resume reviews, salary negotiation coaching, and full mentor reviews & ratings. Mentor session costs are separate and paid per session.',
+    q: 'Does the Mentorship Marketplace come with Premium?',
+    a: 'Yes. Premium includes full access to the Mentorship Marketplace — mock interviews, resume reviews, salary negotiation coaching, and full mentor reviews & ratings. Mentor session costs are separate and paid per session.',
   },
 ];
 
@@ -331,7 +279,6 @@ export function PricingPage() {
   const { subscription, subscribe, changeTier, isActing: isSubscribing } = useSubscription();
 
   const [cycle, setCycle] = useState<BillingCycle>('quarterly');
-  const starter = STARTER_PRICES[cycle];
   const premium = PREMIUM_PRICES[cycle];
 
   // Credit pack slider state
@@ -400,13 +347,9 @@ export function PricingPage() {
     navigate('/billing');
   };
 
-  const starterLabel = isActiveMember
-    ? (subscription!.plan === 'starter' ? 'Current plan' : 'Manage plan')
-    : 'Start Starter';
   const premiumLabel = isActiveMember
     ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
     : 'Start Premium';
-  const starterDisabled = (isActiveMember && subscription!.plan === 'starter') || isSubscribing;
   const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
 
   // ─── Handlers (credit packs only — subscriptions not wired) ───
@@ -505,8 +448,8 @@ export function PricingPage() {
               </div>
             </FadeIn>
 
-            {/* 3-tier grid (stays 3-across on desktop) */}
-            <div className="grid grid-cols-1 min-[960px]:grid-cols-3 gap-6 items-stretch">
+            {/* 2-tier grid (Free + Premium) */}
+            <div className="grid grid-cols-1 min-[820px]:grid-cols-2 gap-6 items-stretch max-w-[820px] mx-auto">
               {/* ── Limited Access (Free) ─────────────────── */}
               <FadeIn>
                 <article className="h-full bg-white border border-[#E5E5E5] rounded-2xl p-7 flex flex-col hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)] transition-all">
@@ -573,76 +516,6 @@ export function PricingPage() {
                     </span>
                     <span className="text-[11px] text-[#6B6B6B] leading-[1.45]">
                       Buy a pack when you need it
-                    </span>
-                  </div>
-                </article>
-              </FadeIn>
-
-              {/* ── Starter Plan ───────────────────────── */}
-              <FadeIn delay={0.08}>
-                <article className="h-full bg-white border border-[#E5E5E5] rounded-2xl p-7 flex flex-col hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)] transition-all">
-                  <div className="mb-5">
-                    <div
-                      className="text-[11px] font-[700] tracking-[0.08em] uppercase mb-3"
-                      style={{ color: PRICING_ACCENT }}
-                    >
-                      Starter Plan
-                    </div>
-                    <h3
-                      style={{ fontFamily: "'Playfair Display', serif" }}
-                      className="text-[36px] font-[700] leading-[1.1] tracking-[-0.02em] text-[#0A0A0A] mb-2.5"
-                    >
-                      Self-Guided Access
-                    </h3>
-                    <p className="text-[13px] text-[#6B6B6B] leading-[1.55] max-w-[32ch]">
-                      Practice smarter and job search independently. Built for self-driven candidates with the time to do it right.
-                    </p>
-                  </div>
-
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      style={{ fontFamily: "'Playfair Display', serif" }}
-                      className="text-[42px] font-[700] leading-none tracking-[-0.02em] text-[#0A0A0A]"
-                    >
-                      {starter.price}
-                    </span>
-                    <span className="text-[15px] text-[#6B6B6B] font-[500]">/ month</span>
-                  </div>
-                  <p className="text-[12px] text-[#6B6B6B] mt-2 mb-5">{starter.note}</p>
-
-                  <div className="relative mb-6">
-                    <button
-                      onClick={() => handleSubscribe('starter')}
-                      disabled={starterDisabled}
-                      className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {loadingTier === 'starter' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        starterLabel
-                      )}
-                    </button>
-                  </div>
-
-                  <p className="text-[13px] font-[500] mb-1.5" style={{ color: PRICING_ACCENT }}>
-                    Everything in Limited Access, plus:
-                  </p>
-
-                  <div className="flex flex-col gap-0 mt-2 flex-1">
-                    {STARTER_GROUPS.map((g) => (
-                      <FeatureGroupBlock key={g.title} group={g} />
-                    ))}
-                  </div>
-
-                  <div className="mt-5 bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
-                    <span className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">
-                      Included each month
-                    </span>
-                    <span className="text-[18px] font-[700] tracking-[-0.01em] leading-tight text-[#0A0A0A]">
-                      150 credits / mo
-                    </span>
-                    <span className="text-[11px] text-[#6B6B6B] leading-[1.45]">
-                      1 credit = $0.28 = 1 min of AI mock interview (Audio mode)
                     </span>
                   </div>
                 </article>
@@ -1046,7 +919,7 @@ export function PricingPage() {
 
       <MembershipOnboardingModal
         open={onboardingTier !== null}
-        tier={onboardingTier ?? 'starter'}
+        tier={onboardingTier ?? 'premium'}
         onClose={handleOnboardingClose}
       />
     </div>
