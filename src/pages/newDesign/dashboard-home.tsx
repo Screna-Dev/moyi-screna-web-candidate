@@ -1398,7 +1398,7 @@ function formatMonthLabel(iso?: string): string {
 function CommunityCardSkeleton() {
   return (
     <Panel>
-      <PanelHead title="Community Picks" />
+      <PanelHead title="Interview Prep Note" />
       <Skeleton width="100%" height={36} radius={8} style={{ marginBottom: 12 }} />
       {[0, 1, 2].map((i) => (
         <div key={i} style={{ padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${T.border}` }}>
@@ -1483,7 +1483,7 @@ function CommunityCard() {
 
   return (
     <Panel>
-      <PanelHead title="Community Picks" linkLabel="Browse community" onLink={() => navigate('/interview-insights')} />
+      <PanelHead title="Interview Prep Note" linkLabel="Browse All" onLink={() => navigate('/interview-insights')} />
 
       {/* Matched */}
       <div style={{
@@ -1507,7 +1507,7 @@ function CommunityCard() {
           )}
         </div>
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/profile')}
           style={{
             fontSize: 12, color: T.blue500, fontWeight: 500,
             display: 'flex', alignItems: 'center', gap: 2,
@@ -1530,7 +1530,7 @@ function CommunityCard() {
         </div>
       ) : (
         posts.map((post, idx) => (
-          <PostItem key={post.id || idx} post={post} first={idx === 0} onClick={() => navigate(`/interview-insights/${post.id}`)} />
+          <PostItem key={post.id || idx} post={post} first={idx === 0} onClick={() => navigate(`/experience/${post.id}`)} />
         ))
       )}
     </Panel>
