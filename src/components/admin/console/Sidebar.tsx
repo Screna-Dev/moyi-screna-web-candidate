@@ -14,6 +14,7 @@ import {
   Clock,
 } from "lucide-react";
 import { C } from "./ui/styles";
+import { useAuth } from "@/contexts/AuthContext";
 
 export type Page =
   | "command-center"
@@ -33,6 +34,7 @@ interface SidebarProps {
   currentPage: Page;
   onPageChange: (page: Page) => void;
   userRole?: string;
+  jobApplicationsBadge?: string;
 }
 
 type SidebarSection = {
@@ -40,7 +42,7 @@ type SidebarSection = {
   items: { id: Page; label: string; icon: React.ElementType; badge?: string }[];
 };
 
-const sections: SidebarSection[] = [
+const buildSections = (jobApplicationsBadge?: string): SidebarSection[] => [
   {
     items: [
       { id: "command-center",      label: "Command Center",      icon: LayoutDashboard },
@@ -49,7 +51,7 @@ const sections: SidebarSection[] = [
   {
     label: "Operations",
     items: [
-      { id: "resume-applications", label: "Job Applications", icon: FileText, badge: "34" },
+      { id: "resume-applications", label: "Job Applications", icon: FileText, badge: jobApplicationsBadge },
       { id: "mentorship",          label: "Mentorship",       icon: Users },
     ],
   },
@@ -79,8 +81,10 @@ const sections: SidebarSection[] = [
   },
 ];
 
-export function Sidebar({ currentPage, onPageChange, userRole }: SidebarProps) {
+export function Sidebar({ currentPage, onPageChange, userRole, jobApplicationsBadge }: SidebarProps) {
+  const { user } = useAuth();
   const role = (userRole || "").toUpperCase();
+  const sections = buildSections(jobApplicationsBadge);
   const visibleSections: SidebarSection[] = sections
     .map((section) => ({
       ...section,
@@ -91,6 +95,12 @@ export function Sidebar({ currentPage, onPageChange, userRole }: SidebarProps) {
       }),
     }))
     .filter((section) => section.items.length > 0);
+
+  const footerName = user?.name?.trim() || user?.email || "Account";
+  const footerEmail = user?.email || "";
+  const footerInitials = user?.name?.trim()
+    ? user.name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase()
+    : (user?.email?.[0]?.toUpperCase() ?? "A");
 
   return (
     <aside
@@ -264,11 +274,11 @@ export function Sidebar({ currentPage, onPageChange, userRole }: SidebarProps) {
             flexShrink: 0,
           }}
         >
-          JD
+          {footerInitials}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: C.text, lineHeight: 1.2 }}>Jane Doe</div>
-          <div style={{ fontSize: 10, color: C.textSub }}>admin@screna.ai</div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: C.text, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{footerName}</div>
+          <div style={{ fontSize: 10, color: C.textSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{footerEmail}</div>
         </div>
       </div>
     </aside>
