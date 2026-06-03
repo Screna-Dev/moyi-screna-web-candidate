@@ -58,6 +58,7 @@ import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-ov
 import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
 import { MentorshipPage } from './components/newDesign/mentorship';
 import { MentorshipMarketplacePage } from './components/newDesign/mentorship-marketplace';
+import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketplace-list';
 import { MentorDetailsPage } from './components/newDesign/mentor-details';
 import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
@@ -185,6 +186,11 @@ export const router = createBrowserRouter([
         {
           path: '/marketplace',
           element: <MentorshipMarketplacePage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/mentor-marketplace',
+          element: <MentorMarketplaceListPage />,
           errorElement: <ErrorBoundary />,
         },
         {
