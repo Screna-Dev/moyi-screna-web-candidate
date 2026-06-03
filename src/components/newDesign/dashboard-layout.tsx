@@ -9,12 +9,12 @@ import {
   Home,
   LogOut,
   MessageSquare,
-  ChevronDown,
   FileText,
   History,
   User,
   Sparkles,
   ShieldCheck,
+  Users,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -42,6 +42,7 @@ type UserData = {
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Briefcase, label: 'Jobs', path: '/applications', premiumOnly: true },
+  { icon: Users, label: 'Mentor Marketplace', path: '/mentor-marketplace' },
   { icon: History, label: 'Training History', path: '/history' },
   { icon: FileText, label: 'My Contributions', path: '/contributions' },
 ];
@@ -236,29 +237,6 @@ function GlobalTopHeader({
     return currentPath === path;
   };
 
-  // Shared dropdown item style — Navbar-style: serif title, no icon
-  const dropdownPanelClass = 'absolute top-full left-1/2 -translate-x-1/2 mt-3 w-64 bg-card border border-border rounded-xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 z-50 p-1.5';
-  const dropdownItem = (to: string, title: string, desc: string, badge?: string) => (
-    <Link
-      key={to}
-      to={to}
-      className="flex flex-col gap-0.5 px-3.5 py-3 rounded-lg hover:bg-secondary transition-colors"
-    >
-      <span className="flex items-center gap-2">
-        <span
-          className="text-[15px] font-medium text-foreground leading-snug"
-          style={{ fontFamily: "'Playfair Display', serif" }}
-        >
-          {title}
-        </span>
-        {badge && (
-          <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-medium">{badge}</span>
-        )}
-      </span>
-      <span className="text-xs text-muted-foreground leading-relaxed">{desc}</span>
-    </Link>
-  );
-
   if (user?.role === 'ADMIN') {
     return (
       <header className="sticky top-[var(--topbar-h)] z-50 bg-background border-b border-border h-14 flex items-center px-4 sm:px-6">
@@ -299,33 +277,23 @@ function GlobalTopHeader({
           Coach
         </Link>
 
-        {/* Practice dropdown */}
-        <div className="relative group">
-          <button
-            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Practice
-            <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-          </button>
-          <div className={dropdownPanelClass}>
-            {dropdownItem('/personalized-practice', 'Personalized Mock', 'AI-powered mock interviews tailored to your role and goals.')}
-          </div>
-        </div>
+        {/* Practice (plain link) */}
+        <Link
+          to="/personalized-practice"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/mock-interview') ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          Quick AI Mock
+        </Link>
 
-        {/* Community dropdown */}
-        <div className="relative group">
-          <button
-            className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: isLinkActive('/question-bank') ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Community
-            <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-80 group-hover:translate-y-px transition-all duration-200" />
-          </button>
-          <div className={dropdownPanelClass}>
-            {dropdownItem('/interview-insights', 'Interview Insights', 'Learn from real interview experiences shared by other candidates.')}
-          </div>
-        </div>
+        {/* Community (plain link) */}
+        <Link
+          to="/interview-insights"
+          className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
+          style={{ fontWeight: 450, color: isLinkActive('/question-bank') ? '#2E5BFF' : '#2A2A2A' }}
+        >
+          Interview Prep Note
+        </Link>
 
         <Link
           to="/pricing"

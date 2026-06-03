@@ -138,6 +138,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // ── Target Role state ──
   const [roleMode, setRoleMode] = useState<'view' | 'edit'>('view');
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [customRoles, setCustomRoles] = useState<string[]>([]);
   const [roleQuery, setRoleQuery] = useState('');
 
   // ── Work Authorization state ──
@@ -240,10 +241,15 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       setUserPrefs(data);
       if (data?.target_roles?.length) {
         const allRoles = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles);
-        const ids = data.target_roles
-          .map(label => allRoles.find(r => r.label.toLowerCase() === label.toLowerCase())?.id)
-          .filter((id): id is string => Boolean(id));
+        const ids: string[] = [];
+        const customs: string[] = [];
+        for (const label of data.target_roles) {
+          const match = allRoles.find(r => r.label.toLowerCase() === label.toLowerCase());
+          if (match) ids.push(match.id);
+          else customs.push(label);
+        }
         if (ids.length) setSelectedRoleIds(ids);
+        if (customs.length) setCustomRoles(customs);
       }
       if (data?.target_companies) setSpecificCompanies(data.target_companies);
       if (data?.company_size_categories) {
@@ -277,14 +283,41 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   }, [roleQuery]);
 
   // Labels of the currently selected options in the edit UI (used when saving)
-  const selectedRoleLabels = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles)
-    .filter(r => selectedRoleIds.includes(r.id))
-    .map(r => r.label);
+  const selectedRoleLabels = [
+    ...PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles)
+      .filter(r => selectedRoleIds.includes(r.id))
+      .map(r => r.label),
+    ...customRoles,
+  ];
 
   const toggleRole = (id: string) => {
     setSelectedRoleIds(prev =>
       prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
     );
+  };
+
+  const addCustomRole = (label: string) => {
+    const trimmed = label.trim();
+    if (trimmed.length < 2) return;
+    const lower = trimmed.toLowerCase();
+    // Skip if it matches an existing predefined role — toggle that instead
+    const match = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(
+      r => r.label.toLowerCase() === lower,
+    );
+    if (match) {
+      if (!selectedRoleIds.includes(match.id)) {
+        setSelectedRoleIds(prev => [...prev, match.id]);
+      }
+      setRoleQuery('');
+      return;
+    }
+    if (customRoles.some(r => r.toLowerCase() === lower)) return;
+    setCustomRoles(prev => [...prev, trimmed]);
+    setRoleQuery('');
+  };
+
+  const removeCustomRole = (label: string) => {
+    setCustomRoles(prev => prev.filter(r => r !== label));
   };
 
   const displayRole = userPrefs?.target_roles?.length
@@ -624,17 +657,62 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
           {!loadingPreferences && roleMode === 'edit' && (
             <div className="px-5 py-4 flex flex-col gap-3">
-              <p className="text-xs text-muted-foreground">Select all that apply</p>
+              <p className="text-xs text-muted-foreground">Select from suggestions or type your own</p>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
                   value={roleQuery}
                   onChange={e => setRoleQuery(e.target.value)}
-                  placeholder="Search roles..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && roleQuery.trim()) {
+                      e.preventDefault();
+                      addCustomRole(roleQuery);
+                    }
+                  }}
+                  placeholder="Search or type a role…"
                   className="w-full pl-8 pr-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
+              {(() => {
+                const q = roleQuery.trim();
+                if (!q) return null;
+                const allLabels = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).map(r => r.label.toLowerCase());
+                const inPredefined = allLabels.includes(q.toLowerCase());
+                const inCustom = customRoles.some(r => r.toLowerCase() === q.toLowerCase());
+                if (inPredefined || inCustom) return null;
+                return (
+                  <button
+                    onClick={() => addCustomRole(q)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-primary/40 text-sm text-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add &ldquo;{q}&rdquo; as custom role
+                  </button>
+                );
+              })()}
               <div className="max-h-[240px] overflow-y-auto flex flex-col gap-3 pr-1">
+                {customRoles.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Your custom roles</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {customRoles.map(role => (
+                        <span
+                          key={role}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-primary bg-primary/10 text-sm text-primary"
+                        >
+                          {role}
+                          <button
+                            onClick={() => removeCustomRole(role)}
+                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary/15 transition-colors"
+                            aria-label={`Remove ${role}`}
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {filteredRoleCategories.map(cat => (
                   <div key={cat.id}>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{cat.label}</p>

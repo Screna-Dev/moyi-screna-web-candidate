@@ -618,7 +618,19 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
             ref={searchRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search roles…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && query.trim()) {
+                e.preventDefault();
+                const custom = query.trim();
+                const matchedRole = ALL_ROLES.find(r => r.label.toLowerCase() === custom.toLowerCase());
+                const idToAdd = matchedRole?.id ?? custom;
+                if (!data.targetRoles.includes(idToAdd)) {
+                  update({ targetRoles: [...data.targetRoles, idToAdd] });
+                }
+                setQuery('');
+              }
+            }}
+            placeholder="Search or type your own role…"
             className="flex-1 text-[13.5px] text-[hsl(222,22%,15%)] placeholder:text-[hsl(222,12%,62%)] bg-transparent outline-none"
           />
           {query && (
@@ -628,6 +640,35 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
           )}
         </div>
       </div>
+
+      {/* Prominent custom-add CTA — shows as soon as user types something not in the list */}
+      {query.trim() &&
+        !ALL_ROLES.some(r => r.label.toLowerCase() === query.trim().toLowerCase()) &&
+        !data.targetRoles.includes(query.trim()) && (
+          <button
+            type="button"
+            onClick={() => {
+              const custom = query.trim();
+              if (!data.targetRoles.includes(custom)) {
+                update({ targetRoles: [...data.targetRoles, custom] });
+              }
+              setQuery('');
+            }}
+            className="w-full mb-3 flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-dashed border-[hsl(221,91%,60%)]/40 bg-[hsl(221,91%,60%)]/5 hover:bg-[hsl(221,91%,60%)]/10 transition-colors text-left"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-md bg-[hsl(221,91%,60%)]/15 flex items-center justify-center shrink-0">
+                <Plus className="w-3.5 h-3.5 text-[hsl(221,91%,55%)]" />
+              </div>
+              <span className="text-[13px] font-medium text-[hsl(222,22%,18%)] truncate">
+                Add &ldquo;<span className="text-[hsl(221,91%,55%)]">{query.trim()}</span>&rdquo; as a custom role
+              </span>
+            </span>
+            <span className="text-[10px] font-medium text-[hsl(221,91%,55%)] bg-[hsl(221,91%,60%)]/12 px-2 py-0.5 rounded-full border border-[hsl(221,91%,60%)]/20 shrink-0">
+              Press Enter
+            </span>
+          </button>
+        )}
 
       {/* Role list — scrollable */}
       <div className="w-full relative">
@@ -728,7 +769,7 @@ function Screen3TargetRole({ data, update, onNext, onBack }: {
       </div>
 
       <p className="text-[11px] text-[hsl(222,12%,62%)] mt-2.5 self-start">
-        {ALL_ROLES.length} roles across {ROLE_CATEGORIES.length} categories
+        {ALL_ROLES.length} roles across {ROLE_CATEGORIES.length} categories — or type your own and press Enter
       </p>
 
       {/* Role clarity — slides in after selection */}

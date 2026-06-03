@@ -1029,7 +1029,13 @@ export function JobApplyTab() {
                   <input
                     value={roleSearch}
                     onChange={(e) => setRoleSearch(e.target.value)}
-                    placeholder="Search job titles…"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && roleSearch.trim()) {
+                        e.preventDefault();
+                        addEditRole(roleSearch);
+                      }
+                    }}
+                    placeholder="Search or type a job title…"
                     className="w-full pl-9 pr-9 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
                   />
                   {roleSearch.length > 0 && (
@@ -1045,34 +1051,52 @@ export function JobApplyTab() {
 
                 {/* Suggestion list */}
                 {(() => {
+                  const query = roleSearch.trim();
                   const suggestions = ROLE_SUGGESTIONS.filter(
                     (r) =>
-                      r.toLowerCase().includes(roleSearch.trim().toLowerCase()) &&
+                      r.toLowerCase().includes(query.toLowerCase()) &&
                       !editRoles.some((er) => er.toLowerCase() === r.toLowerCase()),
                   );
-                  if (suggestions.length === 0) {
-                    return (
-                      <p className="mt-2.5 text-xs text-muted-foreground pl-1">No matching roles.</p>
-                    );
-                  }
+                  const alreadyExists =
+                    !!query &&
+                    (ROLE_SUGGESTIONS.some((r) => r.toLowerCase() === query.toLowerCase()) ||
+                      editRoles.some((er) => er.toLowerCase() === query.toLowerCase()));
+                  const canAddCustom = !!query && !alreadyExists;
                   return (
-                    <div className="mt-2 border border-border rounded-lg overflow-hidden divide-y divide-border max-h-[260px] overflow-y-auto">
-                      {suggestions.map((role) => (
+                    <>
+                      {canAddCustom && (
                         <button
-                          key={role}
-                          onClick={() => addEditRole(role)}
-                          className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left text-foreground hover:bg-muted/40 transition-colors"
+                          onClick={() => addEditRole(query)}
+                          className="mt-2 w-full flex items-center justify-between px-3 py-2.5 text-sm text-left rounded-lg border border-dashed border-primary/40 text-primary hover:bg-primary/5 transition-colors"
                         >
-                          <span>{role}</span>
-                          <Plus className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <span>Add &ldquo;{query}&rdquo; as custom role</span>
+                          <Plus className="w-3.5 h-3.5 shrink-0" />
                         </button>
-                      ))}
-                    </div>
+                      )}
+                      {suggestions.length === 0 ? (
+                        !canAddCustom && (
+                          <p className="mt-2.5 text-xs text-muted-foreground pl-1">No matching roles.</p>
+                        )
+                      ) : (
+                        <div className="mt-2 border border-border rounded-lg overflow-hidden divide-y divide-border max-h-[260px] overflow-y-auto">
+                          {suggestions.map((role) => (
+                            <button
+                              key={role}
+                              onClick={() => addEditRole(role)}
+                              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left text-foreground hover:bg-muted/40 transition-colors"
+                            >
+                              <span>{role}</span>
+                              <Plus className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
 
                 <p className="mt-2.5 text-xs text-muted-foreground">
-                  Select from the suggested job titles above.
+                  Pick a suggested title or type your own and press Enter.
                 </p>
               </div>
             </div>
