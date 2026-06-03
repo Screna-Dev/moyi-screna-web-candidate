@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
-import { MembershipOnboardingModal } from '@/components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import { useSubscription, type Tier } from '@/hooks/useSubscription';
@@ -917,11 +916,6 @@ const PRICES: Record<BillingCycle, { price: string; note: string }> = {
   quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
 };
 
-const STARTER_PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$29.9',  note: 'Billed $29.9 / month · cancel anytime' },
-  quarterly: { price: '$29.9',  note: 'Billed $89.7 / quarter · cancel anytime' },
-};
-
 const LIMITED_INCLUDED = [
   'AI mock interview (credits required)',
   'Limited Interview Insights',
@@ -939,6 +933,10 @@ const LIMITED_GROUPS: TierFeatureGroup[] = [
       { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
       { text: 'Daily application progress updates', ok: false },
       { text: 'Updated & Personalized job recommendation list', ok: false },
+      { text: 'Interview Insights — full access', ok: false },
+      { text: 'Weekly members-only live sessions', ok: false },
+      { text: '2 annual networking events', ok: false },
+      { text: 'Pre-interview warm-up reminders', ok: false },
     ],
   },
   {
@@ -953,50 +951,6 @@ const LIMITED_GROUPS: TierFeatureGroup[] = [
       { text: 'Mentor reviews & ratings', ok: false },
     ],
   },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
-    ],
-  },
-];
-
-// Starter Plan — partial checks
-const STARTER_GROUPS: TierFeatureGroup[] = [
-  {
-    title: 'Job search support',
-    items: [
-      { text: 'AI Mock Interview — 150 credits / month', ok: true },
-      { text: 'Personal Question Bank', ok: true },
-      { text: 'Updated & Personalized job recommendation list', ok: true },
-      { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
-      { text: 'Daily application progress updates', ok: false },
-    ],
-  },
-  {
-    title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
-  },
-  {
-    title: 'Mentor access',
-    items: [
-      { text: 'Mentorship Marketplace', ok: true },
-      { text: 'Mock interview, resume review, salary negotiation', ok: true },
-      { text: 'Mentor reviews & ratings', ok: true },
-    ],
-  },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
-    ],
-  },
 ];
 
 // Full Access (Premium) — all checks (matches Claude design)
@@ -1008,6 +962,10 @@ const FULL_GROUPS: TierFeatureGroup[] = [
       { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
       { text: 'Daily application progress updates', ok: true },
       { text: 'Updated & Personalized job recommendation list', ok: true },
+      { text: 'Interview Insights — full access', ok: true },
+      { text: 'Weekly members-only live sessions', ok: true },
+      { text: '2 annual networking events', ok: true },
+      { text: 'Pre-interview warm-up reminders', ok: true },
     ],
   },
   {
@@ -1020,15 +978,6 @@ const FULL_GROUPS: TierFeatureGroup[] = [
       { text: 'Full Mentor Marketplace', ok: true },
       { text: 'Mock interview, resume review, salary negotiation', ok: true },
       { text: 'Mentor reviews & ratings', ok: true },
-    ],
-  },
-  {
-    title: 'Community benefits',
-    items: [
-      { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: true },
-      { text: '2 annual networking events', ok: true },
-      { text: 'Pre-interview warm-up reminders', ok: true },
     ],
   },
 ];
@@ -1076,11 +1025,9 @@ function Pricing() {
   const { subscription, subscribe, changeTier, isActing: isSubscribing } = useSubscription();
 
   const [cycle, setCycle] = useState<BillingCycle>('quarterly');
-  const starter = STARTER_PRICES[cycle];
   const { price, note } = PRICES[cycle];
 
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
-  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
 
   const isActiveMember = subscription !== null && subscription.status !== 'canceled';
 
@@ -1098,19 +1045,13 @@ function Pricing() {
       if (subscription && subscription.status === 'canceled') {
         const ok = await changeTier(plan);
         if (!ok) return;
-        if (plan === 'premium') {
-          navigate('/premium-onboarding');
-        } else {
-          setOnboardingTier(plan);
-        }
+        navigate('/premium-onboarding');
       } else {
         const url = await subscribe(plan, cycle);
         if (url) {
           window.location.href = url;
-        } else if (plan === 'premium') {
-          navigate('/premium-onboarding');
         } else {
-          setOnboardingTier(plan);
+          navigate('/premium-onboarding');
         }
       }
     } finally {
@@ -1118,18 +1059,9 @@ function Pricing() {
     }
   };
 
-  const handleOnboardingClose = () => {
-    setOnboardingTier(null);
-    navigate('/billing');
-  };
-
-  const starterLabel = isActiveMember
-    ? (subscription!.plan === 'starter' ? 'Current plan' : 'Manage plan')
-    : 'Start Starter';
   const premiumLabel = isActiveMember
     ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
     : 'Start Premium';
-  const starterDisabled = (isActiveMember && subscription!.plan === 'starter') || isSubscribing;
   const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
 
   return (
@@ -1173,8 +1105,8 @@ function Pricing() {
           </div>
         </div>
 
-        {/* Tier cards — 3 across on desktop */}
-        <div className="grid grid-cols-1 min-[960px]:grid-cols-3 gap-6 items-stretch">
+        {/* Tier cards — Free + Premium */}
+        <div className="grid grid-cols-1 min-[820px]:grid-cols-2 gap-6 items-stretch max-w-[820px] mx-auto">
           {/* ── Limited Access ─────────────────────── */}
           <div className="bg-white border border-[#E5E5E5] rounded-2xl p-7 flex flex-col transition-all duration-300 hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)]" style={{ padding: '28px 24px' }}>
             <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Free Plan</p>
@@ -1211,42 +1143,6 @@ function Pricing() {
                 <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Credits</p>
                 <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">Pay-as-you-go</p>
                 <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">Buy a pack when you need it</p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Starter Plan ───────────────────────── */}
-          <div className="bg-white border border-[#E5E5E5] rounded-2xl flex flex-col transition-all duration-300 hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)]" style={{ padding: '28px 24px' }}>
-            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Starter Plan</p>
-            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Self-Guided Access</h3>
-            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
-              Practice smarter and job search independently. Built for self-driven candidates with the time to do it right.
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">{starter.price}</span>
-              <span className="text-[15px] text-[#6B6B6B] font-[500]">/ month</span>
-            </div>
-            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{starter.note}</p>
-
-            <div className="relative mb-6">
-              <button
-                onClick={() => handleSubscribe('starter')}
-                disabled={starterDisabled}
-                className="flex items-center justify-center w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] text-center hover:bg-[#F7F7F7] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loadingTier === 'starter' ? <Loader2 className="w-4 h-4 animate-spin" /> : starterLabel}
-              </button>
-            </div>
-
-            <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
-
-            <TierFeatureGroups groups={STARTER_GROUPS} />
-
-            <div className="mt-auto pt-5">
-              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
-                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Included each month</p>
-                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">150 credits / mo</p>
-                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">1 credit = $0.28 = 1 min of AI mock interview (Audio mode)</p>
               </div>
             </div>
           </div>
@@ -1295,11 +1191,6 @@ function Pricing() {
           </div>
         </div>
       </div>
-      <MembershipOnboardingModal
-        open={onboardingTier !== null}
-        tier={onboardingTier ?? 'starter'}
-        onClose={handleOnboardingClose}
-      />
     </section>
   );
 }
