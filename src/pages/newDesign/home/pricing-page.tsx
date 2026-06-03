@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../../../components/newDesign/home/navbar';
 import { Footer } from '../../../components/newDesign/home/footer';
-import { MembershipOnboardingModal } from '../../../components/newDesign/membership-onboarding-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
 import { useSubscription, type Tier } from '@/hooks/useSubscription';
@@ -291,11 +290,6 @@ export function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
   const [openFaq, setOpenFaq] = useState<number>(0);
 
-  // Starter onboarding (Discord welcome) shown inline when no Stripe redirect
-  // happens (re-subscribe via changeTier, or card-on-file no-URL response).
-  // Premium onboarding runs at /premium-onboarding after payment completes.
-  const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
-
   // Subscription lifecycle:
   //   FREE (no row)         → POST /subscriptions          (Stripe Checkout)
   //   CANCELED (period end) → POST /subscriptions/tier     (creates new row)
@@ -314,37 +308,24 @@ export function PricingPage() {
     setLoadingTier(plan);
     try {
       if (subscription && subscription.status === 'canceled') {
-        // Re-subscribe path — no Stripe redirect. Premium hands off to the
-        // dedicated onboarding page; Starter shows Discord welcome inline.
+        // Re-subscribe path — no Stripe redirect.
         const ok = await changeTier(plan);
         if (!ok) return;
-        if (plan === 'premium') {
-          navigate('/premium-onboarding');
-        } else {
-          setOnboardingTier(plan);
-        }
+        navigate('/premium-onboarding');
       } else {
         // First-time subscription — Stripe redirect. Premium activates the
         // onboarding wizard on return via /payment-success → /premium-onboarding.
         const url = await subscribe(plan, cycle);
         if (url) {
           window.location.href = url;
-        } else if (plan === 'premium') {
-          // No URL (e.g. card on file) — still send Premium through the
-          // post-payment onboarding wizard.
-          navigate('/premium-onboarding');
         } else {
-          setOnboardingTier(plan);
+          // No URL (e.g. card on file) — go straight to onboarding wizard.
+          navigate('/premium-onboarding');
         }
       }
     } finally {
       setLoadingTier(null);
     }
-  };
-
-  const handleOnboardingClose = () => {
-    setOnboardingTier(null);
-    navigate('/billing');
   };
 
   const premiumLabel = isActiveMember
@@ -916,12 +897,6 @@ export function PricingPage() {
       </main>
 
       <Footer />
-
-      <MembershipOnboardingModal
-        open={onboardingTier !== null}
-        tier={onboardingTier ?? 'premium'}
-        onClose={handleOnboardingClose}
-      />
     </div>
   );
 }
