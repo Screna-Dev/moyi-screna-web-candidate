@@ -631,6 +631,16 @@ export function MentorshipMarketplacePage() {
     }
     setMentorSubmitting(true);
     try {
+      const enabledTopics = mentorForm.topics
+        .filter(t => t.enabled)
+        .map(t => ({
+          title: t.title,
+          description: t.description,
+          mentorNote: t.mentorNote,
+          price30min: Math.max(0, Math.round((parseFloat(t.price30) || 0) * 100)),
+          price60min: Math.max(0, Math.round((parseFloat(t.price60) || 0) * 100)),
+          bothPricesSet: true,
+        }));
       await applyMentor({
         bio: mentorForm.bio,
         headline: mentorForm.headline,
