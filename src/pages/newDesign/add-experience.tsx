@@ -1006,7 +1006,7 @@ export function AddExperiencePage() {
       <div className="h-14 border-b border-[hsl(220,16%,92%)] bg-white/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-30 sticky top-0">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/interview-insights')}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] transition-colors text-sm"
           >
             <ArrowLeft className="w-4 h-4" />

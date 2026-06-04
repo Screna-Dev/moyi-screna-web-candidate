@@ -920,7 +920,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                   ))}
                 </div>
                 {!editingCompanies && (
-                  <p className="text-xs text-muted-foreground -mt-1">Screna targets outreach and applies to open roles at these companies on your behalf.</p>
+                  <p className="text-xs text-muted-foreground -mt-1">Screna delivers relevant InterviewPrep Notes to your Dashboard every day, tailored to your preferences.</p>
                 )}
               </>
             ) : (
@@ -1023,7 +1023,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                       )}
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">This affects which jobs we match you to.</p>
                 </motion.div>
               )}
             </AnimatePresence>

@@ -190,6 +190,11 @@ export function ExperienceDetailPage() {
   const [repliesLoadingSet, setRepliesLoadingSet] = useState<Set<string>>(new Set());
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<
+    | { type: 'comment'; commentId: string }
+    | { type: 'reply'; replyId: string; commentId: string }
+    | null
+  >(null);
 
   // ── Like / Save state ──
   const [liked, setLiked] = useState(false);
@@ -286,9 +291,9 @@ export function ExperienceDetailPage() {
     }
   }, [fetchPost]);
 
-  const fetchComments = useCallback(async () => {
+  const fetchComments = useCallback(async (silent = false) => {
     if (!id) return;
-    setCommentsLoading(true);
+    if (!silent) setCommentsLoading(true);
     try {
       const res = await getComments(id, { page: 0 });
       const data = res.data?.data ?? res.data;
@@ -296,7 +301,7 @@ export function ExperienceDetailPage() {
     } catch {
       // silent
     } finally {
-      setCommentsLoading(false);
+      if (!silent) setCommentsLoading(false);
     }
   }, [id]);
 
@@ -515,7 +520,9 @@ export function ExperienceDetailPage() {
     try {
       await createReply(commentId, { content: text });
       setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: (c.replyCount ?? 0) + 1 } : c));
       await fetchReplies(commentId, true);
+      fetchComments(true);
     } catch {
       // silent
     } finally {
@@ -528,6 +535,8 @@ export function ExperienceDetailPage() {
     try {
       await deleteReply(replyId);
       setReplies(prev => ({ ...prev, [commentId]: (prev[commentId] ?? []).filter(r => r.id !== replyId) }));
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: Math.max(0, (c.replyCount ?? 0) - 1) } : c));
+      fetchComments(true);
     } catch {
       // silent
     } finally {
@@ -535,9 +544,60 @@ export function ExperienceDetailPage() {
     }
   };
 
+  const isPendingDeleting = pendingDelete
+    ? (pendingDelete.type === 'comment'
+        ? deletingCommentId === pendingDelete.commentId
+        : deletingReplyId === pendingDelete.replyId)
+    : false;
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.type === 'comment') {
+      await handleDeleteComment(pendingDelete.commentId);
+    } else {
+      await handleDeleteReply(pendingDelete.replyId, pendingDelete.commentId);
+    }
+    setPendingDelete(null);
+  };
+
 
   const gateOverlays = (
     <>
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open && !isPendingDeleting) setPendingDelete(null); }}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <CircleAlert className="w-5 h-5 text-red-600" />
+              </div>
+              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">
+                Delete this {pendingDelete?.type === 'reply' ? 'reply' : 'comment'}?
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
+              This action cannot be undone. Your {pendingDelete?.type === 'reply' ? 'reply' : 'comment'} will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={isPendingDeleting}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmPendingDelete}
+              disabled={isPendingDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
+            >
+              {isPendingDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={showPaymentPrompt} onOpenChange={(open) => { if (!open) setShowPaymentPrompt(false); }}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
@@ -1248,7 +1308,7 @@ export function ExperienceDetailPage() {
                               </button>
                               {isOwn && (
                                 <button
-                                  onClick={() => handleDeleteComment(comment.id)}
+                                  onClick={() => setPendingDelete({ type: 'comment', commentId: comment.id })}
                                   disabled={deletingCommentId === comment.id}
                                   className="flex items-center gap-1 text-xs hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                                 >
@@ -1300,7 +1360,7 @@ export function ExperienceDetailPage() {
                                               <div className="text-xs text-[hsl(222,12%,30%)] leading-relaxed"><Markdown className="text-xs text-[hsl(222,12%,30%)]">{reply.content}</Markdown></div>
                                               {isOwnReply && (
                                                 <button
-                                                  onClick={() => handleDeleteReply(reply.id, comment.id)}
+                                                  onClick={() => setPendingDelete({ type: 'reply', replyId: reply.id, commentId: comment.id })}
                                                   disabled={deletingReplyId === reply.id}
                                                   className="mt-1 flex items-center gap-1 text-[10px] text-[hsl(222,12%,55%)] hover:text-red-500 transition-colors opacity-0 group-hover/reply:opacity-100"
                                                 >
