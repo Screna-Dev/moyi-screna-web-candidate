@@ -132,6 +132,11 @@ function formatRelativeTime(isoString: string): string {
   return `${days}d ago`;
 }
 
+// Helper: check whether a comment/reply is awaiting moderation
+function isPendingStatus(status?: string): boolean {
+  return !!status && status.toUpperCase() === 'PENDING';
+}
+
 // Helper: get hint status for a question
 function getQuestionHintStatus(
   qId: string,
@@ -479,8 +484,8 @@ export function ExperienceDetailPage() {
     }
   };
 
-  const fetchReplies = useCallback(async (commentId: string) => {
-    if (replies[commentId]) return;
+  const fetchReplies = useCallback(async (commentId: string, force = false) => {
+    if (!force && replies[commentId]) return;
     setRepliesLoadingSet(prev => new Set(prev).add(commentId));
     try {
       const res = await getReplies(commentId, { page: 0 });
@@ -510,7 +515,7 @@ export function ExperienceDetailPage() {
     try {
       await createReply(commentId, { content: text });
       setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
-      await fetchReplies(commentId);
+      await fetchReplies(commentId, true);
     } catch {
       // silent
     } finally {
@@ -1209,6 +1214,12 @@ export function ExperienceDetailPage() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-sm font-semibold text-[hsl(222,22%,15%)]">{comment.user?.name || 'Anonymous'}</span>
                               <span className="text-xs text-[hsl(222,12%,55%)]">· {formatRelativeTime(comment.createdAt)}</span>
+                              {isPendingStatus(comment.status) && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  Pending review
+                                </span>
+                              )}
                             </div>
 
                             {refQuestion && (
@@ -1276,9 +1287,15 @@ export function ExperienceDetailPage() {
                                               {replyInitials}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                              <div className="flex items-center gap-1.5 mb-0.5">
+                                              <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                                                 <span className="text-xs font-semibold text-[hsl(222,22%,15%)]">{reply.user?.name || 'Anonymous'}</span>
                                                 <span className="text-[10px] text-[hsl(222,12%,55%)]">· {formatRelativeTime(reply.createdAt)}</span>
+                                                {isPendingStatus(reply.status) && (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                                                    <Clock className="w-2 h-2" />
+                                                    Pending review
+                                                  </span>
+                                                )}
                                               </div>
                                               <div className="text-xs text-[hsl(222,12%,30%)] leading-relaxed"><Markdown className="text-xs text-[hsl(222,12%,30%)]">{reply.content}</Markdown></div>
                                               {isOwnReply && (

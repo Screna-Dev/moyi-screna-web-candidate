@@ -292,7 +292,7 @@ function GlobalTopHeader({
           className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
           style={{ fontWeight: 450, color: isLinkActive('/question-bank') ? '#2E5BFF' : '#2A2A2A' }}
         >
-          Interview Prep Note
+          InterviewPrep Note
         </Link>
 
         <Link

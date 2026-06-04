@@ -135,10 +135,8 @@ export function GoalUploadPage({
 
         {/* Left Header */}
         <div className="mt-1">
-          <h1 className="font-serif text-[40px] font-bold tracking-[-0.8px] text-[#0f172a] leading-[52px] mb-2">
-            Personalized Practice
-          </h1>
-          <p className="text-[16px] text-[#62748e] leading-[24px]">
+          <h1 className="text-[#0F172A] mb-2 font-bold text-[40px] font-[family-name:var(--font-serif)]">Personalized Practice</h1>
+          <p className="text-slate-500 max-w-2xl">
             AI-powered mock interviews tailored to your profile and target roles.
           </p>
         </div>
