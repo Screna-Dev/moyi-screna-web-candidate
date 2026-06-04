@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, Pencil, Plus, X, Eye, EyeOff, Lock, ShieldCheck, AlertTriangle,
   Briefcase, FileText, User, Building2, MessageSquare,
   SlidersHorizontal, Trash2, GraduationCap, Sparkles, ArrowRight, Zap,
-  Award, Scale, Upload, FileIcon,
+  Award, Scale,
 } from 'lucide-react';
 import { getJobsPreferences, upsertJobsPreferences, getProfile, updateProfile } from '../../services/ProfileServices';
 
@@ -38,7 +38,6 @@ type EduEntry = {
   honors?: string[];
 };
 type QAEntry = { id: number; question: string; answer: string };
-type CertFile = { id: number; name: string; size: number };
 
 type EEO = {
   veteran?: string;
@@ -333,6 +332,7 @@ interface SectionCardProps {
   complete?: boolean;
   editing: boolean;
   onToggle: () => void;
+  onCancel?: () => void;
   addMode?: boolean;
   emptyPrompt?: string;
   children: React.ReactNode;
@@ -340,7 +340,7 @@ interface SectionCardProps {
 
 function SectionCard({
   icon: Icon, title, description, variant = 'default',
-  complete, editing, onToggle, addMode, emptyPrompt, children,
+  complete, editing, onToggle, onCancel, addMode, emptyPrompt, children,
 }: SectionCardProps) {
   const cardBorder = variant === 'critical'
     ? 'border-destructive/25 hover:border-destructive/35'
@@ -371,7 +371,8 @@ function SectionCard({
         <div className="flex items-center gap-3 shrink-0">
           {complete !== undefined && <StatusBadge complete={complete} />}
           <button
-            onClick={onToggle}
+            onClick={editing && !addMode ? (onCancel ?? onToggle) : onToggle}
+            title={editing && !addMode ? 'Cancel' : addMode ? 'Add' : 'Edit'}
             className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-card hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
           >
             {editing
@@ -386,6 +387,22 @@ function SectionCard({
 
       <div className="px-5 py-4">
         {children}
+        {editing && !addMode && (
+          <div className="mt-5 pt-4 border-t border-border flex items-center gap-3">
+            <button
+              onClick={onToggle}
+              className="flex items-center gap-2 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              <Check className="w-3.5 h-3.5" />Save changes
+            </button>
+            <button
+              onClick={onCancel ?? onToggle}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {!editing && !addMode && complete === false && emptyPrompt && (
           <motion.div
             initial={{ opacity: 0, y: 4 }}
@@ -564,10 +581,8 @@ export function ApplicationProfileContent() {
   const [editCerts, setEditCerts] = useState(false);
   const [profCerts, setProfCerts] = useState<string[]>([]);
   const [cloudCerts, setCloudCerts] = useState<string[]>([]);
-  const [certFiles, setCertFiles] = useState<CertFile[]>([]);
   const [profCertInput, setProfCertInput] = useState('');
   const [cloudCertInput, setCloudCertInput] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── S8: Job Application Profile ──
   const [editJobApp, setEditJobApp] = useState(false);
@@ -824,7 +839,7 @@ export function ApplicationProfileContent() {
     {
       label: 'Certifications & Credentials', importance: 'optional',
       hint: 'Add professional or cloud certifications',
-      done: profCerts.length > 0 || cloudCerts.length > 0 || certFiles.length > 0,
+      done: profCerts.length > 0 || cloudCerts.length > 0,
     },
     {
       label: 'Job Application Profile', importance: 'core',
@@ -860,9 +875,6 @@ export function ApplicationProfileContent() {
   const nextSteps = [...incompleteSections]
     .sort((a, b) => importanceOrder.indexOf(a.importance) - importanceOrder.indexOf(b.importance))
     .slice(0, 3);
-
-  const fmtSize = (bytes: number) =>
-    bytes < 1024 ? `${bytes}B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(0)}KB` : `${(bytes / 1048576).toFixed(1)}MB`;
 
   if (loading) {
     return (
@@ -929,6 +941,20 @@ export function ApplicationProfileContent() {
             });
           }
           setEditJobPrefs(v => !v);
+        }}
+        onCancel={() => {
+          setSalary({
+            min: applyPrefs.salary_min != null ? String(Math.round(applyPrefs.salary_min / 1000)) : '',
+            max: applyPrefs.salary_max != null ? String(Math.round(applyPrefs.salary_max / 1000)) : '',
+          });
+          setEmpTypes(applyPrefs.employment_types ?? []);
+          setWorkModes(applyPrefs.work_modes ?? []);
+          setShiftPrefs(applyPrefs.shift_preferences ?? []);
+          setWillingRelocate(applyPrefs.relocate_willing ?? '');
+          setWillingTravel(applyPrefs.travel_willingness ?? '');
+          setPrefCities(applyPrefs.target_locations ?? []);
+          setCityInput('');
+          setEditJobPrefs(false);
         }}
         emptyPrompt="Tell Screna your ideal salary range, work mode, and where you want to be based."
       >
@@ -1045,6 +1071,7 @@ export function ApplicationProfileContent() {
           } else setPDraft({ ...personal });
           setEditPersonal(v => !v);
         }}
+        onCancel={() => { setPDraft({ ...personal }); setEditPersonal(false); }}
         emptyPrompt="Your name, email, and phone are required on every application."
       >
         {!editPersonal ? (
@@ -1106,6 +1133,7 @@ export function ApplicationProfileContent() {
           } else setRDraft({ ...res });
           setEditRes(v => !v);
         }}
+        onCancel={() => { setRDraft({ ...res }); setEditRes(false); }}
         emptyPrompt="Many applications require a mailing address — add yours here."
       >
         {!editRes ? (
@@ -1290,11 +1318,18 @@ export function ApplicationProfileContent() {
           }
           setEditCerts(v => !v);
         }}
+        onCancel={() => {
+          setProfCerts(applyPrefs.professional_certifications ?? []);
+          setCloudCerts(applyPrefs.cloud_certifications ?? []);
+          setProfCertInput('');
+          setCloudCertInput('');
+          setEditCerts(false);
+        }}
         emptyPrompt="Add certifications like PMP, AWS Certified, or CFA to stand out in specialized roles."
       >
         {!editCerts ? (
           <div className="flex flex-col gap-4">
-            {profCerts.length === 0 && cloudCerts.length === 0 && certFiles.length === 0 ? (
+            {profCerts.length === 0 && cloudCerts.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">No certifications added yet.</p>
             ) : (
               <>
@@ -1314,20 +1349,6 @@ export function ApplicationProfileContent() {
                     <div className="flex flex-wrap gap-1.5">
                       {cloudCerts.map(c => (
                         <span key={c} className="px-2 py-0.5 rounded-full bg-secondary border border-border text-xs text-foreground">{c}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {certFiles.length > 0 && (
-                  <div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Certificate Files (local only)</div>
-                    <div className="flex flex-col gap-1.5">
-                      {certFiles.map(f => (
-                        <div key={f.id} className="flex items-center gap-2 text-sm text-foreground">
-                          <FileIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                          <span>{f.name}</span>
-                          <span className="text-xs text-muted-foreground">({fmtSize(f.size)})</span>
-                        </div>
                       ))}
                     </div>
                   </div>
@@ -1358,48 +1379,6 @@ export function ApplicationProfileContent() {
                 suggestions={CLOUD_CERT_SUGGESTIONS}
               />
             </FL>
-            <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Certificate Files <span className="ml-1 normal-case font-normal">(local only — not synced to backend)</span>
-              </label>
-              <div className="flex flex-col gap-2">
-                {certFiles.map(f => (
-                  <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-secondary/40 group">
-                    <FileIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-sm text-foreground flex-1 truncate">{f.name}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">{fmtSize(f.size)}</span>
-                    <button
-                      onClick={() => setCertFiles(p => p.filter(x => x.id !== f.id))}
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0 ml-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={e => {
-                    const files = Array.from(e.target.files || []);
-                    setCertFiles(p => [
-                      ...p,
-                      ...files.map(f => ({ id: Date.now() + Math.random(), name: f.name, size: f.size })),
-                    ]);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  }}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors self-start"
-                >
-                  <Upload className="w-3.5 h-3.5" />Upload PDF or image
-                </button>
-                <p className="text-xs text-muted-foreground">Accepted: PDF, PNG, JPG. Max 10 MB per file.</p>
-              </div>
-            </div>
           </div>
         )}
       </SectionCard>
@@ -1429,6 +1408,11 @@ export function ApplicationProfileContent() {
             });
           } else setJaDraft({ ...jobApp });
           setEditJobApp(v => !v);
+        }}
+        onCancel={() => {
+          setJaDraft({ ...jobApp });
+          setSelLangs(applyPrefs.languages ?? []);
+          setEditJobApp(false);
         }}
         emptyPrompt="Work authorization status is required on most application forms. Takes 2 minutes."
       >
@@ -1507,6 +1491,7 @@ export function ApplicationProfileContent() {
           } else setMDraft({ ...misc });
           setEditMisc(v => !v);
         }}
+        onCancel={() => { setMDraft({ ...misc }); setEditMisc(false); }}
         emptyPrompt="Some applications ask for EEOC demographic fields. Optional but useful."
       >
         {!editMisc ? (
@@ -1568,6 +1553,7 @@ export function ApplicationProfileContent() {
           } else setCDraft({ ...compliance });
           setEditCompliance(v => !v);
         }}
+        onCancel={() => { setCDraft({ ...compliance }); setEditCompliance(false); }}
         emptyPrompt="Some employers use Workday or government-compliant ATS forms that require these answers."
       >
         {!editCompliance ? (
@@ -1710,6 +1696,7 @@ export function ApplicationProfileContent() {
           } else setSugDraft(suggestions);
           setEditSug(v => !v);
         }}
+        onCancel={() => { setSugDraft(suggestions); setEditSug(false); }}
         emptyPrompt="Leave instructions like preferred company sizes, things to avoid, or your preferred tone for cover letters."
       >
         {!editSug ? (

@@ -38,6 +38,12 @@ const emptyForm = {
   expertiseInput: '',
   careerBackground: [] as { company: string; role: string; startYear: string; endYear: string }[],
   officeHours: [] as OfficeHour[],
+  topics: [
+    { title: 'Mock Interview',              enabled: false, price30: '50', price60: '100', description: '', mentorNote: '' },
+    { title: 'Resume & LinkedIn Review',    enabled: false, price30: '50', price60: '100', description: '', mentorNote: '' },
+    { title: 'Career Strategy Session',     enabled: false, price30: '50', price60: '100', description: '', mentorNote: '' },
+    { title: 'Offer & Salary Negotiation',  enabled: false, price30: '50', price60: '100', description: '', mentorNote: '' },
+  ] as Array<{ title: string; enabled: boolean; price30: string; price60: string; description: string; mentorNote: string; custom?: boolean }>,
 };
 
 export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -183,8 +189,28 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
   };
 
   const handleMentorSubmit = async () => {
-    setMentorSubmitting(true);
     setMentorError('');
+    const toCents = (v: string) => Math.round((parseFloat(v) || 0) * 100);
+    const enabledTopics = mentorForm.topics
+      .filter(t => t.enabled)
+      .map(t => ({
+        title: t.title,
+        description: t.description,
+        mentorNote: t.mentorNote,
+        price30min: toCents(t.price30),
+        price60min: toCents(t.price60),
+        bothPricesSet: true,
+      }));
+    if (enabledTopics.some(t => !t.title.trim())) {
+      setMentorError('Give each enabled service a name.');
+      return;
+    }
+    // Backend requires both prices ≥ 1000 cents ($10) for every enabled service.
+    if (enabledTopics.some(t => t.price30min < 1000 || t.price60min < 1000)) {
+      setMentorError('Each enabled service must price both 30- and 60-minute sessions at $10 or more.');
+      return;
+    }
+    setMentorSubmitting(true);
     try {
       await applyMentor({
         bio: mentorForm.bio,
@@ -200,6 +226,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
           endYear: e.endYear ? parseInt(e.endYear) : undefined,
         })),
         officeHours: mentorForm.officeHours,
+        ...(enabledTopics.length > 0 ? { topics: enabledTopics } : {}),
       });
 
       setMentorSubmitted(true);
@@ -253,7 +280,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
               {mentorSubmitted ? 'Application Submitted' : 'Become a Mentor'}
             </h2>
             {!mentorSubmitted && (
-              <p className="text-muted-foreground text-[12px] mt-0.5">Step {mentorStep} of 5</p>
+              <p className="text-muted-foreground text-[12px] mt-0.5">Step {mentorStep} of 6</p>
             )}
           </div>
           <button
@@ -267,7 +294,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         {/* Step indicator */}
         {!mentorSubmitted && (
           <div className="flex gap-1.5 px-6 pt-4 shrink-0">
-            {[1, 2, 3, 4, 5].map(s => (
+            {[1, 2, 3, 4, 5, 6].map(s => (
               <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${s <= mentorStep ? 'bg-primary' : 'bg-border'}`} />
             ))}
           </div>
@@ -372,6 +399,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                   value={mentorForm.headline}
                   onChange={e => setMentorForm(f => ({ ...f, headline: e.target.value }))}
                   placeholder="e.g. Helping engineers land FAANG roles"
+                  maxLength={200}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
@@ -563,8 +591,141 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
             </div>
           )}
 
-          {/* Step 5: Review + Submit */}
+          {/* Step 5: Services & Rates */}
           {!mentorSubmitted && mentorStep === 5 && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-foreground text-[14px]" style={{ fontWeight: 500 }}>Services you'll offer</p>
+                <p className="text-muted-foreground text-[12.5px] leading-relaxed mt-1">
+                  Enable at least one service. You can edit pricing, descriptions, and prep notes anytime later.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {mentorForm.topics.map((t, idx) => (
+                  <div
+                    key={idx}
+                    className={`rounded-xl border transition-colors ${t.enabled ? 'border-primary/40 bg-primary/[4%]' : 'border-border bg-secondary/20'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                      {t.custom ? (
+                        <input
+                          value={t.title}
+                          onChange={e => setMentorForm(f => ({
+                            ...f,
+                            topics: f.topics.map((tt, i) => i === idx ? { ...tt, title: e.target.value } : tt),
+                          }))}
+                          placeholder="Service name"
+                          maxLength={200}
+                          className="flex-1 min-w-0 px-2.5 py-1 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      ) : (
+                        <span className={`text-[13px] ${t.enabled ? 'text-foreground' : 'text-muted-foreground'}`} style={{ fontWeight: 500 }}>
+                          {t.title}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <label className="flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={t.enabled}
+                            onChange={() => setMentorForm(f => ({
+                              ...f,
+                              topics: f.topics.map((tt, i) => i === idx ? { ...tt, enabled: !tt.enabled } : tt),
+                            }))}
+                            className="w-4 h-4 rounded border-border text-primary focus:ring-1 focus:ring-ring cursor-pointer"
+                          />
+                        </label>
+                        {t.custom && (
+                          <button
+                            type="button"
+                            onClick={() => setMentorForm(f => ({ ...f, topics: f.topics.filter((_, i) => i !== idx) }))}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            title="Remove service"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {t.enabled && (
+                      <div className="px-3 pb-3 flex flex-col gap-2.5 border-t border-border/50 pt-2.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 30 min ($)</p>
+                            <input
+                              type="number" min={10}
+                              value={t.price30}
+                              onChange={e => setMentorForm(f => ({
+                                ...f,
+                                topics: f.topics.map((tt, i) => i === idx ? { ...tt, price30: e.target.value } : tt),
+                              }))}
+                              className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 60 min ($)</p>
+                            <input
+                              type="number" min={10}
+                              value={t.price60}
+                              onChange={e => setMentorForm(f => ({
+                                ...f,
+                                topics: f.topics.map((tt, i) => i === idx ? { ...tt, price60: e.target.value } : tt),
+                              }))}
+                              className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Description (shown to students)</p>
+                          <textarea
+                            rows={2}
+                            value={t.description}
+                            onChange={e => setMentorForm(f => ({
+                              ...f,
+                              topics: f.topics.map((tt, i) => i === idx ? { ...tt, description: e.target.value } : tt),
+                            }))}
+                            placeholder="What students get from this session…"
+                            className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Note to student after booking (optional)</p>
+                          <textarea
+                            rows={2}
+                            value={t.mentorNote}
+                            maxLength={2000}
+                            onChange={e => setMentorForm(f => ({
+                              ...f,
+                              topics: f.topics.map((tt, i) => i === idx ? { ...tt, mentorNote: e.target.value } : tt),
+                            }))}
+                            placeholder="How to prepare, what to bring, links to read…"
+                            className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setMentorForm(f => ({
+                    ...f,
+                    topics: [...f.topics, { title: '', enabled: true, price30: '50', price60: '100', description: '', mentorNote: '', custom: true }],
+                  }))}
+                  className="flex items-center gap-2 text-[13px] text-primary border border-dashed border-primary/30 rounded-xl px-4 py-2.5 hover:bg-primary/5 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add custom service
+                </button>
+              </div>
+              {mentorForm.topics.every(t => !t.enabled) && (
+                <p className="text-[12px] text-muted-foreground">Enable at least one service so students can book you.</p>
+              )}
+            </div>
+          )}
+
+          {/* Step 6: Review + Submit */}
+          {!mentorSubmitted && mentorStep === 6 && (
             <div className="flex flex-col gap-5">
               <div>
                 <p className="text-foreground text-[14px]" style={{ fontWeight: 500 }}>Ready to submit?</p>
@@ -605,7 +766,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
             >
               {mentorStep === 1 ? 'Cancel' : '← Back'}
             </button>
-            {mentorStep < 5 ? (
+            {mentorStep < 6 ? (
               <button
                 onClick={() => setMentorStep(s => s + 1)}
                 disabled={

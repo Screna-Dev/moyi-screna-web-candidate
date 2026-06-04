@@ -466,7 +466,7 @@ export function MentorshipMarketplacePage() {
       { title: 'Resume & LinkedIn Review',    enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
       { title: 'Career Strategy Session',     enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
       { title: 'Offer & Salary Negotiation',  enabled: false, price30: '50',  price60: '100', description: '', mentorNote: '' },
-    ] as Array<{ title: string; enabled: boolean; price30: string; price60: string; description: string; mentorNote: string }>,
+    ] as Array<{ title: string; enabled: boolean; price30: string; price60: string; description: string; mentorNote: string; custom?: boolean }>,
   });
   const { user } = useAuth();
   const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
@@ -608,19 +608,29 @@ export function MentorshipMarketplacePage() {
   };
 
   const handleMentorSubmit = async () => {
-    setMentorSubmitting(true);
     setMentorError('');
+    const toCents = (v: string) => Math.round((parseFloat(v) || 0) * 100);
+    const enabledTopics = mentorForm.topics
+      .filter(t => t.enabled)
+      .map(t => ({
+        title: t.title,
+        description: t.description,
+        mentorNote: t.mentorNote,
+        price30min: toCents(t.price30),
+        price60min: toCents(t.price60),
+        bothPricesSet: true,
+      }));
+    if (enabledTopics.some(t => !t.title.trim())) {
+      setMentorError('Give each enabled service a name.');
+      return;
+    }
+    // Backend requires both prices ≥ 1000 cents ($10) for every enabled service.
+    if (enabledTopics.some(t => t.price30min < 1000 || t.price60min < 1000)) {
+      setMentorError('Each enabled service must price both 30- and 60-minute sessions at $10 or more.');
+      return;
+    }
+    setMentorSubmitting(true);
     try {
-      const enabledTopics = mentorForm.topics
-        .filter(t => t.enabled)
-        .map(t => ({
-          title: t.title,
-          description: t.description,
-          mentorNote: t.mentorNote,
-          price30min: Math.max(0, Math.round((parseFloat(t.price30) || 0) * 100)),
-          price60min: Math.max(0, Math.round((parseFloat(t.price60) || 0) * 100)),
-          bothPricesSet: true,
-        }));
       await applyMentor({
         bio: mentorForm.bio,
         headline: mentorForm.headline,
@@ -717,7 +727,7 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="w-full space-y-16 pb-24 pt-28 bg-white -mx-6 px-6 -mt-8 bg-[#f9fafb]">
+      <div className="w-full space-y-16 pb-24 pt-2 bg-white -mx-6 px-6 -mt-8 bg-[#f9fafb]">
 
         {/* ── Page Header ───────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-6">
@@ -1450,6 +1460,7 @@ export function MentorshipMarketplacePage() {
                         value={mentorForm.headline}
                         onChange={e => setMentorForm(f => ({ ...f, headline: e.target.value }))}
                         placeholder="e.g. Helping engineers land FAANG roles"
+                        maxLength={200}
                         className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     </div>
@@ -1656,21 +1667,46 @@ export function MentorshipMarketplacePage() {
                           key={idx}
                           className={`rounded-xl border transition-colors ${t.enabled ? 'border-primary/40 bg-primary/[4%]' : 'border-border bg-secondary/20'}`}
                         >
-                          <div className="flex items-center justify-between px-3 py-2.5">
-                            <span className={`text-[13px] ${t.enabled ? 'text-foreground' : 'text-muted-foreground'}`} style={{ fontWeight: 500 }}>
-                              {t.title}
-                            </span>
-                            <label className="flex items-center cursor-pointer select-none">
+                          <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                            {t.custom ? (
                               <input
-                                type="checkbox"
-                                checked={t.enabled}
-                                onChange={() => setMentorForm(f => ({
+                                value={t.title}
+                                onChange={e => setMentorForm(f => ({
                                   ...f,
-                                  topics: f.topics.map((tt, i) => i === idx ? { ...tt, enabled: !tt.enabled } : tt),
+                                  topics: f.topics.map((tt, i) => i === idx ? { ...tt, title: e.target.value } : tt),
                                 }))}
-                                className="w-4 h-4 rounded border-border text-primary focus:ring-1 focus:ring-ring cursor-pointer"
+                                placeholder="Service name"
+                                maxLength={200}
+                                className="flex-1 min-w-0 px-2.5 py-1 text-[13px] border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                               />
-                            </label>
+                            ) : (
+                              <span className={`text-[13px] ${t.enabled ? 'text-foreground' : 'text-muted-foreground'}`} style={{ fontWeight: 500 }}>
+                                {t.title}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <label className="flex items-center cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={t.enabled}
+                                  onChange={() => setMentorForm(f => ({
+                                    ...f,
+                                    topics: f.topics.map((tt, i) => i === idx ? { ...tt, enabled: !tt.enabled } : tt),
+                                  }))}
+                                  className="w-4 h-4 rounded border-border text-primary focus:ring-1 focus:ring-ring cursor-pointer"
+                                />
+                              </label>
+                              {t.custom && (
+                                <button
+                                  type="button"
+                                  onClick={() => setMentorForm(f => ({ ...f, topics: f.topics.filter((_, i) => i !== idx) }))}
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  title="Remove service"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                           {t.enabled && (
                             <div className="px-3 pb-3 flex flex-col gap-2.5 border-t border-border/50 pt-2.5">
@@ -1678,7 +1714,7 @@ export function MentorshipMarketplacePage() {
                                 <div>
                                   <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 30 min ($)</p>
                                   <input
-                                    type="number" min={0}
+                                    type="number" min={10}
                                     value={t.price30}
                                     onChange={e => setMentorForm(f => ({
                                       ...f,
@@ -1690,7 +1726,7 @@ export function MentorshipMarketplacePage() {
                                 <div>
                                   <p className="text-[10.5px] text-muted-foreground uppercase tracking-wider mb-1">Price · 60 min ($)</p>
                                   <input
-                                    type="number" min={0}
+                                    type="number" min={10}
                                     value={t.price60}
                                     onChange={e => setMentorForm(f => ({
                                       ...f,
@@ -1718,6 +1754,7 @@ export function MentorshipMarketplacePage() {
                                 <textarea
                                   rows={2}
                                   value={t.mentorNote}
+                                  maxLength={2000}
                                   onChange={e => setMentorForm(f => ({
                                     ...f,
                                     topics: f.topics.map((tt, i) => i === idx ? { ...tt, mentorNote: e.target.value } : tt),
@@ -1730,6 +1767,17 @@ export function MentorshipMarketplacePage() {
                           )}
                         </div>
                       ))}
+                      <button
+                        type="button"
+                        onClick={() => setMentorForm(f => ({
+                          ...f,
+                          topics: [...f.topics, { title: '', enabled: true, price30: '50', price60: '100', description: '', mentorNote: '', custom: true }],
+                        }))}
+                        className="flex items-center gap-2 text-[13px] text-primary border border-dashed border-primary/30 rounded-xl px-4 py-2.5 hover:bg-primary/5 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add custom service
+                      </button>
                     </div>
                     {mentorForm.topics.every(t => !t.enabled) && (
                       <p className="text-[12px] text-muted-foreground">Enable at least one service so students can book you.</p>

@@ -22,6 +22,7 @@ import {
   listDisputes,
   resolveDispute,
 } from "../../../../services/mentorshipAdminService";
+import { updateBookingMentorNote } from "../../../../services/MentorService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1332,6 +1333,25 @@ function SessionsTab() {
   const [selected, setSelected] = useState<Session | null>(null);
   const [sessionList, setSessionList] = useState<Session[]>([]);
   const [, setLoading] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
+  useEffect(() => { setNoteDraft(selected?.mentorNote || ""); }, [selected]);
+
+  const saveMentorNote = async () => {
+    if (!selected) return;
+    setSavingNote(true);
+    try {
+      await updateBookingMentorNote(selected.id, noteDraft);
+      toast.success("Mentor note updated");
+      setSessionList((prev) => prev.map((s) => s.id === selected.id ? { ...s, mentorNote: noteDraft } : s));
+      setSelected((s) => s ? { ...s, mentorNote: noteDraft } : s);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update note");
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   const loadBookings = useCallback(async () => {
     setLoading(true);
@@ -1487,7 +1507,24 @@ function SessionsTab() {
             <DrawerDivider />
             <DrawerField label="Status"  value={<span style={badge(sessionStatusVariant(selected.status))}>{selected.status}</span>} />
             <DrawerField label="Refund"  value={<span style={badge(selected.refundEligible ? "amber" : "gray")}>{selected.refundEligible ? "Eligible" : "Not eligible"}</span>} />
-            {selected.mentorNote && <DrawerField label="Mentor note" value={selected.mentorNote} />}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 6 }}>Mentor note (prep advice sent to student)</div>
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="How to prepare, what to bring, links to read…"
+                style={{ width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, color: C.text, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+              />
+              <button
+                onClick={saveMentorNote}
+                disabled={savingNote || noteDraft === (selected.mentorNote || "")}
+                style={{ ...secondaryBtn, height: 28, marginTop: 6, opacity: (savingNote || noteDraft === (selected.mentorNote || "")) ? 0.5 : 1, cursor: (savingNote || noteDraft === (selected.mentorNote || "")) ? "not-allowed" : "pointer" }}
+              >
+                {savingNote ? "Saving…" : "Save note"}
+              </button>
+            </div>
             {selected.studentNote && <DrawerField label="Student note" value={selected.studentNote} />}
             {selected.within48h && (
               <div style={{ padding: "8px 10px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7, fontSize: 11, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
