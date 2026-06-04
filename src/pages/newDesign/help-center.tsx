@@ -136,7 +136,7 @@ export function HelpCenterPage() {
     <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
       <Navbar />
 
-      <main className="flex-1 pt-[107px]">
+      <main className="flex-1 pt-[calc(var(--topbar-h,0px)_+_64px)]">
         {/* Hero header */}
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-[hsl(221,91%,60%)]/[0.04] to-transparent pointer-events-none" />

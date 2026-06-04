@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Toaster } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar, type Page } from './Sidebar';
@@ -17,6 +17,7 @@ import { UsersList } from '@/components/admin/UsersList';
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
 import { RedeemCodesPanel } from '@/pages/AdminRedeemCodes';
 import { AuditLogsPanel } from '@/pages/AdminAuditLogs';
+import { adminService } from '@/services';
 
 // Real "Users & Training" admin tab — preserves the existing API-backed functionality.
 function UsersAdminTab() {
@@ -79,6 +80,23 @@ export default function AdminConsole() {
   const { user } = useAuth();
   const isOps = (user?.role || '').toUpperCase() === 'OPS';
   const [page, setPage] = useState<Page>(isOps ? 'resume-applications' : 'command-center');
+  const [jobApplicationsBadge, setJobApplicationsBadge] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isOps) {
+      setJobApplicationsBadge(undefined);
+      return;
+    }
+    let cancelled = false;
+    adminService.listOpsTickets({})
+      .then((res: any) => {
+        if (cancelled) return;
+        const items = res?.data?.data?.items ?? [];
+        setJobApplicationsBadge(String(items.length));
+      })
+      .catch(() => { if (!cancelled) setJobApplicationsBadge(undefined); });
+    return () => { cancelled = true; };
+  }, [isOps, page]);
 
   return (
     <div
@@ -92,7 +110,7 @@ export default function AdminConsole() {
       }}
     >
       <Toaster position="bottom-right" />
-      <Sidebar currentPage={page} onPageChange={setPage} userRole={user?.role} />
+      <Sidebar currentPage={page} onPageChange={setPage} userRole={user?.role} jobApplicationsBadge={jobApplicationsBadge} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <Header currentPage={page} />

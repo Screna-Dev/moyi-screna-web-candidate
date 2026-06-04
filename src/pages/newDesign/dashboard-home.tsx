@@ -1398,7 +1398,7 @@ function formatMonthLabel(iso?: string): string {
 function CommunityCardSkeleton() {
   return (
     <Panel>
-      <PanelHead title="Interview Prep Note" />
+      <PanelHead title="InterviewPrep Note" />
       <Skeleton width="100%" height={36} radius={8} style={{ marginBottom: 12 }} />
       {[0, 1, 2].map((i) => (
         <div key={i} style={{ padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${T.border}` }}>
@@ -1483,7 +1483,7 @@ function CommunityCard() {
 
   return (
     <Panel>
-      <PanelHead title="Interview Prep Note" linkLabel="Browse All" onLink={() => navigate('/interview-insights')} />
+      <PanelHead title="InterviewPrep Note" linkLabel="Browse All" onLink={() => navigate('/interview-insights')} />
 
       {/* Matched */}
       <div style={{

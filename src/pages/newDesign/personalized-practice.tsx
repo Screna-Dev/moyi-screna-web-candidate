@@ -22,7 +22,7 @@ import { GoalUploadPage } from './goal-upload-page';
 import { InterviewService } from '@/services';
 import { getProfile } from '@/services/ProfileServices';
 import { useRecommendedJobs } from '@/hooks/useRecommendedJobs';
-import { createTrainingPlan, createTrainingPlanFromJobTitle } from '@/services/InterviewServices';
+import { createTrainingPlan } from '@/services/InterviewServices';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -481,7 +481,7 @@ function TargetJobModal({
   onApply: (job: string) => void;
   onPlanCreated?: () => void;
 }) {
-  const [tab, setTab] = useState<'quick' | 'manual' | 'paste'>('quick');
+  const [tab, setTab] = useState<'quick' | 'paste'>('quick');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedJobData, setSelectedJobData] = useState<RecommendedJob | null>(null);
   const [jobTitle, setJobTitle] = useState('');
@@ -489,7 +489,6 @@ function TargetJobModal({
   const [jobDescription, setJobDescription] = useState('');
   const [interviewDate, setInterviewDate] = useState('');
   const [dailyPrepTime, setDailyPrepTime] = useState('2');
-  const [manualRole, setManualRole] = useState('');
   const { recommendations: recommendedJobs, isLoading, error: recError, fetchRecommendations, invalidate } = useRecommendedJobs();
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -500,7 +499,6 @@ function TargetJobModal({
       setSelectedJobData(null);
       setTab('quick');
       setApiError(null);
-      setManualRole('');
       invalidate();
       fetchRecommendations();
     }
@@ -520,24 +518,6 @@ function TargetJobModal({
       onOpenChange(false);
       setSelectedRole('');
       setSelectedJobData(null);
-      onPlanCreated?.();
-    } catch (err: any) {
-      setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
-    } finally {
-      setIsCreatingPlan(false);
-    }
-  };
-
-  const handleManualApply = async () => {
-    const trimmed = manualRole.trim();
-    if (!trimmed) return;
-    setIsCreatingPlan(true);
-    setApiError(null);
-    try {
-      await createTrainingPlanFromJobTitle(trimmed);
-      onApply(trimmed);
-      onOpenChange(false);
-      setManualRole('');
       onPlanCreated?.();
     } catch (err: any) {
       setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
@@ -597,16 +577,6 @@ function TargetJobModal({
               }`}
             >
               Quick setup
-            </button>
-            <button
-              onClick={() => setTab('manual')}
-              className={`flex-1 text-sm font-medium py-2.5 rounded-lg transition-all ${
-                tab === 'manual'
-                  ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-700 border border-transparent'
-              }`}
-            >
-              Just a role
             </button>
             <button
               onClick={() => setTab('paste')}
@@ -714,55 +684,6 @@ function TargetJobModal({
                   <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
                 ) : (
                   'Use selected role'
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {tab === 'manual' && (
-          <div className="px-6 pt-5 pb-6 space-y-4">
-            <p className="text-sm text-slate-400">
-              Type a role title — we'll build a training plan based on common expectations for that role.
-            </p>
-            <div>
-              <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
-                Target Role <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., Senior Product Manager"
-                value={manualRole}
-                onChange={(e) => setManualRole(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && manualRole.trim() && !isCreatingPlan) {
-                    handleManualApply();
-                  }
-                }}
-                className="w-full h-11 text-sm bg-white border border-slate-200 rounded-xl px-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 placeholder:text-slate-400"
-              />
-            </div>
-            {apiError && (
-              <p className="text-sm text-red-500">{apiError}</p>
-            )}
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <Button
-                variant="outline"
-                className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
-                onClick={() => onOpenChange(false)}
-                disabled={isCreatingPlan}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!manualRole.trim() || isCreatingPlan}
-                onClick={handleManualApply}
-              >
-                {isCreatingPlan ? (
-                  <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
-                ) : (
-                  'Create Plan'
                 )}
               </Button>
             </div>
