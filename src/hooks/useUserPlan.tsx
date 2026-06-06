@@ -1,7 +1,15 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
+
+// credits_low_warning_shown 阈值。
+// 注：spec 要求「低于每月额度的 20%」，但当前 planData 不含「每月额度」分母，
+// 故暂用绝对阈值占位。拿到各 plan 的月度 credits 额度后应替换为按 20% 计算。
+const LOW_CREDITS_THRESHOLD = 5;
 
 // Plan types
 export type PlanType = 'Free' | 'Pro' | 'Elite';
@@ -79,7 +87,12 @@ interface UserPlanProviderProps {
 export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const { toast } = useToast();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  
+  const posthog = usePostHog();
+
+  // credits 埋点用：记录上一次余额 + 低额提示是否已上报（避免重复）
+  const prevBalanceRef = useRef<number | null>(null);
+  const lowWarningFiredRef = useRef(false);
+
   const [planData, setPlanData] = useState<PlanUsageData>(defaultPlanData);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +221,36 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       setIsLoading(false);
     }
   }, [isAuthenticated, isAuthLoading, hasFetched, refreshPlan]);
+
+  // credits_depleted / credits_low_warning_shown —— 监听余额变化
+  // depleted：仅在「从 >0 跌到 0」时上报（避免对从未有 credits 的 Free 用户误报）
+  // low_warning：余额首次跌破阈值时上报一次；余额回升后重置
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || !hasFetched) return;
+    const balance = planData.creditBalance;
+    const prev = prevBalanceRef.current;
+
+    if (prev !== null && prev > 0 && balance === 0) {
+      safeCapture(posthog, EVENTS.CREDITS_DEPLETED, {
+        current_plan: planData.currentPlan,
+      });
+    }
+
+    if (balance > 0 && balance <= LOW_CREDITS_THRESHOLD) {
+      if (!lowWarningFiredRef.current) {
+        lowWarningFiredRef.current = true;
+        safeCapture(posthog, EVENTS.CREDITS_LOW_WARNING_SHOWN, {
+          credit_balance: balance,
+          threshold: LOW_CREDITS_THRESHOLD,
+          current_plan: planData.currentPlan,
+        });
+      }
+    } else if (balance > LOW_CREDITS_THRESHOLD) {
+      lowWarningFiredRef.current = false;
+    }
+
+    prevBalanceRef.current = balance;
+  }, [planData.creditBalance, planData.currentPlan, isAuthenticated, isLoading, hasFetched, posthog]);
 
   // Change plan — bridges the legacy PlanType API onto the new subscription
   // endpoints. Mapping:

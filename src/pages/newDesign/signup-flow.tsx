@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { usePostHog } from 'posthog-js/react';
 import { Button } from '@/components/newDesign/ui/button';
 import { Input } from '@/components/newDesign/ui/input';
 import { Progress } from '@/components/newDesign/ui/progress';
 import { Check, Upload, FileText, Shield, Lock } from 'lucide-react';
+import { markOnboardingComplete } from '@/utils/analytics';
 
 type SignupStep = 'loading' | 'verification' | 'name' | 'work' | 'role' | 'experience' | 'companies' | 'jobStatus' | 'resume';
 
 export function SignupFlowPage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [currentStep, setCurrentStep] = useState<SignupStep>('loading');
   const [email] = useState('user@screna.ai'); // Mock email from auth page
   const [formData, setFormData] = useState({
@@ -125,6 +128,11 @@ export function SignupFlowPage() {
       };
       localStorage.setItem('screnaIsLoggedIn', 'true');
       localStorage.setItem('screnaUserData', JSON.stringify(userData));
+      // onboarding_completed —— signup 流程最后一步
+      markOnboardingComplete(posthog, 'signup_flow', {
+        role: formData.role,
+        experience_level: formData.experienceLevel,
+      });
       window.dispatchEvent(new Event('screna-auth-change'));
       navigate('/profile');
     }

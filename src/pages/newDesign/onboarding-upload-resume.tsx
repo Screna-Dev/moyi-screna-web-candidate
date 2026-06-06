@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight, ArrowRight, ArrowLeft, Sparkles, RefreshCw, Plus, Mic, Compass, UserCheck, HelpCircle, Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2 } from 'lucide-react';
 import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
+import { usePostHog } from 'posthog-js/react';
+import { markOnboardingComplete } from '@/utils/analytics';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -1641,6 +1643,7 @@ const variants = {
 };
 
 export function OnboardingUploadResumePage() {
+  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo') || '';
   const [step, setStep] = useState(2);
@@ -1719,6 +1722,14 @@ export function OnboardingUploadResumePage() {
       return;
     }
     if (step === 7) {
+      // onboarding_completed —— resume 流程最后一步，进入平台
+      const roleLabels = data.targetRoles
+        .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
+        .filter(Boolean);
+      markOnboardingComplete(posthog, 'onboarding_resume', {
+        target_roles_count: roleLabels.length,
+        resume_uploaded: !!data.uploadedFile,
+      });
       window.location.href = returnTo || '/dashboard';
       return;
     }

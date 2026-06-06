@@ -10,6 +10,9 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getInterviewSession } from '@/services/IntervewSesstionServices';
 import { InterviewService } from '@/services';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 
 
@@ -479,6 +482,7 @@ interface ApiReportData {
 export function EvaluationPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
@@ -494,6 +498,7 @@ export function EvaluationPage() {
   const [apiData, setApiData] = useState<ApiReportData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reportTrackedRef = useRef(false);
 
   // Extract the string value so the effect only re-runs when the ID actually changes
   const interviewId = searchParams.get('interviewId');
@@ -511,6 +516,7 @@ export function EvaluationPage() {
     let cancelled = false;
     setIsLoading(true);
     setApiData(null);
+    reportTrackedRef.current = false;
 
     const fetchReport = async () => {
       try {
@@ -525,6 +531,15 @@ export function EvaluationPage() {
           setApiData(data);
           setIsLoading(false);
           stopPolling();
+          // mock_report_generated —— 所有题目分析生成完成、报告就绪
+          if (!reportTrackedRef.current) {
+            reportTrackedRef.current = true;
+            safeCapture(posthog, EVENTS.MOCK_REPORT_GENERATED, {
+              interview_id: interviewId,
+              total_questions: Array.isArray(data.questions) ? data.questions.length : undefined,
+              overall_score: data.overall_score,
+            });
+          }
         }
       } catch (err: any) {
         if (!cancelled) {

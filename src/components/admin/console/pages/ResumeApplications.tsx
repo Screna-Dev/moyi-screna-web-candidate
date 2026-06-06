@@ -9,6 +9,9 @@ import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, filterChip, card,
 import type { BadgeVariant } from "../ui/styles";
 import { EmptyState } from "../ui/EmptyState";
 import { adminService } from "@/services";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
+import { EVENTS } from "@/constants/analyticsEvents";
 
 const extractErr = (e: any, fallback: string) =>
   e?.response?.data?.message || e?.message || fallback;
@@ -364,6 +367,7 @@ function BrowserSessionPanel({ liveViewUrl, ticketStatus }: BrowserSessionPanelP
 }
 
 export function ResumeApplications() {
+  const posthog = usePostHog();
   const [userSearch, setUserSearch]     = useState("");
   const [userFilters, setUserFilters]   = useState<Record<string, string>>({ owner: "all", status: "all" });
   const [selectedUserId, setSelectedUserId] = useState<string>("");
@@ -1007,6 +1011,11 @@ export function ResumeApplications() {
                       proofFile,
                       { notes: proofNotes || undefined }
                     );
+                    // job_application_submitted —— Ops 代表用户实际提交了一份申请
+                    safeCapture(posthog, EVENTS.JOB_APPLICATION_SUBMITTED, {
+                      job_id: ticket.applicationId,
+                      status: 'applied',
+                    });
                     toast.success("Proof uploaded. Ticket marked as submitted.");
                     setShowProofModal(false);
                     setProofFile(null);
@@ -1103,6 +1112,11 @@ export function ResumeApplications() {
                       failure_reason: failReason,
                       layer: failLayer,
                       screenshot: failScreenshot ?? undefined,
+                    });
+                    // job_application_submitted —— Ops 处理完一份申请并标记为 failed
+                    safeCapture(posthog, EVENTS.JOB_APPLICATION_SUBMITTED, {
+                      job_id: ticket.applicationId,
+                      status: 'failed',
                     });
                     toast.success("Ticket marked as failed");
                     setShowFailedModal(false);

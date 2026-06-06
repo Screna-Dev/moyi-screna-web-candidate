@@ -31,6 +31,9 @@ import { CooldownScreen } from '@/components/newDesign/cooldown-screen';
 import { endTrainingModule } from '@/services/InterviewServices';
 import * as InterviewSessionService from '@/services/IntervewSesstionServices';
 import LiveKitService from '@/services/LiveKitService';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Session credentials from API ──────────────────────
 export interface SessionCredentials {
@@ -264,6 +267,23 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
     mode: (searchParams.get('mode') as Mode) || 'video',
     company: '',
   });
+
+  const posthog = usePostHog();
+
+  // mock_completed —— 完整完成所有题目（进入 cooldown 即代表自然结束，非中途退出）
+  const mockCompletedRef = useRef(false);
+  useEffect(() => {
+    if (stage === 'cooldown' && !mockCompletedRef.current) {
+      mockCompletedRef.current = true;
+      safeCapture(posthog, EVENTS.MOCK_COMPLETED, {
+        interview_id: interviewId,
+        type: config.type,
+        difficulty: config.difficulty,
+        mode: config.mode,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   // Initial mediaState (for reset)
   const initialMediaState = {
@@ -546,6 +566,17 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
 
     console.log('🔴 Ending meeting...');
 
+    // mock_abandoned —— 在到达 cooldown（自然完成）之前结束 = 中途放弃
+    if (stage !== 'cooldown' && !mockCompletedRef.current) {
+      safeCapture(posthog, EVENTS.MOCK_ABANDONED, {
+        interview_id: interviewId,
+        type: config.type,
+        difficulty: config.difficulty,
+        mode: config.mode,
+        stage_at_exit: stage,
+      });
+    }
+
     setInterviewEnded(true);
     interviewEndedRef.current = true;
 
@@ -722,6 +753,13 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
               config={config}
               interviewId={interviewId}
               onReady={() => {
+                // mock_started —— 用户点击开始，进入正式 mock
+                safeCapture(posthog, EVENTS.MOCK_STARTED, {
+                  interview_id: interviewId,
+                  type: config.type,
+                  difficulty: config.difficulty,
+                  mode: config.mode,
+                });
                 setStage('live');
               }}
               onCancel={() => navigate(-1)}

@@ -25,6 +25,9 @@ import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
@@ -231,6 +234,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 export function InterviewInsightsPage() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string[]>>({});
@@ -249,6 +253,12 @@ export function InterviewInsightsPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // interview_notes_browsed —— 进入面经社区列表页（每次进入上报一次）
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.INTERVIEW_NOTES_BROWSED, { sort_by: activeSort });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -1030,7 +1040,15 @@ export function InterviewInsightsPage() {
                           <div className="flex items-center gap-2">
                             <Link
                               to={`/experience/${post.id}`}
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // premium_note_clicked —— 点击打开面经详情。
+                                // 注：Beta 阶段面经无 premium 标记，故对所有打开的面经上报；
+                                // 待数据模型加入 premium 标记后再按 is_premium 过滤。
+                                safeCapture(posthog, EVENTS.PREMIUM_NOTE_CLICKED, {
+                                  note_id: post.id,
+                                });
+                              }}
                               className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
                             >
                               View Post

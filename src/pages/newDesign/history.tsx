@@ -13,6 +13,34 @@ import { Button } from '@/components/newDesign/ui/button';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview } from '@/services/MentorService';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { usePostHog } from 'posthog-js/react';
+import type { PostHog } from 'posthog-js';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
+
+// session_completed —— 客户端 best-effort：首次看到某 booking 为 COMPLETED 时上报一次
+// （后端状态确认才是事实来源，此为临时信号）。用 localStorage 去重避免重复上报。
+const SESSION_COMPLETED_TRACKED_KEY = 'screna_session_completed_tracked';
+function trackCompletedSessions(posthog: PostHog | null | undefined, sessions: MentorSession[]) {
+  try {
+    const raw = localStorage.getItem(SESSION_COMPLETED_TRACKED_KEY);
+    const tracked = new Set<string>(raw ? JSON.parse(raw) : []);
+    let changed = false;
+    sessions.forEach((s) => {
+      if (!tracked.has(s.id)) {
+        safeCapture(posthog, EVENTS.SESSION_COMPLETED, {
+          session_id: s.id,
+          session_plan: s.coachingPlan,
+        });
+        tracked.add(s.id);
+        changed = true;
+      }
+    });
+    if (changed) localStorage.setItem(SESSION_COMPLETED_TRACKED_KEY, JSON.stringify([...tracked]));
+  } catch {
+    // localStorage 不可用时静默忽略
+  }
+}
 
 // ─── Types ────────────────────────────────────────────
 type AIMockType = 'System Design' | 'Behavioral' | 'Coding' | 'Product Sense' | 'ML Design' | 'Case Study';
@@ -379,6 +407,7 @@ function MentorRow({
   isLast: boolean;
   onReviewed?: (bookingId: string, stars: number, comment?: string) => void;
 }) {
+  const posthog = usePostHog();
   const [expanded, setExpanded] = useState(false);
   const [reviewStars, setReviewStars] = useState(0);
   const [hoverStar, setHoverStar] = useState(0);
@@ -397,6 +426,12 @@ function MentorRow({
       await submitMentorReview(session.id, {
         overallRating: reviewStars,
         comment: trimmed || undefined,
+      });
+      // session_reviewed —— 用户提交对 mentor 的评分和评价
+      safeCapture(posthog, EVENTS.SESSION_REVIEWED, {
+        session_id: session.id,
+        rating_stars: reviewStars,
+        has_comment: trimmed.length > 0,
       });
       setSubmitted(true);
       onReviewed?.(session.id, reviewStars, trimmed || undefined);
@@ -782,6 +817,7 @@ function LoadingState() {
 // ══════════════════════════════════════════════════════
 export function HistoryPage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const { isFree } = useUserPlan();
   const [searchParams] = useSearchParams();
   const initialTab: MainTab = searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock';
@@ -821,7 +857,11 @@ export function HistoryPage() {
       try {
         const res = await listMyBookings({ page: 0, size: 100 });
         const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        if (alive) setMentorSessions(mapBookingsToMentorSessions(Array.isArray(content) ? content : []));
+        const completed = mapBookingsToMentorSessions(Array.isArray(content) ? content : []);
+        if (alive) {
+          setMentorSessions(completed);
+          trackCompletedSessions(posthog, completed);
+        }
       } catch {
         if (alive) setMentorSessions([]);
       } finally {

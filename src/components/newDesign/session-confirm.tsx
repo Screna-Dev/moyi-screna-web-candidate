@@ -9,6 +9,8 @@ import { DashboardLayout } from './dashboard-layout';
 import { motion, AnimatePresence } from 'motion/react';
 import imgRectangle from '@/assets/a7264fd48ee44c90a6ee1d9d5f038a62ea570b04.png';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Session Detail Data ─────────────────────────────────
 interface SessionDetail {
@@ -243,6 +245,9 @@ export function SessionConfirmPage() {
   const sessionParam = searchParams.get('session') || '1';
   const sessionId = Number(sessionParam);
   const isDashboard = searchParams.get('source') === 'dashboard';
+
+  // mock_set_detail_viewed —— 进入题目详情页，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.MOCK_SET_DETAIL_VIEWED, () => ({ mock_set_id: sessionParam }));
 
   const [selectedMode, setSelectedMode] = useState<'Voice' | 'Video'>('Voice');
   const [modeDropdownOpen, setModeDropdownOpen] = useState(false);

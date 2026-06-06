@@ -9,6 +9,8 @@ import { listMyBookings } from '@/services/MentorService';
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Plan = 'free' | 'starter' | 'premium';
@@ -1707,6 +1709,11 @@ export function DashboardHome({
 // ─── Page wrapper ────────────────────────────────────────────────────────────
 export function DashboardHomePage() {
   const { user, isLoading } = useAuth();
+
+  // dashboard_viewed —— 进入 member dashboard，离开时记录 duration_seconds（admin 不计）
+  useDwellTracking(EVENTS.DASHBOARD_VIEWED, undefined, {
+    enabled: !!user && user.role !== 'ADMIN',
+  });
 
   // Admins don't use the candidate dashboard — send them to the admin console.
   if (!isLoading && user?.role === 'ADMIN') {

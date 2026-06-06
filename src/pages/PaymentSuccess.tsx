@@ -1,19 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle, ArrowRight, Home, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
 import { Button } from "@/components/newDesign/ui/button";
 import { MembershipOnboardingModal } from "@/components/newDesign/membership-onboarding-modal";
 import { useSubscription, type Tier } from "@/hooks/useSubscription";
+import { safeCapture } from "@/utils/posthog";
+import { EVENTS } from "@/constants/analyticsEvents";
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const { subscription, isLoading, refresh } = useSubscription();
+  const paymentTrackedRef = useRef(false);
 
   // Stripe checkout has just completed — force a fresh subscription read so the
   // server-side webhook update is reflected here.
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // payment_completed —— 客户端 best-effort：到达支付成功页即上报一次
+  // （Stripe webhook 才是扣款事实来源，此为临时信号）。
+  useEffect(() => {
+    if (isLoading || paymentTrackedRef.current) return;
+    paymentTrackedRef.current = true;
+    safeCapture(posthog, EVENTS.PAYMENT_COMPLETED, {
+      source: 'payment_success_page',
+      plan: subscription?.plan,
+    });
+  }, [isLoading, subscription?.plan, posthog]);
 
   // Premium subscribers go through the post-payment onboarding wizard
   // (resume → preferences → Managed Apply consent) at /premium-onboarding.

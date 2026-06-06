@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
+import { EVENTS } from "@/constants/analyticsEvents";
 import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
@@ -1328,6 +1331,7 @@ function MentorDirectory() {
 // ─── Sessions ──────────────────────────────────────────────────────────────────
 
 function SessionsTab() {
+  const posthog = usePostHog();
   const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", when: "all", mentor: "all" });
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<Session | null>(null);
@@ -1402,6 +1406,11 @@ function SessionsTab() {
     if (!input) return;
     try {
       await adminRescheduleBooking(s.id, input);
+      // session_rescheduled —— 当前仅 admin/ops 侧改期入口存在（用户侧 UI 尚未实现）
+      safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, {
+        booking_id: s.id,
+        initiated_by: 'admin',
+      });
       toast.success("Session rescheduled");
       await loadBookings();
     } catch (err: any) {

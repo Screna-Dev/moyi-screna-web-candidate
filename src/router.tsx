@@ -53,6 +53,7 @@ import { GoalPage } from './pages/newDesign/goal-page';
 import { GoalUploadPage } from './pages/newDesign/goal-upload-page';
 import { Navbar } from './components/newDesign/home/navbar';
 import { Footer } from './components/newDesign/home/footer';
+import { useSessionTracking } from './hooks/useSessionTracking';
 import { OnboardingProcessPage } from './pages/newDesign/onboarding-process';
 import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-overview';
 import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
@@ -62,12 +63,19 @@ import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketp
 import { MentorDetailsPage } from './components/newDesign/mentor-details';
 import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
+// Retention: 在 providers 内部挂载，用于上报 session_end（需要读取 useAuth）
+function SessionTracker() {
+  useSessionTracking();
+  return null;
+}
+
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
     <AuthProvider>
       <UserPlanProvider>
         <RecommendedJobsProvider>
+          <SessionTracker />
           <Outlet />
           <CookieBanner />
         </RecommendedJobsProvider>

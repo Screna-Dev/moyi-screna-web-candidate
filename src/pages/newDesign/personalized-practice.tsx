@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Clock, ArrowRight, Zap, BarChart2, Building2, Sparkles, Lock, Target, Plus, CheckCircle2, Calendar, ChevronLeft, ChevronRight, Crosshair, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
@@ -26,6 +26,9 @@ import { createTrainingPlan } from '@/services/InterviewServices';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Auth helper (same as navbar) ──────────────────────
 function useAuthState() {
@@ -492,6 +495,8 @@ function TargetJobModal({
   const { recommendations: recommendedJobs, isLoading, error: recError, fetchRecommendations, invalidate } = useRecommendedJobs();
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const posthog = usePostHog();
+  const recoTrackedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -499,15 +504,31 @@ function TargetJobModal({
       setSelectedJobData(null);
       setTab('quick');
       setApiError(null);
+      recoTrackedRef.current = false;
       invalidate();
       fetchRecommendations();
     }
   }, [open]);
 
+  // job_recommendations_viewed —— Quick AI Mock 推荐职位列表渲染完成（每次打开上报一次）
+  useEffect(() => {
+    if (open && !isLoading && recommendedJobs.length > 0 && !recoTrackedRef.current) {
+      recoTrackedRef.current = true;
+      safeCapture(posthog, EVENTS.JOB_RECOMMENDATIONS_VIEWED, {
+        count: recommendedJobs.length,
+      });
+    }
+  }, [open, isLoading, recommendedJobs.length, posthog]);
+
   const handleQuickApply = async () => {
     if (!selectedRole || !selectedJobData) return;
     setIsCreatingPlan(true);
     setApiError(null);
+    // mock_new_titles —— 选择推荐 JD 生成新的 Training plan
+    safeCapture(posthog, EVENTS.MOCK_NEW_TITLES, {
+      method: 'quick_select',
+      job_title: selectedJobData.job_title,
+    });
     try {
       await createTrainingPlan({
         jobTitle: selectedJobData.job_title,
@@ -530,6 +551,11 @@ function TargetJobModal({
     if (!jobTitle.trim() || !jobDescription.trim()) return;
     setIsCreatingPlan(true);
     setApiError(null);
+    // mock_new_titles —— 黏贴新 JD 生成新的 Training plan
+    safeCapture(posthog, EVENTS.MOCK_NEW_TITLES, {
+      method: 'paste_jd',
+      job_title: jobTitle.trim(),
+    });
     try {
       await createTrainingPlan({
         jobTitle: jobTitle.trim(),
@@ -811,6 +837,7 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // ════════════════════════════════════════════════════════
 export function PersonalizedPracticePage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const { isAuthenticated: isLoggedIn, user } = useAuth();
   const { planData } = useUserPlan();
   const { fetchRecommendations: prefetchRecommendations } = useRecommendedJobs();
@@ -854,6 +881,17 @@ export function PersonalizedPracticePage() {
   const [showTargetJobModal, setShowTargetJobModal] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
   const [signInMessage, setSignInMessage] = useState('');
+
+  // mock_recommendations_viewed —— 进入 Quick AI Mock 推荐题目列表页（题目集渲染后上报一次）
+  const mockRecoTrackedRef = useRef(false);
+  useEffect(() => {
+    if (isLoggedIn && planSets.length > 0 && !mockRecoTrackedRef.current) {
+      mockRecoTrackedRef.current = true;
+      safeCapture(posthog, EVENTS.MOCK_RECOMMENDATIONS_VIEWED, {
+        count: planSets.length,
+      });
+    }
+  }, [isLoggedIn, planSets.length, posthog]);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [personalizeWith, setPersonalizeWith] = useState<'profile' | 'targetjob' | null>(null);
   const [loadingCardId, setLoadingCardId] = useState<string | null>(null);

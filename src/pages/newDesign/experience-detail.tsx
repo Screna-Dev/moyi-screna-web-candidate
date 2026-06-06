@@ -9,6 +9,8 @@ import { getPost, getPostAccessInfo, getComments, createComment, deleteComment, 
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import {
@@ -167,6 +169,9 @@ export function ExperienceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+
+  // note_read —— 打开某篇面经，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
 
   // ── Post data ──
   const [post, setPost] = useState<ExperiencePost | null>(null);

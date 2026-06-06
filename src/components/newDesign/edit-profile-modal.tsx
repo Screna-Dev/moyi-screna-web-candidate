@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { X, ChevronDown } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +55,7 @@ const ROLE_SUGGESTIONS = [
 ];
 
 export function EditProfileModal({ open, onOpenChange, initialData, onSave }: EditProfileModalProps) {
+  const posthog = usePostHog();
   const [formData, setFormData] = useState<EditProfileData>({
     firstName: '',
     lastName: '',
@@ -140,6 +144,12 @@ export function EditProfileModal({ open, onOpenChange, initialData, onSave }: Ed
   };
 
   const handleSubmit = () => {
+    // job_preference_completed —— 用户编辑 Target roles 并保存
+    safeCapture(posthog, EVENTS.JOB_PREFERENCE_COMPLETED, {
+      target_roles: formData.targetRoles,
+      target_roles_count: formData.targetRoles.length,
+      target_company_types: formData.targetCompanyType,
+    });
     onSave(formData);
     onOpenChange(false);
   };

@@ -1,7 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
-import { safeIdentify } from '@/utils/posthog';
+import { safeIdentify, safeCapture } from '@/utils/posthog';
+import { getDaysSinceOnboarding } from '@/utils/analytics';
+import { EVENTS } from '@/constants/analyticsEvents';
 import API from '@/services/api';
 import { getPersonalInfo } from '@/services/ProfileServices';
 
@@ -92,6 +94,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const navigate = useNavigate();
   const posthog = usePostHog();
 
+  // Retention: 用户进入平台时上报 app_opened（在 identify 之后调用，确保事件归属到用户）
+  const trackAppOpened = (isReturning: boolean) => {
+    safeCapture(posthog, EVENTS.APP_OPENED, {
+      days_since_onboarding: getDaysSinceOnboarding(),
+      entry_page: window.location.pathname,
+      is_returning: isReturning,
+    });
+  };
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -110,6 +121,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             name: userData.name,
             role: userData.role,
           });
+          trackAppOpened(true);
         } else {
           localStorage.removeItem('authToken');
           sessionStorage.removeItem('authToken');
@@ -140,6 +152,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        trackAppOpened(false);
         window.dispatchEvent(new Event('screna-auth-change'));
       }
     } finally {
@@ -178,6 +191,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: userData.name,
           role: userData.role,
         });
+        trackAppOpened(false);
         window.dispatchEvent(new Event('screna-auth-change'));
         return userData;
       } else {

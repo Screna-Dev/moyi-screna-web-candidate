@@ -7,6 +7,10 @@ import {
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -123,6 +127,7 @@ interface BookingModalProps {
 }
 
 function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: BookingModalProps) {
+  const posthog = usePostHog();
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
   const [timezone, setTimezone] = useState(TIMEZONES[0]);
@@ -238,6 +243,12 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
       });
       const data = res.data?.data ?? res.data ?? {};
       if (data.checkoutUrl) {
+        // session_booked —— 成功创建预约（即将跳转 Stripe 付款；实际扣款由 webhook 确认）
+        safeCapture(posthog, EVENTS.SESSION_BOOKED, {
+          mentor_id: mentorId,
+          session_plan: plan.id,
+          duration_minutes: duration === '30min' ? 30 : 60,
+        });
         window.location.href = data.checkoutUrl;
         return;
       }
@@ -616,6 +627,11 @@ export function MentorDetailsPage() {
   const [activePlan, setActivePlan] = useState<CoachingPlan | null>(null);
   const [mentor, setMentor] = useState<MentorData | null>(null);
   const [loading, setLoading] = useState(!!mentorId);
+
+  // mentor_profile_viewed —— 进入 mentor 主页，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.MENTOR_PROFILE_VIEWED, () => ({ mentor_id: mentorId }), {
+    enabled: !!mentorId,
+  });
 
   useEffect(() => {
     if (!mentorId) return;
