@@ -3,6 +3,12 @@ import API from "./api";
 // Base endpoint for profile
 const BASE_URL = '/profile';
 
+// Absolute backend API base (includes /api/v1), matching the value used by the
+// Vercel Edge Middleware proxy. Used to bypass that proxy for long-running
+// requests that would otherwise hit the middleware's hard 25s limit.
+const DIRECT_API_URL =
+  import.meta.env.VITE_API_URL || 'https://api-staging.screna.ai/api/v1';
+
 /**
  * Get complete profile data (resume)
  * @returns {Promise} API response with full profile including resume data
@@ -28,8 +34,17 @@ export const updateProfile = (profileData) => {
 export const uploadResume = (file) => {
   const formData = new FormData();
   formData.append('file', file);
-       
-  return API.post(`${BASE_URL}/upload-resume`, formData);
+
+  // The backend parses + analyzes the resume, which routinely takes longer than
+  // the Vercel Edge Middleware's hard 25s response limit. Hit the backend
+  // directly (bypassing the /api/v1 middleware proxy) and allow up to 2 minutes.
+  // Overriding baseURL keeps the api.js auth-token + 401-refresh interceptors.
+  // NOTE: requires the backend to send CORS headers for the web origin.
+  return API.post(`${BASE_URL}/upload-resume`, formData, {
+    baseURL: DIRECT_API_URL,
+    timeout: 120000,
+    withCredentials: true,
+  });
 };
 
 /**
