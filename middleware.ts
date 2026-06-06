@@ -59,6 +59,13 @@ export default async function middleware(request: Request) {
 
   // ── API proxy (existing behaviour) ──
   if (url.pathname.startsWith('/api/v1')) {
+    // The resume upload is handled by a dedicated Node serverless function
+    // (api/v1/profile/upload-resume.ts) that allows up to 60s — beyond this
+    // edge middleware's hard 25s limit. Let it fall through to that function.
+    if (url.pathname === '/api/v1/profile/upload-resume') {
+      return;
+    }
+
     const apiUrl =
       process.env.VITE_API_URL || 'https://api-staging.screna.ai/api/v1';
     const backendOrigin = new URL(apiUrl).origin;
