@@ -55,6 +55,7 @@ interface AIMockSession {
   status: 'Completed' | 'Incomplete'; feedback: string;
   questionsCount: number; difficulty: AIMockDifficulty; improvement?: number;
   interviewId?: string;
+  reportStatus?: string;   // "normal" | "no_participation" — from AI scoring (J4 transports via module/report)
 }
 interface MentorSession {
   id: string; kind: 'mentor'; sessionType: string;
@@ -164,11 +165,17 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
       const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
       return modules
         .filter((m: any) => m.report_id)
+        // Hide "no participation" reports — candidate didn't answer anything, no evaluation to view.
+        // Legacy reports (no report_status field) fall through as normal.
+        .filter((m: any) => m.report_status !== 'no_participation')
         .map((m: any): AIMockSession => {
           const reportId = String(m.report_id);
           const completed = m.status === 'completed';
           const scoreRaw = Number(m.score ?? 0);
           const score = completed && scoreRaw ? Math.round(scoreRaw) : null;
+          // Real wall-clock minutes from the session; falls back to the planned
+          // estimate when the module hasn't been scored yet (actual is null).
+          const minutes = m.actual_duration_minutes ?? m.duration_minutes;
           const dateIso = m.updated_at ?? plan.updated_at ?? plan.created_at ?? '';
           const date = dateIso
             ? new Date(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -180,13 +187,14 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
             role: inferRole(plan.target_job_title ?? ''),
             type: inferType(m.category ?? ''),
             date,
-            duration: m.duration_minutes ? `${m.duration_minutes} min` : '—',
+            duration: minutes ? `${minutes} min` : '—',
             score,
             status: completed ? 'Completed' : 'Incomplete',
             feedback: '',
             questionsCount: 0,
             difficulty: 'Intermediate',
             interviewId: reportId,
+            reportStatus: m.report_status,
           };
         });
     })
@@ -308,7 +316,13 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
   const handleReport = () => {
     if (!session.interviewId) return;
     navigate(`/evaluation?interviewId=${session.interviewId}`, {
-      state: { from: '/history', jobTitle: session.title },
+      state: {
+        from: '/history',
+        jobTitle: session.title,
+        // Real wall-clock duration (already "N min" or "—") so the report header
+        // shows actual time instead of a placeholder.
+        duration: session.duration,
+      },
     });
   };
 

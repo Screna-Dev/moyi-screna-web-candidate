@@ -68,6 +68,7 @@ const mockPlans = [
         score: 0.82,
         report_id: 'report-abc-1',
         duration_minutes: 45,
+        actual_duration_minutes: 48, // real wall-clock minutes from the session
       },
       {
         module_id: 'mod-2',
@@ -129,7 +130,9 @@ function mapPlansToSessions(plans: any[]) {
           title: m.title ?? plan.target_job_title ?? 'Mock Interview',
           company: plan.target_company ?? 'Practice Session',
           score: mapScore(m.score ?? 0),
-          duration: m.duration_minutes ? `${m.duration_minutes} min` : '--',
+          duration: (m.actual_duration_minutes ?? m.duration_minutes)
+            ? `${m.actual_duration_minutes ?? m.duration_minutes} min`
+            : '--',
           date: plan.updated_at ?? plan.created_at ?? '',
           type: m.category ?? 'General',
           status: 'Completed',
@@ -169,6 +172,20 @@ describe('History - mapPlansToSessions', () => {
 
     const productSense = sessions.find(s => s.title === 'Product Sense');
     expect(productSense?.score).toBe(85); // 85 → 85
+  });
+
+  it('shows real wall-clock duration when actual_duration_minutes is present', () => {
+    const sessions = mapPlansToSessions(mockPlans);
+    // mod-1: actual_duration_minutes 48 wins over estimate 45
+    const systemDesign = sessions.find(s => s.title === 'System Design Interview');
+    expect(systemDesign?.duration).toBe('48 min');
+  });
+
+  it('falls back to estimated duration_minutes when actual is null/absent', () => {
+    const sessions = mapPlansToSessions(mockPlans);
+    // mod-2 has no actual_duration_minutes → falls back to estimate 30
+    const behavioral = sessions.find(s => s.title === 'Behavioral Round');
+    expect(behavioral?.duration).toBe('30 min');
   });
 
   it('sorts sessions by date descending (newest first)', () => {

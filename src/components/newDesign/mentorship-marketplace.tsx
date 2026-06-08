@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { FileText, Target, Mic, Search, TrendingUp, Globe, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal, X, Check, Shield, Sparkles, ArrowRight, Lock, Users, Plus, Star, Loader2 } from 'lucide-react';
-import { DashboardLayout } from './dashboard-layout';
+import { DashboardLayout, PageHero } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
 import { getMentors, applyMentor, getCalendarAuthUrl, connectCalendar } from '../../services/MentorService';
@@ -737,23 +737,15 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="w-full space-y-16 pb-24 pt-2 bg-white -mx-6 px-6 -mt-8 bg-[#f9fafb]">
+      <div className="w-full space-y-16 pb-24 pt-[40px] bg-[#f9fafb] -mx-6 px-6">
 
         {/* ── Page Header ───────────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2.5 mb-2.5">
-              <h1 className="text-[#0F172A] font-bold text-[40px] font-[family-name:var(--font-serif)]">
-                Mentorship Market Space
-              </h1>
-              {isMember && (
-                null
-              )}
-            </div>
-            <p className="text-[13.5px] text-slate-500 max-w-[520px] leading-relaxed">
-              Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective.
-            </p>
-          </div>
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <PageHero
+            badge="Verified mentors"
+            title="Coach"
+            subtitle="Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective."
+          />
 
           {/* Utility area */}
           {isMember ? (

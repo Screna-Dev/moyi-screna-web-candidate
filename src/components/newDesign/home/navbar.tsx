@@ -107,6 +107,15 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             Coach
           </Link>
 
+          {/* Jobs (plain link) */}
+          <Link
+            to="/applications"
+            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
+            style={{ fontWeight: 450 }}
+          >
+            Jobs
+          </Link>
+
           {NAV_ITEMS.map(({ label, items }) => (
             <div key={label} className="relative group">
               <button className="flex items-center gap-1 text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150" style={{ fontWeight: 450 }}>
@@ -269,6 +278,13 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
               className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors mt-2"
             >
               Coach
+            </Link>
+            <Link
+              to="/applications"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
+            >
+              Jobs
             </Link>
             {NAV_ITEMS.map(({ label, items }) => (
               <div key={label}>

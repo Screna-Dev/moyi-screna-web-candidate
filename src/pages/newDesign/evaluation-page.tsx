@@ -440,6 +440,7 @@ function dimensionStatus(score: number): Dimension['status'] {
 interface ApiReportData {
   interview_id: string;
   status: string;
+  report_status?: string;   // "normal" | "no_participation" | null — content-axis flag set by AI scoring
   overall_score: number;
   scores: {
     resume_background?: number;
@@ -622,7 +623,7 @@ export function EvaluationPage() {
 
   const [isRetaking, setIsRetaking] = useState(false);
 
-  const navState = location.state as { from?: string; jobTitle?: string } | null;
+  const navState = location.state as { from?: string; jobTitle?: string; duration?: string } | null;
   const handleClose = () => {
     const from = navState?.from;
     if (from) navigate(from);
@@ -677,6 +678,52 @@ export function EvaluationPage() {
     );
   }
 
+  // No-participation: candidate didn't answer any question — hide the report shell entirely.
+  // null/undefined report_status falls through to the normal report (back-compat with legacy data).
+  if (apiData?.report_status === 'no_participation') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+          onClick={handleClose}
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 24 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 bg-white rounded-2xl shadow-2xl shadow-slate-900/20 max-w-md w-[92vw] p-10 flex flex-col items-center text-center gap-5"
+        >
+          <button
+            onClick={handleClose}
+            className="absolute top-4 right-4 h-8 w-8 flex items-center justify-center rounded-md hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-4 h-4 text-slate-400" />
+          </button>
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+            <CircleAlert className="w-7 h-7 text-slate-400" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-[16px] font-semibold text-slate-900">No report available</h2>
+            <p className="text-[13px] text-slate-500 leading-relaxed">
+              No answers were recorded in this interview, so we can't generate an evaluation. Retake the interview whenever you're ready.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <Button variant="outline" size="sm" onClick={handleClose} className="h-8 text-xs border-slate-200">
+              Close
+            </Button>
+            <Button size="sm" onClick={handleRetry} disabled={isRetaking} className="h-8 text-xs gap-1.5">
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetaking ? 'animate-spin' : ''}`} />
+              {isRetaking ? 'Starting…' : 'Retake'}
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -713,7 +760,7 @@ export function EvaluationPage() {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5">
                 <MetaChip icon={<Mic className="w-3 h-3" />} label={SESSION_META.type} />
                 {(navState?.jobTitle) && <MetaChip icon={<Target className="w-3 h-3" />} label={navState.jobTitle} />}
-                <MetaChip icon={<Clock className="w-3 h-3" />} label={SESSION_META.duration} />
+                <MetaChip icon={<Clock className="w-3 h-3" />} label={navState?.duration && navState.duration !== '—' ? navState.duration : SESSION_META.duration} />
                 {(apiData?.updated_at ?? apiData?.generated_at)
                   ? <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={new Date(apiData.updated_at ?? apiData.generated_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
                   : <MetaChip icon={<CalendarDays className="w-3 h-3" />} label={SESSION_META.completedAt} />

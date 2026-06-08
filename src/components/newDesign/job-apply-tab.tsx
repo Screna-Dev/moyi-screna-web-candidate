@@ -4,7 +4,8 @@ import {
   MapPin, Pencil, Plus, Search,
   Sparkles,
   Briefcase, X, Lock, RefreshCw,
-  SendHorizonal,
+  SendHorizonal, Shield, Check,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
@@ -111,6 +112,24 @@ const mapAppToApplied = (a: any): AppliedJob => {
   };
 };
 
+// jd_status from the apply backend: PENDING / IN_PROGRESS / FETCHED / GONE /
+// UNSUPPORTED / FAILED. Recommendations can arrive before the JD worker has
+// fetched the description, so the field may be absent → treat as PENDING.
+type JdStatus = 'PENDING' | 'IN_PROGRESS' | 'FETCHED' | 'GONE' | 'UNSUPPORTED' | 'FAILED';
+const normalizeJdStatus = (raw?: string): JdStatus => {
+  const s = (raw || '').toUpperCase().replace(/-/g, '_');
+  switch (s) {
+    case 'IN_PROGRESS':
+    case 'INPROGRESS': return 'IN_PROGRESS';
+    case 'FETCHED': return 'FETCHED';
+    case 'GONE': return 'GONE';
+    case 'UNSUPPORTED': return 'UNSUPPORTED';
+    case 'FAILED': return 'FAILED';
+    case 'PENDING':
+    default: return 'PENDING';
+  }
+};
+
 const mapRecToJob = (item: any): Job => {
   const company = item.company_name || 'Unknown';
   return {
@@ -127,10 +146,12 @@ const mapRecToJob = (item: any): Job => {
     years: '',
     salary: '',
     isPositiveMatch: false,
-    description: '',
+    description: item.jd_html ?? '',
     skills: [],
     positiveSkills: [],
     apply_url: item.apply_url || undefined,
+    jdHtml: item.jd_html ?? '',
+    jdStatus: item.jd_status,
   };
 };
 
@@ -153,6 +174,8 @@ type Job = {
   skills: string[];
   positiveSkills: string[];
   apply_url?: string;
+  jdHtml?: string;
+  jdStatus?: string;
 };
 
 function convertStatusToBadge(status: 'Queued' | 'In Progress' | 'Submitted' | 'Failed'): React.ReactNode {
@@ -175,6 +198,134 @@ function CompanyAvatar({ letter, color = 'bg-primary text-primary-foreground', s
     </div>
   );
 }
+// ─── Job Detail Panel ──────────────────────────────────────────────────────
+// Right-hand panel of the Matched two-column layout. Shows the selected job and
+// the description that the apply backend asynchronously fetches (jd_html),
+// keyed on jd_status:
+//   FETCHED                  → render jd_html (already server-sanitized)
+//   PENDING / IN_PROGRESS    → "Description loading…"
+//   GONE / UNSUPPORTED / FAILED → "Full description unavailable" (no link)
+function JobDetailPanel({
+  job, onDelegate, onReject, delegating,
+}: {
+  job: Job | null;
+  onDelegate: (job: Job) => void;
+  onReject: (job: Job) => void;
+  delegating: boolean;
+}) {
+  if (!job) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+        <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
+        <p className="text-sm text-muted-foreground">Select a job to see the details.</p>
+      </div>
+    );
+  }
+
+  const status = normalizeJdStatus(job.jdStatus);
+  const hasHtml = !!(job.jdHtml && job.jdHtml.trim());
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="p-6 border-b border-border shrink-0">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+              {job.logoLetter}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground mb-0.5 truncate">{job.title}</h2>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                <span className="font-medium text-foreground truncate">{job.company}</span>
+                {job.location && (
+                  <>
+                    <span>•</span>
+                    <span className="truncate">{job.location}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => onReject(job)}
+              disabled={delegating}
+              className="px-4 font-medium gap-1.5 text-muted-foreground hover:bg-transparent hover:text-muted-foreground hover:border-border disabled:cursor-not-allowed"
+              style={{ fontWeight: 500 }}
+            >
+              <X className="w-3.5 h-3.5" />
+              Not Interested
+            </Button>
+            <Button
+              onClick={() => onDelegate(job)}
+              disabled={delegating}
+              className="px-5 font-medium bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 disabled:cursor-not-allowed"
+              style={{ fontWeight: 500 }}
+            >
+              {delegating ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Delegating…
+                </>
+              ) : (
+                <>
+                  <SendHorizonal className="w-3.5 h-3.5" />
+                  Delegate
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {(job.location || job.timeAgo || job.matchScore > 0) && (
+          <div className="flex items-center flex-wrap gap-3 text-xs">
+            {job.location && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <MapPin className="w-3.5 h-3.5" />
+                <span className="text-foreground">{job.location}</span>
+              </div>
+            )}
+            {job.timeAgo && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-foreground">{job.timeAgo}</span>
+              </div>
+            )}
+            {job.matchScore > 0 && (
+              <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                {job.matchScore}% Match
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Body — About the role / JD */}
+      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        <h4 className="text-[11px] font-semibold text-foreground mb-3 uppercase tracking-wider">About the role</h4>
+        {status === 'FETCHED' && hasHtml ? (
+          <div
+            className="text-sm text-foreground leading-relaxed [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_h4]:font-semibold [&_h4]:mt-3 [&_h4]:mb-1.5 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_a]:text-primary [&_a]:underline [&_table]:w-full [&_table]:text-xs [&_table]:my-3 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
+            dangerouslySetInnerHTML={{ __html: job.jdHtml as string }}
+          />
+        ) : status === 'PENDING' || status === 'IN_PROGRESS' ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+            <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+            Description loading…
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-12 px-4">
+            <AlertCircle className="w-8 h-8 text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">Full description unavailable.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AppliedTab(
   {
   jobs}: { jobs: AppliedJob[] }) {
@@ -271,10 +422,130 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────
+// Non-member preview: blurred mock of the Jobs UI with an unlock overlay.
+// Visual pattern mirrors the mentorship marketplace lock screen so the two
+// premium gates feel like the same product surface.
+function JobsLockedView() {
+  const SAMPLE_JOBS = [
+    { title: 'Senior Product Manager', company: 'Stripe', location: 'San Francisco, CA · Hybrid', timeAgo: '2 days ago', match: 94, letter: 'S', logoColor: 'bg-indigo-100 text-indigo-700' },
+    { title: 'Software Engineer, Infra', company: 'Anthropic', location: 'Remote · US', timeAgo: '1 day ago', match: 91, letter: 'A', logoColor: 'bg-amber-100 text-amber-700' },
+    { title: 'Group Product Manager', company: 'Notion', location: 'New York, NY', timeAgo: '5 hours ago', match: 88, letter: 'N', logoColor: 'bg-slate-100 text-slate-700' },
+    { title: 'Staff ML Engineer', company: 'OpenAI', location: 'San Francisco, CA', timeAgo: '3 days ago', match: 86, letter: 'O', logoColor: 'bg-emerald-100 text-emerald-700' },
+  ];
+
+  return (
+    <section className="relative min-h-[600px]">
+      {/* Blurred mock content */}
+      <div className="blur-[8px] pointer-events-none select-none opacity-50 transition-all duration-500">
+        {/* Tabs */}
+        <div className="flex items-center gap-0.5 pb-3 px-0">
+          {['Matched', 'Delegated', 'Applied', 'Application Profile'].map((tab, i) => (
+            <div
+              key={tab}
+              className={`px-3.5 py-1.5 rounded-md text-sm ${i === 0 ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
+            >
+              {tab}
+            </div>
+          ))}
+        </div>
+
+        {/* Header row */}
+        <div className="flex items-center justify-between mb-4 pt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Showing Results For</span>
+            <div className="flex items-center gap-1.5 bg-white border border-border rounded-full px-3 py-1.5">
+              <span className="text-sm font-medium text-foreground">All target roles</span>
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white border border-border rounded-full px-3 py-1.5">
+            <span className="text-sm font-medium text-foreground">Last 7 Days</span>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          </div>
+        </div>
+
+        {/* Job cards */}
+        <div className="flex flex-col gap-3">
+          {SAMPLE_JOBS.map((job, i) => (
+            <div key={i} className="p-4 rounded-xl border border-border bg-card flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+                {job.letter}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
+                <p className="text-xs text-muted-foreground truncate">{job.company}</p>
+                <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {job.location}
+                  </span>
+                  <span>{job.timeAgo}</span>
+                  <Badge variant="default" className="text-[10px] px-1.5 py-0">{job.match}% Match</Badge>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="px-5 py-1.5 rounded-md border border-primary/40 text-primary text-sm font-medium flex items-center gap-1.5">
+                  <SendHorizonal className="w-3.5 h-3.5" />
+                  Delegate
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Lock overlay */}
+      <div className="absolute inset-0 flex items-start justify-center z-30 pt-16">
+        <div className="w-full max-w-[440px] bg-white rounded-3xl p-10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-slate-100/50">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-6">
+            <Lock className="w-6 h-6 text-blue-500" strokeWidth={2} />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100 mb-5">
+            <Shield className="w-3 h-3 text-slate-400" />
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Paid members only</span>
+          </div>
+
+          <h2 className="text-[26px] font-bold text-slate-900 mb-3 tracking-tight">Unlock Jobs</h2>
+          <p className="text-[15px] text-slate-500 leading-relaxed mb-8">
+            Let Screna submit applications to matched roles on your behalf. Available on paid plans.
+          </p>
+
+          <ul className="space-y-4 mb-10">
+            {[
+              'AI-matched roles tailored to your target titles and locations',
+              'One-click delegated apply — we fill out applications for you',
+              'Track every submission in Delegated, Applied, and Application Profile',
+            ].map((text, i) => (
+              <li key={i} className="flex items-start gap-3.5">
+                <div className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-3 h-3 text-blue-500" strokeWidth={3} />
+                </div>
+                <span className="text-[14.5px] text-slate-600 leading-snug">{text}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="space-y-4 text-center">
+            <Link to="/pricing" className="block">
+              <button className="w-full py-4 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[15px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-all shadow-[0_4px_20px_rgba(67,118,248,0.25)] active:scale-[0.98]">
+                Upgrade to unlock
+              </button>
+            </Link>
+            <Link to="/pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
+              See all plans
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function JobApplyTab() {
   // Plan gate — Jobs is Premium-only. Pro (starter) and Free users see an
   // upgrade screen and never hit the onboarding flow.
-  const { isElite, isLoading: isPlanLoading, planData } = useUserPlan();
+  const { isElite, isLoading: isPlanLoading } = useUserPlan();
   const posthog = usePostHog();
   const limitApproachedFiredRef = useRef(false);
 
@@ -517,6 +788,11 @@ export function JobApplyTab() {
 
   const [delegatingIds, setDelegatingIds] = useState<Set<string>>(new Set());
 
+  // Matched two-column layout — id of the job shown in the right detail panel.
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const selectedJob =
+    recommendedJobs.find((j) => j.id === selectedJobId) ?? recommendedJobs[0] ?? null;
+
   const handleDelegateClick = async (job: Job) => {
     if (!job?.id) return;
     const recId = job.id;
@@ -579,35 +855,7 @@ export function JobApplyTab() {
   }
 
   if (!isElite) {
-    const planLabel =
-      planData.currentPlan === 'Pro'
-        ? 'Starter'
-        : planData.currentPlan === 'Free'
-          ? 'Free'
-          : planData.currentPlan;
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px]">
-        <div className="max-w-md w-full text-center px-6">
-          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="w-6 h-6 text-amber-600" />
-          </div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">
-            Jobs is a Premium feature
-          </h2>
-          <p className="text-sm text-slate-600 leading-relaxed mb-5">
-            Managed Apply &mdash; the workspace that submits applications to
-            matched roles on your behalf &mdash; is included with Screna
-            Premium. Your current plan is{' '}
-            <span className="font-medium text-slate-900">{planLabel}</span>.
-          </p>
-          <Link to="/pricing">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              View Premium plans
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
+    return <JobsLockedView />;
   }
 
   if (onboardingState === 'loading') {
@@ -797,97 +1045,91 @@ export function JobApplyTab() {
               </div>
             </div>
 
-            {/* Single Column List */}
-            <div
-              ref={recsScrollRef}
-              onScroll={handleRecsScroll}
-              className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto pr-2 custom-scrollbar"
-            >
-              {recommendedJobs.length === 0 && recsLoading && (
-                <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-                  Loading recommendations…
-                </div>
-              )}
-              {recommendedJobs.length === 0 && !recsLoading && (
-                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                  <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">No matched jobs yet. Check back soon.</p>
-                </div>
-              )}
-              {recommendedJobs.map((job) => (
+            {/* Two Column Layout */}
+            {recommendedJobs.length === 0 && recsLoading && (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                Loading recommendations…
+              </div>
+            )}
+            {recommendedJobs.length === 0 && !recsLoading && (
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground">No matched jobs yet. Check back soon.</p>
+              </div>
+            )}
+            {recommendedJobs.length > 0 && (
+              <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
+                {/* Left: selectable job list */}
                 <div
-                  key={job.id}
-                  className="relative group p-4 rounded-xl border border-border bg-card hover:border-border/80 hover:shadow-sm transition-all flex items-center gap-4"
+                  ref={recsScrollRef}
+                  onScroll={handleRecsScroll}
+                  className="w-[32%] shrink-0 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar"
                 >
-                  <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
-                    {job.logoLetter}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
-                    <p className="text-xs text-muted-foreground truncate">{job.company}</p>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                      {job.location && (
-                        <span className="flex items-center gap-1 truncate">
-                          <MapPin className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{job.location}</span>
-                        </span>
-                      )}
-                      {job.timeAgo && (
-                        <span className="whitespace-nowrap">{job.timeAgo}</span>
-                      )}
-                      {job.matchScore > 0 && (
-                        <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
-                          {job.matchScore}% Match
-                        </Badge>
-                      )}
+                  {recommendedJobs.map((job) => {
+                    const isSelected = selectedJob?.id === job.id;
+                    return (
+                      <div
+                        key={job.id}
+                        onClick={() => setSelectedJobId(job.id)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-card border-primary/50 shadow-sm ring-1 ring-primary/20'
+                            : 'bg-card border-border hover:border-border/80 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 mb-2">
+                          <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+                            {job.logoLetter}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
+                            <p className="text-xs text-muted-foreground truncate">{job.company}</p>
+                          </div>
+                          {(job.timeAgo || job.matchScore > 0) && (
+                            <div className="flex flex-col items-end shrink-0 gap-1">
+                              {job.timeAgo && (
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">{job.timeAgo}</span>
+                              )}
+                              {job.matchScore > 0 && (
+                                <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                                  {job.matchScore}% Match
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {job.location && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{job.location}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {recsLoading && (
+                    <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                      Loading more…
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleRejectRec(job.id)}
-                      disabled={delegatingIds.has(job.id)}
-                      className="px-4 font-medium gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-transparent hover:text-muted-foreground hover:border-border disabled:cursor-not-allowed"
-                      style={{ fontWeight: 500 }}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Not Interested
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleDelegateClick(job)}
-                      disabled={delegatingIds.has(job.id)}
-                      className={`px-5 font-medium gap-1.5 transition-opacity border-primary/40 text-primary hover:bg-primary/10 hover:text-primary hover:border-primary/60 disabled:cursor-not-allowed ${
-                        delegatingIds.has(job.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                      }`}
-                      style={{ fontWeight: 500 }}
-                    >
-                      {delegatingIds.has(job.id) ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Delegating…
-                        </>
-                      ) : (
-                        <>
-                          <SendHorizonal className="w-3.5 h-3.5" />
-                          Delegate
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  )}
+                  {!recsHasMore && (
+                    <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                      You've reached the end.
+                    </div>
+                  )}
                 </div>
-              ))}
-              {recsLoading && recommendedJobs.length > 0 && (
-                <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-                  Loading more…
+
+                {/* Right: detail panel */}
+                <div className="flex-1 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
+                  <JobDetailPanel
+                    job={selectedJob}
+                    delegating={selectedJob ? delegatingIds.has(selectedJob.id) : false}
+                    onDelegate={(job) => handleDelegateClick(job)}
+                    onReject={(job) => handleRejectRec(job.id)}
+                  />
                 </div>
-              )}
-              {!recsHasMore && recommendedJobs.length > 0 && (
-                <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-                  You've reached the end.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
 
