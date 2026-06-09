@@ -27,7 +27,6 @@ import { SettingsPage } from './pages/newDesign/settings';
 import { BillingPage } from './pages/newDesign/billing';
 import { EvaluationPage } from './pages/newDesign/evaluation-page';
 import { AddExperiencePage } from './pages/newDesign/add-experience';
-import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
@@ -140,7 +139,6 @@ export const router = createBrowserRouter([
       { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
-      { path: '/messages', element: <MessageCenterPage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},

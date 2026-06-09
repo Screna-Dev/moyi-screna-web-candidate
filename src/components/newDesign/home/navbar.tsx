@@ -9,27 +9,13 @@ interface NavbarProps {
   transparent?: boolean;
 }
 
-const NAV_ITEMS = [
-  {
-    label: 'Practice',
-    items: [
-      {
-        title: 'Personalized Mock',
-        desc: 'AI-powered mock interviews tailored to your role and goals.',
-        path: '/personalized-practice',
-      },
-    ],
-  },
-  {
-    label: 'Community',
-    items: [
-      {
-        title: 'Interview Insights',
-        desc: 'Learn from real interview experiences shared by other candidates.',
-        path: '/interview-insights',
-      },
-    ],
-  },
+const NAV_LINKS = [
+  { label: 'Coach', path: '/marketplace' },
+  { label: 'Jobs', path: '/applications' },
+  { label: 'Quick AI Mock', path: '/personalized-practice' },
+  { label: 'InterviewPrep Note', path: '/interview-insights' },
+  { label: 'Pricing', path: '/pricing' },
+  { label: 'FAQ', path: '/help' },
 ];
 
 export function Navbar({ transparent: _transparent = false }: NavbarProps) {
@@ -98,80 +84,16 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
 
         {/* Center nav — absolutely centered */}
         <nav className="hidden md:flex items-center gap-7 absolute left-1/2 -translate-x-1/2">
-          {/* Coach (plain link) */}
-          <Link
-            to="/marketplace"
-            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450 }}
-          >
-            Coach
-          </Link>
-
-          {/* Jobs (plain link) */}
-          <Link
-            to="/applications"
-            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450 }}
-          >
-            Jobs
-          </Link>
-
-          {NAV_ITEMS.map(({ label, items }) => (
-            <div key={label} className="relative group">
-              <button className="flex items-center gap-1 text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150" style={{ fontWeight: 450 }}>
-                {label}
-                <svg
-                  className="opacity-55 group-hover:rotate-180 transition-transform duration-200 shrink-0"
-                  width="10" height="10" viewBox="0 0 10 10"
-                  fill="none" stroke="currentColor" strokeWidth="1.4"
-                  strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <path d="M2 3.5l3 3 3-3"/>
-                </svg>
-              </button>
-              {/* Hover bridge + dropdown */}
-              <div className="absolute top-full left-1/2 -translate-x-1/2 pt-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50">
-                <div
-                  className="w-64 bg-white/95 backdrop-blur-xl rounded-2xl border border-[#F0F0F2] p-2 shadow-xl -translate-y-1.5 group-hover:translate-y-0 group-focus-within:translate-y-0 transition-transform duration-200"
-                  style={{ boxShadow: '0 16px 48px -12px rgba(10,10,10,0.12), 0 0 0 1px #F0F0F2' }}
-                >
-                  {items.map(({ title, desc, path }) => (
-                    <Link
-                      key={path}
-                      to={path}
-                      className="flex flex-col gap-1 px-3.5 py-3 rounded-[10px] hover:bg-[#F7F9FF] transition-colors"
-                    >
-                      <span
-                        style={{ fontFamily: "'Playfair Display', serif" }}
-                        className="text-[16px] font-[500] text-[#0A0A0A] tracking-[-0.01em] leading-[1.2]"
-                      >
-                        {title}
-                      </span>
-                      <span className="text-[12.5px] text-[#4a4d57] leading-[1.5]">{desc}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
+          {NAV_LINKS.map(({ label, path }) => (
+            <Link
+              key={path}
+              to={path}
+              className="text-[14px] whitespace-nowrap text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
+              style={{ fontWeight: 450 }}
+            >
+              {label}
+            </Link>
           ))}
-
-          {/* Pricing */}
-          <Link
-            to="/pricing"
-            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450 }}
-          >
-            Pricing
-          </Link>
-
-          {/* FAQ — points to existing Help Center */}
-          <Link
-            to="/help"
-            className="text-[14px] text-[#2A2A2A] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450 }}
-          >
-            FAQ
-          </Link>
         </nav>
 
         {/* Right: auth */}
@@ -272,55 +194,16 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
             transition={{ duration: 0.18 }}
             className="md:hidden bg-white/95 backdrop-blur-xl border-t border-[#E8E8EA] px-4 pb-4"
           >
-            <Link
-              to="/marketplace"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors mt-2"
-            >
-              Coach
-            </Link>
-            <Link
-              to="/applications"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
-            >
-              Jobs
-            </Link>
-            {NAV_ITEMS.map(({ label, items }) => (
-              <div key={label}>
-                <p
-                  className="text-[11px] font-[600] uppercase tracking-[0.1em] text-[#8a8f9a] px-3 pt-4 pb-1.5"
-                >
-                  {label}
-                </p>
-                {items.map(({ title, path }) => (
-                  <Link
-                    key={path}
-                    to={path}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
-                  >
-                    {title}
-                  </Link>
-                ))}
-              </div>
+            {NAV_LINKS.map(({ label, path }, i) => (
+              <Link
+                key={path}
+                to={path}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors${i === 0 ? ' mt-2' : ''}`}
+              >
+                {label}
+              </Link>
             ))}
-            <div className="border-t border-[#E8E8EA] mt-3 pt-1">
-              <Link
-                to="/pricing"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
-              >
-                Pricing
-              </Link>
-              <Link
-                to="/help"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2.5 text-[15px] font-[500] text-[#0A0A0A] hover:bg-[#F7F9FF] rounded-xl transition-colors"
-              >
-                FAQ
-              </Link>
-            </div>
             {!isLoggedIn && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link to="/auth?login=true" onClick={() => setMobileMenuOpen(false)}>

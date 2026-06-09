@@ -89,6 +89,10 @@ export default function GoogleCallback() {
           localStorage.setItem('refreshToken', refreshToken);
         }
 
+        // Record that this session authenticated via Google so the Security
+        // settings tab knows the account is Google-only until a password is set.
+        localStorage.setItem('screna_auth_provider', 'google');
+
         console.log('Tokens stored in localStorage');
 
         // Set user from token

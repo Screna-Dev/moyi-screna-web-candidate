@@ -15,6 +15,9 @@ interface User {
   role?: string;
   country?: string;
   timezone?: string;
+  // Whether the account has an email/password credential (vs. Google-only).
+  // Derived from the sign-in method + JWT federated identity; see detectHasPassword.
+  hasPassword?: boolean;
 }
 
 interface AuthContextType {
@@ -29,6 +32,12 @@ interface AuthContextType {
   resendVerificationCode: (email: string) => Promise<void>;
   setUserFromToken: (token: string) => Promise<void>;
 }
+
+// localStorage keys recording how the account authenticates. These let the
+// Security settings tab show password controls only for email/password
+// accounts (Google accounts have no password credential).
+const AUTH_PROVIDER_KEY = 'screna_auth_provider'; // 'password' | 'google'
+const HAS_PASSWORD_KEY = 'screna_has_password';   // 'true' once a password exists
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -67,6 +76,47 @@ const decodeToken = (token: string): Pick<User, 'id' | 'role'> | null => {
     console.error('Failed to decode token:', error);
     return null;
   }
+};
+
+// Decode the raw JWT payload (claims) without throwing.
+const decodeTokenPayload = (token: string): Record<string, unknown> | null => {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+};
+
+// Decide whether the account has an email/password credential.
+// Priority: explicit "password set" flag → recorded sign-in method →
+// JWT federated-identity signal (Cognito marks Google users with an
+// `identities` claim and a `google_<sub>` username). Defaults to true
+// (treat as a password account) when there is no Google signal.
+const detectHasPassword = (token: string): boolean => {
+  if (localStorage.getItem(HAS_PASSWORD_KEY) === 'true') return true;
+
+  const provider = localStorage.getItem(AUTH_PROVIDER_KEY);
+  if (provider === 'password') return true;
+  if (provider === 'google') return false;
+
+  const claims = decodeTokenPayload(token);
+  if (claims) {
+    const identities = claims.identities;
+    if (Array.isArray(identities) && identities.length > 0) return false;
+    const username = String(
+      claims.username || claims['cognito:username'] || ''
+    ).toLowerCase();
+    if (/^google[_-]/.test(username)) return false;
+  }
+  return true;
 };
 
 // Fetch personal info (name, email, avatar, country, timezone) from API
@@ -114,7 +164,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const tokenData = decodeToken(token);
         if (tokenData) {
           const personalInfo = await fetchPersonalInfo();
-          const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+          const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
           setUser(userData);
           safeIdentify(posthog, userData.id, {
             email: userData.email,
@@ -144,7 +194,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const tokenData = decodeToken(token);
       if (tokenData) {
         const personalInfo = await fetchPersonalInfo();
-        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
         setUser(userData);
         window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
@@ -167,6 +217,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const accessToken = response.data.data.accessToken;
     const refreshToken = response.data.data.refreshToken;
 
+    // Signing in with email + password means the account has a password.
+    localStorage.setItem(AUTH_PROVIDER_KEY, 'password');
+    localStorage.setItem(HAS_PASSWORD_KEY, 'true');
+
     if (rememberMe) {
       localStorage.setItem('authToken', accessToken);
       if (refreshToken) {
@@ -183,7 +237,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const tokenData = decodeToken(accessToken);
       if (tokenData) {
         const personalInfo = await fetchPersonalInfo();
-        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo };
+        const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: true };
         setUser(userData);
         window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
@@ -195,7 +249,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         window.dispatchEvent(new Event('screna-auth-change'));
         return userData;
       } else {
-        const fallback: User = { id: '', email, name: '', avatar: '' };
+        const fallback: User = { id: '', email, name: '', avatar: '', hasPassword: true };
         setUser(fallback);
         window.dispatchEvent(new Event('screna-auth-change'));
         return fallback;
@@ -261,6 +315,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem(AUTH_PROVIDER_KEY);
+    localStorage.removeItem(HAS_PASSWORD_KEY);
     localStorage.removeItem('screnaIsLoggedIn');
     localStorage.removeItem('screnaUserData');
     localStorage.removeItem('screna_share_count');

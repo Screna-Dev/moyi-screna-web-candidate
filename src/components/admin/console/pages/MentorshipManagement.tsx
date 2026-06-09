@@ -43,6 +43,12 @@ const ALL_EXPERTISE_TAGS = [
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
 
+// Upper bounds for mentor pricing so an arbitrary number can't be entered.
+const MAX_RATE_30 = 1000; // $/30 min
+const MAX_RATE_60 = 2000; // $/1 hr
+const clampRate = (value: number, max: number) =>
+  Math.min(Math.max(0, Math.round(Number(value) || 0)), max);
+
 type TabId = "mentors" | "sessions" | "reschedule" | "disputes" | "service-types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -642,11 +648,11 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={labelStyle}>Rate ($/30 min)</label>
-              <input type="number" style={inputStyle} value={form.rate30} onChange={e => setForm({...form, rate30: Number(e.target.value)})} />
+              <input type="number" min={0} max={MAX_RATE_30} style={inputStyle} value={form.rate30} onChange={e => setForm({...form, rate30: clampRate(Number(e.target.value), MAX_RATE_30)})} />
             </div>
             <div>
               <label style={labelStyle}>Rate ($/1 hr)</label>
-              <input type="number" style={inputStyle} value={form.rate60} onChange={e => setForm({...form, rate60: Number(e.target.value)})} />
+              <input type="number" min={0} max={MAX_RATE_60} style={inputStyle} value={form.rate60} onChange={e => setForm({...form, rate60: clampRate(Number(e.target.value), MAX_RATE_60)})} />
             </div>
           </div>
           <div>
@@ -1212,11 +1218,11 @@ function MentorDirectory() {
             <div style={{ display: "flex", gap: 10 }}>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/30 min)</label>
-                  <input type="number" style={inputStyle} value={editForm.rate30} onChange={(e) => setEditForm({...editForm, rate30: Number(e.target.value)})} />
+                  <input type="number" min={0} max={MAX_RATE_30} style={inputStyle} value={editForm.rate30} onChange={(e) => setEditForm({...editForm, rate30: clampRate(Number(e.target.value), MAX_RATE_30)})} />
                </div>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/1 hr)</label>
-                  <input type="number" style={inputStyle} value={editForm.rate60} onChange={(e) => setEditForm({...editForm, rate60: Number(e.target.value)})} />
+                  <input type="number" min={0} max={MAX_RATE_60} style={inputStyle} value={editForm.rate60} onChange={(e) => setEditForm({...editForm, rate60: clampRate(Number(e.target.value), MAX_RATE_60)})} />
                </div>
             </div>
 

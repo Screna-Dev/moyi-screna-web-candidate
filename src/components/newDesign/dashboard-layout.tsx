@@ -7,7 +7,6 @@ import {
   Coins,
   Home,
   LogOut,
-  MessageSquare,
   FileText,
   History,
   User,
@@ -43,27 +42,13 @@ const sidebarLinks = [
 ];
 
 // Mirrors home/navbar.tsx so the top-nav stays identical across landing & dashboard.
-const TOP_NAV_DROPDOWN_ITEMS = [
-  {
-    label: 'Practice',
-    items: [
-      {
-        title: 'Personalized Mock',
-        desc: 'AI-powered mock interviews tailored to your role and goals.',
-        path: '/personalized-practice',
-      },
-    ],
-  },
-  {
-    label: 'Community',
-    items: [
-      {
-        title: 'Interview Insights',
-        desc: 'Learn from real interview experiences shared by other candidates.',
-        path: '/interview-insights',
-      },
-    ],
-  },
+const TOP_NAV_LINKS = [
+  { label: 'Coach', path: '/marketplace' },
+  { label: 'Jobs', path: '/applications' },
+  { label: 'Quick AI Mock', path: '/personalized-practice' },
+  { label: 'InterviewPrep Note', path: '/interview-insights' },
+  { label: 'Pricing', path: '/pricing' },
+  { label: 'FAQ', path: '/help' },
 ];
 
 const sidebarAccountLinks = [
@@ -304,83 +289,16 @@ function GlobalTopHeader({
 
         {/* Center: Global Nav — identical to landing navbar */}
         <nav className="hidden md:flex items-center gap-7 absolute left-1/2 -translate-x-1/2">
-          {/* Coach */}
-          <Link
-            to="/marketplace"
-            className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: currentPath === '/marketplace' ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Coach
-          </Link>
-
-          {/* Jobs */}
-          <Link
-            to="/applications"
-            className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: isPathActive('/applications') ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Jobs
-          </Link>
-
-          {TOP_NAV_DROPDOWN_ITEMS.map(({ label, items }) => {
-            const isActive = items.some((it) => isPathActive(it.path));
-            return (
-              <div key={label} className="relative group">
-                <button
-                  className="flex items-center gap-1 text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-                  style={{ fontWeight: 450, color: isActive ? '#2E5BFF' : '#2A2A2A' }}
-                >
-                  {label}
-                  <svg
-                    className="opacity-55 group-hover:rotate-180 transition-transform duration-200 shrink-0"
-                    width="10" height="10" viewBox="0 0 10 10"
-                    fill="none" stroke="currentColor" strokeWidth="1.4"
-                    strokeLinecap="round" strokeLinejoin="round"
-                  >
-                    <path d="M2 3.5l3 3 3-3" />
-                  </svg>
-                </button>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 pt-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200 z-50">
-                  <div
-                    className="w-64 bg-white/95 backdrop-blur-xl rounded-2xl border border-[#F0F0F2] p-2 shadow-xl -translate-y-1.5 group-hover:translate-y-0 group-focus-within:translate-y-0 transition-transform duration-200"
-                    style={{ boxShadow: '0 16px 48px -12px rgba(10,10,10,0.12), 0 0 0 1px #F0F0F2' }}
-                  >
-                    {items.map(({ title, desc, path }) => (
-                      <Link
-                        key={path}
-                        to={path}
-                        className="flex flex-col gap-1 px-3.5 py-3 rounded-[10px] hover:bg-[#F7F9FF] transition-colors"
-                      >
-                        <span
-                          style={{ fontFamily: "'Playfair Display', serif" }}
-                          className="text-[16px] font-[500] text-[#0A0A0A] tracking-[-0.01em] leading-[1.2]"
-                        >
-                          {title}
-                        </span>
-                        <span className="text-[12.5px] text-[#4a4d57] leading-[1.5]">{desc}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          <Link
-            to="/pricing"
-            className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: currentPath === '/pricing' ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            Pricing
-          </Link>
-
-          <Link
-            to="/help"
-            className="text-[14px] hover:text-[#2E5BFF] transition-colors duration-150"
-            style={{ fontWeight: 450, color: currentPath === '/help' ? '#2E5BFF' : '#2A2A2A' }}
-          >
-            FAQ
-          </Link>
+          {TOP_NAV_LINKS.map(({ label, path }) => (
+            <Link
+              key={path}
+              to={path}
+              className="text-[14px] whitespace-nowrap hover:text-[#2E5BFF] transition-colors duration-150"
+              style={{ fontWeight: 450, color: isPathActive(path) ? '#2E5BFF' : '#2A2A2A' }}
+            >
+              {label}
+            </Link>
+          ))}
         </nav>
 
         {/* Right: Avatar */}
@@ -414,9 +332,6 @@ function GlobalTopHeader({
                   </div>
                   <Link to="/dashboard" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors">
                     <LayoutDashboard className="w-4 h-4 opacity-50" /> Dashboard
-                  </Link>
-                  <Link to="/messages" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors">
-                    <MessageSquare className="w-4 h-4 opacity-50" /> Messages
                   </Link>
                   <Link to="/settings" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors">
                     <Settings className="w-4 h-4 opacity-50" /> Settings
