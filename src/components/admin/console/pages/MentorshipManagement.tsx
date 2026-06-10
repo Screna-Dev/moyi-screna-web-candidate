@@ -1345,6 +1345,9 @@ function SessionsTab() {
   const [, setLoading] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Session | null>(null);
+  const [rescheduleValue, setRescheduleValue] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
 
   useEffect(() => { setNoteDraft(selected?.mentorNote || ""); }, [selected]);
 
@@ -1407,20 +1410,33 @@ function SessionsTab() {
     }
   };
 
-  const rescheduleSession = async (s: Session) => {
-    const input = window.prompt("New start time (ISO 8601, e.g. 2026-06-01T15:00:00Z):", s.rawStart || "");
-    if (!input) return;
+  const openReschedule = (s: Session) => {
+    setRescheduleTarget(s);
+    setRescheduleValue(isoToLocalInput(s.rawStart));
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleValue) return;
+    const parsed = new Date(rescheduleValue);
+    if (isNaN(parsed.getTime())) {
+      toast.error("Please choose a valid date and time");
+      return;
+    }
+    setRescheduling(true);
     try {
-      await adminRescheduleBooking(s.id, input);
+      await adminRescheduleBooking(rescheduleTarget.id, parsed.toISOString());
       // session_rescheduled —— 当前仅 admin/ops 侧改期入口存在（用户侧 UI 尚未实现）
       safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, {
-        booking_id: s.id,
+        booking_id: rescheduleTarget.id,
         initiated_by: 'admin',
       });
       toast.success("Session rescheduled");
+      setRescheduleTarget(null);
       await loadBookings();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
     }
   };
 
@@ -1485,7 +1501,7 @@ function SessionsTab() {
                   <td style={TD}><span style={badge(s.refundEligible ? "amber" : "gray")}>{s.refundEligible ? "Eligible" : "No"}</span></td>
                   <td style={TD}>
                     <div style={{ display: "flex", gap: 5 }}>
-                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); rescheduleSession(s); }}>Reschedule</button>
+                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); openReschedule(s); }}>Reschedule</button>
                       {s.status !== "Cancelled" && (
                         <button style={{ ...ghostBtn, color: C.red }} onClick={(e) => { e.stopPropagation(); if (window.confirm(`Cancel session ${s.id}? This will issue a refund if applicable.`)) cancelSession(s.id); }}>Cancel</button>
                       )}
@@ -1505,7 +1521,7 @@ function SessionsTab() {
         width={300}
         footer={
           <>
-            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => selected && rescheduleSession(selected)}>Reschedule</button>
+            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => selected && openReschedule(selected)}>Reschedule</button>
             {selected?.status !== "Cancelled" && (
               <button style={{ ...secondaryBtn, flex: 1, justifyContent: "center", color: C.red, borderColor: C.redBorder }} onClick={() => selected && window.confirm(`Cancel session ${selected.id}?`) && cancelSession(selected.id)}>Cancel session</button>
             )}
@@ -1549,8 +1565,58 @@ function SessionsTab() {
           </>
         )}
       </Drawer>
+
+      <Modal
+        open={!!rescheduleTarget}
+        onClose={() => setRescheduleTarget(null)}
+        title="Reschedule session"
+        width={420}
+        footer={
+          <>
+            <button style={secondaryBtn} onClick={() => setRescheduleTarget(null)}>Cancel</button>
+            <button
+              style={{ ...primaryBtn, opacity: (!rescheduleValue || rescheduling) ? 0.5 : 1, cursor: (!rescheduleValue || rescheduling) ? "not-allowed" : "pointer" }}
+              disabled={!rescheduleValue || rescheduling}
+              onClick={submitReschedule}
+            >
+              {rescheduling ? "Saving…" : "Confirm new time"}
+            </button>
+          </>
+        }
+      >
+        {rescheduleTarget && (
+          <>
+            <div style={{ marginBottom: 14, fontSize: 12, color: C.textSub }}>
+              <div><strong style={{ color: C.text }}>{rescheduleTarget.student}</strong> with <strong style={{ color: C.text }}>{rescheduleTarget.mentor}</strong></div>
+              <div style={{ marginTop: 2 }}>Current time: {rescheduleTarget.time}</div>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, display: "block" }}>
+              New date &amp; time
+            </label>
+            <input
+              type="datetime-local"
+              value={rescheduleValue}
+              onChange={(e) => setRescheduleValue(e.target.value)}
+              style={{ width: "100%", height: 34, padding: "0 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 13, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", boxSizing: "border-box" }}
+            />
+            <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>
+              Uses your local timezone. The student and mentor will be notified of the new time.
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
+}
+
+// Converts an ISO 8601 timestamp into a value usable by <input type="datetime-local">
+// (local-time "YYYY-MM-DDTHH:mm"), returning "" for missing/invalid input.
+function isoToLocalInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
 }
 
 // ─── Reschedule ────────────────────────────────────────────────────────────────

@@ -91,3 +91,13 @@ export const resolveDispute = (disputeId, payload) =>
 
 export const deleteReview = (reviewId) =>
   API.delete(`${BASE}/reviews/${reviewId}`);
+
+// ─── Reports ────────────────────────────────────────────────────────────────
+
+// Exports an Excel (.xlsx) of CONFIRMED and COMPLETED sessions for the period.
+// period: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' (UTC). Returns a binary blob.
+export const exportSessionReport = (period) =>
+  API.get(`${BASE}/reports/sessions`, {
+    params: { period },
+    responseType: 'blob',
+  });
