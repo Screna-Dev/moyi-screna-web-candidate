@@ -4,7 +4,6 @@ import { DashboardLayout, PageHero } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
 import { getMentors } from '../../services/MentorService';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasMentorRole } from '../mentor/dashboard-mode';
 import { ApplyMentorModal } from './apply-mentor-modal';
@@ -292,11 +291,10 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export function MentorshipMarketplacePage() {
-  // Mentorship is included on Starter + Premium; visitors and Free users see
-  // the locked / blurred view. canAccessMentorship is false while plan is
-  // loading, so we avoid flashing the member view before the data arrives.
-  const { canAccessMentorship } = useUserPlan();
-  const isMember = canAccessMentorship;
+  // Mentorship is open to ALL logged-in members (Free included): everyone can
+  // browse and book. Only signed-out visitors see the locked / blurred view.
+  const { user, isAuthenticated } = useAuth();
+  const isMember = isAuthenticated;
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSort, setOpenSort] = useState(false);
   const [filters, setFilters] = useState<Record<string, string | null>>({
@@ -305,7 +303,6 @@ export function MentorshipMarketplacePage() {
   const [sortBy, setSortBy] = useState('Top rated');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
-  const { user } = useAuth();
   const isAlreadyMentor = hasMentorRole(user);
 
   const sortRef = useRef<HTMLDivElement>(null);

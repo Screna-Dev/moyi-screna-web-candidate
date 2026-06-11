@@ -4,7 +4,6 @@ import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
 import { getMentors } from '../../services/MentorService';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasMentorRole } from '../mentor/dashboard-mode';
 import { ApplyMentorModal } from './apply-mentor-modal';
@@ -273,12 +272,10 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export function MentorMarketplaceListPage() {
-  // Mentorship is included on Starter + Premium; visitors and Free users see
-  // the locked / blurred view. canAccessMentorship is false while plan is
-  // loading, so we avoid flashing the member view before the data arrives.
-  const { canAccessMentorship } = useUserPlan();
-  const { user } = useAuth();
-  const isMember = canAccessMentorship;
+  // Mentorship is open to ALL logged-in members (Free included): everyone can
+  // browse and book. Only signed-out visitors see the locked / blurred view.
+  const { user, isAuthenticated } = useAuth();
+  const isMember = isAuthenticated;
   const isAlreadyMentor = hasMentorRole(user);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
