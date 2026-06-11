@@ -105,6 +105,54 @@ function fmt12h(hour: number, minute: number): string {
 }
 const minutesOf = (t: { hour: number; minute: number }) => t.hour * 60 + t.minute;
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+// Backend expects ISO LocalTime strings ("HH:mm:ss"), not {hour,minute,...} objects.
+const toIsoTime = (hour: number, minute: number) => `${pad2(hour)}:${pad2(minute)}:00`;
+// The GET response may return a time as a string ("09:00:00"), an object
+// ({hour,minute,...}), or an array ([9,0]) depending on backend config.
+function readTimeParts(t: any): { hour: number; minute: number } | null {
+  if (t == null) return null;
+  if (Array.isArray(t)) return { hour: Number(t[0]) || 0, minute: Number(t[1]) || 0 };
+  if (typeof t === 'string') {
+    const m = t.match(/^(\d{1,2}):(\d{2})/);
+    return m ? { hour: parseInt(m[1], 10), minute: parseInt(m[2], 10) } : null;
+  }
+  if (typeof t === 'object' && t.hour != null) return { hour: Number(t.hour), minute: Number(t.minute) || 0 };
+  return null;
+}
+
+// Date-specific overrides have no backend endpoint yet (the office-hours API only
+// stores the recurring weekly schedule). Hidden until the backend supports them.
+const SHOW_DATE_OVERRIDES = false;
+
+/* ─────────────────────────────────────────────
+   PER-SECTION SAVE STATE + FOOTER
+───────────────────────────────────────────── */
+type SaveStatus = { dirty: boolean; saving: boolean; saved: boolean; error: string | null };
+const CLEAN_STATUS: SaveStatus = { dirty: false, saving: false, saved: false, error: null };
+
+function SectionSaveRow({ status, onSave }: { status: SaveStatus; onSave: () => void }) {
+  if (!status.dirty && !status.saved && !status.error) return null;
+  return (
+    <div className="flex items-center justify-end gap-3 pt-3 mt-4 border-t border-border">
+      {status.error ? (
+        <span className="mr-auto text-xs text-red-600 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {status.error}</span>
+      ) : status.saved && !status.dirty ? (
+        <span className="text-xs text-[hsl(165,60%,30%)] flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Saved</span>
+      ) : null}
+      {(status.dirty || status.error) && (
+        <button
+          onClick={onSave}
+          disabled={status.saving}
+          className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {status.saving ? 'Saving…' : 'Save'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ───���─��───────────────────────────────────────
    MOCK DATA
 ─���─────────────────────────────────────────── */
@@ -1002,7 +1050,7 @@ function AvailabilityPage() {
 
   const days = WEEK_DAYS;
   const [dayEnabled, setDayEnabled] = useState<Record<string, boolean>>({
-    Monday: true, Tuesday: true, Wednesday: false, Thursday: true, Friday: true, Saturday: false, Sunday: false,
+    Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false,
   });
   const [vacationMode, setVacationMode] = useState(false);
   const [bufferTime, setBufferTime] = useState('15 min');
@@ -1014,19 +1062,14 @@ function AvailabilityPage() {
   // True when the weekly schedule has edits not yet pushed to office hours.
   const [scheduleDirty, setScheduleDirty] = useState(false);
 
-  const [slots, setSlots] = useState<Record<string, string[]>>({
-    Monday: ['9:00 AM – 12:00 PM', '2:00 PM – 5:00 PM'],
-    Tuesday: ['10:00 AM – 1:00 PM'],
-    Thursday: ['9:00 AM – 11:00 AM', '3:00 PM – 6:00 PM'],
-    Friday: ['1:00 PM – 4:00 PM'],
-  });
+  const [slots, setSlots] = useState<Record<string, string[]>>({});
 
   // ── Seed weekly schedule from the mentor's real office hours when loaded ──
   // Defensive: a malformed/partial entry must never throw (it would bubble out
   // of this effect to the route error boundary and blank the whole page).
   useEffect(() => {
-    const oh = profile?.officeHours;
-    if (!Array.isArray(oh) || oh.length === 0) return; // keep current view if none set
+    if (!profile) return; // wait for the real profile before populating the grid
+    const oh = Array.isArray(profile.officeHours) ? profile.officeHours : [];
     try {
       const enabled: Record<string, boolean> = {
         Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false,
@@ -1034,11 +1077,11 @@ function AvailabilityPage() {
       const next: Record<string, string[]> = {};
       oh.forEach(e => {
         const day = WEEK_DAYS[((e?.dayOfWeek ?? 0) as number) - 1]; // ISO 1=Mon … 7=Sun
-        const st = e?.startTime;
-        const en = e?.endTime;
-        if (!day || !st || !en || st.hour == null || en.hour == null) return;
+        const st = readTimeParts(e?.startTime);
+        const en = readTimeParts(e?.endTime);
+        if (!day || !st || !en) return;
         enabled[day] = true;
-        const range = `${fmt12h(st.hour, st.minute ?? 0)} – ${fmt12h(en.hour, en.minute ?? 0)}`;
+        const range = `${fmt12h(st.hour, st.minute)} – ${fmt12h(en.hour, en.minute)}`;
         next[day] = [...(next[day] ?? []), range];
       });
       setDayEnabled(enabled);
@@ -1054,28 +1097,49 @@ function AvailabilityPage() {
   // The API accepts one entry per day, so multiple ranges on a day are
   // collapsed into a single envelope (earliest start → latest end).
   const handleSaveAvailability = () => {
-    const officeHours: OfficeHourDto[] = days
-      .filter(d => dayEnabled[d])
-      .map(d => {
-        const ranges = (slots[d] && slots[d].length ? slots[d] : ['9:00 AM – 5:00 PM'])
-          .map(s => {
-            const [a, b] = s.split(/\s*[–-]\s*/);
-            return { start: parse12h(a), end: parse12h(b) };
-          });
-        const start = ranges.reduce((min, r) => (minutesOf(r.start) < minutesOf(min) ? r.start : min), ranges[0].start);
-        const end = ranges.reduce((max, r) => (minutesOf(r.end) > minutesOf(max) ? r.end : max), ranges[0].end);
-        return {
-          dayOfWeek: WEEK_DAYS.indexOf(d) + 1,
-          startTime: { hour: start.hour, minute: start.minute, second: 0, nano: 0 },
-          endTime: { hour: end.hour, minute: end.minute, second: 0, nano: 0 },
-        };
+    const officeHours: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
+    const invalidDays: string[] = [];
+    for (const d of days.filter(day => dayEnabled[day])) {
+      const ranges = (slots[d] && slots[d].length ? slots[d] : ['9:00 AM – 5:00 PM'])
+        .map(s => {
+          const [a, b] = s.split(/\s*[–—-]\s*/); // en dash, em dash, or hyphen
+          return { start: parse12h(a), end: parse12h(b || a) };
+        });
+      const start = ranges.reduce((min, r) => (minutesOf(r.start) < minutesOf(min) ? r.start : min), ranges[0].start);
+      const end = ranges.reduce((max, r) => (minutesOf(r.end) > minutesOf(max) ? r.end : max), ranges[0].end);
+      // Backend rejects endTime <= startTime — catch it here with a clear message.
+      if (minutesOf(end) <= minutesOf(start)) { invalidDays.push(d); continue; }
+      officeHours.push({
+        dayOfWeek: WEEK_DAYS.indexOf(d) + 1,
+        startTime: toIsoTime(start.hour, start.minute), // ISO "HH:mm:ss" — backend rejects object form
+        endTime: toIsoTime(end.hour, end.minute),
       });
+    }
+    if (invalidDays.length) {
+      setHoursToast({ ok: false, msg: `${invalidDays.join(', ')}: end time must be after start time.` });
+      return;
+    }
     setSavingHours(true);
     setHoursToast(null);
     setMyOfficeHours(officeHours)
-      .then(() => { setScheduleDirty(false); ctx?.refetch(); setHoursToast({ ok: true, msg: 'Availability saved.' }); })
-      .catch((err: any) => { setHoursToast({ ok: false, msg: err?.response?.data?.message || 'Could not save availability.' }); })
-      .finally(() => { setSavingHours(false); setTimeout(() => setHoursToast(null), 3000); });
+      .then(() => {
+        setScheduleDirty(false);
+        ctx?.refetch();
+        setHoursToast({ ok: true, msg: 'Availability saved.' });
+        setTimeout(() => setHoursToast(null), 3000);
+      })
+      // Keep backend validation errors visible (don't auto-hide) so they can be read.
+      .catch((err: any) => {
+        const data = err?.response?.data;
+        const msg =
+          data?.message
+          || (Array.isArray(data?.errors) ? data.errors.map((e: any) => e?.defaultMessage || e?.message || e?.field).filter(Boolean).join('; ') : null)
+          || data?.errorCode
+          || (typeof data === 'string' ? data : null)
+          || `Could not save availability${err?.response?.status ? ` (${err.response.status})` : ''}.`;
+        setHoursToast({ ok: false, msg });
+      })
+      .finally(() => setSavingHours(false));
   };
 
   // Inline row editor
@@ -1092,11 +1156,8 @@ function AvailabilityPage() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Date overrides (seeded with demo data)
-  const [overrides, setOverrides] = useState<Override[]>([
-    { id: '1', date: '2025-05-15', displayDate: 'May 15, 2025', dayName: 'Thursday', type: 'block', reason: 'Travel' },
-    { id: '2', date: '2025-05-22', displayDate: 'May 22, 2025', dayName: 'Thursday', type: 'slot', timeRanges: ['6:00 PM – 8:00 PM'] },
-  ]);
+  // Date overrides — no backend endpoint yet, so this stays empty (feature hidden).
+  const [overrides, setOverrides] = useState<Override[]>([]);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1334,7 +1395,7 @@ function AvailabilityPage() {
                   <div className="flex items-center gap-3 p-3">
                     <button
                       onClick={() => { setDayEnabled(prev => ({ ...prev, [day]: !prev[day] })); setScheduleDirty(true); }}
-                      className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${dayEnabled[day] ? 'bg-primary' : 'bg-switch-background'}`}
+                      className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${dayEnabled[day] ? 'bg-primary' : 'bg-[var(--switch-background)] border border-border'}`}
                     >
                       <span className={`absolute top-0.5 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${dayEnabled[day] ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
                     </button>
@@ -1379,7 +1440,8 @@ function AvailabilityPage() {
             </div>
           </div>
 
-          {/* Date Overrides */}
+          {/* Date Overrides — hidden until a backend endpoint exists */}
+          {SHOW_DATE_OVERRIDES && (
           <div className="bg-card border border-border rounded-[var(--radius)] p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -1431,6 +1493,7 @@ function AvailabilityPage() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Settings Panel */}
@@ -1443,47 +1506,48 @@ function AvailabilityPage() {
                 <div className="text-xs text-muted-foreground mt-0.5">Pause all new booking requests.</div>
               </div>
               <button
-                onClick={() => setVacationMode(!vacationMode)}
-                className={`w-10 h-5.5 rounded-full relative transition-colors ${vacationMode ? 'bg-amber-400' : 'bg-switch-background'}`}
+                onClick={() => {
+                  const next = !vacationMode;
+                  setVacationMode(next);
+                  // Turning vacation mode on clears the weekly recurring schedule
+                  // (Save availability then persists the empty schedule).
+                  if (next) {
+                    setDayEnabled({ Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false });
+                    setSlots({});
+                    setScheduleDirty(true);
+                  }
+                }}
+                className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${vacationMode ? 'bg-amber-400' : 'bg-[var(--switch-background)] border border-border'}`}
               >
-                <span className={`absolute top-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform ${vacationMode ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                <span className={`absolute top-0.5 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${vacationMode ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
               </button>
             </div>
           </div>
 
-          {/* Booking Settings */}
+          {/* Booking Settings (read-only — managed by the platform / Google Calendar) */}
           <div className="bg-card border border-border rounded-[var(--radius)] p-4 space-y-4">
             <h3 className="text-foreground text-sm">Booking Settings</h3>
             {[
-              { label: 'Timezone', value: timezone, setter: setTimezone, opts: ['Pacific Time (US & Canada)', 'Eastern Time (US & Canada)', 'UTC'] },
-              { label: 'Minimum Notice', value: minNotice, setter: setMinNotice, opts: ['1 hour', '12 hours', '24 hours', '48 hours'] },
+              { label: 'Timezone', value: timezone, hint: 'From Google Calendar' },
+              { label: 'Minimum Notice', value: minNotice, hint: 'Platform default' },
             ].map(s => (
               <div key={s.label}>
                 <label className="text-xs text-muted-foreground">{s.label}</label>
-                {s.label === 'Minimum Notice' ? (
-                  <div
-                    className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 flex items-center justify-between"
-                    style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)', cursor: 'not-allowed' }}
-                  >
-                    <span>24 hours</span>
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>Platform default</span>
-                  </div>
-                ) : (
-                  <select
-                    value={s.value}
-                    onChange={e => s.setter(e.target.value)}
-                    className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-                  >
-                    {s.opts.map(o => <option key={o}>{o}</option>)}
-                  </select>
-                )}
+                <div
+                  className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 flex items-center justify-between gap-2"
+                  style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)', cursor: 'not-allowed' }}
+                >
+                  <span className="truncate">{s.value}</span>
+                  <span className="shrink-0" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>{s.hint}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── Add Date Override Drawer ── */}
+      {/* ── Add Date Override Drawer (hidden until backend endpoint exists) ── */}
+      {SHOW_DATE_OVERRIDES && (<>
       {/* Backdrop */}
       {drawerOpen && (
         <div
@@ -1628,6 +1692,7 @@ function AvailabilityPage() {
           </button>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
@@ -1767,10 +1832,10 @@ function ProfilePage() {
   const [company, setCompany] = useState(MENTOR.company);
   const [location, setLocation] = useState(MENTOR.location);
   const [years, setYears] = useState(String(MENTOR.yearsOfExp));
-  const [unsaved, setUnsaved] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // Per-section save state so each card saves on its own (no single sticky bar).
+  const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
+  const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
+  const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
   const [services, setServices] = useState([
     'Mock Interview',
     'Resume Review',
@@ -1781,6 +1846,7 @@ function ProfilePage() {
   const [editingService, setEditingService] = useState<string | null>(null);
   const [editServiceValue, setEditServiceValue] = useState('');
   const [workEmail, setWorkEmail] = useState('');
+  const [linkedin, setLinkedin] = useState('');
 
   // Seed editable fields from the real profile once it loads.
   useEffect(() => {
@@ -1792,7 +1858,7 @@ function ProfilePage() {
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
     if (Array.isArray(profile.expertiseTags)) setServices(profile.expertiseTags);
-    setUnsaved(false);
+    setBasic(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
   // Prefill the work email from the signed-in account (editable).
@@ -1801,14 +1867,35 @@ function ProfilePage() {
     if (email) setWorkEmail(prev => prev || email);
   }, [user]);
 
-  const markDirty = () => { setUnsaved(true); setSaved(false); };
+  const markBasic = () => setBasic(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markSvc = () => setSvc(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
+
+  // PUT supports partial updates, so each section sends only its own fields.
+  const saveSection = (payload: Record<string, any>, set: React.Dispatch<React.SetStateAction<SaveStatus>>) => {
+    set(s => ({ ...s, saving: true, error: null }));
+    updateMyMentorProfile(payload)
+      .then(res => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        set({ dirty: false, saving: false, saved: true, error: null });
+        setTimeout(() => set(s => ({ ...s, saved: false })), 2500);
+      })
+      .catch((err: any) => set(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save. Please try again.' })));
+  };
+
+  const saveBasic = () => saveSection({ bio, currentRole: title, currentCompany: company, yearsOfExperience: Number(years) || 0 }, setBasic);
+  const saveServices = () => saveSection({ expertiseTags: services }, setSvc);
+  // workEmail / linkedinUrl aren't in the documented schema yet — sent so they
+  // persist once the backend adds the fields (unknown fields are ignored).
+  const saveVerify = () => saveSection({ workEmail, linkedinUrl: linkedin }, setVerify);
 
   const handleAddService = () => {
     if (newService.trim() && !services.includes(newService.trim())) {
       setServices([...services, newService.trim()]);
       setNewService('');
       setIsAddingService(false);
-      markDirty();
+      markSvc();
     }
   };
 
@@ -1818,7 +1905,7 @@ function ProfilePage() {
       setEditingService(null);
       setEditServiceValue('');
     }
-    markDirty();
+    markSvc();
   };
 
   const handleSaveEditService = (oldTag: string) => {
@@ -1826,35 +1913,11 @@ function ProfilePage() {
     if (trimmed && trimmed !== oldTag) {
       if (!services.includes(trimmed)) {
         setServices(services.map(s => s === oldTag ? trimmed : s));
-        markDirty();
+        markSvc();
       }
     }
     setEditingService(null);
     setEditServiceValue('');
-  };
-
-  const handleSave = () => {
-    setSaving(true);
-    setSaveError(null);
-    updateMyMentorProfile({
-      bio,
-      headline,
-      currentRole: title,
-      currentCompany: company,
-      yearsOfExperience: Number(years) || 0,
-      expertiseTags: services,
-    })
-      .then(res => {
-        const updated = unwrapData<MentorProfileDto>(res);
-        if (updated) ctx?.setProfile(updated);
-        setUnsaved(false);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
-      })
-      .catch((err: any) => {
-        setSaveError(err?.response?.data?.message || 'Could not save your profile. Please try again.');
-      })
-      .finally(() => setSaving(false));
   };
 
   // ── Google Calendar connect (same OAuth flow as the marketplace apply page) ──
@@ -1910,22 +1973,6 @@ function ProfilePage() {
     <div className="flex">
       {/* Edit panel */}
       <div className="flex-1 p-6 space-y-5 min-w-0">
-        {/* Save bar */}
-        {(unsaved || saved || saveError) && (
-          <div className={`flex items-center justify-between px-4 py-2.5 rounded-[var(--radius)] border text-sm ${saved ? 'bg-[hsl(165,82%,95%)] border-[hsl(165,82%,80%)] text-[hsl(165,60%,30%)]' : saveError ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-            {saved ? (
-              <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Profile saved successfully.</div>
-            ) : saveError ? (
-              <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {saveError}</div>
-            ) : (
-              <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4" /> You have unsaved changes.</div>
-            )}
-            {(unsaved || saveError) && (
-              <button onClick={handleSave} disabled={saving} className="px-3 py-1 bg-primary text-primary-foreground text-xs rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{saving ? 'Saving…' : 'Save changes'}</button>
-            )}
-          </div>
-        )}
-
         {/* Basic Info */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div className="flex items-center gap-4">
@@ -1956,7 +2003,7 @@ function ProfilePage() {
                   </label>
                   <input
                     value={f.value}
-                    onChange={e => { f.set(e.target.value); markDirty(); }}
+                    onChange={e => { f.set(e.target.value); markBasic(); }}
                     className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
@@ -1967,8 +2014,10 @@ function ProfilePage() {
 
           <div>
             <label className="text-xs text-muted-foreground">Bio<span className="text-destructive ml-0.5">*</span></label>
-            <textarea value={bio} rows={4} onChange={e => { setBio(e.target.value); markDirty(); }} className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
+            <textarea value={bio} rows={4} onChange={e => { setBio(e.target.value); markBasic(); }} className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
           </div>
+
+          <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
 
         {/* Coaching Plans */}
@@ -2132,6 +2181,8 @@ function ProfilePage() {
               )}
             </div>
           </div>
+
+          <SectionSaveRow status={svc} onSave={saveServices} />
         </div>
 
         {/* Verification Section */}
@@ -2169,7 +2220,7 @@ function ProfilePage() {
                 <input
                   type="email"
                   value={workEmail}
-                  onChange={e => setWorkEmail(e.target.value)}
+                  onChange={e => { setWorkEmail(e.target.value); markVerify(); }}
                   placeholder="you@company.com"
                   className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
                 />
@@ -2182,10 +2233,16 @@ function ProfilePage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">LinkedIn Profile</span>
-                  <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)]" />
+                  <span className="text-sm font-medium text-foreground">LinkedIn Profile<span className="text-destructive ml-0.5">*</span></span>
+                  {linkedin && <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)]" />}
                 </div>
-                <p className="text-xs text-muted-foreground">linkedin.com/in/sarahchen</p>
+                <input
+                  type="url"
+                  value={linkedin}
+                  onChange={e => { setLinkedin(e.target.value); markVerify(); }}
+                  placeholder="linkedin.com/in/your-handle"
+                  className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
               </div>
             </div>
           </div>
@@ -2195,6 +2252,8 @@ function ProfilePage() {
             <Lock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground">Documents are used only for internal review and are <strong className="text-foreground">never shown publicly</strong>.</p>
           </div>
+
+          <SectionSaveRow status={verify} onSave={saveVerify} />
         </div>
 
         {/* Google Calendar */}

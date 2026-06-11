@@ -828,10 +828,23 @@ function MentorDirectory() {
 
   const approveMentor = async (m: Mentor) => {
     try {
-      await updateMentorStatus(m.id, { status: "APPROVED" });
-      toast.success(`${m.name} approved successfully`);
+      const res = await updateMentorStatus(m.id, { status: "APPROVED" });
+      const updated = res?.data?.data;
+      const resultStatus = (updated?.status as ApiStatus) || undefined;
+      // Approving only sets the admin-approved flag + grants the MENTOR role.
+      // The mentor is fully APPROVED only once Google Calendar is connected,
+      // office hours are configured, and an active topic exists — otherwise the
+      // backend keeps the profile PENDING and explains the gap in statusReason.
+      if (resultStatus === "APPROVED") {
+        toast.success(`${m.name} approved — profile is now active`);
+      } else {
+        toast.info(
+          updated?.statusReason ||
+            `${m.name} admin-approved — waiting on mentor setup (calendar, office hours, active topic) before going live`
+        );
+      }
       await loadMentors();
-      if (selected?.id === m.id) setSelected({ ...m, status: "Active", apiStatus: "APPROVED" });
+      if (updated && selected?.id === m.id) setSelected(mapApiMentor(updated));
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to approve mentor");
     }
@@ -1130,6 +1143,11 @@ function MentorDirectory() {
                     <div style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>
                       This mentor has applied to join the platform. Please review their profile and service offerings before approving.
                     </div>
+                    {selected.statusReason && (
+                      <div style={{ fontSize: 11, color: C.amber, lineHeight: 1.5, marginTop: 6, fontWeight: 600 }}>
+                        Still pending: {selected.statusReason}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <DrawerDivider />
