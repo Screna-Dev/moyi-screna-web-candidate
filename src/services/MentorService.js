@@ -38,10 +38,35 @@ export const getCalendarAuthUrl = (redirectUri) =>
 export const connectCalendar = (payload) =>
   API.post('/mentorship/mentor/calendar/connect', payload);
 
+// ─── Mentor-side profile management ──────────────────────────────────────────
+export const getMyMentorProfile = () => API.get('/mentorship/profile');
+export const updateMyMentorProfile = (payload) =>
+  API.put('/mentorship/profile', payload);
+
+export const getMyCalendarStatus = () =>
+  API.get('/mentorship/profile/calendar/status');
+
+// ─── Mentor-side office hours (weekly availability) ──────────────────────────
+export const getMyOfficeHours = () => API.get('/mentorship/profile/office-hours');
+// `officeHours`: array of { dayOfWeek (1=Mon … 7=Sun), startTime, endTime }.
+export const setMyOfficeHours = (officeHours) =>
+  API.put('/mentorship/profile/office-hours', { officeHours });
+
 // ─── Mentor-side topic / booking management ──────────────────────────────────
 export const createMyTopic = (payload) =>
   API.post('/mentorship/profile/topics', payload);
 export const updateMyTopic = (topicId, payload) =>
   API.put(`/mentorship/profile/topics/${topicId}`, payload);
+export const deleteMyTopic = (topicId) =>
+  API.delete(`/mentorship/profile/topics/${topicId}`);
+
+export const listMyMentorBookings = (params = {}) =>
+  API.get('/mentorship/profile/bookings', { params });
+export const mentorCancelBooking = (bookingId) =>
+  API.post(`/mentorship/profile/bookings/${bookingId}/cancel`);
+export const mentorRescheduleBooking = (bookingId, startTime) =>
+  API.patch(`/mentorship/profile/bookings/${bookingId}/reschedule`, { startTime });
 export const updateBookingMentorNote = (bookingId, note) =>
   API.patch(`/mentorship/profile/bookings/${bookingId}/note`, { note });
+export const getBookingScriptUploadUrl = (bookingId) =>
+  API.get(`/mentorship/profile/bookings/${bookingId}/script-upload`);

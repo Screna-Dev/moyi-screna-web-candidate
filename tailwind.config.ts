@@ -50,6 +50,12 @@ export default {
           DEFAULT: "var(--card)",
           foreground: "var(--card-foreground)",
         },
+        // Semantic surface tokens used by the mentor dashboard (bg-surface-0/1/2).
+        surface: {
+          "0": "var(--surface-0)",
+          "1": "var(--surface-1)",
+          "2": "var(--surface-2)",
+        },
         sidebar: {
           DEFAULT: "var(--sidebar)",
           foreground: "var(--sidebar-foreground)",

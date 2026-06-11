@@ -2,9 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, ChevronDown, Clock,
   MapPin, Pencil, Plus, Search,
-  Sparkles,
   Briefcase, X, Lock, RefreshCw,
-  SendHorizonal, Shield, Check,
+  SendHorizonal,
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
-import { Link } from 'react-router';
 import { ApplicationProfileContent } from './application-profile-tab';
 import { PremiumOnboardingWizard } from './premium-onboarding-wizard';
 import JobService from '@/services/JobServices';
@@ -421,131 +419,11 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────
-// Non-member preview: blurred mock of the Jobs UI with an unlock overlay.
-// Visual pattern mirrors the mentorship marketplace lock screen so the two
-// premium gates feel like the same product surface.
-function JobsLockedView() {
-  const SAMPLE_JOBS = [
-    { title: 'Senior Product Manager', company: 'Stripe', location: 'San Francisco, CA · Hybrid', timeAgo: '2 days ago', match: 94, letter: 'S', logoColor: 'bg-indigo-100 text-indigo-700' },
-    { title: 'Software Engineer, Infra', company: 'Anthropic', location: 'Remote · US', timeAgo: '1 day ago', match: 91, letter: 'A', logoColor: 'bg-amber-100 text-amber-700' },
-    { title: 'Group Product Manager', company: 'Notion', location: 'New York, NY', timeAgo: '5 hours ago', match: 88, letter: 'N', logoColor: 'bg-slate-100 text-slate-700' },
-    { title: 'Staff ML Engineer', company: 'OpenAI', location: 'San Francisco, CA', timeAgo: '3 days ago', match: 86, letter: 'O', logoColor: 'bg-emerald-100 text-emerald-700' },
-  ];
-
-  return (
-    <section className="relative min-h-[600px]">
-      {/* Blurred mock content */}
-      <div className="blur-[8px] pointer-events-none select-none opacity-50 transition-all duration-500">
-        {/* Tabs */}
-        <div className="flex items-center gap-0.5 pb-3 px-0">
-          {['Matched', 'Delegated', 'Applied', 'Application Profile'].map((tab, i) => (
-            <div
-              key={tab}
-              className={`px-3.5 py-1.5 rounded-md text-sm ${i === 0 ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'}`}
-            >
-              {tab}
-            </div>
-          ))}
-        </div>
-
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-4 pt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Showing Results For</span>
-            <div className="flex items-center gap-1.5 bg-white border border-border rounded-full px-3 py-1.5">
-              <span className="text-sm font-medium text-foreground">All target roles</span>
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 bg-white border border-border rounded-full px-3 py-1.5">
-            <span className="text-sm font-medium text-foreground">Last 7 Days</span>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-          </div>
-        </div>
-
-        {/* Job cards */}
-        <div className="flex flex-col gap-3">
-          {SAMPLE_JOBS.map((job, i) => (
-            <div key={i} className="p-4 rounded-xl border border-border bg-card flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
-                {job.letter}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
-                <p className="text-xs text-muted-foreground truncate">{job.company}</p>
-                <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" />
-                    {job.location}
-                  </span>
-                  <span>{job.timeAgo}</span>
-                  <Badge variant="default" className="text-[10px] px-1.5 py-0">{job.match}% Match</Badge>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="px-5 py-1.5 rounded-md border border-primary/40 text-primary text-sm font-medium flex items-center gap-1.5">
-                  <SendHorizonal className="w-3.5 h-3.5" />
-                  Delegate
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Lock overlay */}
-      <div className="absolute inset-0 flex items-start justify-center z-30 pt-16">
-        <div className="w-full max-w-[440px] bg-white rounded-3xl p-10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-slate-100/50">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-6">
-            <Lock className="w-6 h-6 text-blue-500" strokeWidth={2} />
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100 mb-5">
-            <Shield className="w-3 h-3 text-slate-400" />
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Paid members only</span>
-          </div>
-
-          <h2 className="text-[26px] font-bold text-slate-900 mb-3 tracking-tight">Unlock Jobs</h2>
-          <p className="text-[15px] text-slate-500 leading-relaxed mb-8">
-            Let Screna submit applications to matched roles on your behalf. Available on paid plans.
-          </p>
-
-          <ul className="space-y-4 mb-10">
-            {[
-              'AI-matched roles tailored to your target titles and locations',
-              'One-click delegated apply — we fill out applications for you',
-              'Track every submission in Delegated, Applied, and Application Profile',
-            ].map((text, i) => (
-              <li key={i} className="flex items-start gap-3.5">
-                <div className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
-                  <Check className="w-3 h-3 text-blue-500" strokeWidth={3} />
-                </div>
-                <span className="text-[14.5px] text-slate-600 leading-snug">{text}</span>
-              </li>
-            ))}
-          </ul>
-
-          <div className="space-y-4 text-center">
-            <Link to="/pricing" className="block">
-              <button className="w-full py-4 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[15px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-all shadow-[0_4px_20px_rgba(67,118,248,0.25)] active:scale-[0.98]">
-                Upgrade to unlock
-              </button>
-            </Link>
-            <Link to="/pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
-              See all plans
-            </Link>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function JobApplyTab() {
-  // Plan gate — Jobs is Premium-only. Pro (starter) and Free users see an
-  // upgrade screen and never hit the onboarding flow.
-  const { isElite, isLoading: isPlanLoading } = useUserPlan();
+  // Jobs is open to all members (including Free) — everyone can browse matched
+  // jobs and complete onboarding. Only job *delegation* is Premium-gated, which
+  // the backend enforces (see handleDelegateClick → 402/403 → upgrade modal).
+  const { canAccessJobs, isLoading: isPlanLoading } = useUserPlan();
   const posthog = usePostHog();
   const limitApproachedFiredRef = useRef(false);
 
@@ -578,9 +456,9 @@ export function JobApplyTab() {
   };
 
   useEffect(() => {
-    if (isPlanLoading || !isElite) return;
+    if (isPlanLoading || !canAccessJobs) return;
     fetchOnboardingStatus();
-  }, [isPlanLoading, isElite]);
+  }, [isPlanLoading, canAccessJobs]);
 
   const wizardInitialStep: 1 | 2 | 3 = !onboardingFlags.resume_uploaded
     ? 1
@@ -852,10 +730,6 @@ export function JobApplyTab() {
         Loading your Jobs workspace…
       </div>
     );
-  }
-
-  if (!isElite) {
-    return <JobsLockedView />;
   }
 
   if (onboardingState === 'loading') {

@@ -3,10 +3,10 @@ import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
   UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
-  BadgeCheck, Building2, Coins,
+  BadgeCheck, Building2, Coins, Camera, Loader2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -118,6 +118,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [personalName, setPersonalName] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
   const [timezone, setTimezone] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const displayName = personalName || (userData?.firstName
     ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
@@ -156,6 +159,28 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [specificCompanies, setSpecificCompanies] = useState<string[]>([]);
   const [companyQuery, setCompanyQuery] = useState('');
   const [editingCompanies, setEditingCompanies] = useState(false);
+
+  const handleAvatarFile = async (file: File) => {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return;
+    // Optimistic local preview while the upload is in flight
+    const localPreview = URL.createObjectURL(file);
+    const prevUrl = avatarUrl;
+    setAvatarUrl(localPreview);
+    setAvatarUploading(true);
+    try {
+      const res = await uploadAvatar(file);
+      const newUrl = res.data?.data ?? res.data;
+      if (typeof newUrl === 'string' && newUrl) {
+        setAvatarUrl(newUrl);
+      }
+    } catch {
+      // Revert to the previous avatar on failure
+      setAvatarUrl(prevUrl);
+    } finally {
+      setAvatarUploading(false);
+      URL.revokeObjectURL(localPreview);
+    }
+  };
 
   const processResumeFile = async (file: File) => {
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
@@ -264,11 +289,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }).catch(() => {}).finally(() => setLoadingPreferences(false));
 
     // Fetch personal info (name, email, timezone)
-    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string } } }) => {
+    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string; avatarUrl?: string } } }) => {
       const data = res.data?.data ?? res.data;
       if (data?.name) setPersonalName(data.name);
       if (data?.email) setPersonalEmail(data.email);
       if (data?.timezone) setTimezone(data.timezone);
+      if (data?.avatarUrl) setAvatarUrl(data.avatarUrl);
     }).catch(() => {}).finally(() => setLoadingPersonal(false));
 
     return () => { if (resumeTimerRef.current) clearInterval(resumeTimerRef.current); };
@@ -398,8 +424,45 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       {/* ── Hero ── */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-5 pt-2">
         <div className="shrink-0">
-          <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-lg ring-4 ring-primary/15">
-            {initials}
+          <div className="relative w-16 h-16">
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="group block w-16 h-16 rounded-full ring-4 ring-primary/15 overflow-hidden focus:outline-none focus-visible:ring-primary/40 disabled:cursor-not-allowed"
+              aria-label="Change profile photo"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={displayName || 'Profile photo'} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-lg">
+                  {initials}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                {avatarUploading
+                  ? <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  : <Camera className="w-5 h-5 text-white" />}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center shadow-sm hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Edit profile photo"
+            >
+              {avatarUploading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Pencil className="w-3 h-3" />}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarFile(f); e.target.value = ''; }}
+            />
           </div>
         </div>
         <div className="flex-1 min-w-0">

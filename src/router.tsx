@@ -62,6 +62,10 @@ import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketp
 import { MentorDetailsPage } from './components/newDesign/mentor-details';
 import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
+// Mentor dashboard (dual-role candidate/mentor accounts)
+import { MentorDashboardPage } from './pages/mentor/mentor-dashboard';
+import { SelectDashboardPage } from './pages/mentor/select-dashboard';
+
 // Retention: 在 providers 内部挂载，用于上报 session_end（需要读取 useAuth）
 function SessionTracker() {
   useSessionTracking();
@@ -207,6 +211,16 @@ export const router = createBrowserRouter([
         {
           path: '/guest-dashboard',
           element: <GuestDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/select-dashboard',
+          element: <SelectDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/mentor-dashboard',
+          element: <MentorDashboardPage />,
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },

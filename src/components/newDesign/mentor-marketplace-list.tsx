@@ -6,6 +6,7 @@ import { Footer } from './home/footer';
 import { getMentors } from '../../services/MentorService';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasMentorRole } from '../mentor/dashboard-mode';
 import { ApplyMentorModal } from './apply-mentor-modal';
 
 // ─── API Types ─────────────────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ export function MentorMarketplaceListPage() {
   const { canAccessMentorship } = useUserPlan();
   const { user } = useAuth();
   const isMember = canAccessMentorship;
-  const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
+  const isAlreadyMentor = hasMentorRole(user);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSort, setOpenSort] = useState(false);

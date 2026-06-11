@@ -13,6 +13,10 @@ interface User {
   name: string;
   avatar?: string;
   role?: string;
+  // All roles carried by the JWT (e.g. ['CANDIDATE', 'MENTOR']). `role` keeps
+  // the primary/first role for backwards compatibility; `roles` lets us detect
+  // dual-role accounts that can switch between the candidate and mentor dashboards.
+  roles?: string[];
   country?: string;
   timezone?: string;
   // Whether the account has an email/password credential (vs. Google-only).
@@ -54,7 +58,7 @@ interface AuthProviderProps {
 }
 
 // Helper function to decode JWT and extract user info
-const decodeToken = (token: string): Pick<User, 'id' | 'role'> | null => {
+const decodeToken = (token: string): Pick<User, 'id' | 'role' | 'roles'> | null => {
   try {
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -66,11 +70,13 @@ const decodeToken = (token: string): Pick<User, 'id' | 'role'> | null => {
     );
 
     const payload = JSON.parse(jsonPayload);
-    const role = payload.roles[0];
+    const roles: string[] = Array.isArray(payload.roles) ? payload.roles : [];
+    const role = roles[0];
 
     return {
       id: payload.sub || payload.userId || payload.id || '',
       role,
+      roles,
     };
   } catch (error) {
     console.error('Failed to decode token:', error);

@@ -11,6 +11,7 @@ import {
   History,
   User,
   ShieldCheck,
+  Users,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -18,7 +19,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { JobApplyTab } from './job-apply-tab';
 import { ProfileTab } from './profile-tab';
+import { getPersonalInfo } from '../../services/ProfileServices';
 import { DashboardHome } from '@/pages/newDesign/dashboard-home';
+import {
+  MENTOR_DASHBOARD_PATH,
+  isDualRole,
+  setStoredDashboardMode,
+} from '@/components/mentor/dashboard-mode';
 
 function LearningActivityChart() {
   return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
@@ -66,8 +73,16 @@ const adminSidebarLinks = [
 function SidebarContent({ currentPath }: { currentPath: string }) {
   const { planData } = useUserPlan();
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const creditBalance = planData.permanentCreditBalance;
   const isAdmin = user?.role === 'ADMIN';
+
+  // Dual-role accounts (candidate + mentor) can jump to the mentor dashboard.
+  const canSwitchToMentor = isDualRole(user);
+  const switchToMentor = () => {
+    setStoredDashboardMode('mentor');
+    navigate(MENTOR_DASHBOARD_PATH);
+  };
 
   if (isAdmin) {
     return (
@@ -163,6 +178,23 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         </div>
       </nav>
 
+      {/* Switch View — dedicated section for dual-role accounts */}
+      {canSwitchToMentor && (
+        <>
+          <div className="mx-3 my-1 border-t border-border" />
+          <nav className="px-3 pb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2 mt-2">Switch View</p>
+            <button
+              onClick={switchToMentor}
+              className="flex items-center gap-3 px-3 py-2 rounded-md w-full font-medium transition-colors text-[hsl(165,60%,30%)] bg-[hsl(165,82%,90%)] hover:bg-[hsl(165,82%,84%)]"
+            >
+              <Users className="w-4 h-4 shrink-0" />
+              <span className="text-sm">Switch to Mentor Dashboard</span>
+            </button>
+          </nav>
+        </>
+      )}
+
       {/* Bottom: Credits / Upgrade */}
       <div className="px-3 pb-5 mt-auto shrink-0">
         <div className="rounded-md bg-primary p-4 text-primary-foreground">
@@ -203,7 +235,17 @@ function GlobalTopHeader({
   const { planData } = useUserPlan();
   const creditBalance = planData.permanentCreditBalance;
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
   const avatarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getPersonalInfo()
+      .then((res: { data: { data?: { avatarUrl?: string } } }) => {
+        const url = (res.data?.data ?? res.data)?.avatarUrl;
+        if (url) setAvatarUrl(url);
+      })
+      .catch(() => {});
+  }, []);
 
   const initials = userData?.firstName && userData?.lastName
     ? `${userData.firstName[0]}${userData.lastName[0]}`.toUpperCase()
@@ -306,9 +348,11 @@ function GlobalTopHeader({
           <div className="relative" ref={avatarRef}>
             <button
               onClick={() => setAvatarOpen((v) => !v)}
-              className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-all bg-primary text-primary-foreground hover:opacity-90"
+              className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-medium text-sm transition-all bg-primary text-primary-foreground hover:opacity-90"
             >
-              {initials}
+              {avatarUrl
+                ? <img src={avatarUrl} alt={firstName || 'Profile'} className="w-full h-full object-cover" />
+                : initials}
             </button>
 
             <AnimatePresence>

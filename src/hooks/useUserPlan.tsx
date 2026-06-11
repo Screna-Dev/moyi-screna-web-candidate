@@ -37,17 +37,15 @@ interface UserPlanContextValue {
   isLoading: boolean;
   error: string | null;
   
-  // Plan check helpers
-  isPremium: boolean;      // Pro or Elite
-  isElite: boolean;        // Elite only
+  // Plan check helpers — the product has two plans: Free and Premium.
+  isPremium: boolean;      // Premium (the only paid tier)
   isFree: boolean;         // Free only
-  isPro: boolean;          // Pro only
   
   // Feature access helpers
-  canAccessJobs: boolean;           // Pro and Elite can access jobs
+  canAccessJobs: boolean;           // Open to all members — browsing/matched jobs (job delegation stays Premium-gated server-side)
   canAccessPremiumReport: boolean;  // Elite only - video replay, detailed feedback
   canPushProfile: boolean;          // Pro and Elite
-  canAccessMentorship: boolean;     // Pro and Elite
+  canAccessMentorship: boolean;     // Open to all members — browse + book mentors
   
   // Actions
   refreshPlan: () => Promise<void>;
@@ -343,16 +341,20 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const effectiveIsLoading = isAuthLoading || isLoading;
   const currentPlan = planData.currentPlan;
   
+  // Only Free and Premium exist. The legacy tier→PlanType mapping still emits
+  // 'Elite' for the premium tier (and 'Pro' for any grandfathered starter sub),
+  // so treat both legacy paid labels as Premium.
   const isPremium = currentPlan === 'Pro' || currentPlan === 'Elite';
-  const isElite = currentPlan === 'Elite';
   const isFree = currentPlan === 'Free';
-  const isPro = currentPlan === 'Pro';
-  
-  // Feature access - return false while loading to prevent flash of wrong content
-  const canAccessJobs = !effectiveIsLoading && isElite;
-  const canAccessPremiumReport = !effectiveIsLoading && isElite;
+
+  // Feature access - return false while loading to prevent flash of wrong content.
+  // Jobs and Mentorship are open to all members (including Free): everyone can
+  // browse matched jobs / mentors and book sessions. Only job *delegation* stays
+  // Premium-gated, which the backend enforces (handled at the delegate call site).
+  const canAccessJobs = !effectiveIsLoading;
+  const canAccessPremiumReport = !effectiveIsLoading && isPremium;
   const canPushProfile = !effectiveIsLoading && isPremium;
-  const canAccessMentorship = !effectiveIsLoading && isPremium;
+  const canAccessMentorship = !effectiveIsLoading;
 
   const value: UserPlanContextValue = {
     // Plan data
@@ -362,9 +364,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     
     // Plan check helpers
     isPremium,
-    isElite,
     isFree,
-    isPro,
     
     // Feature access helpers
     canAccessJobs,

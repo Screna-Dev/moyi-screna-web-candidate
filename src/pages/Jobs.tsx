@@ -26,7 +26,7 @@ export default function Jobs() {
   const {
     planData,
     isLoading: isPlanLoading,
-    isElite,
+    isPremium,
     canAccessJobs,
     canPushProfile
   } = useUserPlan();
@@ -312,7 +312,7 @@ export default function Jobs() {
   }
 
   // Show upgrade prompt for non-Premium users
-  if (!isElite) {
+  if (!isPremium) {
     return (
       <TooltipProvider>
         <div className="min-h-screen bg-background p-6">
