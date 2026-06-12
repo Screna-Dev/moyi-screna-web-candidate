@@ -259,7 +259,7 @@ function MentorCard({ mentor }: { mentor: (typeof MENTORS)[0] }) {
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[15px] font-semibold text-slate-900">${mentor.price}</p>
+            <p className="text-[15px] font-semibold text-slate-900">${mentor.price.toFixed(2)}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>

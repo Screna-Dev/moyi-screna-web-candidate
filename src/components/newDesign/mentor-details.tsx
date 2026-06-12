@@ -348,7 +348,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                           <Clock className="w-4 h-4" />
                           {label}
                         </div>
-                        <span className="text-xs text-muted-foreground">${p} / session</span>
+                        <span className="text-xs text-muted-foreground">${p.toFixed(2)} / session</span>
                       </button>
                     );
                   })}
@@ -357,7 +357,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
               <div className="bg-muted/60 rounded-lg px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Session total</span>
-                <span className="text-lg font-medium text-foreground">${price}</span>
+                <span className="text-lg font-medium text-foreground">${price.toFixed(2)}</span>
               </div>
             </div>
           )}
@@ -533,7 +533,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
               <div className="flex items-center justify-between bg-muted/60 rounded-lg px-4 py-3">
                 <span className="text-sm font-medium text-foreground">Total</span>
-                <span className="text-xl font-medium text-foreground">${price}</span>
+                <span className="text-xl font-medium text-foreground">${price.toFixed(2)}</span>
               </div>
 
               <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-secondary border border-border rounded-lg px-3 py-2.5">

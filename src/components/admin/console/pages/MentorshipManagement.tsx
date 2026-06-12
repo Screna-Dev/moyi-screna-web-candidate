@@ -69,6 +69,7 @@ type ServiceOffering = {
 };
 
 type ApiStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+type ReviewStatus = "AWAITING_REVIEW" | "ADMIN_APPROVED" | "REJECTED" | "SUSPENDED";
 
 type Mentor = {
   id: string;
@@ -82,6 +83,7 @@ type Mentor = {
   rate60: number;
   status: "Pending" | "Active" | "Suspend";
   apiStatus?: ApiStatus;
+  reviewStatus?: ReviewStatus;
   statusReason?: string;
   calConnected: boolean;
   sessions: number;
@@ -104,8 +106,9 @@ function mapApiMentor(api: any): Mentor {
   const activeTopics = apiTopics.filter((t) => t?.active);
   const price30s = activeTopics.map((t) => Number(t?.price30min) || 0).filter((n) => n > 0);
   const price60s = activeTopics.map((t) => Number(t?.price60min) || 0).filter((n) => n > 0);
-  const rate30 = price30s.length ? Math.min(...price30s) : 0;
-  const rate60 = price60s.length ? Math.min(...price60s) : 0;
+  // Topic prices are stored in cents — convert to dollars, keeping 2 decimals.
+  const rate30 = price30s.length ? Math.min(...price30s) / 100 : 0;
+  const rate60 = price60s.length ? Math.min(...price60s) / 100 : 0;
 
   const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
     const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
@@ -136,6 +139,7 @@ function mapApiMentor(api: any): Mentor {
     rate60,
     status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
     apiStatus: (api?.status as ApiStatus) || "PENDING",
+    reviewStatus: ((api?.reviewState ?? api?.reviewStatus ?? "").toString().trim().toUpperCase() || undefined) as ReviewStatus | undefined,
     statusReason: api?.statusReason || "",
     calConnected: !!api?.calendarConnected,
     sessions: 0,
@@ -186,7 +190,7 @@ function mapApiBooking(api: any): Session {
     time: display,
     rawStart: api?.startTime,
     status: statusMap[apiStatus] || apiStatus || "—",
-    payment: Math.round(amount / 100),
+    payment: amount / 100,
     refundEligible: apiStatus === "PENDING" || apiStatus === "CONFIRMED",
     within48h,
     mentorNote: api?.mentorNote ?? undefined,
@@ -219,7 +223,7 @@ function mapApiDispute(api: any): Dispute {
     mentor: api?.mentorName || "—",
     session: api?.bookingId || "—",
     reason: api?.description || api?.reason || "—",
-    amount: Math.round((Number(api?.amountCents) || 0) / 100),
+    amount: (Number(api?.amountCents) || 0) / 100,
     evidence: api?.reason || "—",
     status: statusMap[(api?.status || "").toUpperCase()] || "Open",
     created: created ? created.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—",
@@ -843,8 +847,19 @@ function MentorDirectory() {
             `${m.name} admin-approved — waiting on mentor setup (calendar, office hours, active topic) before going live`
         );
       }
+      // The admin review decision is now ADMIN_APPROVED. The operational status
+      // can stay PENDING (waiting on calendar/office-hours/topic), so we can't
+      // rely on loadMentors deriving the review state from status — stamp the
+      // known reviewStatus onto local state so the Approve/Deny buttons clear.
+      const newReview: ReviewStatus = (updated?.reviewStatus as ReviewStatus);
       await loadMentors();
-      if (updated && selected?.id === m.id) setSelected(mapApiMentor(updated));
+      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, reviewStatus: newReview } : x));
+      if (selected?.id === m.id) {
+        setSelected((prev) => {
+          const base = updated ? mapApiMentor(updated) : prev;
+          return base ? { ...base, reviewStatus: newReview } : prev;
+        });
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to approve mentor");
     }
@@ -855,6 +870,7 @@ function MentorDirectory() {
       await updateMentorStatus(m.id, { status: "REJECTED", reason });
       toast.success(`${m.name} denied`);
       await loadMentors();
+      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, reviewStatus: "REJECTED" } : x));
       setSelected(null);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to deny mentor");
@@ -919,26 +935,13 @@ function MentorDirectory() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                 <tr>
-                  {["Mentor", "Services", "Expertise", "Rate", "Status", "Calendar", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
+                  {["Mentor", "Rate", "Status", "Calendar", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m) => {
-                  const SHORT_SERVICE_LABELS: Record<string, string> = {
-                    "mock-interview": "Mock Interview",
-                    "resume-review": "Resume Review",
-                    "career-strategy": "Career Strategy",
-                    "offer-negotiation": "Offer Negotiation",
-                  };
-                  const enabledServices = m.offerings.filter((o) => o.enabled).map((o) => SHORT_SERVICE_LABELS[o.typeId] || o.typeId);
-                  const displayedServices = enabledServices.slice(0, 2);
-                  const remainingServices = enabledServices.slice(2);
-                  
-                  const displayedExpertise = m.expertiseTags.slice(0, 2);
-                  const remainingExpertise = m.expertiseTags.slice(2);
-
                   return (
                     <tr
                       key={m.id}
@@ -953,57 +956,11 @@ function MentorDirectory() {
                           <span style={{ fontWeight: 600, fontSize: 12 }}>{m.name}</span>
                         </div>
                       </td>
-                      <td style={TD}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                          {displayedServices.length > 0
-                            ? (
-                                <>
-                                  {displayedServices.map((s) => <ServiceChip key={s} label={s} />)}
-                                  {remainingServices.length > 0 && (
-                                    <div
-                                      title={remainingServices.join(", ")}
-                                      style={{
-                                        display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px",
-                                        borderRadius: 4, background: C.blueBg, color: C.blue,
-                                        fontSize: 11, fontWeight: 500, cursor: "help"
-                                      }}
-                                    >
-                                      +{remainingServices.length}
-                                    </div>
-                                  )}
-                                </>
-                              )
-                            : <span style={{ fontSize: 12, color: C.textSub }}>—</span>}
-                        </div>
-                      </td>
-                      <td style={TD}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "4px 0" }}>
-                          {displayedExpertise.length > 0
-                            ? (
-                                <>
-                                  {displayedExpertise.map((t) => <ExpertiseChip key={t} label={t} />)}
-                                  {remainingExpertise.length > 0 && (
-                                    <div
-                                      title={remainingExpertise.join(", ")}
-                                      style={{
-                                        display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px",
-                                        borderRadius: 9999, border: `1px solid ${C.border}`, background: C.bgSubtle, color: C.textSub,
-                                        fontSize: 11, fontWeight: 500, cursor: "help"
-                                      }}
-                                    >
-                                      +{remainingExpertise.length}
-                                    </div>
-                                  )}
-                                </>
-                              )
-                            : <span style={{ fontSize: 12, color: C.textSub }}>—</span>}
-                        </div>
-                      </td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ fontSize: 12 }}>${m.rate30}/30 min</div>
-                        {m.rate60 && (
+                        <div style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</div>
+                        {m.rate60 > 0 && (
                           <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-                            ${m.rate60}/1 hr
+                            ${m.rate60.toFixed(2)}/1 hr
                           </div>
                         )}
                       </td>
@@ -1018,7 +975,7 @@ function MentorDirectory() {
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", color: (m.unpaid || 0) > 0 ? C.blue : C.textSub }}>${(m.unpaid || 0).toLocaleString()}</td>
                       <td style={TD}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          {m.status === "Pending" ? (
+                          {m.reviewStatus === "AWAITING_REVIEW" ? (
                             <>
                               <button
                                 onClick={(e) => {
@@ -1072,7 +1029,7 @@ function MentorDirectory() {
                 }
               }}>Save changes</button>
             </>
-          ) : selected?.status === "Pending" ? (
+          ) : selected?.reviewStatus === "AWAITING_REVIEW" ? (
             <>
               <button
                 onClick={(e) => {
@@ -1134,7 +1091,7 @@ function MentorDirectory() {
               </div>
             </div>
 
-            {selected.status === "Pending" ? (
+            {selected.reviewStatus === "AWAITING_REVIEW" ? (
               <div style={{ padding: "16px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 8, marginBottom: 20 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
                   <AlertTriangle size={18} style={{ color: C.amber, flexShrink: 0, marginTop: 2 }} />
@@ -1151,9 +1108,9 @@ function MentorDirectory() {
                   </div>
                 </div>
                 <DrawerDivider />
-                <DrawerField label="Rate (30 min)" value={`$${selected.rate30 || 0}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${selected.rate60 || 0}`} />
-                
+                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
+                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
+
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, marginTop: 12 }}>Proposed Services</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
                   {selected.offerings.filter(o => o.enabled).length > 0 ? (
@@ -1176,8 +1133,8 @@ function MentorDirectory() {
               </div>
             ) : (
               <>
-                <DrawerField label="Rate (30 min)" value={`$${selected.rate30 || 0}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${selected.rate60 || 0}`} />
+                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
+                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
                 <DrawerField label="Unpaid Balance" value={`$${(selected.unpaid || 0).toLocaleString()}`} />
                 <DrawerField label="Sessions delivered"  value={String(selected.sessions || 0)} />
                 <DrawerField label="Total revenue"       value={`$${(selected.revenue || 0).toLocaleString()}`} />
@@ -1515,7 +1472,7 @@ function SessionsTab() {
                     </div>
                   </td>
                   <td style={TD}><span style={badge(sessionStatusVariant(s.status))}>{s.status}</span></td>
-                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>{s.payment > 0 ? `$${s.payment}` : "—"}</td>
+                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>{s.payment > 0 ? `$${s.payment.toFixed(2)}` : "—"}</td>
                   <td style={TD}><span style={badge(s.refundEligible ? "amber" : "gray")}>{s.refundEligible ? "Eligible" : "No"}</span></td>
                   <td style={TD}>
                     <div style={{ display: "flex", gap: 5 }}>
@@ -1552,7 +1509,7 @@ function SessionsTab() {
             <DrawerField label="Mentor"      value={selected.mentor} />
             <DrawerField label="Service"     value={selected.serviceType} />
             <DrawerField label="Scheduled"   value={selected.time} />
-            <DrawerField label="Payment"     value={selected.payment > 0 ? `$${selected.payment}` : "—"} />
+            <DrawerField label="Payment"     value={selected.payment > 0 ? `$${selected.payment.toFixed(2)}` : "—"} />
             <DrawerDivider />
             <DrawerField label="Status"  value={<span style={badge(sessionStatusVariant(selected.status))}>{selected.status}</span>} />
             <DrawerField label="Refund"  value={<span style={badge(selected.refundEligible ? "amber" : "gray")}>{selected.refundEligible ? "Eligible" : "Not eligible"}</span>} />
@@ -1826,7 +1783,7 @@ function DisputesTab() {
                   <td style={TD}>{d.mentor}</td>
                   <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{d.session}</td>
                   <td style={{ ...TD, maxWidth: 200 }}><span style={{ fontSize: 12, color: C.textMuted, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden" }}>{d.reason}</span></td>
-                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>${d.amount}</td>
+                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>${d.amount.toFixed(2)}</td>
                   <td style={TD}><span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.blue }}><ExternalLink size={11} />{d.evidence}</span></td>
                   <td style={TD}><span style={badge(disputeVariant(d.status))}>{d.status}</span></td>
                   <td style={{ ...TD, color: C.textMuted }}>{d.created}</td>
@@ -1864,7 +1821,7 @@ function DisputesTab() {
               <p style={{ fontSize: 12, color: C.text, margin: 0, lineHeight: 1.55 }}>{selected.reason}</p>
             </div>
             <DrawerField label="Dispute ID" value={selected.id} mono />
-            <DrawerField label="Amount"     value={`$${selected.amount}`} />
+            <DrawerField label="Amount"     value={`$${selected.amount.toFixed(2)}`} />
             <DrawerField label="Session"    value={selected.session} mono />
             <DrawerField label="Evidence"   value={selected.evidence} />
             <DrawerField label="Created"    value={selected.created} />

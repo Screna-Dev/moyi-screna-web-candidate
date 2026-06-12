@@ -210,7 +210,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[10.5px] text-slate-400 leading-none">From</p>
-            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${mentor.priceFrom / 100}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${(mentor.priceFrom / 100).toFixed(2)}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
