@@ -1858,10 +1858,12 @@ function ProfilePage() {
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
     if (Array.isArray(profile.expertiseTags)) setServices(profile.expertiseTags);
+    if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
+    if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
     setBasic(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
-  // Prefill the work email from the signed-in account (editable).
+  // Fall back to the signed-in account email when the profile has no work email.
   useEffect(() => {
     const email = (user as any)?.email;
     if (email) setWorkEmail(prev => prev || email);

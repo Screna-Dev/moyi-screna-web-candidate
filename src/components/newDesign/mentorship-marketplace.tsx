@@ -352,7 +352,7 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="w-full space-y-16 pb-24 pt-[40px] bg-[#f9fafb] -mx-6 px-6">
+      <div className="w-full space-y-16 pb-24 pt-[40px] bg-white -mx-6 px-6">
 
         {/* ── Page Header ───────────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">

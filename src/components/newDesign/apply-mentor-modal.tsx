@@ -190,7 +190,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
           ) : (
             <div className="flex flex-col gap-4">
               <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Full name</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Full name <span className="text-destructive">*</span></p>
                 <input
                   value={form.realName}
                   onChange={e => setForm(f => ({ ...f, realName: e.target.value }))}
@@ -200,7 +200,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                 />
               </div>
               <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Work email</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Work email <span className="text-destructive">*</span></p>
                 <input
                   type="email"
                   value={form.workEmail}
@@ -211,7 +211,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                 />
               </div>
               <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">LinkedIn URL</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">LinkedIn URL <span className="text-destructive">*</span></p>
                 <input
                   value={form.linkedinUrl}
                   onChange={e => setForm(f => ({ ...f, linkedinUrl: e.target.value }))}
@@ -223,7 +223,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
 
               {/* Resume */}
               <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Resume</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Resume <span className="text-destructive">*</span></p>
                 <input
                   ref={fileInputRef}
                   type="file"

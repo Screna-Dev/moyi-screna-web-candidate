@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
-import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy } from "lucide-react";
+import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
@@ -24,6 +24,7 @@ import {
   adminRescheduleBooking,
   listDisputes,
   resolveDispute,
+  deleteReview,
 } from "../../../../services/mentorshipAdminService";
 import { updateBookingMentorNote } from "../../../../services/MentorService";
 
@@ -71,6 +72,15 @@ type ServiceOffering = {
 type ApiStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 type ReviewStatus = "AWAITING_REVIEW" | "ADMIN_APPROVED" | "REJECTED" | "SUSPENDED";
 
+type Review = {
+  id: string;
+  author: string;
+  rating: number;
+  comment: string;
+  date: string;
+  sessionType: string;
+};
+
 type Mentor = {
   id: string;
   name: string;
@@ -86,10 +96,14 @@ type Mentor = {
   reviewStatus?: ReviewStatus;
   statusReason?: string;
   calConnected: boolean;
+  emailVerified: boolean;
+  linkedinUrl: string;
+  verified: boolean;
   sessions: number;
   revenue: number;
   unpaid: number;
   offerings: ServiceOffering[];
+  reviews: Review[];
 };
 
 // ─── API ↔ UI mappers ─────────────────────────────────────────────────────────
@@ -131,7 +145,7 @@ function mapApiMentor(api: any): Mentor {
   return {
     id: api?.id || "",
     name: api?.name || "",
-    email: api?.email || "",
+    email: api?.email || api?.workEmail || "",
     bio: api?.bio || "",
     timezone: api?.googleTimezone || "",
     expertiseTags: Array.isArray(api?.expertiseTags) ? api.expertiseTags : [],
@@ -142,10 +156,23 @@ function mapApiMentor(api: any): Mentor {
     reviewStatus: ((api?.reviewState ?? api?.reviewStatus ?? "").toString().trim().toUpperCase() || undefined) as ReviewStatus | undefined,
     statusReason: api?.statusReason || "",
     calConnected: !!api?.calendarConnected,
+    emailVerified: !!(api?.emailVerified ?? api?.workEmail),
+    linkedinUrl: api?.linkedinUrl || "",
+    verified: !!api?.identityVerified,
     sessions: 0,
     revenue: 0,
     unpaid: 0,
     offerings,
+    reviews: Array.isArray(api?.reviews)
+      ? api.reviews.map((r: any, i: number) => ({
+          id: r?.id || String(i),
+          author: r?.studentName || r?.author || "Anonymous",
+          rating: Number(r?.overallRating ?? r?.rating) || 0,
+          comment: r?.comment || "",
+          date: r?.createdAt ? new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : (r?.date || ""),
+          sessionType: r?.topicTitle || r?.sessionType || "",
+        }))
+      : [],
   };
 }
 
@@ -380,7 +407,166 @@ function ServiceEditModal({
   );
 }
 
+// ─── Manage Reviews ───────────────────────────────────────────────────────────
+
+function StarRating({ value, size = 13 }: { value: number; size?: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <Star
+          key={s}
+          size={size}
+          style={{ color: s <= Math.round(value) ? "#D97706" : "hsl(220, 16%, 88%)", fill: s <= Math.round(value) ? "#D97706" : "hsl(220, 16%, 88%)" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const REVIEWS_PAGE_SIZE = 3;
+
+function ManageReviews({ reviews: initialReviews }: { reviews: Review[] }) {
+  const [reviews, setReviews] = useState<Review[]>(initialReviews ?? []);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setReviews(initialReviews ?? []); setPage(1); }, [initialReviews]);
+
+  const avgRating = reviews.length > 0
+    ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+    : null;
+
+  const totalPages = Math.max(1, Math.ceil(reviews.length / REVIEWS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageReviews = reviews.slice((safePage - 1) * REVIEWS_PAGE_SIZE, safePage * REVIEWS_PAGE_SIZE);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteReview(id);
+      setReviews((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        const newTotal = Math.max(1, Math.ceil(next.length / REVIEWS_PAGE_SIZE));
+        setPage((p) => Math.min(p, newTotal));
+        return next;
+      });
+      setConfirmDeleteId(null);
+      toast.success("Review removed");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to remove review");
+    }
+  };
+
+  return (
+    <div>
+      <DrawerDivider />
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Manage Reviews
+        </div>
+        {avgRating !== null && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <StarRating value={avgRating} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{avgRating.toFixed(1)}</span>
+            <span style={{ fontSize: 11, color: C.textMuted }}>({reviews.length})</span>
+          </div>
+        )}
+      </div>
+
+      {reviews.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.textMuted, padding: "10px 0" }}>No reviews yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {pageReviews.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                border: `1px solid ${confirmDeleteId === r.id ? "#FCA5A5" : C.border}`,
+                borderRadius: 8,
+                background: confirmDeleteId === r.id ? "#FEF2F2" : C.bgSubtle,
+                padding: "9px 11px",
+                transition: "background 120ms, border-color 120ms",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                    <StarRating value={r.rating} size={11} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>{r.author}</span>
+                    {r.date && <span style={{ fontSize: 10, color: C.textMuted }}>· {r.date}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.text, lineHeight: 1.5, wordBreak: "break-word" }}>{r.comment}</div>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {confirmDeleteId === r.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                      <span style={{ fontSize: 10, color: C.red, fontWeight: 600, whiteSpace: "nowrap" }}>Delete this review?</span>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          style={{ ...ghostBtn, height: 22, fontSize: 10, padding: "0 7px" }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDelete(r.id)}
+                          style={{ ...ghostBtn, height: 22, fontSize: 10, padding: "0 7px", color: C.red }}
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(r.id)}
+                      title="Delete review"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: C.textMuted, display: "flex", alignItems: "center", borderRadius: 5 }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            style={{ ...ghostBtn, height: 26, fontSize: 11, padding: "0 8px", opacity: safePage === 1 ? 0.4 : 1, cursor: safePage === 1 ? "not-allowed" : "pointer" }}
+          >
+            ← Prev
+          </button>
+          <span style={{ fontSize: 11, color: C.textMuted }}>
+            Page {safePage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            style={{ ...ghostBtn, height: 26, fontSize: 11, padding: "0 8px", opacity: safePage === totalPages ? 0.4 : 1, cursor: safePage === totalPages ? "not-allowed" : "pointer" }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Service Offerings section (inside Drawer) ────────────────────────────────
+
+const serviceTagStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 5,
+  height: 28, padding: "0 11px",
+  background: "#f3f4f7", border: "1px solid #e1e4ea",
+  borderRadius: 9999, fontSize: 12, fontWeight: 500,
+  color: "#1e232f", whiteSpace: "nowrap" as const,
+  fontFamily: "'Inter', sans-serif",
+};
 
 function ServiceOfferingsSection({
   offerings,
@@ -389,97 +575,232 @@ function ServiceOfferingsSection({
   offerings: ServiceOffering[];
   onChange: (updated: ServiceOffering[]) => void;
 }) {
-  const [editingOffering, setEditingOffering] = useState<ServiceOffering | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
 
-  const updateOffering = (updated: ServiceOffering) => {
-    onChange(offerings.map((o) => o.typeId === updated.typeId ? updated : o));
+  const enabledTypes = ALL_SERVICE_TYPES.filter((t) => offerings.find((o) => o.typeId === t.id)?.enabled);
+  const disabledTypes = ALL_SERVICE_TYPES.filter((t) => !offerings.find((o) => o.typeId === t.id)?.enabled);
+
+  const addCustom = () => {
+    const val = customInput.trim();
+    if (val && !customTags.includes(val)) setCustomTags((prev) => [...prev, val]);
+    setCustomInput("");
   };
 
-  const toggleEnabled = (typeId: string) => {
-    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: !o.enabled } : o));
-    const o = offerings.find((o) => o.typeId === typeId)!;
-    toast.success(`${ALL_SERVICE_TYPES.find((t) => t.id === typeId)?.label} ${o.enabled ? "disabled" : "enabled"}`);
+  const remove = (typeId: string) => {
+    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: false } : o));
+  };
+
+  const add = (typeId: string) => {
+    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: true } : o));
   };
 
   return (
-    <>
-      {editingOffering && (
-        <ServiceEditModal
-          offering={editingOffering}
-          mentorId=""
-          onSave={updateOffering}
-          onClose={() => setEditingOffering(null)}
-        />
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Service Offerings
+        </div>
+        <button
+          onClick={() => setEditing((v) => !v)}
+          title={editing ? "Done" : "Edit services"}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: editing ? C.blue : C.textMuted, display: "flex", alignItems: "center", borderRadius: 5 }}
+        >
+          {editing ? <Check size={13} /> : <Pencil size={13} />}
+        </button>
+      </div>
+
+      {/* Tag strip — view mode */}
+      {!editing && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {enabledTypes.length === 0 && customTags.length === 0
+            ? <span style={{ fontSize: 12, color: C.textMuted }}>No services enabled</span>
+            : <>
+                {enabledTypes.map((t) => <span key={t.id} style={serviceTagStyle}>{t.label}</span>)}
+                {customTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
+              </>}
+        </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {ALL_SERVICE_TYPES.map((stype) => {
-          const offering = offerings.find((o) => o.typeId === stype.id)!;
-          const enabled = offering.enabled;
-          return (
-            <div
-              key={stype.id}
-              style={{
-                border: `1px solid ${enabled ? C.blueBorder : C.border}`,
-                borderRadius: 8,
-                background: enabled ? C.blueBg : C.bgSubtle,
-                overflow: "hidden",
-              }}
-            >
-              {/* Card header */}
-              <div style={{ padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottomWidth: enabled ? 1 : 0, borderBottomStyle: "solid", borderBottomColor: enabled ? C.border : "transparent" }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: enabled ? C.blue : C.text }}>{stype.label}</div>
-                  {enabled && (
-                    null
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Toggle checked={enabled} onChange={() => toggleEnabled(stype.id)} />
+      {/* Edit mode */}
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Enabled tags with X */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Enabled</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {enabledTypes.length === 0 && customTags.length === 0
+                ? <span style={{ fontSize: 11, color: C.textMuted }}>None</span>
+                : <>
+                    {enabledTypes.map((t) => (
+                      <span key={t.id} style={{ ...serviceTagStyle, paddingRight: 7 }}>
+                        {t.label}
+                        <button onClick={() => remove(t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                    {customTags.map((t) => (
+                      <span key={t} style={{ ...serviceTagStyle, paddingRight: 7 }}>
+                        {t}
+                        <button onClick={() => setCustomTags((prev) => prev.filter((c) => c !== t))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </>}
+            </div>
+          </div>
+
+          {/* Disabled — click to add */}
+          {disabledTypes.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Add service</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {disabledTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => add(t.id)}
+                    style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
+                  >
+                    <Plus size={10} style={{ color: C.textMuted }} /> {t.label}
+                  </button>
+                ))}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px 0 10px", background: "white", border: `1px dashed ${C.border}`, borderRadius: 9999 }}>
+                  <input
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+                    placeholder="Custom…"
+                    style={{ border: "none", outline: "none", background: "transparent", fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, width: 80 }}
+                  />
+                  <button
+                    onClick={addCustom}
+                    disabled={!customInput.trim()}
+                    style={{ background: "none", border: "none", cursor: customInput.trim() ? "pointer" : "default", padding: 0, display: "flex", alignItems: "center", color: customInput.trim() ? C.blue : C.textMuted }}
+                  >
+                    <Plus size={12} />
+                  </button>
                 </div>
               </div>
-
-              {/* Expanded details when enabled */}
-              {enabled && (
-                <div style={{ padding: "8px 12px" }}>
-                  {/* Expertise tags */}
-                  {offering.expertiseTags.length > 0 && (
-                    null
-                  )}
-                  {/* Description */}
-                  {offering.description && (
-                    <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 7 }}>{offering.description}</div>
-                  )}
-                  {/* Notes */}
-                  {offering.notes && (
-                    <div style={{ fontSize: 11, color: C.amber, background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 5, padding: "4px 8px", marginBottom: 7 }}>
-                      Internal: {offering.notes}
-                    </div>
-                  )}
-                  {/* Edit */}
-                  <button
-                    onClick={() => setEditingOffering(offering)}
-                    style={{ ...ghostBtn, height: 26, fontSize: 11, color: C.blue }}
-                  >
-                    <Pencil size={10} /> Edit service
-                  </button>
-                </div>
-              )}
-
-              {/* Collapsed — show Enable prompt */}
-              {!enabled && (
-                <div style={{ padding: "7px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: C.textMuted }}>Not offered by this mentor</span>
-                  <button onClick={() => { setEditingOffering(offering); }} style={{ ...ghostBtn, height: 24, fontSize: 11, color: C.blue }}>
-                    <Settings size={10} /> Configure
-                  </button>
-                </div>
-              )}
             </div>
-          );
-        })}
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Verification Section ─────────────────────────────────────────────────────
+
+function VerificationSection({
+  mentor,
+  onConfirm,
+}: {
+  mentor: Mentor;
+  onConfirm: () => void;
+}) {
+  const bothDone = mentor.emailVerified && !!mentor.linkedinUrl;
+  const canConfirm = bothDone && !mentor.verified;
+
+  const rowStyle: React.CSSProperties = {
+    display: "flex", alignItems: "flex-start", gap: 12,
+    padding: "10px 12px", borderRadius: 6,
+  };
+  const iconWrap: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: 4, background: "#f3f4f7",
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  };
+  const checkIcon = <Check size={13} style={{ color: "#248f74" }} />;
+
+  return (
+    <div style={{ marginTop: 0 }}>
+      <DrawerDivider />
+
+      {/* Title */}
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+        Identity Verification
       </div>
-    </>
+
+      {/* Verified banner */}
+      {mentor.verified && (
+        <div style={{ background: "#e8fdf7", border: "1px solid #8bf4d9", borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#b9f8e8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <ShieldCheck size={18} style={{ color: "#1f7a63" }} />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#1f473d" }}>Identity Verified</span>
+              <span style={{ background: "#dffcf4", border: "1px solid #8bf4d9", borderRadius: 9999, padding: "1px 9px", fontSize: 11, fontWeight: 600, color: "#248f74" }}>Verified</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#367d6b" }}>All submitted documents have been reviewed and approved.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Checklist rows */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={rowStyle}>
+          <div style={iconWrap}><Mail size={15} style={{ color: "#5a6172" }} /></div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#1e232f" }}>Work Email</span>
+              {mentor.emailVerified && checkIcon}
+            </div>
+            <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.email || "—"}</div>
+          </div>
+        </div>
+
+        <div style={rowStyle}>
+          <div style={iconWrap}><Link2 size={15} style={{ color: "#5a6172" }} /></div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#1e232f" }}>LinkedIn Profile</span>
+              {mentor.linkedinUrl && checkIcon}
+            </div>
+            <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.linkedinUrl || <span style={{ color: C.textMuted, fontStyle: "italic" }}>Not submitted</span>}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Privacy note */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "10px 12px", marginBottom: 12 }}>
+        <Lock size={13} style={{ color: "#5a6172", marginTop: 1, flexShrink: 0 }} />
+        <p style={{ fontSize: 12, color: "#5a6172", margin: 0, lineHeight: 1.5 }}>
+          Documents are used only for internal review and are <strong style={{ color: "#1e232f" }}>never shown publicly</strong>.
+        </p>
+      </div>
+
+      {/* Action buttons */}
+      {!mentor.verified && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => {
+              if (canConfirm) { onConfirm(); toast.success("Verification confirmed"); }
+            }}
+            disabled={!canConfirm}
+            title={!canConfirm ? "Both email and LinkedIn must be completed first" : undefined}
+            style={{
+              ...primaryBtn, flex: 1, justifyContent: "center",
+              opacity: canConfirm ? 1 : 0.45,
+              cursor: canConfirm ? "pointer" : "not-allowed",
+              background: "#1f7a63", borderColor: "#1f7a63",
+            }}
+          >
+            <ShieldCheck size={13} /> Verification Confirmed
+          </button>
+          <button
+            onClick={() => toast.success(`Reminder sent to ${mentor.email}`)}
+            style={{ ...secondaryBtn, flexShrink: 0 }}
+            title="Send reminder email"
+          >
+            <Mail size={13} /> Remind
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1121,15 +1442,6 @@ function MentorDirectory() {
                     <span style={{ fontSize: 12, color: C.textSub }}>—</span>
                   )}
                 </div>
-
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Proposed Expertise</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {selected.expertiseTags.length > 0 ? (
-                    selected.expertiseTags.map((t) => <ExpertiseChip key={t} label={t} />)
-                  ) : (
-                    <span style={{ fontSize: 12, color: C.textSub }}>—</span>
-                  )}
-                </div>
               </div>
             ) : (
               <>
@@ -1138,16 +1450,6 @@ function MentorDirectory() {
                 <DrawerField label="Unpaid Balance" value={`$${(selected.unpaid || 0).toLocaleString()}`} />
                 <DrawerField label="Sessions delivered"  value={String(selected.sessions || 0)} />
                 <DrawerField label="Total revenue"       value={`$${(selected.revenue || 0).toLocaleString()}`} />
-
-                <DrawerDivider />
-
-                {/* Expertise tags */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Expertise</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {selected.expertiseTags.map((t) => <ExpertiseChip key={t} label={t} />)}
-                  </div>
-                </div>
 
                 <DrawerDivider />
 
@@ -1160,14 +1462,25 @@ function MentorDirectory() {
                   </div>
                 </div>
 
+                {/* Verification */}
+                <VerificationSection
+                  mentor={selected}
+                  onConfirm={() => {
+                    setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: true } : m));
+                    setSelected({ ...selected, verified: true });
+                  }}
+                />
+
                 <DrawerDivider />
 
                 {/* Service Offerings */}
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Service Offerings</div>
                 <ServiceOfferingsSection
                   offerings={selected.offerings}
                   onChange={(updated) => updateOfferings(selected.id, updated)}
                 />
+
+                {/* Manage Reviews */}
+                <ManageReviews reviews={selected.reviews} />
               </>
             )}
           </>

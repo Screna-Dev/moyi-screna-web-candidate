@@ -226,8 +226,9 @@ function StatCardSkeleton() {
 function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
   const isPremium = plan === 'premium';
   const colCount = isPremium ? 4 : 2;
-  const learningSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
-  const sessionsSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
+  // Mentorship is available to all members, so it's reflected in these stats regardless of plan.
+  const learningSub = 'Mock Interview + Mentorship Sessions';
+  const sessionsSub = 'Mock Interview + Mentorship Sessions';
 
   return (
     <div
@@ -806,20 +807,13 @@ function MentorshipCardSkeleton() {
   );
 }
 
-function MentorshipCard({ plan }: { plan: Plan }) {
+function MentorshipCard() {
   const navigate = useNavigate();
-  const userPlan = useUserPlan();
-  const isFree = plan === 'free';
-  const planLoading = userPlan.isLoading;
+  // Mentorship is open to all members (Free and Premium alike).
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
 
   useEffect(() => {
-    if (planLoading) return;        // Wait until the real plan is known
-    if (isFree) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     let alive = true;
     (async () => {
@@ -834,9 +828,9 @@ function MentorshipCard({ plan }: { plan: Plan }) {
       }
     })();
     return () => { alive = false; };
-  }, [isFree, planLoading]);
+  }, []);
 
-  if (planLoading || loading) return <MentorshipCardSkeleton />;
+  if (loading) return <MentorshipCardSkeleton />;
 
   // Upcoming = CONFIRMED, soonest first
   const upcoming = bookings
@@ -854,46 +848,7 @@ function MentorshipCard({ plan }: { plan: Plan }) {
     <Panel style={{ position: 'relative' }}>
       <PanelHead title="Mentorship" linkLabel="Browse mentors" onLink={() => navigate('/marketplace')} />
 
-      {isFree && (
-        <div style={{
-          position: 'absolute', inset: '56px 16px 16px 16px',
-          zIndex: 2,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8,
-          textAlign: 'center', padding: '24px 20px',
-          background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)',
-          borderRadius: 10,
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: T.bgSecondary, color: T.blue600,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 4,
-          }}>
-            <IconLockLarge />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>Mentorship is a member benefit</div>
-          <div style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>
-            Book 1:1 sessions with senior mentors and track every session in one place.
-          </div>
-          <button
-            onClick={() => navigate('/pricing')}
-            style={{
-              padding: '9px 16px', borderRadius: 8, border: 0,
-              background: T.blue500, color: '#fff',
-              fontSize: 13, fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 160ms',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
-          >
-            Upgrade to membership
-          </button>
-        </div>
-      )}
-
-      <div style={{ filter: isFree ? 'blur(6px)' : 'none', pointerEvents: isFree ? 'none' : 'auto', userSelect: isFree ? 'none' : 'auto', opacity: isFree ? 0.55 : 1 }}>
+      <div>
         {/* Upcoming session */}
         {nextSession ? (
           <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, background: '#fff' }}>
@@ -1698,7 +1653,7 @@ export function DashboardHome({
           alignItems: 'start',
         }}
       >
-        <MentorshipCard plan={plan} />
+        <MentorshipCard />
         <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
         <CommunityCard />
       </div>
