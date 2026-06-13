@@ -70,3 +70,40 @@ export const updateBookingMentorNote = (bookingId, note) =>
   API.patch(`/mentorship/profile/bookings/${bookingId}/note`, { note });
 export const getBookingScriptUploadUrl = (bookingId) =>
   API.get(`/mentorship/profile/bookings/${bookingId}/script-upload`);
+
+// ─── Mentor-side avatar ──────────────────────────────────────────────────────
+// JPEG/PNG. Returns updated MentorProfileDto; data.avatarUrl is the new URL.
+export const uploadMyMentorAvatar = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return API.post('/mentorship/profile/avatar', formData);
+};
+// Removes mentor-specific avatar; avatarUrl falls back to the student avatar.
+export const deleteMyMentorAvatar = () =>
+  API.delete('/mentorship/profile/avatar');
+
+// ─── Mentor-side vacation mode ───────────────────────────────────────────────
+// When true: mentor is hidden from public list, slot lookups return [],
+// and new booking attempts get 400.
+export const setMyVacation = (vacation) =>
+  API.put('/mentorship/profile/vacation', { vacation });
+
+// ─── Mentor-side earnings ────────────────────────────────────────────────────
+// Returns { availableCents, pendingCents, lifetimeCents } (units: cents).
+export const getMyMentorEarnings = () =>
+  API.get('/mentorship/profile/earnings');
+
+// ─── Mentor-side payment method (PDF) ────────────────────────────────────────
+// Upload PDF. Returns { url, expiresAt } — 1h presigned URL.
+export const uploadMyPaymentMethod = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return API.post('/mentorship/profile/payment-method', formData);
+};
+// Get a fresh 1h presigned download URL for the current mentor's payment method.
+export const getMyPaymentMethod = () =>
+  API.get('/mentorship/profile/payment-method');
+
+// Admin-only: get presigned download URL for a specific mentor's payment method.
+export const getMentorPaymentMethodAsAdmin = (mentorId) =>
+  API.get(`/mentorship/admin/mentors/${mentorId}/payment-method`);

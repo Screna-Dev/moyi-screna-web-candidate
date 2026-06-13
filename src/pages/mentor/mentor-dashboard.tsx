@@ -23,6 +23,10 @@ import {
   getCalendarAuthUrl,
   connectCalendar,
   listMyMentorBookings,
+  setMyVacation,
+  uploadMyMentorAvatar,
+  getMyMentorEarnings,
+  uploadMyPaymentMethod,
 } from '@/services/MentorService';
 
 /* ─────────────────────────────────────────────
@@ -65,6 +69,7 @@ type MentorProfileDto = {
   status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   calendarConnected?: boolean; statusReason?: string;
   officeHours?: OfficeHourDto[]; googleTimezone?: string;
+  vacation?: boolean;
 };
 
 /** Unwrap the CustomApiResponse `{ status, message, errorCode, data }` envelope. */
@@ -1122,6 +1127,7 @@ function AvailabilityPage() {
     Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false,
   });
   const [vacationMode, setVacationMode] = useState(false);
+  const [vacationSaving, setVacationSaving] = useState(false);
   const [bufferTime, setBufferTime] = useState('15 min');
   const [minNotice, setMinNotice] = useState('24 hours');
   const [maxWindow, setMaxWindow] = useState('4 weeks');
@@ -1157,6 +1163,7 @@ function AvailabilityPage() {
       setSlots(next);
       setScheduleDirty(false); // freshly loaded from the server
       if (profile?.googleTimezone) setTimezone(profile.googleTimezone);
+      setVacationMode(!!profile?.vacation);
     } catch {
       /* unexpected shape — leave the current schedule untouched rather than crash */
     }
@@ -1209,6 +1216,29 @@ function AvailabilityPage() {
         setHoursToast({ ok: false, msg });
       })
       .finally(() => setSavingHours(false));
+  };
+
+  // Persist vacation mode via PUT /mentorship/profile/vacation.
+  // Server-side: hides mentor from marketplace, returns [] for slots, and
+  // rejects new bookings with 400 while vacation=true.
+  const applyVacation = (next: boolean) => {
+    if (vacationSaving) return;
+    setVacationSaving(true);
+    // Optimistic: flip the UI immediately, roll back on failure.
+    setVacationMode(next);
+    if (next) {
+      setDayEnabled({ Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false });
+      setSlots({});
+      setScheduleDirty(true);
+    }
+    setMyVacation(next)
+      .then(() => { ctx?.refetch(); })
+      .catch((err: any) => {
+        setVacationMode(!next);
+        const msg = err?.response?.data?.message || `Could not ${next ? 'enable' : 'disable'} vacation mode.`;
+        setHoursToast({ ok: false, msg });
+      })
+      .finally(() => setVacationSaving(false));
   };
 
   // Inline row editor
@@ -1352,7 +1382,7 @@ function AvailabilityPage() {
                 <div className="text-sm font-medium text-amber-800">Vacation Mode is on</div>
                 <div className="text-xs text-amber-600 mt-0.5">New bookings are paused. Existing confirmed sessions remain active.</div>
               </div>
-              <button onClick={() => setVacationMode(false)} className="text-xs text-amber-700 border border-amber-300 px-3 py-1 rounded-md hover:bg-amber-100 transition-colors">
+              <button onClick={() => applyVacation(false)} disabled={vacationSaving} className="text-xs text-amber-700 border border-amber-300 px-3 py-1 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
                 Turn Off
               </button>
             </div>
@@ -1575,18 +1605,9 @@ function AvailabilityPage() {
                 <div className="text-xs text-muted-foreground mt-0.5">Pause all new booking requests.</div>
               </div>
               <button
-                onClick={() => {
-                  const next = !vacationMode;
-                  setVacationMode(next);
-                  // Turning vacation mode on clears the weekly recurring schedule
-                  // (Save availability then persists the empty schedule).
-                  if (next) {
-                    setDayEnabled({ Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false });
-                    setSlots({});
-                    setScheduleDirty(true);
-                  }
-                }}
-                className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${vacationMode ? 'bg-amber-400' : 'bg-[var(--switch-background)] border border-border'}`}
+                onClick={() => applyVacation(!vacationMode)}
+                disabled={vacationSaving}
+                className={`w-9 h-5 rounded-full relative transition-colors shrink-0 disabled:opacity-60 ${vacationMode ? 'bg-amber-400' : 'bg-[var(--switch-background)] border border-border'}`}
               >
                 <span className={`absolute top-0.5 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${vacationMode ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
               </button>
@@ -1917,6 +1938,25 @@ function ProfilePage() {
   const [workEmail, setWorkEmail] = useState('');
   const [linkedin, setLinkedin] = useState('');
 
+  // Avatar upload — wires the existing Camera button to a hidden <input type="file">.
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const handleAvatarPick = (file: File | null) => {
+    if (!file || avatarUploading) return;
+    setAvatarUploading(true);
+    uploadMyMentorAvatar(file)
+      .then(res => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        else ctx?.refetch();
+      })
+      .catch(() => { /* swallow — no toast slot in this card */ })
+      .finally(() => {
+        setAvatarUploading(false);
+        if (avatarFileRef.current) avatarFileRef.current.value = '';
+      });
+  };
+
   // Seed editable fields from the real profile once it loads.
   useEffect(() => {
     if (!profile) return;
@@ -2049,9 +2089,20 @@ function ProfilePage() {
           <div className="flex items-center gap-4">
             <div className="relative">
               <Avatar src={profile?.avatarUrl || MENTOR.avatar} name={name || MENTOR.name} size="xl" />
-              <button className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow">
+              <button
+                onClick={() => avatarFileRef.current?.click()}
+                disabled={avatarUploading}
+                className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow disabled:opacity-60"
+              >
                 <Camera className="w-3 h-3" />
               </button>
+              <input
+                ref={avatarFileRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={e => handleAvatarPick(e.target.files?.[0] ?? null)}
+              />
             </div>
             <div>
               <div className="text-sm font-medium text-foreground">{name || MENTOR.name}</div>
@@ -2635,9 +2686,28 @@ function EarningsPage() {
   const eligBalance = creditBalance >= 1000;
   const canRedeem = eligRefCount && eligBalance;
 
-  const availableTotal = EARNINGS_SESSIONS.filter(s => s.status === 'Available').reduce((sum, s) => sum + s.net, 0);
-  const pendingTotal   = EARNINGS_SESSIONS.filter(s => s.status === 'Pending').reduce((sum, s) => sum + s.net, 0);
-  const lifetimeTotal  = EARNINGS_SESSIONS.filter(s => s.status !== 'Refunded').reduce((sum, s) => sum + s.net, 0);
+  // GET /mentorship/profile/earnings → { availableCents, pendingCents, lifetimeCents }.
+  // Fall back to the mock-derived totals until the API responds.
+  const [earningTotals, setEarningTotals] = useState<{ available: number; pending: number; lifetime: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getMyMentorEarnings()
+      .then(res => {
+        if (cancelled) return;
+        const d: any = unwrapData(res) ?? {};
+        setEarningTotals({
+          available: Number(d.availableCents ?? 0) / 100,
+          pending: Number(d.pendingCents ?? 0) / 100,
+          lifetime: Number(d.lifetimeCents ?? 0) / 100,
+        });
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const availableTotal = earningTotals?.available ?? EARNINGS_SESSIONS.filter(s => s.status === 'Available').reduce((sum, s) => sum + s.net, 0);
+  const pendingTotal   = earningTotals?.pending   ?? EARNINGS_SESSIONS.filter(s => s.status === 'Pending').reduce((sum, s) => sum + s.net, 0);
+  const lifetimeTotal  = earningTotals?.lifetime  ?? EARNINGS_SESSIONS.filter(s => s.status !== 'Refunded').reduce((sum, s) => sum + s.net, 0);
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 
   return (
@@ -2819,6 +2889,7 @@ function EarningsWithPayment() {
   const [showModal, setShowModal] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploaded, setUploaded] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFile(f: File | null) {
@@ -2827,9 +2898,15 @@ function EarningsWithPayment() {
   }
 
   function handleSubmit() {
-    if (!file) return;
-    setUploaded(true);
-    setTimeout(() => { setShowModal(false); setUploaded(false); setFile(null); }, 1800);
+    if (!file || uploading) return;
+    setUploading(true);
+    uploadMyPaymentMethod(file)
+      .then(() => {
+        setUploaded(true);
+        setTimeout(() => { setShowModal(false); setUploaded(false); setFile(null); }, 1800);
+      })
+      .catch(() => { /* keep modal open — no toast slot in this card */ })
+      .finally(() => setUploading(false));
   }
 
   return (
@@ -2918,17 +2995,18 @@ function EarningsWithPayment() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={!file}
+                disabled={!file || uploading}
                 className="rounded-[var(--radius-sm)] transition-colors"
                 style={{
                   fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)',
                   padding: 'var(--space-2) var(--space-4)',
                   background: file ? 'var(--primary)' : 'var(--secondary)',
                   color: file ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
-                  border: 'none', cursor: file ? 'pointer' : 'not-allowed',
+                  border: 'none', cursor: file && !uploading ? 'pointer' : 'not-allowed',
+                  opacity: uploading ? 0.7 : 1,
                 }}
               >
-                {uploaded ? 'Uploaded ✓' : 'Upload'}
+                {uploaded ? 'Uploaded ✓' : uploading ? 'Uploading…' : 'Upload'}
               </button>
             </div>
           </div>
