@@ -22,6 +22,7 @@ import {
   setMyOfficeHours,
   getCalendarAuthUrl,
   connectCalendar,
+  listMyMentorBookings,
 } from '@/services/MentorService';
 
 /* ─────────────────────────────────────────────
@@ -202,6 +203,69 @@ const BOOKINGS_DATA = [
   },
 ];
 
+// ── Live mentor bookings (GET /mentorship/profile/bookings) ──────────────────
+// The API response is mapped into the exact shape the UI already renders
+// (same fields as BOOKINGS_DATA) so no UI changes are needed.
+type MentorBooking = typeof BOOKINGS_DATA[0];
+
+const BOOKING_STATUS_TO_UI: Record<string, string> = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+  EXPIRED: 'cancelled',
+};
+
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function bookingDateLabel(d: Date): string {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (isSameDay(d, now)) return 'Today';
+  if (isSameDay(d, tomorrow)) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function mapMentorBooking(api: any): MentorBooking {
+  const start = api?.startTime ? new Date(api.startTime) : null;
+  const status = BOOKING_STATUS_TO_UI[(api?.status || '').toUpperCase()] || 'pending';
+  return {
+    id: api?.id || '',
+    // The booking DTO does not yet include student identity; fall back to
+    // whatever name/avatar fields the response provides.
+    memberName: api?.studentName || api?.memberName || api?.mentorName || 'Member',
+    memberAvatar: api?.studentAvatarUrl || api?.memberAvatar || api?.mentorAvatarUrl || '',
+    sessionType: api?.topicTitle || '—',
+    date: start ? bookingDateLabel(start) : '—',
+    time: start ? start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—',
+    duration: api?.durationMinutes ? `${api.durationMinutes} min` : '—',
+    status,
+    note: api?.studentNote || api?.note || '',
+    recordingLink: api?.meetingLink || api?.recordingUrl || undefined,
+  };
+}
+
+function useMyMentorBookings() {
+  const [bookings, setBookings] = useState<MentorBooking[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    listMyMentorBookings({ page: 0, size: 100 })
+      .then((res: any) => {
+        const content = res?.data?.data?.content ?? res?.data?.content ?? [];
+        if (alive) setBookings(Array.isArray(content) ? content.map(mapMentorBooking) : []);
+      })
+      .catch(() => { if (alive) setBookings([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+  return { bookings, loading };
+}
+
 const MESSAGES_DATA = [
   {
     id: 'm1', memberName: 'Marcus Lee', memberAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
@@ -326,16 +390,19 @@ function OverviewPage() {
     : profile?.status === 'SUSPENDED' ? 'Suspended'
     : 'Verified';
 
+  const { bookings } = useMyMentorBookings();
+  const upcomingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
+  const pendingBookings = bookings.filter(b => b.status === 'pending');
+
   const summaryCards = [
-    { label: 'Upcoming Sessions', value: '3', icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
-    { label: 'Pending Requests', value: '2', icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { label: 'Upcoming Sessions', value: String(upcomingBookings.length), icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
+    { label: 'Pending Requests', value: String(pendingBookings.length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Unread Messages', value: '3', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/8' },
     { label: 'Average Rating', value: String(profile?.averageRating ?? MENTOR.rating), icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
   ];
 
-  const todaySessions = BOOKINGS_DATA.filter(b => b.date === 'Today' || b.date === 'Tomorrow').slice(0, 3);
-  const pendingBookings = BOOKINGS_DATA.filter(b => b.status === 'pending');
+  const todaySessions = bookings.filter(b => b.date === 'Today' || b.date === 'Tomorrow').slice(0, 3);
 
   // Completion checklist reflects the real profile once it has loaded.
   const profileCompletion = [
@@ -412,14 +479,14 @@ function OverviewPage() {
               className="rounded-full"
               style={{ fontSize: 'var(--text-xs)', padding: '1px 8px', background: 'var(--color-gray-100, #edeff2)', color: 'var(--muted-foreground)', fontWeight: 'var(--font-weight-medium)' }}
             >
-              {BOOKINGS_DATA.filter(b => b.status === 'pending' || b.status === 'confirmed').length}
+              {upcomingBookings.length}
             </span>
           </div>
           <div className="space-y-2">
-            {BOOKINGS_DATA.filter(b => b.status === 'pending' || b.status === 'confirmed').length === 0 ? (
+            {upcomingBookings.length === 0 ? (
               <div className="text-center py-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>No upcoming sessions.</div>
             ) : (
-              BOOKINGS_DATA.filter(b => b.status === 'pending' || b.status === 'confirmed').map(b => (
+              upcomingBookings.map(b => (
                 <div key={b.id} className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-border bg-surface-0">
                   <Avatar src={b.memberAvatar} name={b.memberName} size="md" />
                   <div className="flex-1 min-w-0">
@@ -836,17 +903,19 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
 ───────────────────────────────────────────── */
 function BookingsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'upcoming' | 'completed' | 'cancelled'>('all');
-  const [selectedBooking, setSelectedBooking] = useState<typeof BOOKINGS_DATA[0] | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<MentorBooking | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [rescheduledIds, setRescheduledIds] = useState<Set<string>>(new Set());
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
 
+  const { bookings } = useMyMentorBookings();
+
   const tabs = ['all', 'upcoming', 'completed', 'cancelled'] as const;
   const filtered = activeTab === 'all'
-    ? BOOKINGS_DATA
+    ? bookings
     : activeTab === 'upcoming'
-      ? BOOKINGS_DATA.filter(b => b.status === 'pending' || b.status === 'confirmed')
-      : BOOKINGS_DATA.filter(b => b.status === activeTab);
+      ? bookings.filter(b => b.status === 'pending' || b.status === 'confirmed')
+      : bookings.filter(b => b.status === activeTab);
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -880,7 +949,7 @@ function BookingsPage() {
                     fontWeight: 'var(--font-weight-medium)',
                   }}
                 >
-                  {t === 'all' ? BOOKINGS_DATA.length : t === 'upcoming' ? BOOKINGS_DATA.filter(b => b.status === 'pending' || b.status === 'confirmed').length : BOOKINGS_DATA.filter(b => b.status === t).length}
+                  {t === 'all' ? bookings.length : t === 'upcoming' ? bookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length : bookings.filter(b => b.status === t).length}
                 </span>
               </button>
             ))}
