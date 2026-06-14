@@ -53,12 +53,15 @@ export const setMyOfficeHours = (officeHours) =>
   API.put('/mentorship/profile/office-hours', { officeHours });
 
 // ─── Mentor-side topic / booking management ──────────────────────────────────
-export const createMyTopic = (payload) =>
-  API.post('/mentorship/profile/topics', payload);
-export const updateMyTopic = (topicId, payload) =>
-  API.put(`/mentorship/profile/topics/${topicId}`, payload);
-export const deleteMyTopic = (topicId) =>
-  API.delete(`/mentorship/profile/topics/${topicId}`);
+// A mentor's single topic is auto-created when admin approves them (no
+// client-side create). It is edited via two dedicated endpoints — no topicId.
+// Update topic content. title/description/mentorNote all optional; omitted = unchanged.
+export const updateMyTopicContent = (payload) =>
+  API.put('/mentorship/profile/topic', payload);
+// Update topic price. price30min/price60min in cents; omit/null = unchanged.
+// A price, once set, cannot be cleared.
+export const updateMyTopicPrice = (payload) =>
+  API.put('/mentorship/profile/topic/price', payload);
 
 export const listMyMentorBookings = (params = {}) =>
   API.get('/mentorship/profile/bookings', { params });

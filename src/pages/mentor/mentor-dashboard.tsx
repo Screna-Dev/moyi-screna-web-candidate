@@ -4,7 +4,7 @@ import {
   ShieldCheck, Star, DollarSign, Bell, Search, ChevronRight,
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
   MoreHorizontal, Edit3, Trash2, Eye, Video,
-  CheckCircle, XCircle, RefreshCw, Paperclip,
+  CheckCircle, RefreshCw, Paperclip,
   Lock, Mail,
   Link, Zap, LogOut,
   Camera, Circle, Minus,
@@ -31,8 +31,7 @@ import {
   mentorCancelBooking,
   mentorRescheduleBooking,
   getBookingScriptUploadUrl,
-  createMyTopic,
-  updateMyTopic,
+  updateMyTopicPrice,
 } from '@/services/MentorService';
 
 /* ─────────────────────────────────────────────
@@ -326,7 +325,7 @@ function OverviewPage() {
     { label: 'Profile photo', done: profile ? !!profile.avatarUrl : true },
     { label: 'Bio added', done: profile ? !!profile.bio : true },
     { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.length : true },
-    { label: 'Session offerings defined', done: profile ? !!profile.topics?.length : true },
+    { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null || t.price60min != null) : true },
     { label: 'Verification submitted', done: profile ? profile.status !== 'PENDING' : true },
   ];
   const doneCount = profileCompletion.filter(p => p.done).length;
@@ -1928,26 +1927,21 @@ function MessagesPage() {
 ───────────────────────────────────────────── */
 /* ─────────────────────────────────────────────
    TOPICS CARD
-   POST /mentorship/profile/topics  (create)
-   PUT  /mentorship/profile/topics/{id}  (activate / deactivate / edit)
+   PUT /mentorship/profile/topic/price  (set 30 / 60-min prices, in cents)
+   The mentor's single topic is auto-created (title="Mentorship Session") when
+   admin approves them — there is no client-side create. Mentors only set price.
    List comes from MentorProfileDto.topics — no separate GET endpoint exists.
    Backend stores prices in cents; the UI shows / accepts dollars.
 ───────────────────────────────────────────── */
-// Title and description are fixed for every mentor — the backend still stores
-// them per-topic, but mentors only choose the 30 / 60-minute prices. The fixed
-// values are sent on every create/update so existing topics get normalized too.
+// Title and description are fixed for every mentor; the UI displays these and
+// mentors only choose the 30 / 60-minute prices.
 const FIXED_TOPIC_TITLE = 'Mentorship Session';
 const FIXED_TOPIC_DESCRIPTION =
   'A one-on-one mentorship session to discuss your goals, get tailored guidance, and ask questions.';
 
 function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged: () => void }) {
-  // There is a single mentorship offering per mentor with fixed title /
-  // description. The form always edits the existing topic (whichever one the
-  // backend returned, active or not) and creates one only when none exists.
-  // We never deactivate — every save sends active: true so the offering stays
-  // bookable. (Deactivating the only topic used to strand the mentor: it
-  // dropped out of the list, yet the backend's one-topic guard then blocked
-  // creating a new one.)
+  // A mentor has a single auto-created topic; the form only edits its prices via
+  // PUT /mentorship/profile/topic/price (no topicId, no create/deactivate).
   const editingTopic = topics.find(t => t.active) ?? topics[0] ?? null;
 
   const [price30, setPrice30] = useState('');
@@ -1980,18 +1974,13 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
     const p60 = dollarsToCents(price60);
     if (p30 === null || p60 === null) { setStatus(s => ({ ...s, error: 'Prices must be non-negative numbers.' })); return; }
     if (p30 === undefined && p60 === undefined) { setStatus(s => ({ ...s, error: 'Set at least one price (30 min or 60 min).' })); return; }
-    const payload = {
-      title: FIXED_TOPIC_TITLE,
-      description: FIXED_TOPIC_DESCRIPTION,
-      price30min: p30,
-      price60min: p60,
-      active: true,
-    };
+    // Only send fields the mentor actually entered; an omitted price is left
+    // unchanged backend-side (a price, once set, cannot be cleared).
+    const payload: { price30min?: number; price60min?: number } = {};
+    if (p30 !== undefined) payload.price30min = p30;
+    if (p60 !== undefined) payload.price60min = p60;
     setStatus(s => ({ ...s, saving: true, error: null }));
-    const req = editingTopic
-      ? updateMyTopic(editingTopic.id, payload)
-      : createMyTopic(payload);
-    req
+    updateMyTopicPrice(payload)
       .then(() => {
         setStatus({ dirty: false, saving: false, saved: true, error: null });
         onChanged();
@@ -2276,7 +2265,7 @@ function ProfilePage() {
           <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
 
-        {/* Mentorship Topics — POST/PUT /mentorship/profile/topics */}
+        {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
         <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
 
         {/* Coaching Plans */}
@@ -2761,8 +2750,6 @@ type EarningSession = {
   date: string; gross: number; fee: number; net: number;
   status: string; payoutDate: string; payoutMethod: string;
 };
-type CreditTransaction = { id: string; date: string; description: string; credits: number; status: string };
-
 function EarningsStatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     'Available': { bg: 'hsl(142 71% 93%)',        color: 'hsl(142 63% 26%)' },
@@ -2781,35 +2768,7 @@ function EarningsStatusBadge({ status }: { status: string }) {
   );
 }
 
-function CreditStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    'Escrow':    { bg: 'var(--color-blue-50)',  color: 'var(--color-blue-700)' },
-    'Confirmed': { bg: 'hsl(142 71% 93%)',      color: 'hsl(142 63% 26%)' },
-    'Redeemed':  { bg: 'var(--surface-2)',       color: 'var(--muted-foreground)' },
-  };
-  const s = map[status] ?? { bg: 'var(--surface-2)', color: 'var(--muted-foreground)' };
-  return (
-    <span
-      className="inline-flex items-center rounded-[var(--radius-sm)] whitespace-nowrap"
-      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: s.bg, color: s.color }}
-    >
-      {status}
-    </span>
-  );
-}
-
 function EarningsPage() {
-  type ETab = 'Cash' | 'Credits';
-  const [eTab, setETab] = useState<ETab>('Cash');
-
-  // Credit balance + referral counters: no backend endpoint yet.
-  const creditBalance = 0;
-  const estCashValue = (creditBalance / 12).toFixed(2);
-  const completedReferrals = 0;
-  const eligRefCount = completedReferrals >= 5;
-  const eligBalance = creditBalance >= 1000;
-  const canRedeem = eligRefCount && eligBalance;
-
   // GET /mentorship/profile/earnings → { availableCents, pendingCents, lifetimeCents }.
   const [earningTotals, setEarningTotals] = useState<{ available: number; pending: number; lifetime: number } | null>(null);
   const [earningsLoading, setEarningsLoading] = useState(true);
@@ -2836,9 +2795,8 @@ function EarningsPage() {
   const lifetimeTotal  = earningTotals?.lifetime  ?? 0;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 
-  // No backend list endpoints yet for cash transactions or credit history.
+  // No backend list endpoint yet for cash transactions.
   const earningSessions: EarningSession[] = [];
-  const creditTransactions: CreditTransaction[] = [];
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -2847,34 +2805,11 @@ function EarningsPage() {
         {/* Page header */}
         <div>
           <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>Earnings</h2>
-          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income and redeem referral credits</p>
+          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income</p>
         </div>
 
-        {/* Tab bar — underline style */}
-        <div className="flex items-center gap-[4px]">
-          {(['Cash', 'Credits'] as ETab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setETab(t)}
-              className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors"
-              style={{
-                background: eTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
-                color: eTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: eTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
-                border: 'none',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {t === 'Credits' ? 'Referral Credits' : t}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Cash tab ── */}
-        {eTab === 'Cash' && (
-          <div className="space-y-5">
+        {/* ── Cash earnings ── */}
+        <div className="space-y-5">
 
             {/* Stat cards */}
             <div className="grid grid-cols-3 gap-4">
@@ -2932,95 +2867,7 @@ function EarningsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {/* ── Credits tab ── */}
-        {eTab === 'Credits' && (
-          <div className="space-y-5">
-
-            {/* Stat cards */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Credit Balance</div>
-                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>{creditBalance.toLocaleString()}</div>
-              </div>
-              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Est. Cash Value</div>
-                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>${estCashValue}</div>
-                <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>at 12 cr = $1</div>
-              </div>
-            </div>
-
-            {/* Redeem section */}
-            <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Redeem Credits</div>
-              <div className="space-y-2.5 mb-4">
-                {[
-                  { label: `Completed ≥ 5 referrals this month (${completedReferrals} completed)`, met: eligRefCount },
-                  { label: 'Credit balance ≥ 1,000', met: eligBalance },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2.5">
-                    {item.met
-                      ? <CheckCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(142 63% 38%)' }} />
-                      : <XCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(0 65% 50%)' }} />
-                    }
-                    <span style={{ fontSize: 'var(--text-sm)', color: item.met ? 'var(--foreground)' : 'var(--muted-foreground)', lineHeight: 1.8 }}>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mb-4" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
-                Exchange rate: 12 credits = $1. Redeemed credits are added to your Cash &gt; Available balance in the next monthly payout cycle.
-              </p>
-              <button
-                disabled={!canRedeem}
-                style={{
-                  width: '100%', padding: '9px 16px',
-                  fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)',
-                  background: 'var(--primary)', color: 'var(--primary-foreground)',
-                  border: 'none', borderRadius: 'var(--radius-sm)',
-                  opacity: canRedeem ? 1 : 0.5,
-                  cursor: canRedeem ? 'pointer' : 'not-allowed',
-                  transition: 'opacity var(--transition-base)',
-                }}
-              >
-                Redeem as cash
-              </button>
-            </div>
-
-            {/* Credit transaction table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Date', 'Description', 'Credits', 'Status'].map(col => (
-                    <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {creditTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '24px', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>
-                      No credit activity yet.
-                    </td>
-                  </tr>
-                ) : creditTransactions.map((row, i) => (
-                  <tr key={row.id} style={{ borderBottom: i < creditTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{row.date}</td>
-                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>{row.description}</td>
-                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', whiteSpace: 'nowrap', color: row.credits < 0 ? 'hsl(0 65% 48%)' : 'hsl(142 63% 30%)' }}>
-                      {row.credits > 0 ? '+' : ''}{row.credits}
-                    </td>
-                    <td style={{ padding: '12px' }}><CreditStatusBadge status={row.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-          </div>
-        )}
+        </div>
 
       </div>
     </div>
@@ -3188,7 +3035,7 @@ function ProfileAndAvailabilityPage() {
 ───────────────────────────────────────────── */
 const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: number; required?: boolean }[] = [
   { id: 'overview',     label: 'Overview',     icon: LayoutDashboard },
-  { id: 'bookings',     label: 'Bookings',     icon: CalendarCheck, badge: 2 },
+  { id: 'bookings',     label: 'Bookings',     icon: CalendarCheck },
   { id: 'messages',     label: 'Messages',     icon: MessageSquare, badge: 3 },
   { id: 'profile',      label: 'Profile & Availability', icon: User, required: true },
   { id: 'reviews',      label: 'Reviews',      icon: Star },
@@ -3207,6 +3054,11 @@ export function MentorDashboardPage() {
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+
+  // Bookings nav badge mirrors the "Upcoming" count shown inside the Bookings
+  // tab (pending + confirmed), so the sidebar number always matches.
+  const { bookings: navBookings } = useMyMentorBookings();
+  const upcomingCount = navBookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length;
 
   // ── Shared mentor profile (GET /mentorship/profile), provided to all pages ──
   const [profile, setProfile] = useState<MentorProfileDto | null>(null);
@@ -3288,7 +3140,9 @@ export function MentorDashboardPage() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-3 space-y-0.5">
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.map(item => {
+            const badge = item.id === 'bookings' ? upcomingCount : item.badge;
+            return (
             <button
               key={item.id}
               onClick={() => setActivePage(item.id)}
@@ -3305,13 +3159,14 @@ export function MentorDashboardPage() {
                 {item.label}
                 {item.required && <span className="text-destructive ml-0.5">*</span>}
               </span>
-              {item.badge && (
+              {!!badge && (
                 <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${activePage === item.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
-                  {item.badge}
+                  {badge}
                 </span>
               )}
             </button>
-          ))}
+            );
+          })}
 
           {/* Switch to Candidate — side button after Referral (dual-role only) */}
           {canSwitchToCandidate && (
