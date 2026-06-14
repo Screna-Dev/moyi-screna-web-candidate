@@ -1933,35 +1933,38 @@ function MessagesPage() {
    List comes from MentorProfileDto.topics — no separate GET endpoint exists.
    Backend stores prices in cents; the UI shows / accepts dollars.
 ───────────────────────────────────────────── */
+// Title and description are fixed for every mentor — the backend still stores
+// them per-topic, but mentors only choose the 30 / 60-minute prices. The fixed
+// values are sent on every create/update so existing topics get normalized too.
+const FIXED_TOPIC_TITLE = 'Mentorship Session';
+const FIXED_TOPIC_DESCRIPTION =
+  'A one-on-one mentorship session to discuss your goals, get tailored guidance, and ask questions.';
+
 function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged: () => void }) {
-  // When an existing topic is present, the form acts as an editor for it
-  // (prefer the active one; otherwise fall back to the first). Otherwise it
-  // creates a new topic.
+  // There is a single mentorship offering per mentor with fixed title /
+  // description. The form always edits the existing topic (whichever one the
+  // backend returned, active or not) and creates one only when none exists.
+  // We never deactivate — every save sends active: true so the offering stays
+  // bookable. (Deactivating the only topic used to strand the mentor: it
+  // dropped out of the list, yet the backend's one-topic guard then blocked
+  // creating a new one.)
   const editingTopic = topics.find(t => t.active) ?? topics[0] ?? null;
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
   const [price30, setPrice30] = useState('');
   const [price60, setPrice60] = useState('');
-  const [mentorNote, setMentorNote] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<SaveStatus>(CLEAN_STATUS);
 
-  const centsToDollarString = (c?: number) =>
-    typeof c === 'number' ? (c / 100).toFixed(2) : '—';
   const centsToInput = (c?: number) =>
     typeof c === 'number' ? (c / 100).toFixed(2) : '';
 
   // Seed / re-seed the form whenever the editing target changes.
   useEffect(() => {
-    setTitle(editingTopic?.title ?? '');
-    setDescription(editingTopic?.description ?? '');
     setPrice30(centsToInput(editingTopic?.price30min));
     setPrice60(centsToInput(editingTopic?.price60min));
-    setMentorNote(editingTopic?.mentorNote ?? '');
-    setErr(null);
-  }, [editingTopic?.id, editingTopic?.title, editingTopic?.description, editingTopic?.price30min, editingTopic?.price60min, editingTopic?.mentorNote]);
+    setStatus(CLEAN_STATUS);
+  }, [editingTopic?.id, editingTopic?.price30min, editingTopic?.price60min]);
+
+  const markDirty = () => setStatus(s => ({ ...s, dirty: true, saved: false, error: null }));
 
   // Parse "12.50" → 1250 cents. Returns undefined when blank, null when invalid.
   const dollarsToCents = (s: string): number | undefined | null => {
@@ -1975,124 +1978,38 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   const handleSave = () => {
     const p30 = dollarsToCents(price30);
     const p60 = dollarsToCents(price60);
-    if (p30 === null || p60 === null) { setErr('Prices must be non-negative numbers.'); return; }
-    if (p30 === undefined && p60 === undefined) { setErr('Set at least one price (30 min or 60 min).'); return; }
+    if (p30 === null || p60 === null) { setStatus(s => ({ ...s, error: 'Prices must be non-negative numbers.' })); return; }
+    if (p30 === undefined && p60 === undefined) { setStatus(s => ({ ...s, error: 'Set at least one price (30 min or 60 min).' })); return; }
     const payload = {
-      title: title.trim() || undefined,
-      description: description.trim() || undefined,
+      title: FIXED_TOPIC_TITLE,
+      description: FIXED_TOPIC_DESCRIPTION,
       price30min: p30,
       price60min: p60,
-      mentorNote: mentorNote.trim() || undefined,
+      active: true,
     };
-    setSaving(true);
-    setErr(null);
+    setStatus(s => ({ ...s, saving: true, error: null }));
     const req = editingTopic
       ? updateMyTopic(editingTopic.id, payload)
       : createMyTopic(payload);
     req
       .then(() => {
-        if (!editingTopic) {
-          setTitle(''); setDescription(''); setPrice30(''); setPrice60(''); setMentorNote('');
-        }
+        setStatus({ dirty: false, saving: false, saved: true, error: null });
         onChanged();
       })
-      .catch((e: any) => setErr(e?.response?.data?.message || (editingTopic ? 'Could not update topic.' : 'Could not create topic.')))
-      .finally(() => setSaving(false));
-  };
-
-  const handleToggleActive = (t: MentorTopicDto) => {
-    if (togglingId) return;
-    setTogglingId(t.id);
-    setErr(null);
-    updateMyTopic(t.id, { active: !t.active })
-      .then(() => onChanged())
-      .catch((e: any) => setErr(e?.response?.data?.message || 'Could not update topic.'))
-      .finally(() => setTogglingId(null));
+      .catch((e: any) => setStatus(s => ({ ...s, saving: false, error: e?.response?.data?.message || 'Could not save your session prices.' })));
   };
 
   return (
     <div className="bg-card border border-border rounded-[var(--radius)] p-5">
       <div className="mb-4">
-        <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Topics</h3>
+        <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Session</h3>
         <p className="text-sm text-muted-foreground">
-          What each session covers, and its 30 / 60-minute prices. Only one topic can be active at a time.
+          Set your 30 / 60-minute session prices.
         </p>
       </div>
 
-      {/* Existing topics */}
-      {topics.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">No topics yet — create one below.</p>
-      ) : (
-        <div className="space-y-2">
-          {topics.map(t => (
-            <div key={t.id} className="border border-border rounded-[var(--radius-sm)] p-3 flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-foreground">{t.title || 'Mentorship Session'}</span>
-                  {t.active ? (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)] font-medium">Active</span>
-                  ) : (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">Inactive</span>
-                  )}
-                </div>
-                {t.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
-                )}
-                <div className="flex items-center gap-4 mt-2 text-xs">
-                  <span className="text-muted-foreground">30 min: <span className="text-foreground font-medium">${centsToDollarString(t.price30min)}</span></span>
-                  <span className="text-muted-foreground">60 min: <span className="text-foreground font-medium">${centsToDollarString(t.price60min)}</span></span>
-                </div>
-                {t.mentorNote && (
-                  <p className="text-[11px] text-muted-foreground mt-1 italic">Note: {t.mentorNote}</p>
-                )}
-              </div>
-              <button
-                onClick={() => handleToggleActive(t)}
-                disabled={togglingId === t.id}
-                className="text-xs px-3 py-1.5 border border-border rounded-md text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-              >
-                {togglingId === t.id ? '…' : t.active ? 'Deactivate' : 'Activate'}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Create / edit form */}
-      <div className="mt-5 pt-5 border-t border-border space-y-3">
-        <h4 className="text-sm font-medium text-foreground">
-          {editingTopic ? 'Edit topic' : 'Create new topic'}
-        </h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground">Title <span className="text-muted-foreground/60">(optional)</span></label>
-            <input
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Mock Interview"
-              className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Mentor note <span className="text-muted-foreground/60">(optional)</span></label>
-            <input
-              value={mentorNote}
-              onChange={e => setMentorNote(e.target.value)}
-              placeholder="Internal note (mentor-only)"
-              className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Description</label>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={2}
-            placeholder="What does this session cover?"
-            className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
+      {/* Pricing form — single always-active offering */}
+      <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Price 30 min (USD)</label>
@@ -2100,7 +2017,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
               <span className="text-sm text-muted-foreground">$</span>
               <input
                 value={price30}
-                onChange={e => setPrice30(e.target.value)}
+                onChange={e => { setPrice30(e.target.value); markDirty(); }}
                 placeholder="50.00"
                 inputMode="decimal"
                 className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
@@ -2113,7 +2030,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
               <span className="text-sm text-muted-foreground">$</span>
               <input
                 value={price60}
-                onChange={e => setPrice60(e.target.value)}
+                onChange={e => { setPrice60(e.target.value); markDirty(); }}
                 placeholder="90.00"
                 inputMode="decimal"
                 className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
@@ -2121,16 +2038,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
             </div>
           </div>
         </div>
-        {err && <p className="text-xs text-destructive">{err}</p>}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="text-sm px-4 py-2 bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : editingTopic ? 'Save changes' : 'Create topic'}
-          </button>
-        </div>
+        <SectionSaveRow status={status} onSave={handleSave} />
       </div>
     </div>
   );
