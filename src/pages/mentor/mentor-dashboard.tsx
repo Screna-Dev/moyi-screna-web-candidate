@@ -16,6 +16,7 @@ import {
   hasCandidateRole,
   setStoredDashboardMode,
 } from '@/components/mentor/dashboard-mode';
+import API from '@/services/api';
 import {
   getMyMentorProfile,
   updateMyMentorProfile,
@@ -27,6 +28,11 @@ import {
   uploadMyMentorAvatar,
   getMyMentorEarnings,
   uploadMyPaymentMethod,
+  mentorCancelBooking,
+  mentorRescheduleBooking,
+  getBookingScriptUploadUrl,
+  createMyTopic,
+  updateMyTopic,
 } from '@/services/MentorService';
 
 /* ─────────────────────────────────────────────
@@ -159,59 +165,19 @@ function SectionSaveRow({ status, onSave }: { status: SaveStatus; onSave: () => 
   );
 }
 
-/* ───���─��───────────────────────────────────────
-   MOCK DATA
-─���─────────────────────────────────────────── */
-const MENTOR = {
-  name: 'Sarah Chen',
-  title: 'Senior Software Engineer',
-  company: 'Google',
-  avatar: 'https://images.unsplash.com/photo-1585240975858-7264fd020798?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200',
-  verified: true,
-  rating: 4.9,
-  totalReviews: 47,
-  timezone: 'Pacific Time (US & Canada)',
-  headline: 'Helping early-career engineers land their first tech role',
-  bio: 'I\'m a Senior SWE at Google with 8 years of industry experience. I\'ve been on both sides of the table — as a candidate and as an interviewer — and I\'m passionate about helping new grads and career-changers navigate the technical interview process with confidence.',
-  location: 'San Francisco, CA',
-  yearsOfExp: 8,
-  roleTags: ['Frontend', 'Full-Stack', 'React', 'System Design'],
-  industryTags: ['Big Tech', 'Startups', 'FAANG'],
-  specialtyTags: ['LeetCode Prep', 'Mock Interviews', 'Resume Review'],
-};
-
-const BOOKINGS_DATA = [
-  {
-    id: 'b1', memberName: 'Marcus Lee', memberAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    sessionType: ['Mock Interview', 'System Design', 'Resume Review'], date: 'Today', time: '2:00 PM', duration: '60 min',
-    status: 'confirmed', recordingLink: 'https://loom.com/share/example123', note: 'I\'ve been preparing for FAANG-style interviews. Would love to run through a few LC medium questions and system design.',
-  },
-  {
-    id: 'b2', memberName: 'Priya Sharma', memberAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    sessionType: 'Resume Review', date: 'Tomorrow', time: '10:30 AM', duration: '45 min',
-    status: 'pending', note: 'Just graduated with a CS degree. Looking for feedback on tailoring my resume for product-focused SWE roles.',
-  },
-  {
-    id: 'b3', memberName: 'Jason Park', memberAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    sessionType: 'Career Coaching', date: 'May 3', time: '4:00 PM', duration: '30 min',
-    status: 'pending', note: 'Transitioning from backend to ML engineering. Need advice on upskilling path and positioning.',
-  },
-  {
-    id: 'b4', memberName: 'Aisha Williams', memberAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    sessionType: 'Mock Interview', date: 'Apr 28', time: '1:00 PM', duration: '60 min',
-    status: 'completed', note: 'Practiced two-sum variants and a BFS graph traversal. Great session overall.',
-  },
-  {
-    id: 'b5', memberName: 'Daniel Torres', memberAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    sessionType: 'Resume Review', date: 'Apr 25', time: '11:00 AM', duration: '45 min',
-    status: 'cancelled', note: 'Cancelled 2 hours before session.',
-  },
-];
-
 // ── Live mentor bookings (GET /mentorship/profile/bookings) ──────────────────
-// The API response is mapped into the exact shape the UI already renders
-// (same fields as BOOKINGS_DATA) so no UI changes are needed.
-type MentorBooking = typeof BOOKINGS_DATA[0];
+type MentorBooking = {
+  id: string;
+  memberName: string;
+  memberAvatar: string;
+  sessionType: string | string[];
+  date: string;
+  time: string;
+  duration: string;
+  status: string;
+  note?: string;
+  recordingLink?: string;
+};
 
 const BOOKING_STATUS_TO_UI: Record<string, string> = {
   PENDING: 'pending',
@@ -256,79 +222,24 @@ function mapMentorBooking(api: any): MentorBooking {
 function useMyMentorBookings() {
   const [bookings, setBookings] = useState<MentorBooking[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let alive = true;
+  const aliveRef = useRef(true);
+  const load = useCallback(() => {
     setLoading(true);
-    listMyMentorBookings({ page: 0, size: 100 })
+    return listMyMentorBookings({ page: 0, size: 100 })
       .then((res: any) => {
         const content = res?.data?.data?.content ?? res?.data?.content ?? [];
-        if (alive) setBookings(Array.isArray(content) ? content.map(mapMentorBooking) : []);
+        if (aliveRef.current) setBookings(Array.isArray(content) ? content.map(mapMentorBooking) : []);
       })
-      .catch(() => { if (alive) setBookings([]); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .catch(() => { if (aliveRef.current) setBookings([]); })
+      .finally(() => { if (aliveRef.current) setLoading(false); });
   }, []);
-  return { bookings, loading };
+  useEffect(() => {
+    aliveRef.current = true;
+    load();
+    return () => { aliveRef.current = false; };
+  }, [load]);
+  return { bookings, loading, refetch: load };
 }
-
-const MESSAGES_DATA = [
-  {
-    id: 'm1', memberName: 'Marcus Lee', memberAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    lastMessage: 'See you at 2pm today! I\'ve been reviewing my notes.', time: '11:32 AM', unread: 2, bookingStatus: 'confirmed',
-    thread: [
-      { from: 'member', text: 'Hi Sarah! Really looking forward to our session.', time: '10:00 AM' },
-      { from: 'mentor', text: 'Hi Marcus! Me too. I\'ve pulled some good system design prompts.', time: '10:15 AM' },
-      { from: 'member', text: 'Awesome. Should I prep anything specific?', time: '10:30 AM' },
-      { from: 'mentor', text: 'Review the basics of distributed systems — consistency, availability, partitioning.', time: '10:45 AM' },
-      { from: 'member', text: 'See you at 2pm today! I\'ve been reviewing my notes.', time: '11:32 AM' },
-    ],
-  },
-  {
-    id: 'm2', memberName: 'Priya Sharma', memberAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    lastMessage: 'Thanks for accepting! I\'ll send my resume shortly.', time: 'Yesterday', unread: 1, bookingStatus: 'pending',
-    thread: [
-      { from: 'member', text: 'Hi Sarah, I just booked a resume review session.', time: 'Yesterday 9:00 AM' },
-      { from: 'mentor', text: 'Great to meet you Priya! Feel free to share your resume beforehand.', time: 'Yesterday 2:00 PM' },
-      { from: 'member', text: 'Thanks for accepting! I\'ll send my resume shortly.', time: 'Yesterday 3:15 PM' },
-    ],
-  },
-  {
-    id: 'm3', memberName: 'Aisha Williams', memberAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100',
-    lastMessage: 'That session was incredibly helpful, thank you!', time: 'Apr 28', unread: 0, bookingStatus: 'completed',
-    thread: [
-      { from: 'member', text: 'That session was incredibly helpful, thank you!', time: 'Apr 28 2:05 PM' },
-      { from: 'mentor', text: 'So glad! You crushed that graph question. Keep it up!', time: 'Apr 28 2:10 PM' },
-    ],
-  },
-];
-
-const REVIEWS_DATA = [
-  {
-    id: 'r1', memberName: 'Aisha W.', sessionType: 'Mock Interview', date: 'Apr 28', rating: 5,
-    text: 'Sarah was absolutely phenomenal. She went beyond the session scope, gave me actionable feedback, and made me feel like I can actually do this. Highly recommended!',
-    replied: false,
-  },
-  {
-    id: 'r2', memberName: 'Daniel T.', sessionType: 'Resume Review', date: 'Apr 25', rating: 4,
-    text: 'Great session. Sarah helped me restructure my bullet points to be more impact-focused. The only thing I wish is that we had more time — the 45min went by fast.',
-    replied: true, reply: 'Thank you Daniel! Totally agree — resume reviews could easily go 90 min. Glad we made progress. Feel free to book a follow-up!',
-  },
-  {
-    id: 'r3', memberName: 'Kevin L.', sessionType: 'Career Coaching', date: 'Apr 20', rating: 5,
-    text: 'Sarah gave me a clear roadmap for transitioning into ML. She was honest about timelines and didn\'t sugarcoat things. Exactly what I needed.',
-    replied: false,
-  },
-  {
-    id: 'r4', memberName: 'Mei F.', sessionType: 'Mock Interview', date: 'Apr 15', rating: 5,
-    text: 'Best mock interview I\'ve had. She simulates a real Google interview and then breaks down exactly what a real interviewer would think. 10/10.',
-    replied: true, reply: 'Thank you Mei! You were well-prepared and asked great questions too. Best of luck with the onsite!',
-  },
-  {
-    id: 'r5', memberName: 'Omar R.', sessionType: 'Resume Review', date: 'Apr 10', rating: 3,
-    text: 'Session was decent. I was hoping for more specific suggestions on how to get past ATS filters but the advice was more general.',
-    replied: false,
-  },
-];
 
 /* ─────────────────────────────────────────────
    STATUS BADGE
@@ -395,7 +306,8 @@ function OverviewPage() {
     : profile?.status === 'SUSPENDED' ? 'Suspended'
     : 'Verified';
 
-  const { bookings } = useMyMentorBookings();
+  const { bookings, loading: bookingsLoading } = useMyMentorBookings();
+  const profileLoading = !!ctx?.loading;
   const upcomingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
   const pendingBookings = bookings.filter(b => b.status === 'pending');
 
@@ -403,7 +315,7 @@ function OverviewPage() {
     { label: 'Upcoming Sessions', value: String(upcomingBookings.length), icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
     { label: 'Pending Requests', value: String(pendingBookings.length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Unread Messages', value: '3', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/8' },
-    { label: 'Average Rating', value: String(profile?.averageRating ?? MENTOR.rating), icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { label: 'Average Rating', value: profile?.averageRating != null ? String(profile.averageRating) : '—', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
   ];
 
@@ -422,7 +334,7 @@ function OverviewPage() {
 
   const recentReviews = profile?.reviews && profile.reviews.length
     ? profile.reviews.slice(0, 2).map(r => ({ id: r.id, rating: r.overallRating, memberName: r.reviewerName, sessionType: '', text: r.comment ?? '' }))
-    : REVIEWS_DATA.slice(0, 2);
+    : [];
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -448,7 +360,9 @@ function OverviewPage() {
             <h3 className="text-foreground">Today's Schedule</h3>
             <button className="text-xs text-primary hover:underline">View all bookings</button>
           </div>
-          {todaySessions.length === 0 ? (
+          {bookingsLoading ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">Loading sessions…</div>
+          ) : todaySessions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">No sessions scheduled today.</div>
           ) : (
             <div className="space-y-3">
@@ -488,7 +402,9 @@ function OverviewPage() {
             </span>
           </div>
           <div className="space-y-2">
-            {upcomingBookings.length === 0 ? (
+            {bookingsLoading ? (
+              <div className="text-center py-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
+            ) : upcomingBookings.length === 0 ? (
               <div className="text-center py-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>No upcoming sessions.</div>
             ) : (
               upcomingBookings.map(b => (
@@ -541,17 +457,23 @@ function OverviewPage() {
           <h3 className="text-foreground">Recent Reviews</h3>
           <button className="text-xs text-primary hover:underline">View all</button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          {recentReviews.map(r => (
-            <div key={r.id} className="p-4 rounded-[var(--radius-sm)] bg-surface-0 border border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <StarRating rating={r.rating} />
-                <span className="text-xs text-muted-foreground">{r.memberName}{r.sessionType ? ` · ${r.sessionType}` : ''}</span>
+        {profileLoading ? (
+          <div className="text-center py-6 text-sm text-muted-foreground">Loading reviews…</div>
+        ) : recentReviews.length === 0 ? (
+          <div className="text-center py-6 text-sm text-muted-foreground">No reviews yet.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {recentReviews.map(r => (
+              <div key={r.id} className="p-4 rounded-[var(--radius-sm)] bg-surface-0 border border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <StarRating rating={r.rating} />
+                  <span className="text-xs text-muted-foreground">{r.memberName}{r.sessionType ? ` · ${r.sessionType}` : ''}</span>
+                </div>
+                <p className="text-sm text-foreground line-clamp-2">{r.text}</p>
               </div>
-              <p className="text-sm text-foreground line-clamp-2">{r.text}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -562,18 +484,42 @@ function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; o
   const [link, setLink] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [toast, setToast] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const canSubmit = link.trim().length > 0 || file !== null;
+  const canSubmit = (link.trim().length > 0 || file !== null) && !submitting;
 
-  function handleSubmit() {
+  // When a file is provided, ask the API for a presigned upload URL and PUT
+  // the bytes directly. The link-only path has no backend hook yet.
+  async function handleSubmit() {
     if (!canSubmit) return;
-    onComplete(bookingId, link.trim() || (file?.name ?? ''));
-    setOpen(false);
-    setLink('');
-    setFile(null);
-    setToast(true);
-    setTimeout(() => setToast(false), 4000);
+    setSubmitting(true);
+    setErr(null);
+    try {
+      if (file) {
+        const res: any = await getBookingScriptUploadUrl(bookingId);
+        const data = res?.data?.data ?? res?.data ?? {};
+        const uploadUrl: string | undefined = data.url ?? data.uploadUrl;
+        if (!uploadUrl) throw new Error('No upload URL returned.');
+        await API.put(uploadUrl, file, {
+          baseURL: '',                      // presigned URL is absolute — bypass the /api/v1 prefix
+          withCredentials: false,           // S3 / GCS won't accept our auth cookie
+          transformRequest: [(d: any) => d],
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        });
+      }
+      onComplete(bookingId, link.trim() || (file?.name ?? ''));
+      setOpen(false);
+      setLink('');
+      setFile(null);
+      setToast(true);
+      setTimeout(() => setToast(false), 4000);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || 'Could not complete session.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleClose() {
@@ -718,9 +664,12 @@ function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; o
                   border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed',
                 }}
               >
-                Submit &amp; mark completed
+                {submitting ? 'Uploading…' : 'Submit & mark completed'}
               </button>
             </div>
+            {err && (
+              <p className="text-xs text-destructive">{err}</p>
+            )}
           </div>
         </div>
       )}
@@ -732,15 +681,40 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const canSend = date.trim() !== '' && time.trim() !== '';
+  // Form pieces parse to a full timestamp; need both date (YYYY-MM-DD) and time (HH-MM-AMPM) populated.
+  const dateParts = date.split('-');
+  const timeParts = time.split('-');
+  const dateReady = dateParts.length === 3 && dateParts.every(p => p);
+  const timeReady = timeParts.length === 3 && timeParts.every(p => p);
+  const canSend = dateReady && timeReady && !sending;
+
+  function buildIsoStartTime(): string | null {
+    if (!dateReady || !timeReady) return null;
+    const [yyyy, mm, dd] = dateParts;
+    const [hr12, min, ampm] = timeParts;
+    let h = parseInt(hr12, 10) % 12;
+    if (ampm === 'PM') h += 12;
+    const d = new Date(`${yyyy}-${mm}-${dd}T${String(h).padStart(2, '0')}:${min}:00`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
 
   function handleSend() {
-    if (!canSend) return;
-    onReschedule(bookingId);
-    setOpen(false);
-    setDate('');
-    setTime('');
+    const startTime = buildIsoStartTime();
+    if (!startTime) return;
+    setSending(true);
+    setErr(null);
+    mentorRescheduleBooking(bookingId, startTime)
+      .then(() => {
+        onReschedule(bookingId);
+        setOpen(false);
+        setDate('');
+        setTime('');
+      })
+      .catch((e: any) => setErr(e?.response?.data?.message || 'Could not send reschedule request.'))
+      .finally(() => setSending(false));
   }
 
   return (
@@ -893,9 +867,12 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
                   border: 'none', cursor: canSend ? 'pointer' : 'not-allowed',
                 }}
               >
-                Send request
+                {sending ? 'Sending…' : 'Send request'}
               </button>
             </div>
+            {err && (
+              <div className="text-xs text-destructive">{err}</div>
+            )}
           </div>
         </div>
       )}
@@ -913,7 +890,20 @@ function BookingsPage() {
   const [rescheduledIds, setRescheduledIds] = useState<Set<string>>(new Set());
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
 
-  const { bookings } = useMyMentorBookings();
+  const { bookings, loading: bookingsLoading, refetch: refetchBookings } = useMyMentorBookings();
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const handleCancel = (bookingId: string) => {
+    if (cancellingId) return;
+    setCancellingId(bookingId);
+    mentorCancelBooking(bookingId)
+      .then(() => {
+        setCancelledIds(prev => new Set([...prev, bookingId]));
+        refetchBookings();
+      })
+      .catch(() => { /* leave state untouched on failure */ })
+      .finally(() => setCancellingId(null));
+  };
 
   const tabs = ['all', 'upcoming', 'completed', 'cancelled'] as const;
   const filtered = activeTab === 'all'
@@ -1003,14 +993,15 @@ function BookingsPage() {
                     <>
                       <RescheduleButton
                         bookingId={b.id}
-                        onReschedule={id => setRescheduledIds(prev => new Set([...prev, id]))}
+                        onReschedule={id => { setRescheduledIds(prev => new Set([...prev, id])); refetchBookings(); }}
                       />
                       <button
-                        onClick={e => { e.stopPropagation(); setCancelledIds(prev => new Set([...prev, b.id])); }}
-                        className="px-3 py-1.5 text-xs border rounded-md transition-colors"
-                        style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)', background: 'transparent', cursor: 'pointer' }}
+                        onClick={e => { e.stopPropagation(); handleCancel(b.id); }}
+                        disabled={cancellingId === b.id}
+                        className="px-3 py-1.5 text-xs border rounded-md transition-colors disabled:opacity-50"
+                        style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)', background: 'transparent', cursor: cancellingId === b.id ? 'not-allowed' : 'pointer' }}
                       >
-                        Cancel
+                        {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
                       </button>
                       {b.status === 'confirmed' && (
                         <>
@@ -1036,9 +1027,11 @@ function BookingsPage() {
               </div>
             </div>
           ))}
-          {filtered.length === 0 && (
+          {bookingsLoading ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">Loading bookings…</div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground text-sm">No {activeTab} bookings.</div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -1790,8 +1783,21 @@ function AvailabilityPage() {
 /* ─────────────────────────────────────────────
    PAGE: MESSAGES
 ───────────────────────────────────────────── */
+// No backend endpoint for mentor↔candidate messaging yet. Empty until the API exists.
+type Conversation = {
+  id: string;
+  memberName: string;
+  memberAvatar: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  bookingStatus: string;
+  thread: { from: 'member' | 'mentor'; text: string; time: string }[];
+};
+
 function MessagesPage() {
-  const [activeConvo, setActiveConvo] = useState(MESSAGES_DATA[0]);
+  const conversations: Conversation[] = [];
+  const [activeConvo, setActiveConvo] = useState<Conversation | null>(null);
   const [draft, setDraft] = useState('');
 
   const quickReplies = [
@@ -1812,11 +1818,13 @@ function MessagesPage() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {MESSAGES_DATA.map(c => (
+          {conversations.length === 0 ? (
+            <div className="p-6 text-center text-xs text-muted-foreground">No conversations yet.</div>
+          ) : conversations.map(c => (
             <button
               key={c.id}
               onClick={() => setActiveConvo(c)}
-              className={`w-full text-left p-3 border-b border-border hover:bg-secondary/50 transition-colors ${activeConvo.id === c.id ? 'bg-primary/5' : ''}`}
+              className={`w-full text-left p-3 border-b border-border hover:bg-secondary/50 transition-colors ${activeConvo?.id === c.id ? 'bg-primary/5' : ''}`}
             >
               <div className="flex items-start gap-2.5">
                 <div className="relative">
@@ -1843,13 +1851,19 @@ function MessagesPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Thread header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card">
-          <Avatar src={activeConvo.memberAvatar} name={activeConvo.memberName} size="md" />
-          <div>
-            <div className="text-sm font-medium text-foreground">{activeConvo.memberName}</div>
-            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <StatusBadge status={activeConvo.bookingStatus} />
-            </div>
-          </div>
+          {activeConvo ? (
+            <>
+              <Avatar src={activeConvo.memberAvatar} name={activeConvo.memberName} size="md" />
+              <div>
+                <div className="text-sm font-medium text-foreground">{activeConvo.memberName}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <StatusBadge status={activeConvo.bookingStatus} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-muted-foreground">Select a conversation</div>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"><Video className="w-4 h-4" /></button>
             <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
@@ -1858,7 +1872,7 @@ function MessagesPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {activeConvo.thread.map((msg, i) => (
+          {activeConvo ? activeConvo.thread.map((msg, i) => (
             <div key={i} className={`flex ${msg.from === 'mentor' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs px-3.5 py-2.5 rounded-[var(--radius)] text-sm ${
                 msg.from === 'mentor'
@@ -1869,7 +1883,9 @@ function MessagesPage() {
                 <p className={`text-[11px] mt-1 ${msg.from === 'mentor' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>{msg.time}</p>
               </div>
             </div>
-          ))}
+          )) : (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No messages.</div>
+          )}
         </div>
 
         {/* Quick replies */}
@@ -1910,18 +1926,228 @@ function MessagesPage() {
 /* ─────────────────────────────────────────────
    PAGE: PROFILE
 ───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   TOPICS CARD
+   POST /mentorship/profile/topics  (create)
+   PUT  /mentorship/profile/topics/{id}  (activate / deactivate / edit)
+   List comes from MentorProfileDto.topics — no separate GET endpoint exists.
+   Backend stores prices in cents; the UI shows / accepts dollars.
+───────────────────────────────────────────── */
+function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged: () => void }) {
+  // When an existing topic is present, the form acts as an editor for it
+  // (prefer the active one; otherwise fall back to the first). Otherwise it
+  // creates a new topic.
+  const editingTopic = topics.find(t => t.active) ?? topics[0] ?? null;
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [price30, setPrice30] = useState('');
+  const [price60, setPrice60] = useState('');
+  const [mentorNote, setMentorNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const centsToDollarString = (c?: number) =>
+    typeof c === 'number' ? (c / 100).toFixed(2) : '—';
+  const centsToInput = (c?: number) =>
+    typeof c === 'number' ? (c / 100).toFixed(2) : '';
+
+  // Seed / re-seed the form whenever the editing target changes.
+  useEffect(() => {
+    setTitle(editingTopic?.title ?? '');
+    setDescription(editingTopic?.description ?? '');
+    setPrice30(centsToInput(editingTopic?.price30min));
+    setPrice60(centsToInput(editingTopic?.price60min));
+    setMentorNote(editingTopic?.mentorNote ?? '');
+    setErr(null);
+  }, [editingTopic?.id, editingTopic?.title, editingTopic?.description, editingTopic?.price30min, editingTopic?.price60min, editingTopic?.mentorNote]);
+
+  // Parse "12.50" → 1250 cents. Returns undefined when blank, null when invalid.
+  const dollarsToCents = (s: string): number | undefined | null => {
+    const t = s.trim();
+    if (!t) return undefined;
+    const n = Number(t);
+    if (!isFinite(n) || n < 0) return null;
+    return Math.round(n * 100);
+  };
+
+  const handleSave = () => {
+    const p30 = dollarsToCents(price30);
+    const p60 = dollarsToCents(price60);
+    if (p30 === null || p60 === null) { setErr('Prices must be non-negative numbers.'); return; }
+    if (p30 === undefined && p60 === undefined) { setErr('Set at least one price (30 min or 60 min).'); return; }
+    const payload = {
+      title: title.trim() || undefined,
+      description: description.trim() || undefined,
+      price30min: p30,
+      price60min: p60,
+      mentorNote: mentorNote.trim() || undefined,
+    };
+    setSaving(true);
+    setErr(null);
+    const req = editingTopic
+      ? updateMyTopic(editingTopic.id, payload)
+      : createMyTopic(payload);
+    req
+      .then(() => {
+        if (!editingTopic) {
+          setTitle(''); setDescription(''); setPrice30(''); setPrice60(''); setMentorNote('');
+        }
+        onChanged();
+      })
+      .catch((e: any) => setErr(e?.response?.data?.message || (editingTopic ? 'Could not update topic.' : 'Could not create topic.')))
+      .finally(() => setSaving(false));
+  };
+
+  const handleToggleActive = (t: MentorTopicDto) => {
+    if (togglingId) return;
+    setTogglingId(t.id);
+    setErr(null);
+    updateMyTopic(t.id, { active: !t.active })
+      .then(() => onChanged())
+      .catch((e: any) => setErr(e?.response?.data?.message || 'Could not update topic.'))
+      .finally(() => setTogglingId(null));
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-[var(--radius)] p-5">
+      <div className="mb-4">
+        <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Topics</h3>
+        <p className="text-sm text-muted-foreground">
+          What each session covers, and its 30 / 60-minute prices. Only one topic can be active at a time.
+        </p>
+      </div>
+
+      {/* Existing topics */}
+      {topics.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">No topics yet — create one below.</p>
+      ) : (
+        <div className="space-y-2">
+          {topics.map(t => (
+            <div key={t.id} className="border border-border rounded-[var(--radius-sm)] p-3 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-foreground">{t.title || 'Mentorship Session'}</span>
+                  {t.active ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)] font-medium">Active</span>
+                  ) : (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">Inactive</span>
+                  )}
+                </div>
+                {t.description && (
+                  <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
+                )}
+                <div className="flex items-center gap-4 mt-2 text-xs">
+                  <span className="text-muted-foreground">30 min: <span className="text-foreground font-medium">${centsToDollarString(t.price30min)}</span></span>
+                  <span className="text-muted-foreground">60 min: <span className="text-foreground font-medium">${centsToDollarString(t.price60min)}</span></span>
+                </div>
+                {t.mentorNote && (
+                  <p className="text-[11px] text-muted-foreground mt-1 italic">Note: {t.mentorNote}</p>
+                )}
+              </div>
+              <button
+                onClick={() => handleToggleActive(t)}
+                disabled={togglingId === t.id}
+                className="text-xs px-3 py-1.5 border border-border rounded-md text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+              >
+                {togglingId === t.id ? '…' : t.active ? 'Deactivate' : 'Activate'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create / edit form */}
+      <div className="mt-5 pt-5 border-t border-border space-y-3">
+        <h4 className="text-sm font-medium text-foreground">
+          {editingTopic ? 'Edit topic' : 'Create new topic'}
+        </h4>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Title <span className="text-muted-foreground/60">(optional)</span></label>
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Mock Interview"
+              className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Mentor note <span className="text-muted-foreground/60">(optional)</span></label>
+            <input
+              value={mentorNote}
+              onChange={e => setMentorNote(e.target.value)}
+              placeholder="Internal note (mentor-only)"
+              className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Description</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={2}
+            placeholder="What does this session cover?"
+            className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Price 30 min (USD)</label>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                value={price30}
+                onChange={e => setPrice30(e.target.value)}
+                placeholder="50.00"
+                inputMode="decimal"
+                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Price 60 min (USD)</label>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                value={price60}
+                onChange={e => setPrice60(e.target.value)}
+                placeholder="90.00"
+                inputMode="decimal"
+                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+        </div>
+        {err && <p className="text-xs text-destructive">{err}</p>}
+        <div className="flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="text-sm px-4 py-2 bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : editingTopic ? 'Save changes' : 'Create topic'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProfilePage() {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
   const { user } = useAuth();
 
-  const [name, setName] = useState(MENTOR.name);
-  const [headline, setHeadline] = useState(MENTOR.headline);
-  const [bio, setBio] = useState(MENTOR.bio);
-  const [title, setTitle] = useState(MENTOR.title);
-  const [company, setCompany] = useState(MENTOR.company);
-  const [location, setLocation] = useState(MENTOR.location);
-  const [years, setYears] = useState(String(MENTOR.yearsOfExp));
+  const [name, setName] = useState('');
+  const [headline, setHeadline] = useState('');
+  const [bio, setBio] = useState('');
+  const [title, setTitle] = useState('');
+  const [company, setCompany] = useState('');
+  const [location, setLocation] = useState('');
+  const [years, setYears] = useState('');
   // Per-section save state so each card saves on its own (no single sticky bar).
   const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
@@ -2088,7 +2314,7 @@ function ProfilePage() {
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <Avatar src={profile?.avatarUrl || MENTOR.avatar} name={name || MENTOR.name} size="xl" />
+              <Avatar src={profile?.avatarUrl} name={name} size="xl" />
               <button
                 onClick={() => avatarFileRef.current?.click()}
                 disabled={avatarUploading}
@@ -2105,8 +2331,8 @@ function ProfilePage() {
               />
             </div>
             <div>
-              <div className="text-sm font-medium text-foreground">{name || MENTOR.name}</div>
-              <div className="text-xs text-muted-foreground">{title || MENTOR.title} · {company || MENTOR.company}</div>
+              <div className="text-sm font-medium text-foreground">{name}</div>
+              <div className="text-xs text-muted-foreground">{title}{title && company ? ' · ' : ''}{company}</div>
             </div>
           </div>
 
@@ -2141,6 +2367,9 @@ function ProfilePage() {
 
           <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
+
+        {/* Mentorship Topics — POST/PUT /mentorship/profile/topics */}
+        <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
 
         {/* Coaching Plans */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5">
@@ -2428,8 +2657,14 @@ function ProfilePage() {
             <div className="h-16 bg-gradient-to-r from-primary/20 to-primary/5" />
             <div className="px-4 pb-4 -mt-7">
               <div className="flex items-end gap-3 mb-3">
-                <img src={profile?.avatarUrl || MENTOR.avatar} alt={name} className="w-14 h-14 rounded-full border-2 border-card object-cover" />
-                {(profile ? profile.status === 'APPROVED' : MENTOR.verified) && (
+                {profile?.avatarUrl ? (
+                  <img src={profile.avatarUrl} alt={name} className="w-14 h-14 rounded-full border-2 border-card object-cover" />
+                ) : (
+                  <div className="w-14 h-14 rounded-full border-2 border-card bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
+                    {(name || 'M').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                {profile?.status === 'APPROVED' && (
                   <div className="mb-1 flex items-center gap-1 text-xs text-[hsl(165,60%,30%)] bg-[hsl(165,82%,90%)] px-2 py-0.5 rounded-md">
                     <ShieldCheck className="w-3 h-3" /> Verified
                   </div>
@@ -2438,12 +2673,12 @@ function ProfilePage() {
               <div className="font-semibold text-foreground text-sm">{name}</div>
               <div className="text-xs text-muted-foreground mt-0.5">{title} · {company}</div>
               <div className="flex items-center gap-1 mt-1.5">
-                <StarRating rating={Math.round(profile?.averageRating ?? MENTOR.rating)} />
-                <span className="text-xs text-muted-foreground">{(profile?.averageRating ?? MENTOR.rating)} ({profile?.reviewCount ?? MENTOR.totalReviews})</span>
+                <StarRating rating={Math.round(profile?.averageRating ?? 0)} />
+                <span className="text-xs text-muted-foreground">{profile?.averageRating ?? 0} ({profile?.reviewCount ?? 0})</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{headline}</p>
               <div className="flex flex-wrap gap-1 mt-2">
-                {(services.length ? services : MENTOR.roleTags).slice(0, 3).map(t => (
+                {services.slice(0, 3).map(t => (
                   <span key={t} className="text-[11px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">{t}</span>
                 ))}
               </div>
@@ -2470,14 +2705,15 @@ type ReviewRow = { id: string; memberName: string; sessionType?: string; date: s
 function ReviewsPage() {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
+  const profileLoading = !!ctx?.loading;
 
   const [filterRating, setFilterRating] = useState<number | null>(null);
   const [filterType, setFilterType] = useState('All');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
 
-  // Real reviews from the profile when available, otherwise the demo data.
-  const reviews: ReviewRow[] = profile?.reviews && profile.reviews.length
+  // Reviews come from GET /mentorship/profile (embedded in MentorProfileDto).
+  const reviews: ReviewRow[] = profile?.reviews
     ? profile.reviews.map(r => ({
         id: r.id,
         memberName: r.reviewerName,
@@ -2487,9 +2723,9 @@ function ReviewsPage() {
         text: r.comment ?? '',
         replied: false,
       }))
-    : (REVIEWS_DATA as ReviewRow[]);
+    : [];
 
-  const avgRating = profile?.averageRating ?? MENTOR.rating;
+  const avgRating = profile?.averageRating ?? 0;
   const reviewCount = profile?.reviewCount ?? reviews.length;
 
   const ratingDist = [5, 4, 3, 2, 1].map(r => ({
@@ -2553,6 +2789,11 @@ function ReviewsPage() {
 
       {/* Review List */}
       <div className="space-y-3">
+        {profileLoading ? (
+          <div className="bg-card border border-border rounded-[var(--radius)] p-8 text-center text-sm text-muted-foreground">Loading reviews…</div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-card border border-border rounded-[var(--radius)] p-8 text-center text-sm text-muted-foreground">No reviews yet.</div>
+        ) : null}
         {filtered.map(rv => (
           <div key={rv.id} className="bg-card border border-border rounded-[var(--radius)] p-5">
             <div className="flex items-start justify-between gap-4">
@@ -2605,40 +2846,14 @@ function ReviewsPage() {
 /* ─────────────────────────────────────────────
    EARNINGS PAGE
 ───────────────────────────────────────────── */
+// Earnings transactions / payout history / credit transactions: no backend
+// endpoints yet. Lists render empty states until the API exists.
 type EarningSession = {
   id: string; session: string; student: string; studentAvatar: string;
   date: string; gross: number; fee: number; net: number;
   status: string; payoutDate: string; payoutMethod: string;
 };
-
-const EARNINGS_SESSIONS: EarningSession[] = [
-  { id: 'e1',  session: 'Mock Interview',   student: 'Marcus Lee',    studentAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'May 8, 2025',  gross: 120, fee: 18, net: 102, status: 'Pending',   payoutDate: '—',            payoutMethod: '—' },
-  { id: 'e2',  session: 'Career Coaching',  student: 'Jason Park',    studentAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'May 6, 2025',  gross: 100, fee: 15, net: 85,  status: 'Pending',   payoutDate: '—',            payoutMethod: '—' },
-  { id: 'e3',  session: 'Resume Review',    student: 'Wei Chen',      studentAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'May 5, 2025',  gross: 80,  fee: 12, net: 68,  status: 'Pending',   payoutDate: '—',            payoutMethod: '—' },
-  { id: 'e4',  session: 'Mock Interview',   student: 'Aisha Williams', studentAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'May 3, 2025',  gross: 120, fee: 18, net: 102, status: 'Available', payoutDate: 'May 14, 2025', payoutMethod: 'Bank ••••4242' },
-  { id: 'e5',  session: 'Career Coaching',  student: 'Kevin Liu',     studentAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'May 1, 2025',  gross: 100, fee: 15, net: 85,  status: 'Available', payoutDate: 'May 10, 2025', payoutMethod: 'Bank ••••4242' },
-  { id: 'e6',  session: 'Mock Interview',   student: 'Marcus Lee',    studentAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'Apr 28, 2025', gross: 120, fee: 18, net: 102, status: 'Available', payoutDate: 'May 5, 2025',  payoutMethod: 'Bank ••••4242' },
-  { id: 'e7',  session: 'Resume Review',    student: 'Priya Sharma',  studentAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'Apr 25, 2025', gross: 80,  fee: 12, net: 68,  status: 'Available', payoutDate: 'May 5, 2025',  payoutMethod: 'Bank ••••4242' },
-  { id: 'e8',  session: 'Career Coaching',  student: 'Daniel Torres', studentAvatar: 'https://images.unsplash.com/photo-1770392988936-dc3d8581e0c9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'Apr 22, 2025', gross: 100, fee: 15, net: 85,  status: 'Available', payoutDate: 'May 5, 2025',  payoutMethod: 'Bank ••••4242' },
-  { id: 'e9',  session: 'Mock Interview',   student: 'Mei Fong',      studentAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'Apr 18, 2025', gross: 120, fee: 18, net: 102, status: 'On Hold',   payoutDate: 'On hold',      payoutMethod: 'Bank ••••4242' },
-  { id: 'e10', session: 'Resume Review',    student: 'Lily Zhang',    studentAvatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=100', date: 'Apr 12, 2025', gross: 80,  fee: 12, net: 68,  status: 'Refunded',  payoutDate: '—',            payoutMethod: '—' },
-];
-
-const PAYOUT_HISTORY_DATA = [
-  { id: 'ph1', date: 'May 5, 2025',  amount: 255, method: 'Bank ••••4242', sessions: 3, status: 'Completed' },
-  { id: 'ph2', date: 'Apr 14, 2025', amount: 272, method: 'Bank ••••4242', sessions: 3, status: 'Completed' },
-  { id: 'ph3', date: 'Mar 28, 2025', amount: 187, method: 'Bank ••••4242', sessions: 2, status: 'Completed' },
-  { id: 'ph4', date: 'Mar 10, 2025', amount: 170, method: 'Bank ••••4242', sessions: 2, status: 'Completed' },
-];
-
-const CREDIT_TRANSACTIONS = [
-  { id: 'c1', date: 'Jun 3, 2025',  description: 'Google SWE referral — Emily Zhang accepted',  credits: 100,   status: 'Confirmed' },
-  { id: 'c2', date: 'May 28, 2025', description: 'Meta PM referral — slot 1 of 3',               credits: 200,   status: 'Escrow' },
-  { id: 'c3', date: 'May 20, 2025', description: 'Stripe Backend referral — in progress',        credits: 150,   status: 'Escrow' },
-  { id: 'c4', date: 'May 15, 2025', description: 'Airbnb Frontend referral — completed',         credits: 80,    status: 'Confirmed' },
-  { id: 'c5', date: 'May 1, 2025',  description: 'Redeemed as cash',                             credits: -1200, status: 'Redeemed' },
-  { id: 'c6', date: 'Apr 22, 2025', description: 'Figma Design Engineer referral — accepted',    credits: 180,   status: 'Confirmed' },
-];
+type CreditTransaction = { id: string; date: string; description: string; credits: number; status: string };
 
 function EarningsStatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
@@ -2679,18 +2894,20 @@ function EarningsPage() {
   type ETab = 'Cash' | 'Credits';
   const [eTab, setETab] = useState<ETab>('Cash');
 
-  const creditBalance = 2480;
+  // Credit balance + referral counters: no backend endpoint yet.
+  const creditBalance = 0;
   const estCashValue = (creditBalance / 12).toFixed(2);
-  const completedReferrals = 7;
+  const completedReferrals = 0;
   const eligRefCount = completedReferrals >= 5;
   const eligBalance = creditBalance >= 1000;
   const canRedeem = eligRefCount && eligBalance;
 
   // GET /mentorship/profile/earnings → { availableCents, pendingCents, lifetimeCents }.
-  // Fall back to the mock-derived totals until the API responds.
   const [earningTotals, setEarningTotals] = useState<{ available: number; pending: number; lifetime: number } | null>(null);
+  const [earningsLoading, setEarningsLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
+    setEarningsLoading(true);
     getMyMentorEarnings()
       .then(res => {
         if (cancelled) return;
@@ -2701,14 +2918,19 @@ function EarningsPage() {
           lifetime: Number(d.lifetimeCents ?? 0) / 100,
         });
       })
-      .catch(() => { /* keep fallback */ });
+      .catch(() => { if (!cancelled) setEarningTotals({ available: 0, pending: 0, lifetime: 0 }); })
+      .finally(() => { if (!cancelled) setEarningsLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  const availableTotal = earningTotals?.available ?? EARNINGS_SESSIONS.filter(s => s.status === 'Available').reduce((sum, s) => sum + s.net, 0);
-  const pendingTotal   = earningTotals?.pending   ?? EARNINGS_SESSIONS.filter(s => s.status === 'Pending').reduce((sum, s) => sum + s.net, 0);
-  const lifetimeTotal  = earningTotals?.lifetime  ?? EARNINGS_SESSIONS.filter(s => s.status !== 'Refunded').reduce((sum, s) => sum + s.net, 0);
+  const availableTotal = earningTotals?.available ?? 0;
+  const pendingTotal   = earningTotals?.pending   ?? 0;
+  const lifetimeTotal  = earningTotals?.lifetime  ?? 0;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
+
+  // No backend list endpoints yet for cash transactions or credit history.
+  const earningSessions: EarningSession[] = [];
+  const creditTransactions: CreditTransaction[] = [];
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -2750,15 +2972,15 @@ function EarningsPage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Available</div>
-                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'hsl(142 63% 30%)' }}>{fmt(availableTotal)}</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'hsl(142 63% 30%)' }}>{earningsLoading ? '…' : fmt(availableTotal)}</div>
               </div>
               <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pending</div>
-                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--muted-foreground)' }}>{fmt(pendingTotal)}</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--muted-foreground)' }}>{earningsLoading ? '…' : fmt(pendingTotal)}</div>
               </div>
               <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Lifetime Total</div>
-                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--primary)' }}>{fmt(lifetimeTotal)}</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--primary)' }}>{earningsLoading ? '…' : fmt(lifetimeTotal)}</div>
               </div>
             </div>
 
@@ -2780,11 +3002,17 @@ function EarningsPage() {
                 </tr>
               </thead>
               <tbody>
-                {EARNINGS_SESSIONS.map((row, i) => (
+                {earningSessions.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '24px', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>
+                      {earningsLoading ? 'Loading transactions…' : 'No transactions yet.'}
+                    </td>
+                  </tr>
+                ) : earningSessions.map((row, i) => (
                   <tr
                     key={row.id}
                     style={{
-                      borderBottom: i < EARNINGS_SESSIONS.length - 1 ? '1px solid var(--border)' : 'none',
+                      borderBottom: i < earningSessions.length - 1 ? '1px solid var(--border)' : 'none',
                       background: row.status === 'On Hold' ? 'hsl(0 72% 98.5%)' : 'transparent',
                     }}
                   >
@@ -2864,8 +3092,14 @@ function EarningsPage() {
                 </tr>
               </thead>
               <tbody>
-                {CREDIT_TRANSACTIONS.map((row, i) => (
-                  <tr key={row.id} style={{ borderBottom: i < CREDIT_TRANSACTIONS.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                {creditTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '24px', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>
+                      No credit activity yet.
+                    </td>
+                  </tr>
+                ) : creditTransactions.map((row, i) => (
+                  <tr key={row.id} style={{ borderBottom: i < creditTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{row.date}</td>
                     <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>{row.description}</td>
                     <td style={{ padding: '12px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', whiteSpace: 'nowrap', color: row.credits < 0 ? 'hsl(0 65% 48%)' : 'hsl(142 63% 30%)' }}>
@@ -3135,12 +3369,12 @@ export function MentorDashboardPage() {
         {/* Mentor identity */}
         <div className="px-3 py-3 border-b border-border">
           <div className="flex items-center gap-2.5 p-2 rounded-[var(--radius-sm)] hover:bg-secondary transition-colors cursor-pointer">
-            <Avatar src={profile?.avatarUrl || MENTOR.avatar} name={profile?.name || MENTOR.name} size="sm" />
+            <Avatar src={profile?.avatarUrl} name={profile?.name ?? ''} size="sm" />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground truncate">{profile?.name || MENTOR.name}</div>
-              <div className="text-[11px] text-muted-foreground truncate">{profile?.currentCompany || MENTOR.company}</div>
+              <div className="text-sm font-medium text-foreground truncate">{profile?.name ?? ''}</div>
+              <div className="text-[11px] text-muted-foreground truncate">{profile?.currentCompany ?? ''}</div>
             </div>
-            {(profile ? profile.status === 'APPROVED' : MENTOR.verified) && <ShieldCheck className="w-3.5 h-3.5 text-[hsl(165,60%,35%)] shrink-0" />}
+            {profile?.status === 'APPROVED' && <ShieldCheck className="w-3.5 h-3.5 text-[hsl(165,60%,35%)] shrink-0" />}
           </div>
         </div>
 
