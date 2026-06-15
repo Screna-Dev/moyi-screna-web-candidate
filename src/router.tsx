@@ -7,7 +7,8 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
 import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
-import JobBoardPage from './pages/newDesign/home/job-board'
+// Jobs feature temporarily hidden for this release — restore when re-launching.
+// import JobBoardPage from './pages/newDesign/home/job-board'
 // Auth / onboarding pages
 import { AuthPage } from './pages/newDesign/auth';
 import ForgotPassword from './pages/ForgetPassword';
@@ -131,10 +132,12 @@ export const router = createBrowserRouter([
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
       { path: '/dashboard', element: <DashboardHomePage /> },
       { path: '/profile', element: <DashboardPage /> },
-      { path: '/applications', element: <DashboardPage /> },
+      // Jobs feature temporarily hidden for this release — restore when re-launching.
+      // { path: '/applications', element: <DashboardPage /> },
       { path: '/dashboard/contributions', element: <DashboardPage /> },
       { path: '/contributions', element: <MyContributionsPage /> },
-      { path: '/job-board', element: <JobBoardPage /> },
+      // Jobs feature temporarily hidden for this release — restore when re-launching.
+      // { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
       { path: '/history', element: <HistoryPage /> },
       { path: '/settings', element: <SettingsPage /> },

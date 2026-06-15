@@ -51,7 +51,8 @@ const sidebarLinks = [
 // Mirrors home/navbar.tsx so the top-nav stays identical across landing & dashboard.
 const TOP_NAV_LINKS = [
   { label: 'Coach', path: '/marketplace' },
-  { label: 'Jobs', path: '/applications' },
+  // Jobs feature temporarily hidden for this release — restore when re-launching.
+  // { label: 'Jobs', path: '/applications' },
   { label: 'Quick AI Mock', path: '/personalized-practice' },
   { label: 'InterviewPrep Note', path: '/interview-insights' },
   { label: 'Pricing', path: '/pricing' },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   ArrowLeft, Clock, Calendar, Briefcase, Award, Video, ShieldCheck, X,
@@ -142,6 +142,18 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
+  // IANA id extracted from the selected label, e.g. "America/Los_Angeles (PDT, UTC−7)" → "America/Los_Angeles"
+  const tz = timezone.split(' ')[0];
+
+  // Date parts (year, month 0-indexed, day) of a UTC instant rendered in the selected timezone
+  const zonedParts = useCallback((iso: string) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
+    }).formatToParts(new Date(iso));
+    const get = (t: string) => Number(parts.find(p => p.type === t)?.value);
+    return { year: get('year'), month: get('month') - 1, day: get('day') };
+  }, [tz]);
+
   // Fetch available slots when duration changes
   useEffect(() => {
     if (!mentorId || !plan.id) return;
@@ -156,40 +168,46 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
         console.log('[mentor-slots] received', list.length, 'slots; sample:', list[0]);
         setSlots(list);
         if (list.length > 0) {
-          const first = new Date(list[0].startTime);
-          setCalYear(first.getFullYear());
-          setCalMonth(first.getMonth());
+          const first = zonedParts(list[0].startTime);
+          setCalYear(first.year);
+          setCalMonth(first.month);
         }
       })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
   }, [mentorId, plan.id, duration]);
 
-  // Days that have at least one slot
+  // Days that have at least one slot (computed in the selected timezone)
   const availableDaysSet = useMemo(() => {
     const s = new Set<string>();
     slots.forEach(sl => {
-      const d = new Date(sl.startTime);
-      s.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+      const d = zonedParts(sl.startTime);
+      s.add(`${d.year}-${d.month}-${d.day}`);
     });
     return s;
-  }, [slots]);
+  }, [slots, zonedParts]);
 
-  // Slots for the currently selected day
+  // Slots for the currently selected day (matched in the selected timezone)
   const slotsForDay = useMemo(() => {
     if (selectedDay === null) return [];
     return slots.filter(sl => {
-      const d = new Date(sl.startTime);
-      return d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === selectedDay;
+      const d = zonedParts(sl.startTime);
+      return d.year === calYear && d.month === calMonth && d.day === selectedDay;
     });
-  }, [slots, selectedDay, calYear, calMonth]);
+  }, [slots, selectedDay, calYear, calMonth, zonedParts]);
+
+  // Changing timezone can shift a slot onto a different calendar day, so clear the selection.
+  useEffect(() => {
+    setSelectedDay(null);
+    setSelectedSlot(null);
+  }, [tz]);
 
   function isDayAvailable(year: number, month: number, day: number) {
     return availableDaysSet.has(`${year}-${month}-${day}`);
   }
 
   function formatSlotTime(iso: string) {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz });
   }
 
   // Close on Escape
