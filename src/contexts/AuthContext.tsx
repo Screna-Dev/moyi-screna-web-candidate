@@ -308,6 +308,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       `&response_type=${responseType}` +
       `&scope=${encodeURIComponent(scope)}` +
       `&access_type=offline` +
+      `&prompt=select_account` +
       `&state=${state}`;
 
     window.location.href = authUrl;

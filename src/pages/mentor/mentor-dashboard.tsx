@@ -30,6 +30,7 @@ import {
   uploadMyPaymentMethod,
   mentorCancelBooking,
   mentorRescheduleBooking,
+  updateBookingMentorNote,
   getBookingScriptUploadUrl,
   updateMyTopicPrice,
 } from '@/services/MentorService';
@@ -175,6 +176,7 @@ type MentorBooking = {
   duration: string;
   status: string;
   note?: string;
+  mentorNote?: string;
   recordingLink?: string;
 };
 
@@ -214,6 +216,7 @@ function mapMentorBooking(api: any): MentorBooking {
     duration: api?.durationMinutes ? `${api.durationMinutes} min` : '—',
     status,
     note: api?.studentNote || api?.note || '',
+    mentorNote: api?.mentorNote || '',
     recordingLink: api?.meetingLink || api?.recordingUrl || undefined,
   };
 }
@@ -879,12 +882,68 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
   );
 }
 
+/* Mentor's private note on a booking — PATCH /mentorship/profile/bookings/{id}/note.
+   Mounted with a key={booking.id} so it re-seeds when a different booking opens. */
+function MentorNoteEditor({ bookingId, initialNote, onSaved }: { bookingId: string; initialNote: string; onSaved: (note: string) => void }) {
+  const [note, setNote] = useState(initialNote);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const dirty = note.trim() !== (initialNote ?? '').trim();
+
+  const handleSave = () => {
+    if (saving || !dirty) return;
+    setSaving(true);
+    setErr(null);
+    setSavedAt(false);
+    updateBookingMentorNote(bookingId, note.trim())
+      .then(() => {
+        onSaved(note.trim());
+        setSavedAt(true);
+        setTimeout(() => setSavedAt(false), 3000);
+      })
+      .catch((e: any) => {
+        // 403 → booking isn't this mentor's; 404 → not found. Surface the message.
+        setErr(e?.response?.data?.message || 'Could not save note.');
+      })
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-xs text-muted-foreground">Your Private Note</div>
+        {savedAt && <span className="text-[11px] text-[hsl(165,60%,35%)] flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Saved</span>}
+      </div>
+      <textarea
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        rows={3}
+        placeholder="Add a private note about this session (only you can see this)…"
+        className="w-full text-sm text-foreground bg-surface-0 rounded-[var(--radius-sm)] p-3 border border-border outline-none focus:ring-1 focus:ring-ring resize-y"
+      />
+      {err && <div className="text-xs text-destructive mt-1">{err}</div>}
+      <div className="flex justify-end mt-2">
+        <button
+          onClick={handleSave}
+          disabled={saving || !dirty}
+          className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : 'Save note'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────
    PAGE: BOOKINGS
 ───────────────────────────────────────────── */
 function BookingsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'upcoming' | 'completed' | 'cancelled'>('all');
   const [selectedBooking, setSelectedBooking] = useState<MentorBooking | null>(null);
+  // Whether the note editor is expanded in the detail drawer (opened via "Message Member").
+  const [noteOpen, setNoteOpen] = useState(false);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [rescheduledIds, setRescheduledIds] = useState<Set<string>>(new Set());
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
@@ -1039,7 +1098,7 @@ function BookingsPage() {
         <div className="w-80 border-l border-border bg-card flex flex-col overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h3 className="text-foreground">Booking Details</h3>
-            <button onClick={() => setSelectedBooking(null)} className="p-1 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
+            <button onClick={() => { setSelectedBooking(null); setNoteOpen(false); }} className="p-1 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -1085,7 +1144,7 @@ function BookingsPage() {
             </div>
             <div>
               <div className="text-xs text-muted-foreground mb-1.5">Member Note</div>
-              <p className="text-sm text-foreground bg-surface-0 rounded-[var(--radius-sm)] p-3 border border-border">{selectedBooking.note}</p>
+              <p className="text-sm text-foreground bg-surface-0 rounded-[var(--radius-sm)] p-3 border border-border">{selectedBooking.note || <span className="text-muted-foreground">No note from the member.</span>}</p>
             </div>
             {selectedBooking.status === 'pending' && (
               <div className="space-y-2">
@@ -1097,8 +1156,25 @@ function BookingsPage() {
             {selectedBooking.status === 'confirmed' && (
               <div className="space-y-2">
                 <button className="w-full py-2 text-sm bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors">Join Session</button>
-                <button className="w-full py-2 text-sm border border-border rounded-[var(--radius-sm)] text-muted-foreground hover:bg-secondary transition-colors">Message Member</button>
+                <button
+                  onClick={() => setNoteOpen(v => !v)}
+                  className="w-full py-2 text-sm border border-border rounded-[var(--radius-sm)] text-muted-foreground hover:bg-secondary transition-colors"
+                >
+                  {noteOpen ? 'Hide Note' : 'Message Member'}
+                </button>
               </div>
+            )}
+            {noteOpen && selectedBooking.status === 'confirmed' && (
+              <MentorNoteEditor
+                key={selectedBooking.id}
+                bookingId={selectedBooking.id}
+                initialNote={selectedBooking.mentorNote ?? ''}
+                onSaved={note => {
+                  // Keep the open drawer and list row in sync without a full refetch.
+                  setSelectedBooking(prev => (prev ? { ...prev, mentorNote: note } : prev));
+                  refetchBookings();
+                }}
+              />
             )}
           </div>
         </div>
@@ -1168,7 +1244,9 @@ function AvailabilityPage() {
     const officeHours: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
     const invalidDays: string[] = [];
     for (const d of days.filter(day => dayEnabled[day])) {
-      const ranges = (slots[d] && slots[d].length ? slots[d] : ['9:00 AM – 5:00 PM'])
+      // Enabled but no time added — omit the day rather than save a default 9–5.
+      if (!(slots[d] && slots[d].length)) continue;
+      const ranges = slots[d]
         .map(s => {
           const [a, b] = s.split(/\s*[–—-]\s*/); // en dash, em dash, or hyphen
           return { start: parse12h(a), end: parse12h(b || a) };
@@ -1306,14 +1384,24 @@ function AvailabilityPage() {
   ];
 
   const removeSlot = (day: string, slot: string) => {
-    setSlots(prev => ({ ...prev, [day]: (prev[day] ?? []).filter(s => s !== slot) }));
+    const remaining = (slots[day] ?? []).filter(s => s !== slot);
+    setSlots(prev => ({ ...prev, [day]: remaining }));
+    // Deleting the last slot makes the day unavailable. Turn the switch off so
+    // save omits the day instead of falling back to the default 9–5 range
+    // (which would silently "un-clear" the schedule).
+    if (remaining.length === 0) setDayEnabled(prev => ({ ...prev, [day]: false }));
     setScheduleDirty(true);
   };
 
   const openInline = (day: string) => {
     setInlineDay(day);
-    setInlineStart('9:00 AM');
-    setInlineEnd('10:00 AM');
+    // Seed with the first start/end that aren't already taken on this day.
+    const blockedStart = blockedTimesFor(day, 'start');
+    const start = timeOptions.find(t => !blockedStart.has(t)) ?? timeOptions[0];
+    const blockedEnd = blockedTimesFor(day, 'end');
+    const end = timeOptions.find(t => mins(t) > mins(start) && !blockedEnd.has(t)) ?? nextTime(start);
+    setInlineStart(start);
+    setInlineEnd(end);
   };
 
   const saveInline = (day: string) => {
@@ -1351,13 +1439,46 @@ function AvailabilityPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [quickAddOpen]);
 
-  const timeSelect = (value: string, onChange: (v: string) => void) => (
+  // Minutes-since-midnight for a "9:00 AM" label, for ordering/comparison.
+  const mins = (label: string) => minutesOf(parse12h(label));
+  // The option right after `label` (clamped) — used to bump end past a new start.
+  const nextTime = (label: string) => timeOptions[Math.min(timeOptions.indexOf(label) + 1, timeOptions.length - 1)];
+
+  // Hour options already covered by an existing slot on `day`, so they can't be
+  // re-picked. `kind` controls boundary handling so adjacent slots stay allowed:
+  //   start → [lo, hi)  (can start at a previous slot's end)
+  //   end   → (lo, hi]  (can end at the next slot's start)
+  const blockedTimesFor = (day: string, kind: 'start' | 'end') => {
+    const blocked = new Set<string>();
+    (slots[day] ?? []).forEach(s => {
+      const [a, b] = s.split(/\s*[–—-]\s*/);
+      const lo = mins(a), hi = mins(b || a);
+      timeOptions.forEach(t => {
+        const m = mins(t);
+        const inside = kind === 'start' ? (m >= lo && m < hi) : (m > lo && m <= hi);
+        if (inside) blocked.add(t);
+      });
+    });
+    return blocked;
+  };
+
+  const timeSelect = (
+    value: string,
+    onChange: (v: string) => void,
+    opts?: { minExclusive?: string; blocked?: Set<string> },
+  ) => (
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
       className="text-xs border border-input rounded-[var(--radius-sm)] px-2 py-1 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
     >
-      {timeOptions.map(t => <option key={t}>{t}</option>)}
+      {timeOptions.map(t => {
+        // End must be strictly after start, and already-used hours are off-limits.
+        const disabled =
+          (opts?.minExclusive != null && mins(t) <= mins(opts.minExclusive)) ||
+          (opts?.blocked?.has(t) ?? false);
+        return <option key={t} value={t} disabled={disabled}>{t}</option>;
+      })}
     </select>
   );
 
@@ -1430,9 +1551,9 @@ function AvailabilityPage() {
                     <div>
                       <label className="text-xs text-muted-foreground block mb-1">Time range</label>
                       <div className="flex items-center gap-2">
-                        {timeSelect(qaStart, setQaStart)}
+                        {timeSelect(qaStart, v => { setQaStart(v); if (mins(qaEnd) <= mins(v)) setQaEnd(nextTime(v)); }, { blocked: blockedTimesFor(qaDay, 'start') })}
                         <span className="text-xs text-muted-foreground">–</span>
-                        {timeSelect(qaEnd, setQaEnd)}
+                        {timeSelect(qaEnd, setQaEnd, { minExclusive: qaStart, blocked: blockedTimesFor(qaDay, 'end') })}
                       </div>
                     </div>
                     <div>
@@ -1492,13 +1613,17 @@ function AvailabilityPage() {
                     </button>
                     <span className={`w-24 text-sm shrink-0 ${isBlocked ? 'line-through text-muted-foreground' : dayEnabled[day] ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{day}</span>
                     {dayEnabled[day] ? (
-                      <div className="flex-1 flex flex-wrap gap-2">
-                        {(slots[day] ?? ['9:00 AM – 5:00 PM']).map((slot, i) => (
+                      <div className="flex-1 flex flex-wrap gap-2 items-center">
+                        {(slots[day] ?? []).map((slot, i) => (
                           <span key={`${day}-${i}-${slot}`} className={`text-xs px-2.5 py-1 rounded-md flex items-center gap-1 ${isBlocked ? 'bg-red-100 text-red-400 line-through' : 'bg-primary/8 text-primary'}`}>
                             {slot}
                             {!isBlocked && <button onClick={() => removeSlot(day, slot)} className="ml-0.5 hover:text-primary/60"><X className="w-3 h-3" /></button>}
                           </span>
                         ))}
+                        {/* Enabled with no time added yet — prompt instead of a phantom default. */}
+                        {!isBlocked && !(slots[day]?.length) && inlineDay !== day && (
+                          <span className="text-xs text-muted-foreground">Add a time slot</span>
+                        )}
                         {!isBlocked && inlineDay !== day && (
                           <button
                             onClick={() => openInline(day)}
@@ -1517,9 +1642,9 @@ function AvailabilityPage() {
                     <div className="flex items-center gap-2 px-3 pb-3 border-t border-border/50 pt-2.5">
                       <span className="text-xs text-muted-foreground w-24 shrink-0">New slot</span>
                       <div className="flex items-center gap-2 flex-1 flex-wrap">
-                        {timeSelect(inlineStart, setInlineStart)}
+                        {timeSelect(inlineStart, v => { setInlineStart(v); if (mins(inlineEnd) <= mins(v)) setInlineEnd(nextTime(v)); }, { blocked: blockedTimesFor(day, 'start') })}
                         <span className="text-xs text-muted-foreground">–</span>
-                        {timeSelect(inlineEnd, setInlineEnd)}
+                        {timeSelect(inlineEnd, setInlineEnd, { minExclusive: inlineStart, blocked: blockedTimesFor(day, 'end') })}
                         <button onClick={() => saveInline(day)} className="text-xs px-2.5 py-1 bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors">Add</button>
                         <button onClick={() => setInlineDay(null)} className="text-xs px-2.5 py-1 border border-border text-muted-foreground rounded-[var(--radius-sm)] hover:bg-secondary transition-colors">Cancel</button>
                       </div>
@@ -3009,17 +3134,23 @@ function EarningsWithPayment() {
    PAGE: PROFILE & AVAILABILITY (combined, required)
 ───────────────────────────────────────────── */
 function ProfileAndAvailabilityPage() {
+  const ctx = useMentorProfile();
+  // Once the mentor is APPROVED they're already live, so the "complete your
+  // profile" requirement notice no longer applies.
+  const isApproved = ctx?.profile?.status === 'APPROVED';
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      {/* Required notice */}
-      <div className="shrink-0 px-6 pt-4 pb-3 bg-card border-b border-border">
-        <div className="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-3 py-2">
-          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">
-            <span className="font-medium">Required.</span> Complete your profile and weekly availability before you can appear in the mentor marketplace.
-          </p>
+      {/* Required notice — hidden once the mentor is approved/live. */}
+      {!isApproved && (
+        <div className="shrink-0 px-6 pt-4 pb-3 bg-card border-b border-border">
+          <div className="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-3 py-2">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
+              <span className="font-medium">Required.</span> Complete your profile and weekly availability before you can appear in the mentor marketplace.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Profile and availability share one scrolling page (one profile API). */}
       <div className="flex-1 overflow-y-auto min-h-0">
