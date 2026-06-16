@@ -6,13 +6,11 @@ import {
   ChevronDown, CheckCircle2, XCircle,
   BookOpen, Star,
   Bot, Users,
-  Lock, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview } from '@/services/MentorService';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { usePostHog } from 'posthog-js/react';
 import type { PostHog } from 'posthog-js';
 import { safeCapture } from '@/utils/posthog';
@@ -697,94 +695,6 @@ function MentorRow({
   );
 }
 
-// ─── Mentor Lock Gate ──────────────────────────────────
-function MentorLockGate({ onUpgrade }: { onUpgrade: () => void }) {
-  const ghostRows = [
-    { w1: '160px', w2: '90px', w3: '80px' },
-    { w1: '130px', w2: '110px', w3: '70px' },
-    { w1: '150px', w2: '95px',  w3: '90px' },
-  ];
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
-      {/* Table header */}
-      <div
-        className="grid items-center gap-6 px-5 border-b border-border"
-        style={{ gridTemplateColumns: COL, background: 'var(--muted)', height: '41px' }}
-      >
-        {['SESSION','DATE','STATUS','ACTIONS'].map(h => (
-          <span key={h} className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.55px] select-none">{h}</span>
-        ))}
-      </div>
-
-      {/* Ghost rows */}
-      <div className="divide-y divide-border" style={{ filter: 'blur(3px)', pointerEvents: 'none', userSelect: 'none' }}>
-        {ghostRows.map((r, i) => (
-          <div key={i} className="grid items-center gap-6 px-5" style={{ gridTemplateColumns: COL, height: '64px' }}>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-muted shrink-0" />
-              <div className="space-y-1.5">
-                <div className="h-3 rounded-full bg-muted" style={{ width: r.w1 }} />
-                <div className="h-2.5 rounded-full bg-muted/60" style={{ width: r.w2 }} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <div className="h-2.5 rounded-full bg-muted w-20" />
-              <div className="h-2.5 rounded-full bg-muted/60 w-12" />
-            </div>
-            <div className="h-6 rounded-xl bg-muted w-24" />
-            <div className="h-6 rounded-xl bg-muted" style={{ width: r.w3 }} />
-          </div>
-        ))}
-      </div>
-
-      {/* Overlay */}
-      <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(2px)' }}>
-        <div
-          className="flex flex-col items-center text-center px-7 py-5 rounded-2xl border border-border bg-card mx-4"
-          style={{ maxWidth: '420px', width: '100%', boxShadow: '0px 8px 24px rgba(0,0,0,0.08), 0px 2px 6px rgba(0,0,0,0.04)' }}
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #6B4FBB 100%)' }}
-            >
-              <Lock className="w-3.5 h-3.5 text-white" />
-            </div>
-            <p className="text-foreground text-left" style={{ fontSize: '15px', fontWeight: 600, lineHeight: '22px' }}>
-              Mentor Sessions are locked
-            </p>
-          </div>
-
-          <p className="text-muted-foreground mb-4 text-left w-full" style={{ fontSize: '13px', lineHeight: '20px' }}>
-            Upgrade to <span className="font-medium text-foreground">Starter</span> or <span className="font-medium text-foreground">Premium</span> to unlock 1:1 mentorship, session history, and coaching feedback.
-          </p>
-
-          <div className="flex items-center gap-2 w-full flex-wrap">
-            {['1:1 Mentorship','Session History','Coaching Plans'].map(f => (
-              <span
-                key={f}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-border bg-muted text-muted-foreground shrink-0"
-                style={{ fontSize: '11px', fontWeight: 500 }}
-              >
-                <Sparkles className="w-2.5 h-2.5 text-primary shrink-0" />
-                {f}
-              </span>
-            ))}
-            <Button
-              onClick={onUpgrade}
-              className="h-8 px-4 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 ml-auto shrink-0"
-              style={{ fontSize: '12px', fontWeight: 500, boxShadow: '0px 1px 3px rgba(60,119,246,0.3), 0px 1px 2px rgba(60,119,246,0.2)' }}
-            >
-              Upgrade Plan
-              <ArrowRight className="w-3 h-3" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Empty State ───────────────────────────────────────
 function EmptyState() {
   return (
@@ -832,7 +742,6 @@ function LoadingState() {
 export function HistoryPage() {
   const navigate = useNavigate();
   const posthog = usePostHog();
-  const { isFree } = useUserPlan();
   const [searchParams] = useSearchParams();
   const initialTab: MainTab = searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock';
 
@@ -864,7 +773,6 @@ export function HistoryPage() {
   }, []);
 
   useEffect(() => {
-    if (isFree) { setMentorLoading(false); return; }
     let alive = true;
     setMentorLoading(true);
     (async () => {
@@ -883,7 +791,7 @@ export function HistoryPage() {
       }
     })();
     return () => { alive = false; };
-  }, [isFree]);
+  }, []);
 
   const filteredAI = useMemo(() => aiSessions.filter(s => {
     if (roleFilter !== 'all' && s.role !== roleFilter) return false;
@@ -927,9 +835,6 @@ export function HistoryPage() {
               >
                 <tab.icon className="w-4 h-4 shrink-0" />
                 {tab.label}
-                {tab.id === 'mentor' && isFree && (
-                  <Lock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
-                )}
               </button>
             ))}
           </div>
@@ -953,7 +858,7 @@ export function HistoryPage() {
               </motion.div>
             )}
 
-            {activeTab === 'mentor' && !isFree && (
+            {activeTab === 'mentor' && (
               <motion.div
                 key="mentor-filters"
                 initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
@@ -971,19 +876,16 @@ export function HistoryPage() {
           </AnimatePresence>
         </div>
 
-        {/* ── Session count — only when not locked and not loading ── */}
-        {!(activeTab === 'mentor' && isFree) &&
-          !(activeTab === 'ai-mock' && loading) &&
+        {/* ── Session count — only when not loading ── */}
+        {!(activeTab === 'ai-mock' && loading) &&
           !(activeTab === 'mentor' && mentorLoading) && (
           <p className="text-xs text-muted-foreground -mt-2">
             Showing <span className="font-medium text-foreground">{displayList.length}</span> session{displayList.length !== 1 ? 's' : ''}
           </p>
         )}
 
-        {/* ── Session List / Lock Gate / Loading ── */}
-        {activeTab === 'mentor' && isFree ? (
-          <MentorLockGate onUpgrade={() => navigate('/billing')} />
-        ) : (activeTab === 'ai-mock' && loading) || (activeTab === 'mentor' && mentorLoading) ? (
+        {/* ── Session List / Loading ── */}
+        {(activeTab === 'ai-mock' && loading) || (activeTab === 'mentor' && mentorLoading) ? (
           <LoadingState />
         ) : (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
