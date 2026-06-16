@@ -28,6 +28,9 @@ export const setMentorOfficeHours = (mentorId, payload) =>
 export const refreshMentorAvailability = (mentorId) =>
   API.post(`${BASE}/mentors/${mentorId}/refresh-availability`);
 
+export const setMentorIdentityVerification = (mentorId, payload) =>
+  API.patch(`${BASE}/mentors/${mentorId}/identity-verification`, payload);
+
 export const getMentorCalendarStatus = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/calendar/status`);
 

@@ -17,6 +17,7 @@ import {
   onboardMentor,
   updateMentorProfile,
   updateMentorStatus,
+  setMentorIdentityVerification,
   createMentorTopic,
   updateMentorTopic,
   listBookings,
@@ -1465,9 +1466,18 @@ function MentorDirectory() {
                 {/* Verification */}
                 <VerificationSection
                   mentor={selected}
-                  onConfirm={() => {
+                  onConfirm={async () => {
+                    // Optimistically flip the badge, then persist via the admin API.
                     setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: true } : m));
                     setSelected({ ...selected, verified: true });
+                    try {
+                      await setMentorIdentityVerification(selected.id, { identityVerified: true });
+                    } catch (err: any) {
+                      // Roll back the optimistic update if the request fails.
+                      setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: false } : m));
+                      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, verified: false } : prev);
+                      toast.error(err?.response?.data?.message || "Failed to set identity verification");
+                    }
                   }}
                 />
 
