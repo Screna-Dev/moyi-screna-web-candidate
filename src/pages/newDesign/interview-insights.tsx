@@ -19,7 +19,7 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompaniesStats } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -190,7 +190,39 @@ const OUTCOME_COLORS: Record<string, string> = {
   Pending: 'bg-blue-50 text-blue-600',
 };
 
-// ─── Companies directory (mock — no backend yet) ────────
+// Format an ISO timestamp into a short "x ago" label (e.g. "2h ago", "1d ago").
+function timeAgo(iso: string | undefined): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diff = Math.max(0, Date.now() - then);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+// Shape returned per-company by GET /community/companies/stats
+type CompanyStat = {
+  company: string;
+  postCount: number;
+  recentPostCount: number;
+  latestUpdatedAt?: string;
+};
+
+type CompaniesStatsRollup = {
+  totalCompanyCount: number;
+  totalPostCount: number;
+  totalRecentPostCount: number;
+};
+
+// ─── Companies directory (curated metadata; live stats overlaid from API) ────────
 type CompanyDir = {
   id: string;
   name: string;
@@ -201,50 +233,57 @@ type CompanyDir = {
   updatedAgo: string;
 };
 
-const DIR_COMPANIES: CompanyDir[] = [
-  { id: 'google', name: 'Google', category: 'FAANG / Big Tech', description: 'Structured coding, system design, and Googleyness notes from SWE, PM, and EM candidates.', totalNotes: 1842, last30Days: 94, updatedAgo: '2h ago' },
-  { id: 'meta', name: 'Meta', category: 'FAANG / Big Tech', description: 'Product sense, execution, coding, and behavioral writeups across IC and manager loops.', totalNotes: 1274, last30Days: 67, updatedAgo: '4h ago' },
-  { id: 'openai', name: 'OpenAI', category: 'Mid-sized', description: 'ML systems, research engineering, alignment, and infrastructure interview notes.', totalNotes: 386, last30Days: 58, updatedAgo: '1h ago' },
-  { id: 'amazon', name: 'Amazon', category: 'FAANG / Big Tech', description: 'Leadership Principles, bar raiser, coding, and system design experiences.', totalNotes: 2105, last30Days: 112, updatedAgo: '1h ago' },
-  { id: 'apple', name: 'Apple', category: 'FAANG / Big Tech', description: 'Team-specific technical screens and onsite loops for hardware, platform, and product teams.', totalNotes: 893, last30Days: 41, updatedAgo: '6h ago' },
-  { id: 'microsoft', name: 'Microsoft', category: 'FAANG / Big Tech', description: 'Growth-mindset interviews, team-match loops, coding, and design rounds.', totalNotes: 1537, last30Days: 83, updatedAgo: '3h ago' },
-  { id: 'anthropic', name: 'Anthropic', category: 'Mid-sized', description: 'Safety-focused technical screens, ML infrastructure, and research collaboration rounds.', totalNotes: 214, last30Days: 43, updatedAgo: '5h ago' },
-  { id: 'deepmind', name: 'DeepMind', category: 'Mid-sized', description: 'Research-heavy interview notes covering ML theory, papers, and systems depth.', totalNotes: 178, last30Days: 31, updatedAgo: '1d ago' },
-  { id: 'stripe', name: 'Stripe', category: 'Large Enterprises', description: 'Practical engineering, debugging, API design, and product-minded system design notes.', totalNotes: 743, last30Days: 48, updatedAgo: '2h ago' },
-  { id: 'figma', name: 'Figma', category: 'Mid-sized', description: 'Collaborative product engineering and design systems interview experiences.', totalNotes: 312, last30Days: 27, updatedAgo: '8h ago' },
-  { id: 'databricks', name: 'Databricks', category: 'Large Enterprises', description: 'Distributed systems, data engineering, and platform interview loops.', totalNotes: 415, last30Days: 34, updatedAgo: '6h ago' },
-  { id: 'citadel', name: 'Citadel', category: 'Large Enterprises', description: 'Low-latency systems, probability, C++, and trading intuition rounds.', totalNotes: 268, last30Days: 24, updatedAgo: '9h ago' },
-  { id: 'salesforce', name: 'Salesforce', category: 'Large Enterprises', description: 'Enterprise product, platform architecture, and customer-centric behavioral loops.', totalNotes: 524, last30Days: 32, updatedAgo: '1d ago' },
-  { id: 'perplexity', name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.', totalNotes: 86, last30Days: 20, updatedAgo: '2d ago' },
+// Curated metadata only (category / description / slug). Counts + "updated"
+// come live from the API; companies not listed here still render from the API
+// with a derived slug and no category/description.
+type CompanyMeta = { id: string; name: string; category: string; description: string };
+
+const COMPANY_META: CompanyMeta[] = [
+  { id: 'google', name: 'Google', category: 'FAANG / Big Tech', description: 'Structured coding, system design, and Googleyness notes from SWE, PM, and EM candidates.' },
+  { id: 'meta', name: 'Meta', category: 'FAANG / Big Tech', description: 'Product sense, execution, coding, and behavioral writeups across IC and manager loops.' },
+  { id: 'openai', name: 'OpenAI', category: 'Mid-sized', description: 'ML systems, research engineering, alignment, and infrastructure interview notes.' },
+  { id: 'amazon', name: 'Amazon', category: 'FAANG / Big Tech', description: 'Leadership Principles, bar raiser, coding, and system design experiences.' },
+  { id: 'apple', name: 'Apple', category: 'FAANG / Big Tech', description: 'Team-specific technical screens and onsite loops for hardware, platform, and product teams.' },
+  { id: 'microsoft', name: 'Microsoft', category: 'FAANG / Big Tech', description: 'Growth-mindset interviews, team-match loops, coding, and design rounds.' },
+  { id: 'anthropic', name: 'Anthropic', category: 'Mid-sized', description: 'Safety-focused technical screens, ML infrastructure, and research collaboration rounds.' },
+  { id: 'deepmind', name: 'DeepMind', category: 'Mid-sized', description: 'Research-heavy interview notes covering ML theory, papers, and systems depth.' },
+  { id: 'stripe', name: 'Stripe', category: 'Large Enterprises', description: 'Practical engineering, debugging, API design, and product-minded system design notes.' },
+  { id: 'figma', name: 'Figma', category: 'Mid-sized', description: 'Collaborative product engineering and design systems interview experiences.' },
+  { id: 'databricks', name: 'Databricks', category: 'Large Enterprises', description: 'Distributed systems, data engineering, and platform interview loops.' },
+  { id: 'citadel', name: 'Citadel', category: 'Large Enterprises', description: 'Low-latency systems, probability, C++, and trading intuition rounds.' },
+  { id: 'salesforce', name: 'Salesforce', category: 'Large Enterprises', description: 'Enterprise product, platform architecture, and customer-centric behavioral loops.' },
+  { id: 'perplexity', name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.' },
 ];
+
+const META_BY_NAME = new Map(COMPANY_META.map((c) => [c.name.toLowerCase().trim(), c]));
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
 
 const CATEGORY_TILES = [
   {
     name: 'FAANG / Big Tech',
     subtitle: 'Large-scale engineering and product interviews.',
     examples: ['Google', 'Apple', 'Meta', 'Amazon'],
-    notes: '3,240 notes',
     image: imgMesh1,
   },
   {
     name: 'Large Enterprises',
     subtitle: 'Established companies with structured interview loops.',
     examples: ['Microsoft', 'Oracle', 'Salesforce', 'IBM'],
-    notes: '5,860 notes',
     image: imgMesh2,
   },
   {
     name: 'Mid-sized',
     subtitle: 'Growing teams with practical and role-specific interviews.',
     examples: ['Stripe', 'Databricks', 'Figma', 'Notion'],
-    notes: '4,120 notes',
     image: imgMesh3,
   },
   {
     name: 'Small',
     subtitle: 'Startup and smaller-company interview experiences.',
     examples: ['Perplexity', 'Cursor', 'Linear', 'Ramp'],
-    notes: '2,380 notes',
     image: imgMesh4,
   },
 ];
@@ -273,12 +312,16 @@ function InlineCompanyCard({ company }: { company: CompanyDir }) {
               {company.name}
             </h3>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="rounded-full bg-[hsl(220,20%,96%)] px-2 py-0.5 text-[10px] font-medium text-[hsl(222,12%,40%)]">
-                {company.category}
-              </span>
-              <span className="text-[11px] font-medium text-[hsl(222,12%,55%)]">
-                Updated {company.updatedAgo}
-              </span>
+              {company.category && (
+                <span className="rounded-full bg-[hsl(220,20%,96%)] px-2 py-0.5 text-[10px] font-medium text-[hsl(222,12%,40%)]">
+                  {company.category}
+                </span>
+              )}
+              {company.updatedAgo && (
+                <span className="text-[11px] font-medium text-[hsl(222,12%,55%)]">
+                  Updated {company.updatedAgo}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -322,12 +365,16 @@ function LargeCompanyCard({ company }: { company: CompanyDir }) {
           {company.name}
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="rounded-full bg-[hsl(220,20%,96%)] px-2.5 py-0.5 text-[11px] font-medium text-[hsl(222,12%,40%)]">
-            {company.category}
-          </span>
-          <span className="text-[12px] font-medium text-[hsl(222,12%,55%)]">
-            Updated {company.updatedAgo}
-          </span>
+          {company.category && (
+            <span className="rounded-full bg-[hsl(220,20%,96%)] px-2.5 py-0.5 text-[11px] font-medium text-[hsl(222,12%,40%)]">
+              {company.category}
+            </span>
+          )}
+          {company.updatedAgo && (
+            <span className="text-[12px] font-medium text-[hsl(222,12%,55%)]">
+              Updated {company.updatedAgo}
+            </span>
+          )}
         </div>
       </div>
 
@@ -372,10 +419,15 @@ export function InterviewInsightsPage() {
   const [roleSearch, setRoleSearch] = useState('');
   const [roleCategoryChip, setRoleCategoryChip] = useState<RoleCategoryChip | null>(null);
 
-  // ── Companies directory state (mock, client-side) ──
+  // ── Companies directory state ──
   const [activeCategory, setActiveCategory] = useState('All');
   const [companyDirQuery, setCompanyDirQuery] = useState('');
   const [companyDirPage, setCompanyDirPage] = useState(1);
+
+  // ── Company stats (GET /community/companies/stats) ──
+  const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
+  const [statsRollup, setStatsRollup] = useState<CompaniesStatsRollup | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // API state
   const [allPosts, setAllPosts] = useState<Post[]>([]);
@@ -398,6 +450,33 @@ export function InterviewInsightsPage() {
     }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Load per-company stats + roll-up totals once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setStatsLoading(true);
+      try {
+        const res = await getCompaniesStats();
+        const data = res.data?.data ?? res.data;
+        if (cancelled || !data) return;
+        const list: CompanyStat[] = Array.isArray(data?.companies) ? data.companies : [];
+        // Highest post count first.
+        list.sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0));
+        setCompanyStats(list);
+        setStatsRollup({
+          totalCompanyCount: data?.totalCompanyCount ?? list.length,
+          totalPostCount: data?.totalPostCount ?? 0,
+          totalRecentPostCount: data?.totalRecentPostCount ?? 0,
+        });
+      } catch (err) {
+        console.error('Failed to fetch company stats:', err);
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Like / Save interaction state ──
   type PostInteraction = { liked: boolean; likeCount: number; saved: boolean; saveCount: number };
@@ -626,9 +705,36 @@ export function InterviewInsightsPage() {
     return post.questions || [];
   };
 
+  // Directory is API-driven: every entry comes from the stats endpoint, enriched
+  // with curated category/description/slug when the company name matches.
+  const companies = useMemo<CompanyDir[]>(() => {
+    return companyStats.map((s) => {
+      const meta = META_BY_NAME.get(s.company?.toLowerCase().trim());
+      return {
+        id: meta?.id ?? slugify(s.company),
+        name: s.company,
+        category: meta?.category ?? '',
+        description: meta?.description ?? '',
+        totalNotes: s.postCount ?? 0,
+        last30Days: s.recentPostCount ?? 0,
+        updatedAgo: timeAgo(s.latestUpdatedAt),
+      };
+    });
+  }, [companyStats]);
+
+  // Per-category note totals for the tiles, summed from the live (categorized) companies.
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of companies) {
+      if (!c.category) continue;
+      counts[c.category] = (counts[c.category] ?? 0) + c.totalNotes;
+    }
+    return counts;
+  }, [companies]);
+
   // ── Companies directory derived state ──
   const displayedCompanies = useMemo(() => {
-    let filtered = DIR_COMPANIES;
+    let filtered = companies;
     if (activeCategory !== 'All') {
       filtered = filtered.filter((c) => c.category === activeCategory);
     }
@@ -639,7 +745,7 @@ export function InterviewInsightsPage() {
       );
     }
     return filtered;
-  }, [activeCategory, companyDirQuery]);
+  }, [companies, activeCategory, companyDirQuery]);
 
   const DIR_PER_PAGE = activeCategory === 'All' ? 27 : 19;
   const paginatedCompanies = displayedCompanies.slice(0, companyDirPage * DIR_PER_PAGE);
@@ -683,12 +789,16 @@ export function InterviewInsightsPage() {
           {/* Stats Row */}
           <div className="mt-10 grid grid-cols-1 divide-y divide-[hsl(220,16%,90%)] border-y border-[hsl(220,16%,90%)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {[
-              { label: 'Companies', value: '420+' },
-              { label: 'Total Notes', value: '18,600' },
-              { label: 'New This Month', value: '1,248' },
+              { label: 'Companies', value: statsRollup?.totalCompanyCount },
+              { label: 'Total Notes', value: statsRollup?.totalPostCount },
+              { label: 'New This Month', value: statsRollup?.totalRecentPostCount },
             ].map((stat) => (
               <div key={stat.label} className="flex flex-col items-center justify-center py-7 text-center">
-                <div className="text-3xl font-semibold tracking-tight text-[hsl(222,22%,15%)]">{stat.value}</div>
+                <div className="text-3xl font-semibold tracking-tight text-[hsl(222,22%,15%)]">
+                  {statsLoading
+                    ? <span className="inline-block h-8 w-20 animate-pulse rounded-md bg-[hsl(220,16%,90%)]" />
+                    : (stat.value ?? 0).toLocaleString()}
+                </div>
                 <div className="mt-2 text-sm font-medium text-[hsl(222,12%,45%)]">{stat.label}</div>
               </div>
             ))}
@@ -1293,7 +1403,7 @@ export function InterviewInsightsPage() {
             </div>
           )}
 
-          {/* ══════════ Tab: Companies (directory — mock) ══════════ */}
+          {/* ══════════ Tab: Companies (directory — live from /community/companies/stats) ══════════ */}
           {activeTab === 'companies' && (
             <div className="space-y-16">
               {/* Company Types Tiles */}
@@ -1315,7 +1425,7 @@ export function InterviewInsightsPage() {
                       </div>
                       <div className="relative z-10 flex size-full flex-col p-6">
                         <div className="mb-1.5 text-[11px] font-bold uppercase leading-[15.4px] tracking-[1.1px] text-[hsl(221,91%,60%)]/80">
-                          {cat.notes}
+                          {(categoryCounts[cat.name] ?? 0).toLocaleString()} notes
                         </div>
                         <h3 className="text-[20px] font-bold leading-[28px] tracking-[-0.5px] text-[hsl(222,22%,15%)]">{cat.name}</h3>
                         <p className="mt-1.5 text-[14px] font-medium leading-[22.75px] text-[hsl(222,22%,15%)]/80">{cat.subtitle}</p>
@@ -1406,7 +1516,25 @@ export function InterviewInsightsPage() {
                   )}
                 </div>
 
-                {displayedCompanies.length > 0 ? (
+                {statsLoading ? (
+                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 9 }).map((_, i) => (
+                      <div key={i} className="min-h-[160px] w-full animate-pulse rounded-2xl border border-[hsl(220,16%,90%)] bg-[#F9FAFB] p-5">
+                        <div className="flex items-start gap-3.5">
+                          <div className="h-[42px] w-[42px] rounded-xl bg-[hsl(220,16%,90%)]" />
+                          <div className="flex-1 space-y-2 pt-1">
+                            <div className="h-3.5 w-1/2 rounded bg-[hsl(220,16%,90%)]" />
+                            <div className="h-3 w-1/3 rounded bg-[hsl(220,16%,90%)]" />
+                          </div>
+                        </div>
+                        <div className="mt-8 grid grid-cols-2 gap-4 border-t border-[hsl(220,16%,90%)]/70 pt-3.5">
+                          <div className="h-6 w-12 rounded bg-[hsl(220,16%,90%)]" />
+                          <div className="h-6 w-12 rounded bg-[hsl(220,16%,90%)]" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : displayedCompanies.length > 0 ? (
                   <div className="space-y-10">
                     {activeCategory === 'All' ? (
                       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

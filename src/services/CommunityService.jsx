@@ -8,6 +8,13 @@ export const getPublicPosts = (params = {}) => {
   return API.get('/community/public/posts/search', { params });
 };
 
+// Per-company published-post stats + across-all roll-up totals.
+// Returns { companies: [{ company, postCount, recentPostCount, latestUpdatedAt }],
+//           totalCompanyCount, totalPostCount, totalRecentPostCount }
+export const getCompaniesStats = (params = {}) => {
+  return API.get('/community/companies/stats', { params });
+};
+
 export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
