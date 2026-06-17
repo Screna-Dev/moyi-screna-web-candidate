@@ -33,6 +33,14 @@ import {
   updateBookingMentorNote,
   getBookingScriptUploadUrl,
   updateMyTopicPrice,
+  getMyMentorReviews,
+  getMyMentorTransactions,
+  getMyBlockDates,
+  createMyBlockDate,
+  deleteMyBlockDate,
+  getMyAdHocSlots,
+  createMyAdHocSlot,
+  deleteMyAdHocSlot,
 } from '@/services/MentorService';
 
 /* ─────────────────────────────────────────────
@@ -53,8 +61,12 @@ type Override = {
 /* ─────────────────────────────────────────────
    API DTO TYPES  (GET /mentorship/profile et al.)
 ───────────────────────────────────────────── */
+// Office hours are now grouped per day: each day carries an `active` flag and a
+// list of time ranges. Times come back as "HH:mm:ss" strings (readTimeParts also
+// tolerates the legacy {hour,minute} object / [h,m] array forms defensively).
 type OfficeHourTime = { hour: number; minute: number; second?: number; nano?: number };
-type OfficeHourDto = { id?: string; dayOfWeek: number; startTime: OfficeHourTime; endTime: OfficeHourTime };
+type OfficeHourRange = { id?: string; startTime: string | OfficeHourTime; endTime: string | OfficeHourTime };
+type OfficeHourDto = { dayOfWeek: number; active: boolean; ranges: OfficeHourRange[] };
 type MentorTopicDto = {
   id: string; title: string; description?: string;
   price30min?: number; price60min?: number; active?: boolean; mentorNote?: string;
@@ -118,8 +130,8 @@ function fmt12h(hour: number, minute: number): string {
 const minutesOf = (t: { hour: number; minute: number }) => t.hour * 60 + t.minute;
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
-// Backend expects ISO LocalTime strings ("HH:mm:ss"), not {hour,minute,...} objects.
-const toIsoTime = (hour: number, minute: number) => `${pad2(hour)}:${pad2(minute)}:00`;
+// Office-hours ranges use 24h "HH:mm" wall-clock in the mentor's calendar timezone.
+const toHHmm = (hour: number, minute: number) => `${pad2(hour)}:${pad2(minute)}`;
 // The GET response may return a time as a string ("09:00:00"), an object
 // ({hour,minute,...}), or an array ([9,0]) depending on backend config.
 function readTimeParts(t: any): { hour: number; minute: number } | null {
@@ -133,9 +145,9 @@ function readTimeParts(t: any): { hour: number; minute: number } | null {
   return null;
 }
 
-// Date-specific overrides have no backend endpoint yet (the office-hours API only
-// stores the recurring weekly schedule). Hidden until the backend supports them.
-const SHOW_DATE_OVERRIDES = false;
+// Date-specific overrides are backed by the availability blocks (full-day) and
+// ad-hoc (one-off extra slots) endpoints.
+const SHOW_DATE_OVERRIDES = true;
 
 /* ─────────────────────────────────────────────
    PER-SECTION SAVE STATE + FOOTER
@@ -297,7 +309,7 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
 /* ─────────────────────────────────────────────
    PAGE: OVERVIEW
 ───────────────────────────────────────────── */
-function OverviewPage() {
+function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) => void; onOpenBooking: (bookingId: string) => void }) {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
 
@@ -327,7 +339,7 @@ function OverviewPage() {
   const profileCompletion = [
     { label: 'Profile photo', done: profile ? !!profile.avatarUrl : true },
     { label: 'Bio added', done: profile ? !!profile.bio : true },
-    { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.length : true },
+    { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
     { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null || t.price60min != null) : true },
     { label: 'Verification submitted', done: profile ? profile.status !== 'PENDING' : true },
   ];
@@ -360,7 +372,7 @@ function OverviewPage() {
         <div className="col-span-2 bg-card border border-border rounded-[var(--radius)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-foreground">Today's Schedule</h3>
-            <button className="text-xs text-primary hover:underline">View all bookings</button>
+            <button onClick={() => onNavigate('bookings')} className="text-xs text-primary hover:underline">View all bookings</button>
           </div>
           {bookingsLoading ? (
             <div className="text-center py-8 text-muted-foreground text-sm">Loading sessions…</div>
@@ -379,10 +391,16 @@ function OverviewPage() {
                     <div className="text-xs text-muted-foreground mt-0.5">{s.sessionType} · {s.time} · {s.duration}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    <button
+                      onClick={() => { if (s.recordingLink) window.open(s.recordingLink, '_blank', 'noopener,noreferrer'); else onNavigate('bookings'); }}
+                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                    >
                       Join
                     </button>
-                    <button className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
+                    <button
+                      onClick={() => onOpenBooking(s.id)}
+                      className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors"
+                    >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -457,7 +475,7 @@ function OverviewPage() {
       <div className="bg-card border border-border rounded-[var(--radius)] p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-foreground">Recent Reviews</h3>
-          <button className="text-xs text-primary hover:underline">View all</button>
+          <button onClick={() => onNavigate('reviews')} className="text-xs text-primary hover:underline">View all</button>
         </div>
         {profileLoading ? (
           <div className="text-center py-6 text-sm text-muted-foreground">Loading reviews…</div>
@@ -939,7 +957,7 @@ function MentorNoteEditor({ bookingId, initialNote, onSaved }: { bookingId: stri
 /* ─────────────────────────────────────────────
    PAGE: BOOKINGS
 ───────────────────────────────────────────── */
-function BookingsPage() {
+function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: string | null; onFocusHandled?: () => void } = {}) {
   const [activeTab, setActiveTab] = useState<'all' | 'upcoming' | 'completed' | 'cancelled'>('all');
   const [selectedBooking, setSelectedBooking] = useState<MentorBooking | null>(null);
   // Whether the note editor is expanded in the detail drawer (opened via "Message Member").
@@ -950,6 +968,17 @@ function BookingsPage() {
 
   const { bookings, loading: bookingsLoading, refetch: refetchBookings } = useMyMentorBookings();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // When opened from elsewhere (e.g. the Overview "message" action) with a target
+  // booking, switch to the full list and open that booking's detail drawer.
+  useEffect(() => {
+    if (!focusBookingId) return;
+    const match = bookings.find(b => b.id === focusBookingId);
+    if (!match) return; // wait until the bookings list has loaded
+    setActiveTab('all');
+    setSelectedBooking(match);
+    onFocusHandled?.();
+  }, [focusBookingId, bookings, onFocusHandled]);
 
   const handleCancel = (bookingId: string) => {
     if (cancellingId) return;
@@ -1218,14 +1247,21 @@ function AvailabilityPage() {
         Monday: false, Tuesday: false, Wednesday: false, Thursday: false, Friday: false, Saturday: false, Sunday: false,
       };
       const next: Record<string, string[]> = {};
+      // New shape: one entry per day with `active` + a `ranges` array. Inactive
+      // days still return their ranges (they just don't generate slots), so the
+      // day's enabled state comes from `active`, not from range presence.
       oh.forEach(e => {
         const day = WEEK_DAYS[((e?.dayOfWeek ?? 0) as number) - 1]; // ISO 1=Mon … 7=Sun
-        const st = readTimeParts(e?.startTime);
-        const en = readTimeParts(e?.endTime);
-        if (!day || !st || !en) return;
-        enabled[day] = true;
-        const range = `${fmt12h(st.hour, st.minute)} – ${fmt12h(en.hour, en.minute)}`;
-        next[day] = [...(next[day] ?? []), range];
+        if (!day) return;
+        enabled[day] = !!e?.active;
+        const ranges = Array.isArray(e?.ranges) ? e.ranges : [];
+        ranges.forEach(r => {
+          const st = readTimeParts(r?.startTime);
+          const en = readTimeParts(r?.endTime);
+          if (!st || !en) return;
+          const range = `${fmt12h(st.hour, st.minute)} – ${fmt12h(en.hour, en.minute)}`;
+          next[day] = [...(next[day] ?? []), range];
+        });
       });
       setDayEnabled(enabled);
       setSlots(next);
@@ -1238,36 +1274,37 @@ function AvailabilityPage() {
   }, [profile]);
 
   // ── Persist weekly schedule via PUT /mentorship/profile/office-hours ──
-  // The API accepts one entry per day, so multiple ranges on a day are
-  // collapsed into a single envelope (earliest start → latest end).
+  // Full-week replace: send `activeDays` for ALL 7 days (so the per-day on/off
+  // state is authoritative) plus one `ranges` entry per individual time slot.
+  // Every dayOfWeek that appears in `ranges` is guaranteed to be in `activeDays`.
+  // Inactive days keep their ranges (active:false) instead of being dropped.
   const handleSaveAvailability = () => {
-    const officeHours: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
+    const ranges: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
+    const activeDays: { dayOfWeek: number; active: boolean }[] = [];
     const invalidDays: string[] = [];
-    for (const d of days.filter(day => dayEnabled[day])) {
-      // Enabled but no time added — omit the day rather than save a default 9–5.
-      if (!(slots[d] && slots[d].length)) continue;
-      const ranges = slots[d]
-        .map(s => {
-          const [a, b] = s.split(/\s*[–—-]\s*/); // en dash, em dash, or hyphen
-          return { start: parse12h(a), end: parse12h(b || a) };
+    for (const d of days) {
+      const dayOfWeek = WEEK_DAYS.indexOf(d) + 1;
+      activeDays.push({ dayOfWeek, active: !!dayEnabled[d] });
+      for (const s of slots[d] ?? []) {
+        const [a, b] = s.split(/\s*[–—-]\s*/); // en dash, em dash, or hyphen
+        const start = parse12h(a);
+        const end = parse12h(b || a);
+        // Backend rejects endTime <= startTime — catch it here with a clear message.
+        if (minutesOf(end) <= minutesOf(start)) { invalidDays.push(d); continue; }
+        ranges.push({
+          dayOfWeek,
+          startTime: toHHmm(start.hour, start.minute), // 24h "HH:mm" wall-clock
+          endTime: toHHmm(end.hour, end.minute),
         });
-      const start = ranges.reduce((min, r) => (minutesOf(r.start) < minutesOf(min) ? r.start : min), ranges[0].start);
-      const end = ranges.reduce((max, r) => (minutesOf(r.end) > minutesOf(max) ? r.end : max), ranges[0].end);
-      // Backend rejects endTime <= startTime — catch it here with a clear message.
-      if (minutesOf(end) <= minutesOf(start)) { invalidDays.push(d); continue; }
-      officeHours.push({
-        dayOfWeek: WEEK_DAYS.indexOf(d) + 1,
-        startTime: toIsoTime(start.hour, start.minute), // ISO "HH:mm:ss" — backend rejects object form
-        endTime: toIsoTime(end.hour, end.minute),
-      });
+      }
     }
     if (invalidDays.length) {
-      setHoursToast({ ok: false, msg: `${invalidDays.join(', ')}: end time must be after start time.` });
+      setHoursToast({ ok: false, msg: `${Array.from(new Set(invalidDays)).join(', ')}: end time must be after start time.` });
       return;
     }
     setSavingHours(true);
     setHoursToast(null);
-    setMyOfficeHours(officeHours)
+    setMyOfficeHours({ ranges, activeDays })
       .then(() => {
         setScheduleDirty(false);
         ctx?.refetch();
@@ -1325,8 +1362,9 @@ function AvailabilityPage() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Date overrides — no backend endpoint yet, so this stays empty (feature hidden).
+  // Date overrides — backed by the availability blocks + ad-hoc endpoints.
   const [overrides, setOverrides] = useState<Override[]>([]);
+  const [savingOverride, setSavingOverride] = useState(false);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1346,6 +1384,47 @@ function AvailabilityPage() {
     return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
+  // ── Load date overrides from the availability endpoints ──
+  // Block id → "block-{id}", ad-hoc id → "adhoc-{id}" so removeOverride knows
+  // which endpoint to hit. Each ad-hoc record is a single time range.
+  const blockToOverride = (b: any): Override => ({
+    id: `block-${b?.id}`,
+    date: b?.blockDate,
+    displayDate: formatDisplayDate(b?.blockDate),
+    dayName: getDayName(b?.blockDate),
+    type: 'block',
+    reason: b?.reason || undefined,
+  });
+  const adhocToOverride = (a: any): Override => {
+    const st = readTimeParts(a?.startTime);
+    const en = readTimeParts(a?.endTime);
+    const range = st && en ? `${fmt12h(st.hour, st.minute)} – ${fmt12h(en.hour, en.minute)}` : '';
+    return {
+      id: `adhoc-${a?.id}`,
+      date: a?.adhocDate,
+      displayDate: formatDisplayDate(a?.adhocDate),
+      dayName: getDayName(a?.adhocDate),
+      type: 'slot',
+      timeRanges: range ? [range] : [],
+    };
+  };
+  const loadOverrides = useCallback(() => {
+    Promise.all([
+      getMyBlockDates().catch(() => null),
+      getMyAdHocSlots().catch(() => null),
+    ]).then(([bRes, aRes]) => {
+      const blocks = unwrapData<any[]>(bRes);
+      const adhoc = unwrapData<any[]>(aRes);
+      setOverrides([
+        ...(Array.isArray(blocks) ? blocks.map(blockToOverride) : []),
+        ...(Array.isArray(adhoc) ? adhoc.map(adhocToOverride) : []),
+      ]);
+    });
+    // mappers are pure/stable; intentionally empty deps for a one-shot loader
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { loadOverrides(); }, [loadOverrides]);
+
   const openDrawer = () => {
     setDrawerType('block');
     setDrawerDate('');
@@ -1356,22 +1435,39 @@ function AvailabilityPage() {
   };
 
   const saveOverride = () => {
-    if (!drawerDate) return;
-    const newOverride: Override = {
-      id: Date.now().toString(),
-      date: drawerDate,
-      displayDate: formatDisplayDate(drawerDate),
-      dayName: getDayName(drawerDate),
-      type: drawerType,
-      reason: drawerReason || undefined,
-      note: drawerNote || undefined,
-      timeRanges: drawerType === 'slot' ? drawerRanges.map(r => `${r.start} – ${r.end}`) : undefined,
+    if (!drawerDate || savingOverride) return;
+    setSavingOverride(true);
+    setHoursToast(null);
+    const done = () => { setSavingOverride(false); setDrawerOpen(false); loadOverrides(); };
+    const fail = (err: any) => {
+      setSavingOverride(false);
+      const msg = err?.response?.data?.message
+        || `Could not save ${drawerType === 'block' ? 'this block' : 'this extra availability'}.`;
+      setHoursToast({ ok: false, msg }); // keep drawer open so the error is actionable
     };
-    setOverrides(prev => [...prev, newOverride]);
-    setDrawerOpen(false);
+    if (drawerType === 'block') {
+      // The API stores a single internal-only `reason`; fold the optional note in.
+      const reason = [drawerReason, drawerNote].map(s => s?.trim()).filter(Boolean).join(' — ') || undefined;
+      createMyBlockDate({ blockDate: drawerDate, reason }).then(done).catch(fail);
+    } else {
+      // Ad-hoc is one record per range (no note field) — POST each range.
+      const payloads = drawerRanges.map(r => {
+        const s = parse12h(r.start);
+        const e = parse12h(r.end);
+        return { adhocDate: drawerDate, startTime: toHHmm(s.hour, s.minute), endTime: toHHmm(e.hour, e.minute) };
+      });
+      Promise.all(payloads.map(p => createMyAdHocSlot(p))).then(done).catch(fail);
+    }
   };
 
-  const removeOverride = (id: string) => setOverrides(prev => prev.filter(o => o.id !== id));
+  const removeOverride = (id: string) => {
+    const sep = id.indexOf('-');
+    const kind = id.slice(0, sep);
+    const realId = id.slice(sep + 1);
+    const req = kind === 'block' ? deleteMyBlockDate(realId) : deleteMyAdHocSlot(realId);
+    setOverrides(prev => prev.filter(o => o.id !== id)); // optimistic
+    req.catch(() => { loadOverrides(); setHoursToast({ ok: false, msg: 'Could not remove this override.' }); });
+  };
   const addDrawerRange = () => setDrawerRanges(prev => [...prev, { start: '9:00 AM', end: '10:00 AM' }]);
   const removeDrawerRange = (i: number) => setDrawerRanges(prev => prev.filter((_, idx) => idx !== i));
   const updateDrawerRange = (i: number, field: 'start' | 'end', value: string) =>
@@ -1886,7 +1982,7 @@ function AvailabilityPage() {
         <div className="shrink-0 px-5 py-4 border-t border-border flex gap-2">
           <button
             onClick={saveOverride}
-            disabled={!drawerDate}
+            disabled={!drawerDate || savingOverride}
             className="flex-1 py-2 text-sm bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Save Override
@@ -2727,25 +2823,44 @@ type ReviewRow = { id: string; memberName: string; sessionType?: string; date: s
 function ReviewsPage() {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
-  const profileLoading = !!ctx?.loading;
 
   const [filterRating, setFilterRating] = useState<number | null>(null);
   const [filterType, setFilterType] = useState('All');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
 
-  // Reviews come from GET /mentorship/profile (embedded in MentorProfileDto).
-  const reviews: ReviewRow[] = profile?.reviews
-    ? profile.reviews.map(r => ({
-        id: r.id,
-        memberName: r.reviewerName,
-        sessionType: 'All',
-        date: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
-        rating: r.overallRating,
-        text: r.comment ?? '',
-        replied: false,
-      }))
-    : [];
+  // Reviews come from the dedicated paginated endpoint
+  // GET /mentorship/profile/reviews (newest first, deleted excluded). We pull a
+  // generous first page since the UI shows the full list without pager controls.
+  const [reviewDtos, setReviewDtos] = useState<MentorReviewDto[] | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setReviewsLoading(true);
+    getMyMentorReviews({ page: 0, size: 100 })
+      .then(res => {
+        if (cancelled) return;
+        const d: any = unwrapData(res);
+        // Spring Page → { content: [...] }; tolerate a bare array too.
+        const list: MentorReviewDto[] = Array.isArray(d) ? d : (Array.isArray(d?.content) ? d.content : []);
+        setReviewDtos(list);
+      })
+      // Fall back to the reviews embedded in the profile if the endpoint fails.
+      .catch(() => { if (!cancelled) setReviewDtos(profile?.reviews ?? []); })
+      .finally(() => { if (!cancelled) setReviewsLoading(false); });
+    return () => { cancelled = true; };
+  }, [profile]);
+
+  const profileLoading = reviewsLoading;
+  const reviews: ReviewRow[] = (reviewDtos ?? []).map(r => ({
+    id: r.id,
+    memberName: r.reviewerName,
+    sessionType: 'All',
+    date: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
+    rating: r.overallRating,
+    text: r.comment ?? '',
+    replied: false,
+  }));
 
   const avgRating = profile?.averageRating ?? 0;
   const reviewCount = profile?.reviewCount ?? reviews.length;
@@ -2868,13 +2983,42 @@ function ReviewsPage() {
 /* ─────────────────────────────────────────────
    EARNINGS PAGE
 ───────────────────────────────────────────── */
-// Earnings transactions / payout history / credit transactions: no backend
-// endpoints yet. Lists render empty states until the API exists.
 type EarningSession = {
   id: string; session: string; student: string; studentAvatar: string;
   date: string; gross: number; fee: number; net: number;
   status: string; payoutDate: string; payoutMethod: string;
 };
+// MentorTransactionDto.status → the label EarningsStatusBadge understands.
+const TX_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pending',
+  AVAILABLE: 'Available',
+  ON_HOLD: 'On Hold',
+  REFUNDED: 'Refunded',
+};
+// Map a MentorTransactionDto onto the row shape the table already renders.
+// `description` arrives as "{topic} - {student}"; split it back into the two
+// cells the existing markup expects ("{session} — {student}").
+function mapTransaction(tx: any): EarningSession {
+  const description = String(tx?.description ?? '');
+  const sep = description.lastIndexOf(' - ');
+  const session = sep >= 0 ? description.slice(0, sep) : description;
+  const student = sep >= 0 ? description.slice(sep + 3) : '';
+  const start = tx?.date ? new Date(tx.date) : null;
+  const valid = start && !isNaN(start.getTime());
+  return {
+    id: String(tx?.bookingId ?? ''),
+    session,
+    student,
+    studentAvatar: '',
+    date: valid ? start!.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—',
+    gross: 0,
+    fee: 0,
+    net: Number(tx?.amountCents ?? 0) / 100,
+    status: TX_STATUS_LABEL[String(tx?.status ?? '').toUpperCase()] ?? (tx?.status ?? ''),
+    payoutDate: '',
+    payoutMethod: '',
+  };
+}
 function EarningsStatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     'Available': { bg: 'hsl(142 71% 93%)',        color: 'hsl(142 63% 26%)' },
@@ -2920,8 +3064,21 @@ function EarningsPage() {
   const lifetimeTotal  = earningTotals?.lifetime  ?? 0;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 
-  // No backend list endpoint yet for cash transactions.
-  const earningSessions: EarningSession[] = [];
+  // Unsettled transactions from GET /mentorship/profile/transactions (paginated,
+  // PAID excluded). Display-only amounts — authoritative totals are the cards above.
+  const [earningSessions, setEarningSessions] = useState<EarningSession[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getMyMentorTransactions({ page: 0, size: 100 })
+      .then(res => {
+        if (cancelled) return;
+        const d: any = unwrapData(res);
+        const list: any[] = Array.isArray(d) ? d : (Array.isArray(d?.content) ? d.content : []);
+        setEarningSessions(list.map(mapTransaction));
+      })
+      .catch(() => { if (!cancelled) setEarningSessions([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -3183,6 +3340,9 @@ export function MentorDashboardPage() {
     () => (new URLSearchParams(window.location.search).get('code') ? 'profile' : 'overview')
   );
   const [notifOpen, setNotifOpen] = useState(false);
+  // Booking to auto-open in BookingsPage's detail drawer (set when navigating
+  // there from another tab, e.g. the Overview "message" action).
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
@@ -3229,8 +3389,8 @@ export function MentorDashboardPage() {
   };
 
   const pageContent: Record<NavId, React.ReactNode> = {
-    overview: <OverviewPage />,
-    bookings: <BookingsPage />,
+    overview: <OverviewPage onNavigate={setActivePage} onOpenBooking={id => { setFocusBookingId(id); setActivePage('bookings'); }} />,
+    bookings: <BookingsPage focusBookingId={focusBookingId} onFocusHandled={() => setFocusBookingId(null)} />,
     messages: <MessagesPage />,
     profile: <ProfileAndAvailabilityPage />,
     reviews: <ReviewsPage />,

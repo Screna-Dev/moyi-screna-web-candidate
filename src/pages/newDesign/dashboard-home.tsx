@@ -723,6 +723,7 @@ type Booking = {
   id: string;
   mentorId: string;
   mentorName: string;
+  mentorRealName?: string; // mentor's real name; always present, used as a fallback
   mentorAvatarUrl?: string;
   topicTitle: string;
   durationMinutes: number;
@@ -820,7 +821,12 @@ function MentorshipCard() {
       try {
         const res = await listMyBookings({ page: 0, size: 20 });
         const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        if (alive) setBookings(Array.isArray(content) ? content : []);
+        // mentorName may be blank; mentorRealName is guaranteed non-null — fall back to it.
+        const normalized = (Array.isArray(content) ? content : []).map(b => ({
+          ...b,
+          mentorName: b.mentorName || b.mentorRealName || 'Mentor',
+        }));
+        if (alive) setBookings(normalized);
       } catch {
         if (alive) setBookings([]);
       } finally {

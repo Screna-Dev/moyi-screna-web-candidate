@@ -71,6 +71,7 @@ type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'COMPLE
 interface Booking {
   id: string;
   mentorName?: string;
+  mentorRealName?: string; // always present; used as a fallback when mentorName is blank
   mentorAvatarUrl?: string;
   topicTitle?: string;
   durationMinutes?: number;
@@ -108,7 +109,7 @@ function mapBookingsToMentorSessions(bookings: Booking[]): MentorSession[] {
     .map((b): MentorSession => {
       const start = new Date(b.startTime);
       const valid = !isNaN(start.getTime());
-      const name = b.mentorName ?? '';
+      const name = b.mentorName || b.mentorRealName || '';
       return {
         id: b.id,
         kind: 'mentor',
