@@ -38,6 +38,7 @@ import { PersonalizedPracticePage } from './pages/newDesign/personalized-practic
 import { HomePage } from './pages/newDesign/home/home';
 import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
+import { CompanyDetailPage } from './pages/newDesign/company-detail';
 import { ContactPage } from './pages/newDesign/contact';
 import AdminConsole from './components/admin/console/AdminConsole';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
@@ -147,6 +148,7 @@ export const router = createBrowserRouter([
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
+      { path: '/interview-insights/:companyId', element: <CompanyDetailPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},
       { path: '/help',element: <HelpCenterPage />},
