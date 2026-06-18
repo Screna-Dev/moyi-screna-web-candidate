@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { T } from '@/lib/design-tokens';
-import { listMyBookings } from '@/services/MentorService';
+import { listMyBookings, cancelBooking, rescheduleBooking, getMentor, getMentorSlots } from '@/services/MentorService';
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
@@ -735,6 +735,9 @@ type Booking = {
   mentorAvgRating?: number;
   studentNote?: string;
   mentorNote?: string | null;
+  canCancel?: boolean;
+  canReschedule?: boolean;
+  rescheduleUsed?: boolean;
 };
 
 function getInitials(name?: string): string {
@@ -813,28 +816,33 @@ function MentorshipCard() {
   // Mentorship is open to all members (Free and Premium alike).
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  // Which booking action modal is open, if any.
+  const [modal, setModal] = useState<{ type: 'cancel' | 'reschedule'; booking: Booking } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await listMyBookings({ page: 0, size: 20 });
+      const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+      // mentorName may be blank; mentorRealName is guaranteed non-null — fall back to it.
+      const normalized = (Array.isArray(content) ? content : []).map(b => ({
+        ...b,
+        mentorName: b.mentorName || b.mentorRealName || 'Mentor',
+      }));
+      setBookings(normalized);
+    } catch {
+      setBookings([]);
+    }
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
     let alive = true;
+    setLoading(true);
     (async () => {
-      try {
-        const res = await listMyBookings({ page: 0, size: 20 });
-        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        // mentorName may be blank; mentorRealName is guaranteed non-null — fall back to it.
-        const normalized = (Array.isArray(content) ? content : []).map(b => ({
-          ...b,
-          mentorName: b.mentorName || b.mentorRealName || 'Mentor',
-        }));
-        if (alive) setBookings(normalized);
-      } catch {
-        if (alive) setBookings([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
+      await load();
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [load]);
 
   if (loading) return <MentorshipCardSkeleton />;
 
@@ -917,6 +925,46 @@ function MentorshipCard() {
             >
               {nextSession.meetingLink ? 'Join Session' : 'Awaiting meeting link'}
             </button>
+
+            {/* Manage booking — reschedule / cancel */}
+            {(nextSession.canReschedule !== false || nextSession.canCancel !== false) && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {nextSession.canReschedule !== false && (
+                  <button
+                    onClick={() => setModal({ type: 'reschedule', booking: nextSession })}
+                    title={nextSession.rescheduleUsed ? 'You have already rescheduled this session once' : undefined}
+                    disabled={nextSession.rescheduleUsed === true}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8,
+                      border: `1px solid ${T.border}`, background: '#fff',
+                      color: nextSession.rescheduleUsed ? T.textMuted : T.textPrimary,
+                      fontSize: 13, fontWeight: 500,
+                      cursor: nextSession.rescheduleUsed ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', transition: 'background 120ms',
+                    }}
+                    onMouseEnter={(e) => { if (!nextSession.rescheduleUsed) e.currentTarget.style.background = T.bgSecondary; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    Reschedule
+                  </button>
+                )}
+                {nextSession.canCancel !== false && (
+                  <button
+                    onClick={() => setModal({ type: 'cancel', booking: nextSession })}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8,
+                      border: '1px solid #fecaca', background: '#fff', color: '#dc2626',
+                      fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                      fontFamily: 'inherit', transition: 'background 120ms',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{
@@ -970,7 +1018,333 @@ function MentorshipCard() {
           )}
         </div>
       </div>
+
+      {modal?.type === 'cancel' && (
+        <CancelBookingModal
+          booking={modal.booking}
+          onClose={() => setModal(null)}
+          onDone={async () => { setModal(null); await load(); }}
+        />
+      )}
+      {modal?.type === 'reschedule' && (
+        <RescheduleBookingModal
+          booking={modal.booking}
+          onClose={() => setModal(null)}
+          onDone={async () => { setModal(null); await load(); }}
+        />
+      )}
     </Panel>
+  );
+}
+
+// ─── Booking action modals (cancel / reschedule) ─────────────────────────────
+
+function errMessage(err: unknown): string | undefined {
+  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+}
+
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div style={{
+        background: '#fff', border: `1px solid ${T.border}`, borderRadius: 16,
+        width: '100%', maxWidth: 440, maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${T.border}`,
+        }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: T.textPrimary, margin: 0 }}>{title}</h2>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, lineHeight: 0 }}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div style={{ padding: 20, overflowY: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function CancelBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ refunded: boolean; refundAmountCents: number } | null>(null);
+
+  // Refund policy: full refund only if cancelled > 48h before the session start.
+  const hoursUntil = (new Date(booking.startTime).getTime() - Date.now()) / 3_600_000;
+  const refundEligible = hoursUntil > 48;
+
+  async function handleConfirm() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await cancelBooking(booking.id) as { data?: { data?: { refunded?: boolean; refundAmountCents?: number } } };
+      const data = res?.data?.data ?? {};
+      setResult({ refunded: !!data.refunded, refundAmountCents: data.refundAmountCents ?? 0 });
+    } catch (err) {
+      setError(errMessage(err) || 'Could not cancel this session. Please try again.');
+      setSubmitting(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <ModalShell title="Session cancelled" onClose={onDone}>
+        <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 16px' }}>
+          Your session with {booking.mentorName} has been cancelled.
+          {result.refunded && result.refundAmountCents > 0
+            ? ` A refund of $${(result.refundAmountCents / 100).toFixed(2)} has been issued.`
+            : ' No refund was issued for this cancellation.'}
+        </p>
+        <button
+          onClick={onDone}
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="Cancel session" onClose={onClose}>
+      <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 14px' }}>
+        Cancel your {booking.durationMinutes} min session with <strong>{booking.mentorName}</strong> on {formatBookingDateTime(booking.startTime)}?
+      </p>
+
+      {/* Refund policy notice */}
+      <div style={{
+        display: 'flex', gap: 10, padding: 12, borderRadius: 10, marginBottom: 16,
+        background: refundEligible ? '#f0fdf4' : '#fef2f2',
+        border: `1px solid ${refundEligible ? '#bbf7d0' : '#fecaca'}`,
+      }}>
+        <span style={{ fontSize: 15, lineHeight: 1.2 }}>{refundEligible ? '✓' : '⚠'}</span>
+        <div style={{ fontSize: 12, lineHeight: 1.55, color: refundEligible ? '#166534' : '#b91c1c' }}>
+          {refundEligible ? (
+            <>This session is more than <strong>48 hours</strong> away, so you'll receive a <strong>full refund</strong>.</>
+          ) : (
+            <><strong>No refund:</strong> cancellations within <strong>48 hours</strong> of the session start time are non-refundable.</>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{error}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: '#fff', color: T.textPrimary, fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Keep session
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1, fontFamily: 'inherit',
+          }}
+        >
+          {submitting ? 'Cancelling…' : 'Confirm cancellation'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+type Slot = { startTime: string; endTime: string };
+
+function RescheduleBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const [loadingSlots, setLoadingSlots] = useState(true);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+
+  // The booking carries mentorId + durationMinutes but not topicId, which the
+  // slots endpoint needs — resolve it from the mentor's topic list.
+  useEffect(() => {
+    let alive = true;
+    setLoadingSlots(true);
+    (async () => {
+      try {
+        const mres = await getMentor(booking.mentorId) as { data?: { data?: { topics?: Array<{ id: string; title: string; active: boolean }> } } };
+        const topics = mres?.data?.data?.topics ?? [];
+        const topic =
+          topics.find(t => t.title === booking.topicTitle) ??
+          topics.find(t => t.active) ??
+          topics[0];
+        if (!topic) { if (alive) { setSlots([]); setLoadingSlots(false); } return; }
+        const sres = await getMentorSlots(booking.mentorId, topic.id, booking.durationMinutes) as { data?: { data?: Slot[] } };
+        const data = sres?.data?.data ?? [];
+        const list: Slot[] = Array.isArray(data) ? data : [];
+        // Don't offer the current slot back as a "new" time.
+        if (alive) setSlots(list.filter(s => s.startTime !== booking.startTime));
+      } catch {
+        if (alive) setSlots([]);
+      } finally {
+        if (alive) setLoadingSlots(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [booking.mentorId, booking.durationMinutes, booking.topicTitle, booking.startTime]);
+
+  // Group slots by calendar day for display.
+  const days = useMemo(() => {
+    const map = new Map<string, Slot[]>();
+    [...slots]
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .forEach(s => {
+        const key = formatBookingShortDate(s.startTime);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(s);
+      });
+    return Array.from(map.entries());
+  }, [slots]);
+
+  async function handleConfirm() {
+    if (!selected) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await rescheduleBooking(booking.id, selected);
+      setConfirmed(true);
+    } catch (err) {
+      setError(errMessage(err) || 'Could not reschedule to that time. Please pick another slot.');
+      setSubmitting(false);
+    }
+  }
+
+  if (confirmed) {
+    return (
+      <ModalShell title="Session rescheduled" onClose={onDone}>
+        <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 16px' }}>
+          Your session with {booking.mentorName} is now set for <strong>{formatBookingDateTime(selected!)}</strong>.
+        </p>
+        <button
+          onClick={onDone}
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="Reschedule session" onClose={onClose}>
+      <p style={{ fontSize: 12.5, color: T.textSecondary, lineHeight: 1.6, margin: '0 0 6px' }}>
+        Currently {formatBookingDateTime(booking.startTime)} with {booking.mentorName}.
+      </p>
+      <div style={{ fontSize: 11.5, color: T.textMuted, marginBottom: 14 }}>
+        You can reschedule a session once. Pick a new available time below.
+      </div>
+
+      {loadingSlots ? (
+        <div style={{ fontSize: 13, color: T.textSecondary, padding: '20px 0', textAlign: 'center' }}>
+          Loading available times…
+        </div>
+      ) : days.length === 0 ? (
+        <div style={{ fontSize: 13, color: T.textSecondary, padding: '20px 0', textAlign: 'center' }}>
+          No available times right now. Please try again later.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 320, overflowY: 'auto', marginBottom: 16 }}>
+          {days.map(([dayLabel, daySlots]) => (
+            <div key={dayLabel}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: 8 }}>{dayLabel}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {daySlots.map(s => {
+                  const active = selected === s.startTime;
+                  const label = new Date(s.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                  return (
+                    <button
+                      key={s.startTime}
+                      onClick={() => setSelected(s.startTime)}
+                      style={{
+                        padding: '8px 4px', borderRadius: 8, fontSize: 12.5, fontWeight: 500,
+                        border: `1px solid ${active ? T.blue500 : T.border}`,
+                        background: active ? T.blue500 : '#fff',
+                        color: active ? '#fff' : T.textPrimary,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{error}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: '#fff', color: T.textPrimary, fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={!selected || submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: (!selected || submitting) ? 'not-allowed' : 'pointer',
+            opacity: (!selected || submitting) ? 0.6 : 1, fontFamily: 'inherit',
+          }}
+        >
+          {submitting ? 'Rescheduling…' : 'Confirm new time'}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 
