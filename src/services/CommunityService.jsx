@@ -9,10 +9,15 @@ export const getPublicPosts = (params = {}) => {
 };
 
 // Per-company published-post stats + across-all roll-up totals.
-// Returns { companies: [{ company, postCount, recentPostCount, latestUpdatedAt }],
-//           totalCompanyCount, totalPostCount, totalRecentPostCount }
+// Returns { totalCompanyCount, totalPostCount, totalRecentPostCount,
+//           categories: [{ category, postCount, companies: [{ company, category, postCount, recentPostCount, latestUpdatedAt }] }] }
 export const getCompaniesStats = (params = {}) => {
   return API.get('/community/companies/stats', { params });
+};
+
+// Returns a single company's { displayName, category, summary }, looked up by display name.
+export const getCompanyProfile = (company) => {
+  return API.get('/community/companies/profile', { params: { company } });
 };
 
 export const getPost = (postId) => {

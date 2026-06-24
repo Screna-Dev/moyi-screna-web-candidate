@@ -1,0 +1,322 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { WidePageContainer } from '@/components/newDesign/dashboard-page';
+import { getMentors } from '@/services/MentorService';
+
+// SVG path data (inlined from the new design's MentorCard import).
+const cardSvg = {
+  p333d5300: 'M9.5 2H2.5C1.94772 2 1.5 2.44772 1.5 3V10C1.5 10.5523 1.94772 11 2.5 11H9.5C10.0523 11 10.5 10.5523 10.5 10V3C10.5 2.44772 10.0523 2 9.5 2Z',
+  p39e78a00: 'M5.4294 1.7562C5.6094 1.2036 6.3912 1.2036 6.5706 1.7562L7.2126 3.7314C7.25182 3.85169 7.32807 3.95651 7.43044 4.03086C7.53282 4.10522 7.65607 4.14531 7.7826 4.1454H9.8598C10.4412 4.1454 10.6824 4.8894 10.2126 5.2314L8.5326 6.4518C8.43002 6.52622 8.35363 6.63121 8.3144 6.75171C8.27517 6.87222 8.2751 7.00205 8.3142 7.1226L8.9562 9.0978C9.1362 9.6504 8.5032 10.1106 8.0322 9.7686L6.3522 8.5482C6.24972 8.4738 6.12634 8.43373 5.9997 8.43373C5.87307 8.43373 5.74968 8.4738 5.6472 8.5482L3.9672 9.7686C3.4968 10.1106 2.8644 9.6504 3.0438 9.0978L3.6858 7.1226C3.7249 7.00205 3.72483 6.87222 3.6856 6.75171C3.64637 6.63121 3.56998 6.52622 3.4674 6.4518L1.788 5.232C1.3182 4.89 1.56 4.146 2.1408 4.146H4.2174C4.34403 4.14603 4.46742 4.106 4.56991 4.03164C4.67241 3.95727 4.74875 3.85239 4.788 3.732L5.43 1.7568L5.4294 1.7562Z',
+  p3e7757b0: 'M6 11C8.76142 11 11 8.76142 11 6C11 3.23858 8.76142 1 6 1C3.23858 1 1 3.23858 1 6C1 8.76142 3.23858 11 6 11Z',
+  pf23dd00: 'M7 2.91667L11.0833 7L7 11.0833',
+};
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+
+// Shape consumed by the mentor card (kept identical to the original MENTORS items).
+interface Mentor {
+  id: string | number;
+  name: string;
+  title: string;
+  company: string;
+  price: number;
+  rating: number;
+  reviews: number;
+  next: string;
+  tags: string[];
+  quote: string;
+  slots: number;
+}
+
+// Raw mentor object returned by GET /mentorship/mentors (see MentorService).
+interface ApiMentor {
+  id: string;
+  name: string;
+  currentRole: string;
+  currentCompany: string;
+  avatarUrl: string;
+  expertiseTags: string[];
+  priceFrom: number;
+  averageRating: number | null;
+  reviewCount: number;
+  hasSlotsThisWeek: boolean;
+  hasSlotsNextWeek: boolean;
+}
+
+// Map an API mentor into the exact field shape the card consumes. Fields without
+// an API equivalent fall back gracefully:
+//   - next:  derived from the week-availability booleans (no exact date in list API)
+//   - quote: empty (mentor bio/quote isn't in the list response)
+//   - slots: 0 (list API only exposes boolean week flags, not a slot count)
+function mapApiMentor(m: ApiMentor): Mentor {
+  return {
+    id: m.id,
+    name: m.name ?? '',
+    title: m.currentRole ?? '',
+    company: m.currentCompany ?? '',
+    price: typeof m.priceFrom === 'number' ? m.priceFrom / 100 : 0,
+    rating: m.averageRating ?? 0,
+    reviews: m.reviewCount ?? 0,
+    next: m.hasSlotsThisWeek ? 'This week' : m.hasSlotsNextWeek ? 'Next week' : 'Check',
+    tags: m.expertiseTags ?? [],
+    quote: '',
+    slots: 0,
+  };
+}
+
+const COMPANY_COLORS: Record<string, string> = {
+  Google: '#4285F4', Stripe: '#6772E5', Meta: '#0866FF',
+  Airbnb: '#FF5A5F', OpenAI: '#10A37F', Datadog: '#632CA6',
+};
+
+// ─── Mentor card ─────────────────────────────────────────────────────────────
+
+function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) {
+  return (
+    <div
+      className="bg-white relative flex flex-col"
+      style={{ borderRadius: '16px', border: '1px solid var(--border)', boxShadow: '0px 1px 4px 0px rgba(0,0,0,0.04)' }}
+    >
+      {/* ── Top section ── */}
+      <div
+        className="flex flex-col items-start relative"
+        style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)' }}
+      >
+        {/* Row 1: avatar + name/title + price */}
+        <div className="flex items-start w-full" style={{ gap: '14px' }}>
+          {/* Avatar */}
+          <div
+            className="rounded-full shrink-0 overflow-hidden"
+            style={{ width: '40px', height: '40px', boxShadow: '0 0 0 2px var(--surface-1), 0 1px 3px rgba(0,0,0,0.1)' }}
+          >
+            <div
+              className="w-full h-full flex items-center justify-center"
+              style={{ background: COMPANY_COLORS[mentor.company] || 'var(--primary)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '15px', letterSpacing: '0.5px' }}
+            >
+              {mentor.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+            </div>
+          </div>
+
+          {/* Name + title */}
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '14px', lineHeight: '21px', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {mentor.name}
+            </p>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', marginTop: '2px', whiteSpace: 'nowrap' }}>
+              <span>{mentor.title}</span>
+              <span style={{ color: 'var(--border)' }}> · </span>
+              <span style={{ fontWeight: 500, color: 'var(--foreground)' }}>{mentor.company}</span>
+            </p>
+          </div>
+
+          {/* Price */}
+          <div className="shrink-0 text-right">
+            <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '20px', lineHeight: '30px', color: 'var(--primary)' }}>
+              ${mentor.price}
+            </p>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '10.5px', lineHeight: '15.75px', color: 'var(--muted-foreground)', textAlign: 'right' }}>
+              / session
+            </p>
+          </div>
+        </div>
+
+        {/* Row 2: stars + rating + next */}
+        <div className="flex items-center justify-between w-full" style={{ marginTop: '14px' }}>
+          {/* Stars + score + reviews */}
+          <div className="flex items-center" style={{ gap: '6px' }}>
+            <div className="flex items-center" style={{ gap: '2px' }}>
+              {[1, 2, 3, 4, 5].map(i => {
+                const filled = i <= Math.floor(mentor.rating);
+                const partial = !filled && i === Math.ceil(mentor.rating) && mentor.rating % 1 > 0;
+                return (
+                  <div key={i} className="relative shrink-0" style={{ width: '12px', height: '12px' }}>
+                    <svg className="absolute block inset-0 w-full h-full" fill="none" viewBox="0 0 12 12">
+                      <path d={cardSvg.p39e78a00} fill={filled ? '#FFB900' : partial ? '#FFD230' : 'var(--border)'} />
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+            <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '15px', lineHeight: '22.5px', color: 'var(--foreground)' }}>
+              {mentor.rating.toFixed(1)}
+            </span>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)' }}>
+              ({mentor.reviews})
+            </span>
+          </div>
+
+          {/* Calendar + next */}
+          <div className="flex items-center" style={{ gap: '4px' }}>
+            <div className="relative shrink-0" style={{ width: '12px', height: '12px' }}>
+              <svg className="absolute block inset-0 w-full h-full" fill="none" viewBox="0 0 12 12">
+                <path d="M4 1V3" stroke="var(--muted-foreground)" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M8 1V3" stroke="var(--muted-foreground)" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={cardSvg.p333d5300} stroke="var(--muted-foreground)" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M1.5 5H10.5" stroke="var(--muted-foreground)" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+              <span>Next: </span>
+              <span style={{ fontWeight: 500, color: 'var(--foreground)' }}>{mentor.next}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Row 3: tags */}
+        <div className="flex flex-wrap" style={{ gap: '6px', marginTop: '12px' }}>
+          {mentor.tags.map(tag => (
+            <div
+              key={tag}
+              style={{ background: 'var(--secondary)', borderRadius: '6px', padding: '2px 8px', display: 'flex', alignItems: 'center' }}
+            >
+              <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '11px', lineHeight: '16.5px', color: 'var(--secondary-foreground)', whiteSpace: 'nowrap' }}>
+                {tag}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Middle section: quote + slots ── */}
+      <div
+        className="flex flex-col flex-1"
+        style={{ padding: '16px 20px', gap: '12px' }}
+      >
+        <p style={{ fontFamily: 'var(--font-sans)', fontStyle: 'italic', fontSize: '12.5px', lineHeight: '17px', color: 'var(--muted-foreground)' }}>
+          {mentor.quote}
+        </p>
+        <div className="flex items-center" style={{ gap: '4px' }}>
+          <div className="relative shrink-0" style={{ width: '12px', height: '12px' }}>
+            <svg className="absolute block inset-0 w-full h-full" fill="none" viewBox="0 0 12 12">
+              <g clipPath="url(#slots-clip)">
+                <path d={cardSvg.p3e7757b0} stroke="var(--accent)" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 3V6L8 7" stroke="var(--accent)" strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+              <defs><clipPath id="slots-clip"><rect fill="white" width="12" height="12" /></clipPath></defs>
+            </svg>
+          </div>
+          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '11.5px', lineHeight: '17px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+            {mentor.slots} slots this week
+          </span>
+        </div>
+      </div>
+
+      {/* ── Bottom section: Book button ── */}
+      <div style={{ padding: '0 20px 20px' }}>
+        <button
+          onClick={onBook}
+          className="relative w-full transition-opacity hover:opacity-90"
+          style={{ height: '40px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', fontFamily: 'var(--font-sans)' }}
+        >
+          <span style={{ fontWeight: 600, fontSize: '13px', lineHeight: '18px', color: 'var(--primary)' }}>
+            Book a Session
+          </span>
+          <div className="relative shrink-0" style={{ width: '14px', height: '14px' }}>
+            <svg className="absolute block inset-0 w-full h-full" fill="none" viewBox="0 0 14 14">
+              <path d="M2.91667 7H11.0833" stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round" />
+              <path d={cardSvg.pf23dd00} stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter pill ──────────────────────────────────────────────────────────────
+
+function FilterPill({ label }: { label: string }) {
+  return (
+    <button
+      className="flex items-center gap-1 transition-colors hover:bg-secondary"
+      style={{ border: '1px solid var(--border)', background: '#ffffff', borderRadius: '9999px', padding: '6px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--foreground)', whiteSpace: 'nowrap' }}
+    >
+      {label}
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export function CoachingPage() {
+  const navigate = useNavigate();
+  const [mentors, setMentors] = useState<Mentor[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await getMentors({ page: 0, size: 20 });
+        const list = res.data?.data?.content ?? res.data?.content ?? res.data?.data ?? res.data ?? [];
+        if (active) setMentors(Array.isArray(list) ? list.map(mapApiMentor) : []);
+      } catch {
+        if (active) setMentors([]);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <DashboardLayout headerTitle="Find Your Coach" fullBleed>
+      <WidePageContainer maxWidth="none">
+
+        {/* ── Hero heading ── */}
+        <div className="flex items-start justify-between" style={{ marginBottom: '16px' }}>
+          <div>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--muted-foreground)' }}>
+              {mentors.length} verified mentors available for 1:1 sessions
+            </p>
+          </div>
+          <button
+            className="flex items-center gap-1.5 transition-opacity hover:opacity-80 shrink-0"
+            style={{ background: 'color-mix(in srgb, var(--primary) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', padding: '10px 20px', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--primary)', whiteSpace: 'nowrap' }}
+          >
+            Apply to Become a Mentor
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2.91667 7H11.0833" stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d={cardSvg.pf23dd00} stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* ── Filter bar ── */}
+        <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '32px' }}>
+          <div className="flex items-center flex-wrap gap-2">
+            <FilterPill label="Role / Industry" />
+            <FilterPill label="Price Range" />
+            <FilterPill label="Availability" />
+            <FilterPill label="Rating" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--muted-foreground)' }}>Sort by:</span>
+            <button
+              className="flex items-center gap-1 transition-colors hover:text-foreground"
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--foreground)' }}
+            >
+              Top rated
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Mentor grid ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+          {mentors.map(mentor => (
+            <MentorCard
+              key={mentor.id}
+              mentor={mentor}
+              onBook={() => navigate(`/mentor-details?mentorId=${mentor.id}`)}
+            />
+          ))}
+        </div>
+
+      </WidePageContainer>
+    </DashboardLayout>
+  );
+}

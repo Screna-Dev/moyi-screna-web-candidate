@@ -277,26 +277,12 @@ type Series = {
   summaryB: { label: string; value: string };
   legend: string;
 };
-// TODO: swap for real timeseries endpoint when available.
-const MOCK_SERIES: Record<ChartTab, Series> = {
-  applications: {
-    data: [3,4,3,3,4,3,4,3,3,4,3,4,3,3,4,3,3,4,3,4,3,3,4,3,4,7,5,4,3,4],
-    summaryA: { label: 'Total Applications', value: '107' },
-    summaryB: { label: 'Daily Average', value: '3.6' },
-    legend: 'Applications submitted',
-  },
-  learning: {
-    data: [42,45,40,48,44,46,43,50,42,38,46,44,48,52,46,44,50,46,44,48,42,46,50,84,52,46,44,48,46,44],
-    summaryA: { label: 'Total Learning Time', value: '21h 9m' },
-    summaryB: { label: 'Avg per Session', value: '42m' },
-    legend: 'Learning time per day (min)',
-  },
-  sessions: {
-    data: [1,2,1,2,2,1,2,1,2,2,1,2,2,1,3,2,1,2,2,1,2,2,1,2,3,2,1,2,1,2],
-    summaryA: { label: 'Total Sessions', value: '52' },
-    summaryB: { label: 'Avg per Day', value: '1.7' },
-    legend: 'Sessions per day',
-  },
+// Labels per tab used for the empty-state series. There is no timeseries endpoint
+// yet, so when the API returns no daily data we render the empty state — never mock.
+const TAB_LABELS: Record<ChartTab, { a: string; b: string; legend: string }> = {
+  applications: { a: 'Total Applications', b: 'Daily Average', legend: 'Applications submitted' },
+  learning: { a: 'Total Learning Time', b: 'Daily Average', legend: 'Learning time per day (min)' },
+  sessions: { a: 'Total Sessions', b: 'Avg per Day', legend: 'Sessions per day' },
 };
 
 function formatValue(tab: ChartTab, v: number): string {
@@ -387,7 +373,16 @@ function TrendChart({
         legend: 'Sessions per day',
       };
     }
-    return MOCK_SERIES[effectiveTab];
+    // No real daily data for this tab — return an empty series so the chart
+    // renders its empty state instead of fabricated values.
+    const lbl = TAB_LABELS[effectiveTab];
+    return {
+      data: [],
+      dates: [],
+      summaryA: { label: lbl.a, value: '—' },
+      summaryB: { label: lbl.b, value: '—' },
+      legend: lbl.legend,
+    };
   }, [effectiveTab, learningDaily, sessionsDaily, rangeDays]);
 
   const hasData = series.data.length > 0;
@@ -1425,13 +1420,6 @@ function statusTagStyle(color: string, bg: string): CSSProperties {
 
 // ─── Interview Practice Insights (radar) ─────────────────────────────────────
 type Dim = { label: string; value: number };
-// TODO: swap for real radar endpoint when available.
-const MOCK_DIMS: Dim[] = [
-  { label: 'Domain Knowledge', value: 82 },
-  { label: 'Technical Skills', value: 76 },
-  { label: 'Behavioral Skills', value: 65 },
-  { label: 'Background & Experience', value: 78 },
-];
 
 function qualitative(v: number): string {
   if (v >= 80) return 'Strong';
@@ -1595,18 +1583,15 @@ function InsightsCard({
   if (isLoading) return <InsightsCardSkeleton />;
 
   const hasInsights = insights != null;
-  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores) && insights!.categoryScores.length > 0
+  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores)
     ? insights!.categoryScores.map((c) => ({
         label: c.category,
         value: Math.round(Number(c.averageScore) || 0),
       }))
-    : hasInsights
-      ? []
-      : MOCK_DIMS;
+    : [];
 
-  const hasData = hasInsights
-    ? dims.length > 0
-    : dims.some((d) => d.value > 0);
+  // No insights from the API → render the empty state, never mock data.
+  const hasData = dims.length > 0;
 
   if (!hasData) {
     return (

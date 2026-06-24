@@ -53,6 +53,13 @@ export const deleteMentorTopic = (mentorId, topicId) =>
 
 // ─── Payouts ────────────────────────────────────────────────────────────────
 
+// Per-mentor aggregation of PAYMENT ledger entries (paginated). Each row:
+//   { mentorId, mentorName, totalAmountCents, totalPayoutCents, recordCount }
+// params: { status?: 'PENDING' | 'PAID', from?, to? (ISO-8601), page?, size? }.
+// PENDING = eligible-to-settle set (matches markMentorPayoutsPaid); PAID = history.
+export const adminPayoutSummary = (params = {}) =>
+  API.get(`${BASE}/payouts`, { params });
+
 export const listMentorPayouts = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/payouts`);
 

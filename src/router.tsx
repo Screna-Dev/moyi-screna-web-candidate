@@ -22,9 +22,9 @@ import { DashboardHomePage } from './pages/newDesign/dashboard-home';
 import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
 import { AIMockPage } from './pages/newDesign/ai-mock';
 import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
-import { HistoryPage } from './pages/newDesign/history';
-import { ReferEarnPage } from './pages/newDesign/refer-earn';
-import { SettingsPage } from './pages/newDesign/settings';
+import { TrainingHistoryPage as HistoryPage } from './pages/newDesign/training-history-design';
+import { ReferEarnPage } from './pages/newDesign/refer-earn-design';
+import { SettingsPage } from './pages/newDesign/settings-design';
 import { BillingPage } from './pages/newDesign/billing';
 import { EvaluationPage } from './pages/newDesign/evaluation-page';
 import { AddExperiencePage } from './pages/newDesign/add-experience';
@@ -33,10 +33,12 @@ import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
-import { MyContributionsPage } from './pages/newDesign/my-contributions';
-import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
+import { MyContributionsPage } from './pages/newDesign/my-contributions-design';
+import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice-design';
+import { QuickMockPage } from './pages/newDesign/quick-mock-page';
+import { CoachingPage } from './pages/newDesign/coaching-page';
 import { HomePage } from './pages/newDesign/home/home';
-import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
+import { InterviewInsightsPage } from './pages/newDesign/interview-insights-design';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { CompanyDetailPage } from './pages/newDesign/company-detail';
 import { ContactPage } from './pages/newDesign/contact';
@@ -128,6 +130,8 @@ export const router = createBrowserRouter([
       { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
       { path: '/personalized-practice', element: <PersonalizedPracticePage /> },
+      { path: '/quick-mock', element: <QuickMockPage /> },
+      { path: '/coaching', element: <CoachingPage /> },
       { path: '/session-confirm', element: <SessionConfirmPage /> },
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },

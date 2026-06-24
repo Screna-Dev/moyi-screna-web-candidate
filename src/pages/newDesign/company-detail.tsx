@@ -19,7 +19,7 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -131,7 +131,28 @@ export function CompanyDetailPage() {
   const navigate = useNavigate();
   const posthog = usePostHog();
 
-  const company = useMemo(() => resolveCompany(companyId), [companyId]);
+  const fallbackCompany = useMemo(() => resolveCompany(companyId), [companyId]);
+
+  // Real category + summary from GET /community/companies/profile (looked up by
+  // display name); falls back to the resolved/curated values until it loads.
+  const [profile, setProfile] = useState<{ displayName?: string; category?: string; summary?: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getCompanyProfile(fallbackCompany.name)
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        if (!cancelled && data) setProfile(data);
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { cancelled = true; };
+  }, [fallbackCompany.name]);
+
+  const company = useMemo(() => ({
+    ...fallbackCompany,
+    name: profile?.displayName || fallbackCompany.name,
+    category: profile?.category || fallbackCompany.category,
+    description: profile?.summary || fallbackCompany.description,
+  }), [fallbackCompany, profile]);
 
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [sortOpen, setSortOpen] = useState(false);

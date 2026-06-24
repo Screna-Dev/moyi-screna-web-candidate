@@ -5,34 +5,32 @@ import {
   Settings,
   Gift,
   Coins,
-  Home,
   LogOut,
   FileText,
   History,
   User,
   ShieldCheck,
   Users,
+  Bot,
+  Target,
+  BookOpen,
+  ChevronRight,
+  Menu,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from './ui/sheet';
 import { JobApplyTab } from './job-apply-tab';
 import { ProfileTab } from './profile-tab';
 import { getPersonalInfo } from '../../services/ProfileServices';
-import { DashboardHome } from '@/pages/newDesign/dashboard-home';
+import { DashboardHome } from '@/components/newDesign/dashboard-home-design';
 import {
   MENTOR_DASHBOARD_PATH,
   isDualRole,
   setStoredDashboardMode,
 } from '@/components/mentor/dashboard-mode';
-
-function LearningActivityChart() {
-  return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Learning Activity Chart — coming soon</div>;
-}
-function FreshFromCommunity() {
-  return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed border-border rounded-lg">Community Feed — coming soon</div>;
-}
 
 type UserData = {
   firstName?: string;
@@ -42,27 +40,19 @@ type UserData = {
   targetCompanies?: string[];
 };
 
+// Career group — primary product surfaces, mapped to this app's real routes.
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: History, label: 'Training History', path: '/history' },
-  { icon: FileText, label: 'My Contributions', path: '/contributions' },
-];
-
-// Mirrors home/navbar.tsx so the top-nav stays identical across landing & dashboard.
-const TOP_NAV_LINKS = [
-  { label: 'Coach', path: '/marketplace' },
-  // Jobs feature temporarily hidden for this release — restore when re-launching.
-  // { label: 'Jobs', path: '/applications' },
-  { label: 'Quick AI Mock', path: '/personalized-practice' },
-  { label: 'InterviewPrep Note', path: '/interview-insights' },
-  { label: 'Pricing', path: '/pricing' },
-  { label: 'FAQ', path: '/help' },
+  { icon: Users, label: 'Coaching', path: '/coaching' },
+  { icon: FileText, label: 'InterviewPrep Note', path: '/interview-insights' },
+  { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
+  { icon: Target, label: 'Personalized Practice', path: '/personalized-practice' },
 ];
 
 const sidebarAccountLinks = [
+  { icon: BookOpen, label: 'My Sessions', path: '/history' },
+  { icon: FileText, label: 'My Contributions', path: '/contributions' },
   { icon: User, label: 'Profile', path: '/profile' },
-  // { icon: Gift, label: 'Refer & Earn', path: '/refer' },
-  { icon: Settings, label: 'Settings & Payment', path: '/settings' },
 ];
 
 const adminSidebarLinks = [
@@ -71,11 +61,39 @@ const adminSidebarLinks = [
   { icon: Settings, label: 'Audit Log', path: '/audit-logs' },
 ];
 
+// Page titles shown in the top header (serif). headerTitle prop takes precedence.
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/coaching': 'Find Your Coach',
+  '/marketplace': 'Find Your Coach',
+  '/mentor-details': 'Mentor Profile',
+  '/interview-insights': 'InterviewPrep Note',
+  '/quick-mock': 'Quick Mock',
+  '/mock-interview': 'Quick Mock',
+  '/personalized-practice': 'Personalized Practice',
+  '/history': 'My Sessions',
+  '/contributions': 'My Contributions',
+  '/dashboard/contributions': 'My Contributions',
+  '/profile': 'Profile',
+  '/settings': 'Settings & Payment',
+  '/refer': 'Refer & Earn',
+  '/library': 'My Library',
+};
+
+function navItemClass(isActive: boolean) {
+  return `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+    isActive
+      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+  }`;
+}
+
+// ════════════════════════════════════════════════════════
+// SIDEBAR — full-height, logo at top
+// ════════════════════════════════════════════════════════
 function SidebarContent({ currentPath }: { currentPath: string }) {
-  const { planData } = useUserPlan();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const creditBalance = planData.permanentCreditBalance;
   const isAdmin = user?.role === 'ADMIN';
 
   // Dual-role accounts (candidate + mentor) can jump to the mentor dashboard.
@@ -85,36 +103,41 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     navigate(MENTOR_DASHBOARD_PATH);
   };
 
+  const isLinkActive = (path: string) => {
+    if (path === '/coaching') return currentPath === '/coaching' || currentPath === '/marketplace' || currentPath === '/mentor-details';
+    if (path === '/interview-insights') return currentPath.startsWith('/interview-insights');
+    if (path === '/quick-mock') return currentPath === '/quick-mock' || currentPath.includes('mock-interview') || currentPath.includes('ai-mock');
+    if (path === '/personalized-practice') return currentPath === '/personalized-practice';
+    if (path === '/contributions') return currentPath === '/contributions' || currentPath === '/dashboard/contributions';
+    return currentPath === path;
+  };
+
+  // ── Logo (shared) ──
+  const Logo = (
+    <div className="flex items-center px-6 shrink-0" style={{ height: '72px', borderBottom: '1px solid #E5E7EB' }}>
+      <Link to={isAdmin ? '/admin' : '/dashboard'} className="flex items-center">
+        <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+      </Link>
+    </div>
+  );
+
   if (isAdmin) {
     return (
       <div className="flex flex-col h-full bg-sidebar">
+        {Logo}
         <nav className="px-3 pt-4 pb-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Admin</p>
           <div className="space-y-0.5">
-            {adminSidebarLinks.map((item) => {
-              const isActive = currentPath === item.path;
-              return (
-                <Link
-                  key={item.label}
-                  to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                  }`}
-                >
-                  <item.icon className="w-4 h-4 shrink-0" />
-                  <span className="text-sm">{item.label}</span>
-                </Link>
-              );
-            })}
+            {adminSidebarLinks.map((item) => (
+              <Link key={item.label} to={item.path} className={navItemClass(currentPath === item.path)}>
+                <item.icon className="w-4 h-4 shrink-0" />
+                <span className="text-sm">{item.label}</span>
+              </Link>
+            ))}
           </div>
         </nav>
-        <div className="px-3 pb-5 mt-auto shrink-0">
-          <button
-            onClick={logout}
-            className="flex items-center gap-3 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
-          >
+        <div className="px-3 pb-6 mt-auto shrink-0">
+          <button onClick={logout} className={navItemClass(false) + ' w-full'}>
             <LogOut className="w-4 h-4 shrink-0" />
             <span className="text-sm">Logout</span>
           </button>
@@ -125,27 +148,18 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
+      {Logo}
+
       {/* Nav links — Career group */}
       <nav className="px-3 pt-4 pb-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2">Career</p>
         <div className="space-y-0.5">
-          {sidebarLinks.map((item) => {
-            const isActive = currentPath === item.path;
-            return (
-              <Link
-                key={item.label}
-                to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                }`}
-              >
-                <item.icon className="w-4 h-4 shrink-0" />
-                <span className="text-sm">{item.label}</span>
-              </Link>
-            );
-          })}
+          {sidebarLinks.map((item) => (
+            <Link key={item.label} to={item.path} className={navItemClass(isLinkActive(item.path))}>
+              <item.icon className="w-4 h-4 shrink-0" />
+              <span className="text-sm">{item.label}</span>
+            </Link>
+          ))}
         </div>
       </nav>
 
@@ -156,26 +170,12 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       <nav className="px-3 pb-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 mb-2 mt-2">Activity & Account</p>
         <div className="space-y-0.5">
-          {sidebarAccountLinks.map((item) => {
-            const isActive =
-              currentPath === item.path ||
-              (item.path === '/settings' && currentPath.startsWith('/settings')) ||
-              (item.path === '/profile' && currentPath === '/profile');
-            return (
-              <Link
-                key={item.label}
-                to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                }`}
-              >
-                <item.icon className="w-4 h-4 shrink-0" />
-                <span className="text-sm">{item.label}</span>
-              </Link>
-            );
-          })}
+          {sidebarAccountLinks.map((item) => (
+            <Link key={item.label} to={item.path} className={navItemClass(isLinkActive(item.path))}>
+              <item.icon className="w-4 h-4 shrink-0" />
+              <span className="text-sm">{item.label}</span>
+            </Link>
+          ))}
         </div>
       </nav>
 
@@ -196,40 +196,48 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         </>
       )}
 
-      {/* Bottom: Credits / Upgrade */}
-      <div className="px-3 pb-5 mt-auto shrink-0">
-        <div className="rounded-md bg-primary p-4 text-primary-foreground">
-          <div className="flex items-center gap-2 mb-1">
-            <Coins className="w-4 h-4" />
-            <span className="text-sm font-medium">{creditBalance <= 5 ? 'Low on Credits' : `${creditBalance} credit${creditBalance !== 1 ? 's' : ''}`}</span>
+      {/* Bottom utility area */}
+      <div className="px-3 pb-6 mt-auto shrink-0 flex flex-col gap-0">
+        {/* Refer & Earn card */}
+        <Link to="/refer" className="block mb-5 rounded-2xl p-4 no-underline hover:opacity-90 transition-opacity" style={{ background: '#EEF4FF' }}>
+          <div className="flex items-center gap-2">
+            <Gift className="w-4 h-4 shrink-0 text-primary" />
+            <span className="flex-1 text-sm font-medium text-foreground">Refer &amp; Earn</span>
+            <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
           </div>
-          <p className="text-xs text-primary-foreground/80 mb-3 leading-relaxed">
-            {creditBalance <= 5
-              ? 'Top up credits to keep practicing mock interviews'
-              : `You have ${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}
+          <div className="my-2.5 border-t border-primary/10" />
+          <p className="text-xs text-foreground/70 leading-relaxed">
+            Invite friends or share on LinkedIn to earn extra rewards!
           </p>
-          <Link to="/pricing">
-            <button className="w-full py-1.5 bg-background text-primary rounded-md text-xs font-medium hover:bg-background/90 transition-colors">
-              Buy Credits
-            </button>
-          </Link>
-        </div>
+        </Link>
+
+        {/* Settings & Payment row */}
+        <Link to="/settings" className={navItemClass(currentPath.startsWith('/settings'))}>
+          <Settings className="w-4 h-4 shrink-0" />
+          <span className="text-sm">Settings &amp; Payment</span>
+        </Link>
       </div>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════
-// GLOBAL TOP HEADER
+// GLOBAL TOP HEADER — offset to the right of the sidebar
 // ════════════════════════════════════════════════════════
 function GlobalTopHeader({
   firstName,
   userData,
   currentPath,
+  hasSidebar,
+  pageTitle,
+  breadcrumb,
 }: {
   firstName: string;
   userData: UserData | null;
   currentPath: string;
+  hasSidebar: boolean;
+  pageTitle?: string;
+  breadcrumb?: { label: string; path: string };
 }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -272,124 +280,123 @@ function GlobalTopHeader({
     navigate('/');
   };
 
-  const isPathActive = (path: string) => {
-    if (path === '/personalized-practice') {
-      return currentPath.includes('mock-interview') || currentPath.includes('ai-mock') || currentPath.includes('personalized-practice');
-    }
-    if (path === '/interview-insights') {
-      return currentPath.startsWith('/question-bank') || currentPath.startsWith('/interview-insights');
-    }
-    if (path === '/applications') {
-      return currentPath === '/applications';
-    }
-    return currentPath === path;
-  };
-
-  if (user?.role === 'ADMIN') {
-    return (
-      <header
-        className="sticky top-[var(--topbar-h)] z-50 h-16 flex items-center px-4 sm:px-6"
-        style={{
-          backdropFilter: 'saturate(180%) blur(14px)',
-          WebkitBackdropFilter: 'saturate(180%) blur(14px)',
-          background: 'rgba(255,255,255,0.72)',
-          borderBottom: '1px solid #E8E8EA',
-        }}
-      >
-        <Link to="/admin" className="flex items-center gap-2">
-          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
-        </Link>
-      </header>
-    );
-  }
+  const isLinkActive = (path: string) => currentPath === path || currentPath.startsWith(path);
 
   return (
     <header
-      className="sticky top-[var(--topbar-h)] z-50"
-      style={{
-        backdropFilter: 'saturate(180%) blur(14px)',
-        WebkitBackdropFilter: 'saturate(180%) blur(14px)',
-        background: 'rgba(255,255,255,0.72)',
-        borderBottom: '1px solid #E8E8EA',
-      }}
+      className="fixed top-0 right-0 z-40 border-b flex items-center px-4 sm:px-6 lg:px-8 left-0 lg:left-[240px]"
+      style={{ height: '72px', background: '#FFFFFF', borderColor: '#E5E7EB' }}
     >
-      <div className="flex items-center justify-between h-16 px-4 sm:px-6">
-        {/* Left: Logo + Home */}
-        <div className="flex items-center gap-3 shrink-0">
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <img src={logoImg} alt="Screna" className="h-6 w-auto" />
-          </Link>
-          <div className="w-px h-5 bg-[#E8E8EA]" />
-          <Link
-            to="/"
-            className="flex items-center gap-1 text-[#8a8f9a] hover:text-[#0A0A0A] transition-colors"
-            title="Back to homepage"
-          >
-            <Home className="w-3.5 h-3.5" />
-            <span className="text-xs hidden sm:inline">Home</span>
-          </Link>
-        </div>
+      {/* Left: mobile menu + logo (mobile / no-sidebar) or page title (desktop) */}
+      <div className="flex items-center gap-3 min-w-0 mr-4">
+        {hasSidebar && (
+          <Sheet>
+            <SheetTrigger asChild>
+              <button className="lg:hidden p-2 -ml-2 rounded-md text-muted-foreground hover:bg-secondary transition-colors" aria-label="Open menu">
+                <Menu className="w-5 h-5" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-[240px] border-r border-border">
+              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <SheetDescription className="sr-only">Personal center navigation</SheetDescription>
+              <SidebarContent currentPath={currentPath} />
+            </SheetContent>
+          </Sheet>
+        )}
 
-        {/* Center: Global Nav — identical to landing navbar */}
-        <nav className="hidden md:flex items-center gap-7 absolute left-1/2 -translate-x-1/2">
-          {TOP_NAV_LINKS.map(({ label, path }) => (
-            <Link
-              key={path}
-              to={path}
-              className="text-[14px] whitespace-nowrap hover:text-[#2E5BFF] transition-colors duration-150"
-              style={{ fontWeight: 450, color: isPathActive(path) ? '#2E5BFF' : '#2A2A2A' }}
+        {/* Logo: shown on mobile when sidebar exists, or always when there is no sidebar */}
+        <Link to="/dashboard" className={hasSidebar ? 'lg:hidden flex items-center' : 'flex items-center'}>
+          <img src={logoImg} alt="Screna" className="h-6 w-auto" />
+        </Link>
+
+        {/* Page title / breadcrumb (desktop; or alongside logo when no sidebar) */}
+        <div className={hasSidebar ? 'hidden lg:flex items-center min-w-0' : 'hidden sm:flex items-center min-w-0 pl-1'}>
+          {breadcrumb ? (
+            <div className="flex items-center gap-2 min-w-0" style={{ fontFamily: 'var(--font-serif)' }}>
+              <Link
+                to={breadcrumb.path}
+                style={{ fontSize: '22px', fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', textDecoration: 'none' }}
+              >
+                {breadcrumb.label}
+              </Link>
+              <span style={{ fontSize: '18px', color: 'var(--muted-foreground)', fontWeight: 400, lineHeight: 1 }}>›</span>
+              {pageTitle && (
+                <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--muted-foreground)', whiteSpace: 'nowrap', fontFamily: 'var(--font-serif)' }}>
+                  {pageTitle}
+                </span>
+              )}
+            </div>
+          ) : pageTitle ? (
+            <span
+              className="truncate"
+              style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', fontWeight: 700, color: 'var(--foreground)', letterSpacing: '-0.01em' }}
             >
-              {label}
-            </Link>
-          ))}
+              {pageTitle}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex-1 flex items-center justify-end gap-4 sm:gap-7">
+        {/* Right: Global Nav Links */}
+        <nav className="hidden md:flex items-center gap-7">
+          <Link
+            to="/pricing"
+            className={`text-sm font-medium transition-colors ${isLinkActive('/pricing') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Pricing
+          </Link>
+          <Link
+            to="/help"
+            className={`text-sm font-medium transition-colors ${isLinkActive('/help') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            FAQ
+          </Link>
         </nav>
 
-        {/* Right: Avatar */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="relative" ref={avatarRef}>
-            <button
-              onClick={() => setAvatarOpen((v) => !v)}
-              className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-medium text-sm transition-all bg-primary text-primary-foreground hover:opacity-90"
-            >
-              {avatarUrl
-                ? <img src={avatarUrl} alt={firstName || 'Profile'} className="w-full h-full object-cover" />
-                : initials}
-            </button>
+        {/* Avatar */}
+        <div className="relative" ref={avatarRef}>
+          <button
+            onClick={() => setAvatarOpen((v) => !v)}
+            className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center font-medium text-sm transition-all bg-primary text-primary-foreground hover:opacity-90"
+          >
+            {avatarUrl
+              ? <img src={avatarUrl} alt={firstName || 'Profile'} className="w-full h-full object-cover" />
+              : initials}
+          </button>
 
-            <AnimatePresence>
-              {avatarOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute top-full right-0 mt-2 w-56 bg-white/95 backdrop-blur-2xl rounded-2xl border border-[#F0F0F2] overflow-hidden z-50 p-1.5 origin-top-right"
-                  style={{ boxShadow: '0 16px 48px -12px rgba(10,10,10,0.12)' }}
-                >
-                  <div className="px-3 py-2.5 border-b border-[#F0F0F2] mb-1">
-                    <p className="text-sm font-semibold text-[#0A0A0A] truncate">
-                      {userData?.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'My Account'}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Coins className="w-3 h-3 text-primary" />
-                      <span className="text-xs text-[#8a8f9a]">{`${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}</span>
-                    </div>
+          <AnimatePresence>
+            {avatarOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+                className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl shadow-xl shadow-black/[0.08] border border-border/60 overflow-hidden z-50 p-2 origin-top-right"
+              >
+                <div className="px-4 py-2.5 border-b border-border mb-1">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {userData?.firstName ? `${userData.firstName} ${userData.lastName || ''}` : 'My Account'}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Coins className="w-3 h-3 text-primary" />
+                    <span className="text-xs text-muted-foreground">{`${creditBalance} credit${creditBalance !== 1 ? 's' : ''} remaining`}</span>
                   </div>
-                  <Link to="/dashboard" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors">
-                    <LayoutDashboard className="w-4 h-4 opacity-50" /> Dashboard
-                  </Link>
-                  <Link to="/settings" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors">
-                    <Settings className="w-4 h-4 opacity-50" /> Settings
-                  </Link>
-                  <div className="border-t border-[#F0F0F2] mt-1 pt-1">
-                    <button onClick={handleSignOut} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors">
-                      <LogOut className="w-4 h-4 opacity-60" /> Sign Out
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                </div>
+                <Link to="/dashboard" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-xl transition-colors">
+                  <LayoutDashboard className="w-4 h-4 text-muted-foreground" /> Personal Center
+                </Link>
+                <Link to="/settings" onClick={() => setAvatarOpen(false)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-xl transition-colors">
+                  <Settings className="w-4 h-4 text-muted-foreground" /> Settings
+                </Link>
+                <div className="border-t border-border mt-1 pt-1">
+                  <button onClick={handleSignOut} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-xl transition-colors">
+                    <LogOut className="w-4 h-4" /> Sign Out
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </header>
@@ -402,6 +409,7 @@ function GlobalTopHeader({
 function CareerCommandCenter({ userData }: { userData: UserData | null }) {
   return <DashboardHome userData={userData} />;
 }
+
 // ════════════════════════════════════════════════════════
 // DASHBOARD LAYOUT
 // ════════════════════════════════════════════════════════
@@ -409,9 +417,12 @@ interface DashboardLayoutProps {
   children: ReactNode;
   headerTitle?: string;
   noSidebar?: boolean;
+  // Ported new-design pages bring their own page container/padding (e.g.
+  // WidePageContainer), so they opt out of the layout's default padded wrapper.
+  fullBleed?: boolean;
 }
 
-export function DashboardLayout({ children, headerTitle, noSidebar = false }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerTitle, noSidebar = false, fullBleed = false }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -441,41 +452,63 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false }: Da
   }, [user]);
 
   const firstName = userData?.firstName || 'there';
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const displayTitle = headerTitle || `${greeting}, ${firstName}`;
 
   const isApplications = location.pathname === '/applications';
-  // Jobs gets a full-width canvas with no left sidebar.
-  const effectiveNoSidebar = noSidebar || isApplications;
+  // Marketplace & Jobs get a full-width canvas with no left sidebar.
+  const hasSidebar = !noSidebar && !isApplications && location.pathname !== '/marketplace';
+
+  // Title shown in the header: explicit prop wins, else mapped from path.
+  const pageTitle =
+    headerTitle ??
+    PAGE_TITLES[location.pathname] ??
+    (location.pathname.startsWith('/interview-insights/') ? 'InterviewPrep Note' : undefined);
+
+  const breadcrumb =
+    location.pathname === '/mentor-details'
+      ? { label: 'Find Your Coach', path: '/marketplace' }
+      : location.pathname.startsWith('/interview-insights/')
+      ? { label: 'InterviewPrep Note', path: '/interview-insights' }
+      : undefined;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* ── Global Top Header ── */}
+    <div className="min-h-screen bg-background">
+      {/* ── Fixed Left Sidebar (logo + menu) — desktop only ── */}
+      {hasSidebar && (
+        <aside
+          className="hidden lg:flex fixed top-0 left-0 z-50 flex-col overflow-y-auto bg-sidebar w-[240px]"
+          style={{ height: '100vh', borderRight: '1px solid #E5E7EB' }}
+        >
+          <SidebarContent currentPath={location.pathname} />
+        </aside>
+      )}
+
+      {/* ── Fixed Top Header (offset right of sidebar) ── */}
       <GlobalTopHeader
         firstName={firstName}
         userData={userData}
         currentPath={location.pathname}
+        hasSidebar={hasSidebar}
+        pageTitle={pageTitle}
+        breadcrumb={breadcrumb}
       />
 
-      {/* ── Below header: Sidebar + Content ── */}
-      <div className="flex flex-1 min-h-0">
-        {/* Desktop Sidebar */}
-        {!effectiveNoSidebar && (
-          <aside className="hidden lg:flex flex-col w-[220px] bg-sidebar border-r border-sidebar-border sticky top-[calc(var(--topbar-h)+4rem)] h-[calc(100vh-4rem-var(--topbar-h))] z-40 shrink-0 overflow-y-auto">
-            <SidebarContent currentPath={location.pathname} />
-          </aside>
-        )}
-
-        {/* Main content */}
-        <main className="flex-1 flex flex-col min-w-0 bg-background">
-          {/* Page body */}
-          <div className="flex-1 w-full max-w-[1600px] mx-auto px-[32px] pt-[20px] pb-[48px]">
+      {/* ── Main content (offset by sidebar + top header) ── */}
+      <main
+        className={`min-h-screen bg-[#F9FAFB] ${hasSidebar ? 'lg:ml-[240px]' : ''}`}
+        style={{ paddingTop: '72px' }}
+      >
+        {/* Profile renders the pre-redesign ProfileTab (API-connected), which self-pads via WidePageContainer. */}
+        {location.pathname === '/profile' ? (
+          <ProfileTab userData={userData} />
+        ) : fullBleed ? (
+          children
+        ) : (
+          <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-12">
             {location.pathname === '/dashboard' ? (
               <CareerCommandCenter userData={userData} />
             ) : isApplications ? (
               <>
-                <div className="mt-[40px] mb-8">
+                <div className="mb-8">
                   <PageHero
                     badge="AI-matched roles"
                     title="Jobs"
@@ -484,14 +517,12 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false }: Da
                 </div>
                 <JobApplyTab />
               </>
-            ) : location.pathname === '/profile' ? (
-              <ProfileTab userData={userData} />
             ) : (
               children
             )}
           </div>
-        </main>
-      </div>
+        )}
+      </main>
     </div>
   );
 }

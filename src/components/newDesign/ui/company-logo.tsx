@@ -127,6 +127,12 @@ function getLogoUrl(domain: string): string {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
+// Resolve a company name to a logo URL (or null if no domain can be derived).
+export function getCompanyLogoUrl(company?: string): string | null {
+  const domain = company ? getCompanyDomain(company) : null;
+  return domain ? getLogoUrl(domain) : null;
+}
+
 interface CompanyLogoProps {
   company: string | undefined;
   className?: string;
