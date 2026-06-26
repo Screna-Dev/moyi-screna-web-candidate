@@ -12,8 +12,16 @@ import imgMicrophone from '@/imports/App/d73fd12be02c7a376b9c30c43ab2e65999fac31
 import imgNotebook from '@/imports/App/a62fc5bf53f588ee8f57df9053ab9c23b0cdb966.png';
 import imgFeatureB from '@/imports/featureb.png';
 import imgFeatureC from '@/imports/featurec.png';
-import imgSocialProof from '@/imports/Frame1/d92ac8d02baf66895b4caf0b736667c9821c2c08.png';
 import imgDashboard from '@/imports/image-2.png';
+// AI-generated testimonial portraits (people who don't exist — commercial-safe)
+import avMaya from '@/imports/avatars/maya-chen.jpg';
+import avDaniel from '@/imports/avatars/daniel-park.jpg';
+import avAisha from '@/imports/avatars/aisha-raman.jpg';
+import avKevin from '@/imports/avatars/kevin-liu.jpg';
+import avSofia from '@/imports/avatars/sofia-martinez.jpg';
+import avJordan from '@/imports/avatars/jordan-blake.jpg';
+import avPriya from '@/imports/avatars/priya-shah.jpg';
+import avEthan from '@/imports/avatars/ethan-wu.jpg';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
@@ -115,20 +123,92 @@ const PLANS: Plan[] = [
 ];
 
 const MARQUEE_ROW1 = [
-  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF' },
-  { name: 'Daniel Park', role: 'Software Engineer', company: 'Final round at Stripe', quote: 'Quick Mock let me practice when I only had 20 minutes. The feedback made the next answer immediately stronger.', initials: 'DP', avatarBg: '#FFF0ED', initialsColor: '#C94025' },
-  { name: 'Aisha Raman', role: 'Data Analyst', company: 'Offer at Airbnb', quote: 'My mentor helped me turn scattered stories into answers that actually landed.', initials: 'AR', avatarBg: '#EDFFF1', initialsColor: '#1A7F33' },
-  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000' },
-  { name: 'Sofia Martinez', role: 'PMM', company: 'Offer at Figma', quote: 'The notes showed me what candidates actually faced, and the AI Mock helped me rehearse with real context.', initials: 'SM', avatarBg: '#F4EEFF', initialsColor: '#7B3FE4' },
+  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
+  { name: 'Daniel Park', role: 'Software Engineer', company: 'Final round at Stripe', quote: 'Quick Mock let me practice when I only had 20 minutes. The feedback made the next answer immediately stronger.', initials: 'DP', avatarBg: '#FFF0ED', initialsColor: '#C94025', img: avDaniel },
+  { name: 'Aisha Raman', role: 'Data Analyst', company: 'Offer at Airbnb', quote: 'My mentor helped me turn scattered stories into answers that actually landed.', initials: 'AR', avatarBg: '#EDFFF1', initialsColor: '#1A7F33', img: avAisha },
+  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
+  { name: 'Sofia Martinez', role: 'PMM', company: 'Offer at Figma', quote: 'The notes showed me what candidates actually faced, and the AI Mock helped me rehearse with real context.', initials: 'SM', avatarBg: '#F4EEFF', initialsColor: '#7B3FE4', img: avSofia },
 ];
 
 const MARQUEE_ROW2 = [
-  { name: 'Jordan Blake', role: 'Backend Engineer', company: 'Offer at Meta', quote: 'The best part was how flexible the practice felt. I could paste a job description or just jump into a quick session.', initials: 'JB', avatarBg: '#E8F3FF', initialsColor: '#1868D4' },
-  { name: 'Priya Shah', role: 'Strategy', company: 'Interview loop at Uber', quote: 'Mentorship gave me the strategy I was missing. AI Mock gave me the reps.', initials: 'PS', avatarBg: '#FFF0F5', initialsColor: '#C0245A' },
-  { name: 'Ethan Wu', role: 'Designer', company: 'Offer at Dropbox', quote: 'It felt like practicing with signal, not practicing in the dark.', initials: 'EW', avatarBg: '#EDFFFC', initialsColor: '#0E8A79' },
-  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF' },
-  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000' },
+  { name: 'Jordan Blake', role: 'Backend Engineer', company: 'Offer at Meta', quote: 'The best part was how flexible the practice felt. I could paste a job description or just jump into a quick session.', initials: 'JB', avatarBg: '#E8F3FF', initialsColor: '#1868D4', img: avJordan },
+  { name: 'Priya Shah', role: 'Strategy', company: 'Interview loop at Uber', quote: 'Mentorship gave me the strategy I was missing. AI Mock gave me the reps.', initials: 'PS', avatarBg: '#FFF0F5', initialsColor: '#C0245A', img: avPriya },
+  { name: 'Ethan Wu', role: 'Designer', company: 'Offer at Dropbox', quote: 'It felt like practicing with signal, not practicing in the dark.', initials: 'EW', avatarBg: '#EDFFFC', initialsColor: '#0E8A79', img: avEthan },
+  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
+  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
 ];
+
+// ─── Hero logo marquee (old-design scrolling company logos) ───────────────────
+interface LogoEntry {
+  name: string;
+  src: string;
+  h?: number;
+}
+
+const HERO_LOGOS: LogoEntry[] = [
+  { name: 'Apple',     src: '/logos/companies/apple.svg',     h: 32 },
+  { name: 'Microsoft', src: '/logos/companies/microsoft.png', h: 28 },
+  { name: 'Google',    src: '/logos/companies/google.png',    h: 32 },
+  { name: 'Walmart',   src: '/logos/companies/walmart.png',   h: 32 },
+  { name: 'Amazon',    src: '/logos/companies/amazon.png',    h: 32 },
+  { name: 'Disney',    src: '/logos/companies/disney.png',    h: 32 },
+  { name: 'Hulu',      src: '/logos/companies/hulu.png',      h: 30 },
+  { name: 'Meta',      src: '/logos/companies/meta.png',      h: 28 },
+  { name: 'TikTok',    src: '/logos/companies/tiktok.svg',    h: 30 },
+  { name: 'Nvidia',    src: '/logos/companies/nvidia.svg',    h: 26 },
+];
+
+// Each slot is 200px → exactly 5 visible at a time
+const SLOT_W = 200;
+
+function LogoMarquee({ logos, speed = 30 }: { logos: LogoEntry[]; speed?: number }) {
+  const trackW = logos.length * 2 * SLOT_W;
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{
+        maskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+      }}
+    >
+      <style>{`
+        @keyframes logo-scroll {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .logo-marquee-track { display: flex; align-items: center; will-change: transform; }
+        .logo-marquee-track:hover { animation-play-state: paused; }
+      `}</style>
+      <div
+        className="logo-marquee-track py-2"
+        style={{ width: trackW, animation: `logo-scroll ${speed}s linear infinite` }}
+      >
+        {[...logos, ...logos].map((logo, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-center flex-shrink-0"
+            style={{ width: SLOT_W, height: 56 }}
+          >
+            <img
+              src={logo.src}
+              alt={logo.name}
+              style={{ height: logo.h ?? 32, width: 'auto', maxWidth: 120, objectFit: 'contain', userSelect: 'none' }}
+              draggable={false}
+              onError={(e) => {
+                const img = e.currentTarget;
+                img.style.display = 'none';
+                const span = document.createElement('span');
+                span.textContent = logo.name;
+                span.style.cssText = 'font-size:13px;font-weight:600;color:#4a4d57;white-space:nowrap;';
+                img.parentNode?.appendChild(span);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ─── Feature Tab Cards ───────────────────────────────────────────────────────
 
@@ -295,12 +375,13 @@ function MentorshipCard() {
 // ─── Marquee testimonial card ─────────────────────────────────────────────────
 
 function MarqueeCard({
-  name, role, company, quote, initials, avatarBg, initialsColor,
+  name, role, company, quote, initials, avatarBg, initialsColor, img,
 }: {
   name: string; role: string; company: string; quote: string;
-  initials: string; avatarBg: string; initialsColor: string;
+  initials: string; avatarBg: string; initialsColor: string; img?: string;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   return (
     <div
       className="flex-shrink-0 flex flex-col"
@@ -322,17 +403,29 @@ function MarqueeCard({
     >
       {/* Avatar + meta */}
       <div className="flex items-center gap-3 mb-4">
-        <div
-          className="rounded-full flex items-center justify-center flex-shrink-0"
-          style={{ width: 36, height: 36, background: avatarBg }}
-        >
-          <span
-            className="text-[11px] font-semibold"
-            style={{ color: initialsColor, fontFamily: "'Inter', sans-serif" }}
+        {img && !imgFailed ? (
+          <img
+            src={img}
+            alt={name}
+            className="rounded-full flex-shrink-0 object-cover"
+            style={{ width: 36, height: 36 }}
+            loading="lazy"
+            draggable={false}
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div
+            className="rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ width: 36, height: 36, background: avatarBg }}
           >
-            {initials}
-          </span>
-        </div>
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: initialsColor, fontFamily: "'Inter', sans-serif" }}
+            >
+              {initials}
+            </span>
+          </div>
+        )}
         <div>
           <p
             className="text-[13px] font-semibold leading-[18px]"
@@ -887,18 +980,19 @@ export function HomePage() {
             style={{ display: 'block', width: '88%', margin: '0 auto' }}
           />
 
-          {/* Logo bar */}
+          {/* Logo bar — scrolling company logos (old-design marquee) */}
           <div
             data-reveal data-delay="540"
             className="w-full mt-12"
             style={{ borderTop: '1px solid #E8E8EA', paddingTop: 28 }}
           >
-            <img
-              src={imgSocialProof}
-              alt="Trusted by top companies"
-              className="w-full h-auto object-cover"
-              style={{ display: 'block' }}
-            />
+            <p
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center"
+            >
+              Members have landed roles at
+            </p>
+            <LogoMarquee logos={HERO_LOGOS} />
           </div>
         </div>
       </section>
