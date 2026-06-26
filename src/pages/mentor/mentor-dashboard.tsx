@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react';
+import { toast } from 'sonner';
 import {
   LayoutDashboard, CalendarCheck, Clock, MessageSquare, User,
   ShieldCheck, Star, DollarSign, Bell, Search, ChevronRight,
@@ -2287,6 +2288,16 @@ function ProfilePage() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const handleAvatarPick = (file: File | null) => {
     if (!file || avatarUploading) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast('Avatar must be a JPEG or PNG image.');
+      if (avatarFileRef.current) avatarFileRef.current.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast('Avatar must be 5 MB or smaller.');
+      if (avatarFileRef.current) avatarFileRef.current.value = '';
+      return;
+    }
     setAvatarUploading(true);
     uploadMyMentorAvatar(file)
       .then(res => {

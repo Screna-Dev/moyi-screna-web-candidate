@@ -26,6 +26,15 @@ export const submitDispute = (bookingId, payload) =>
 export const updateDispute = (bookingId, payload) =>
   API.put(`/mentorship/bookings/${bookingId}/disputes`, payload);
 
+// Attach a screenshot (PNG/JPEG/WEBP, max 5MB) to a PENDING dispute.
+export const submitDisputeScreenshot = (bookingId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return API.post(`/mentorship/bookings/${bookingId}/disputes/screenshot`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
 export const getBookingScriptUrl = (bookingId) =>
   API.get(`/mentorship/bookings/${bookingId}/script`);
 

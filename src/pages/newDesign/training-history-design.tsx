@@ -15,7 +15,7 @@ import { Button } from '@/components/newDesign/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/newDesign/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getTrainingPlans } from '@/services/InterviewServices';
-import { listMyBookings, submitMentorReview, cancelBooking, rescheduleBooking, submitDispute, getMentor, getMentorSlots } from '@/services/MentorService';
+import { listMyBookings, submitMentorReview, cancelBooking, rescheduleBooking, submitDispute, submitDisputeScreenshot, getMentor, getMentorSlots } from '@/services/MentorService';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import svgPaths from './svg-training-history';
 
@@ -776,7 +776,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                       onClick={() => { setMenuOpen(false); setIssueModalOpen(true); }}
                       className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
                     >
-                      Report Issue
+                      Dispute
                     </button>
                   )}
                 </div>
@@ -808,7 +808,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                       onClick={() => { setMenuOpen(false); setIssueModalOpen(true); }}
                       className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
                     >
-                      Report Issue
+                      Dispute
                     </button>
                   )}
                 </div>
@@ -1135,9 +1135,22 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
             <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border bg-muted cursor-pointer hover:bg-muted/70 transition-colors">
               <input
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp"
                 className="sr-only"
-                onChange={e => setIssueFile(e.target.files?.[0] ?? null)}
+                onChange={e => {
+                  const f = e.target.files?.[0] ?? null;
+                  e.target.value = ''; // allow re-selecting the same file after a rejection
+                  if (!f) { setIssueFile(null); return; }
+                  if (!['image/png', 'image/jpeg', 'image/webp'].includes(f.type)) {
+                    toast('Screenshot must be a PNG, JPEG, or WEBP image.');
+                    return;
+                  }
+                  if (f.size > 5 * 1024 * 1024) {
+                    toast('Screenshot must be 5 MB or smaller.');
+                    return;
+                  }
+                  setIssueFile(f);
+                }}
               />
               <span className="text-sm text-muted-foreground truncate">
                 {issueFile ? issueFile.name : 'Click to upload an image'}
@@ -1158,19 +1171,22 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                 if (!selectedIssue || issueSubmitting) return;
                 setIssueSubmitting(true);
                 try {
-                  // API expects { reason: 'SERVICE_NOT_DELIVERED' | 'QUALITY_ISSUE' | 'OTHER', description }.
-                  // Map the chosen UI option to the closest enum; keep the option label + the user's
-                  // text in the description (max 1000 chars). File attachment is not uploaded.
-                  const REASON_MAP: Record<string, 'SERVICE_NOT_DELIVERED' | 'QUALITY_ISSUE' | 'OTHER'> = {
-                    "Mentor didn't show up": 'SERVICE_NOT_DELIVERED',
-                    'Session ended early':   'SERVICE_NOT_DELIVERED',
-                    'Technical issues':      'QUALITY_ISSUE',
-                    'Billing / credits error': 'OTHER',
-                    'Other':                 'OTHER',
+                  // API expects { reason: <enum>, description }. UI options map 1:1 to the enum.
+                  const REASON_MAP: Record<string, 'MENTOR_NO_SHOW' | 'SESSION_ENDED_EARLY' | 'TECHNICAL_ISSUES' | 'BILLING_ERROR' | 'OTHER'> = {
+                    "Mentor didn't show up":   'MENTOR_NO_SHOW',
+                    'Session ended early':     'SESSION_ENDED_EARLY',
+                    'Technical issues':        'TECHNICAL_ISSUES',
+                    'Billing / credits error': 'BILLING_ERROR',
+                    'Other':                   'OTHER',
                   };
                   const reason = REASON_MAP[selectedIssue] ?? 'OTHER';
-                  const description = [selectedIssue, issueDetails].filter(Boolean).join(' — ').slice(0, 1000);
+                  const description = issueDetails.slice(0, 1000);
                   await submitDispute(session.id, { reason, description });
+                  // Optional screenshot: uploaded to the dedicated endpoint after the dispute is created.
+                  if (issueFile) {
+                    try { await submitDisputeScreenshot(session.id, issueFile); }
+                    catch { toast('Dispute submitted, but the screenshot upload failed.'); }
+                  }
                   setIssueReported(true);
                   setIssueModalOpen(false);
                   setSelectedIssue('');

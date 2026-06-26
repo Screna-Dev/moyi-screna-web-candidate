@@ -27,6 +27,13 @@ export const changeTier = (tier) => {
   return API.post(`${BASE_URL}/subscriptions/tier`, { tier: toApiEnum(tier) });
 };
 
+// Landing-page tier selection (Free / Basic / Advanced / Flagship).
+// New endpoint — backend not fully implemented yet. Returns Stripe URL when available.
+// body: { tier: 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP' }
+export const updateTier = (tier) => {
+  return API.post(`${BASE_URL}/subscriptions/tierUpdate`, { tier: toApiEnum(tier) });
+};
+
 // Change billing cycle. Upgrade prorated immediate, downgrade pending.
 // body: { billingCycle: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' }
 export const changeBillingCycle = (billingCycle) => {
@@ -93,6 +100,7 @@ const PaymentService = {
   createSubscription,
   getSubscription,
   changeTier,
+  updateTier,
   changeBillingCycle,
   cancelPendingDowngrade,
   cancelSubscription,
