@@ -1,9 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import {
-  Clock, CheckCircle2,
-  ChevronRight, Star, Lock, Calendar, MessageCircle, Eye,
-  Sparkles, Target, Users,
-} from 'lucide-react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { listMyBookings } from '@/services/MentorService';
@@ -11,7 +6,11 @@ import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
 
-// ─── API data types ────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
+type Plan = 'free' | 'starter' | 'premium';
+type ChartTab = 'learning' | 'sessions';
+type ChartRange = '7d' | '30d' | '3m';
+
 type DailyEntry = { date: string; value: number };
 
 type InterviewInsights = {
@@ -29,6 +28,13 @@ type DashboardStatsApi = {
   dailySessionCount?: DailyEntry[];
 };
 
+type UserData = {
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatMinutesAsHm(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return '0h 0m';
   const h = Math.floor(mins / 60);
@@ -39,542 +45,203 @@ function formatMinutesAsHm(mins: number): string {
 function planFromUserPlan(pt: PlanType): Plan {
   if (pt === 'Elite') return 'premium';
   if (pt === 'Pro') return 'starter';
-  return 'starter';
+  return 'free';
 }
 
-// ─── Brand blue scale — strict palette (blue-50 → blue-950) ──────────────────
-const BLUES = {
-  royal: '#3C77F6',   // ★ primary
-  sky:   '#93B0FB',   // light periwinkle
-  deep:  '#1D4ED8',   // deep blue
-} as const;
-
-// Avatar tints — cycle through 3 steps of the palette
-const AVATAR_CYCLE = [
-  'bg-blue-100 text-blue-700',   // #DBE5FE / #1D4ED8
-  'bg-blue-200 text-blue-800',   // #BFD1FD / #1E40AF
-  'bg-blue-50  text-blue-600',   // #EFF4FF / #2563EB
-] as const;
-
-const CHART_COLORS = {
-  applications: BLUES.royal,
-  learning:     BLUES.sky,
-  sessions:     BLUES.deep,
-} as const;
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-type Plan      = 'starter' | 'premium';
-type ChartTab  = 'applications' | 'learning' | 'sessions';
-type TimeRange = '7d' | '30d' | '3m';
-
-// ─── Quality badge ─────────────────────────────────────────────────────────────
-function qualityBadge(v: number) {
-  if (v >= 85) return { label: 'Strong',       cls: 'bg-accent/15 text-accent-foreground' };
-  if (v >= 75) return { label: 'Developing',   cls: 'bg-blue-100 text-blue-600' };
-  if (v >= 65) return { label: 'Inconsistent', cls: 'bg-amber-400/15 text-amber-700 dark:text-amber-400' };
-  return              { label: 'Needs work',   cls: 'bg-destructive/10 text-destructive' };
+function formatShortDate(iso: string, fallback: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ─── Custom Area Chart ─────────────────────────────────────────────────────────
-const CHART_VW = 400;
-const CHART_VH = 100;
-const CHART_PADX = 4;
-const CHART_PADY = 8;
+// ─── Radar helpers (generalised over N dimensions) ──────────────────────────────
+const R_MAX = 80, R_CX = 180, R_CY = 130;
+function radarAngle(i: number, n: number) { return (Math.PI * 2 * i) / n - Math.PI / 2; }
+function radarPt(r: number, angle: number) { return { x: R_CX + r * Math.cos(angle), y: R_CY + r * Math.sin(angle) }; }
+function radarPolygon(vals: number[]) {
+  const n = vals.length;
+  return vals.map((v, i) => { const p = radarPt((v / 100) * R_MAX, radarAngle(i, n)); return `${p.x},${p.y}`; }).join(' ');
+}
+function radarGridPolygon(pct: number, n: number) {
+  return Array.from({ length: n }, (_, i) => { const p = radarPt(pct * R_MAX, radarAngle(i, n)); return `${p.x},${p.y}`; }).join(' ');
+}
 
-function CustomAreaChart({
-  data, color, formatValue,
-}: {
-  data: number[];
-  color: string;
-  formatValue?: (v: number) => string;
-}) {
-  const [hovIdx, setHovIdx] = useState<number | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+// ─── Chart path helpers ──────────────────────────────────────────────────────
+function buildChartPaths(data: number[], W = 800, H = 180, pad = 16) {
+  const min = Math.min(...data), max = Math.max(...data), range = max - min || 1, n = data.length;
+  const pts = data.map((v, i) => ({ x: (n === 1 ? W / 2 : (i / (n - 1)) * W), y: pad + (1 - (v - min) / range) * (H - pad * 2) }));
+  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = linePath + ` L${pts[n - 1].x.toFixed(1)},${H - pad} L${pts[0].x.toFixed(1)},${H - pad} Z`;
+  return { pts, linePath, areaPath };
+}
 
-  const max = Math.max(...data, 0.01);
-  const innerW = CHART_VW - CHART_PADX * 2;
-  const innerH = CHART_VH - CHART_PADY * 2;
-
-  const pts = data.map((v, i) => ({
-    x: CHART_PADX + (i / (data.length - 1)) * innerW,
-    y: CHART_PADX + (1 - v / max) * innerH,
-  }));
-
-  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L ${pts[pts.length - 1].x.toFixed(1)} ${(CHART_VH - CHART_PADY).toFixed(1)} L ${CHART_PADX} ${(CHART_VH - CHART_PADY).toFixed(1)} Z`;
-
-  const gradId = `ag-${color.replace(/[^a-z0-9]/gi, '').slice(0, 10)}`;
-
-  const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct  = (e.clientX - rect.left) / rect.width;
-    setHovIdx(Math.max(0, Math.min(data.length - 1, Math.round(pct * (data.length - 1)))));
-  };
-
-  const hPt  = hovIdx !== null ? pts[hovIdx] : null;
-  const hPct = hovIdx !== null ? (hovIdx / (data.length - 1)) * 100 : null;
-  const fmtV = formatValue ?? ((v: number) => v.toFixed(1));
+// ─── Stats grid ───────────────────────────────────────────────────────────────
+function StatsGrid({ plan, stats, loading }: { plan: Plan; stats: DashboardStatsApi | null; loading: boolean }) {
+  const sub = plan === 'free' ? 'Mock Interview' : 'Mock Interview + Mentorship Sessions';
+  const learningTime = stats ? formatMinutesAsHm(stats.totalLearningTimeMinutes ?? 0) : '—';
+  const sessions = stats ? String(stats.sessionCompletedCount ?? 0) : '—';
+  const items = [
+    { label: 'Total Learning Time', value: loading ? '…' : learningTime, sub, icon: <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg> },
+    { label: 'Sessions Completed', value: loading ? '…' : sessions, sub, icon: <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="8" cy="8" r="6"/><path d="M5.5 8l2 2 3-4"/></svg> },
+  ];
 
   return (
-    <div className="relative w-full" style={{ height: 100 }}>
-      {/* Tooltip */}
-      {hPt && hovIdx !== null && (
-        <div
-          className="absolute z-20 bg-card border border-border rounded-md shadow-sm px-2.5 py-1 text-xs pointer-events-none whitespace-nowrap"
-          style={{
-            bottom: '100%',
-            marginBottom: 6,
-            left: `clamp(32px, ${hPct}%, calc(100% - 32px))`,
-            transform: 'translateX(-50%)',
-          }}
-        >
-          <span className="text-foreground font-medium">{fmtV(data[hovIdx])}</span>
-        </div>
-      )}
-
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${CHART_VW} ${CHART_VH}`}
-        preserveAspectRatio="none"
-        className="w-full h-full"
-        onMouseMove={onMouseMove}
-        onMouseLeave={() => setHovIdx(null)}
-      >
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={color} stopOpacity={0.18} />
-            <stop offset="100%" stopColor={color} stopOpacity={0}    />
-          </linearGradient>
-        </defs>
-
-        {/* Baseline */}
-        <line
-          x1={CHART_PADX} y1={CHART_VH - CHART_PADY}
-          x2={CHART_VW - CHART_PADX} y2={CHART_VH - CHART_PADY}
-          style={{ stroke: 'var(--border)', strokeWidth: 0.5 }}
-        />
-
-        {/* Area + line */}
-        <path d={areaPath} fill={`url(#${gradId})`} />
-        <path d={linePath} fill="none" stroke={color} strokeWidth={1.5}
-          strokeLinecap="round" strokeLinejoin="round"
-        />
-
-        {/* Hover elements */}
-        {hPt && (
-          <>
-            <line
-              x1={hPt.x} y1={CHART_PADY}
-              x2={hPt.x} y2={CHART_VH - CHART_PADY}
-              stroke={color} strokeWidth={1}
-              strokeDasharray="3 2" opacity={0.5}
-            />
-            <circle cx={hPt.x} cy={hPt.y} r={3} fill={color} />
-          </>
-        )}
-      </svg>
-    </div>
-  );
-}
-
-// ─── Custom Radar / Spider Chart ───────────────────────────────────────────────
-const RCX = 130, RCY = 130, RR = 82;
-const RVW = 260, RVH = 260;
-
-function CustomRadar({ data, color }: { data: { label: string; value: number }[]; color: string }) {
-  const [hovIdx, setHovIdx] = useState<number | null>(null);
-  const n = data.length;
-  const ang = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
-  const pt  = (i: number, ratio: number) => ({
-    x: RCX + RR * ratio * Math.cos(ang(i)),
-    y: RCY + RR * ratio * Math.sin(ang(i)),
-  });
-
-  const rings = [0.25, 0.5, 0.75, 1.0];
-  const ringPaths = rings.map(r =>
-    data.map((_, i) => { const p = pt(i, r); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; }).join(' ') + ' Z'
-  );
-
-  const dataPath = data
-    .map((d, i) => { const p = pt(i, d.value / 100); return `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`; })
-    .join(' ') + ' Z';
-
-  const dataPts = data.map((d, i) => pt(i, d.value / 100));
-
-  return (
-    <div className="relative w-full" style={{ paddingBottom: '100%' }}>
-      <svg viewBox={`0 0 ${RVW} ${RVH}`} className="absolute inset-0 w-full h-full">
-        {/* Grid rings */}
-        {ringPaths.map((p, i) => (
-          <path key={i} d={p} fill="none" style={{ stroke: 'hsl(var(--border))', strokeWidth: 0.7 }} />
-        ))}
-        {/* Spokes */}
-        {data.map((_, i) => {
-          const tip = pt(i, 1);
-          return (
-            <line key={i} x1={RCX} y1={RCY} x2={tip.x} y2={tip.y}
-              style={{ stroke: 'var(--border)', strokeWidth: 0.7 }} />
-          );
-        })}
-        {/* Data fill */}
-        <path d={dataPath} fill={color} fillOpacity={0.14} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-        {/* Dots */}
-        {dataPts.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x} cy={p.y} r={hovIdx === i ? 4.5 : 2.5}
-            fill={color}
-            style={{ cursor: 'pointer', transition: 'r 0.12s' }}
-            onMouseEnter={() => setHovIdx(i)}
-            onMouseLeave={() => setHovIdx(null)}
-          />
-        ))}
-        {/* Labels */}
-        {data.map((d, i) => {
-          const LR  = RR + 20;
-          const lx  = RCX + LR * Math.cos(ang(i));
-          const ly  = RCY + LR * Math.sin(ang(i));
-          const cos = Math.cos(ang(i));
-          const sin = Math.sin(ang(i));
-          return (
-            <text
-              key={i}
-              x={lx} y={ly}
-              textAnchor={cos > 0.25 ? 'start' : cos < -0.25 ? 'end' : 'middle'}
-              dominantBaseline={sin > 0.25 ? 'hanging' : sin < -0.25 ? 'auto' : 'middle'}
-              onMouseEnter={() => setHovIdx(i)}
-              onMouseLeave={() => setHovIdx(null)}
-              style={{
-                fontSize: 9,
-                fill: hovIdx === i ? color : 'var(--muted-foreground)',
-                fontFamily: 'inherit',
-                fontWeight: hovIdx === i ? 600 : 400,
-                transition: 'fill 0.12s',
-                cursor: 'default',
-              }}
-            >
-              {d.label}
-            </text>
-          );
-        })}
-      </svg>
-      {/* Hover tooltip */}
-      {hovIdx !== null && (() => {
-        const d   = data[hovIdx];
-        const p   = dataPts[hovIdx];
-        const bdg = qualityBadge(d.value);
-        return (
-          <div
-            className="absolute z-20 bg-card border border-border rounded-md shadow-sm px-2.5 py-1.5 text-xs pointer-events-none"
-            style={{
-              left: `${(p.x / RVW) * 100}%`,
-              top:  `${(p.y / RVH) * 100}%`,
-              transform: 'translate(-50%, -120%)',
-            }}
-          >
-            <div className="font-medium text-foreground mb-1">{d.label}</div>
-            <div className="flex items-center gap-1.5">
-              <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${bdg.cls}`}>{bdg.label}</span>
-              <span className="text-muted-foreground">{d.value}/100</span>
-            </div>
+    <div className="grid mb-5" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '24px' }}>
+      {items.map((s) => (
+        <div key={s.label} className="bg-card border border-border rounded-xl flex flex-col gap-2 transition-all hover:-translate-y-px" style={{ padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+          <div className="flex items-start justify-between gap-2">
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted-foreground)', lineHeight: 1.4, fontFamily: 'var(--font-sans)' }}>{s.label}</span>
+            <div className="rounded-lg flex items-center justify-center shrink-0" style={{ width: 28, height: 28, color: 'var(--primary)', background: 'hsl(221 91% 60% / 0.08)' }}>{s.icon}</div>
           </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-// ─── Loading skeletons ───────────────────────────────────────────────────────
-function StatsRowSkeleton({ plan: _plan }: { plan: Plan }) {
-  return (
-    <div className="grid gap-3 grid-cols-2">
-      {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="bg-secondary rounded-md p-4 animate-pulse">
-          <div className="h-3 w-24 bg-muted rounded mb-3" />
-          <div className="h-7 w-20 bg-muted rounded mb-2" />
-          <div className="h-3 w-28 bg-muted rounded" />
+          <div style={{ fontSize: 26, fontWeight: 600, color: 'hsl(221 80% 45%)', lineHeight: 1.1, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-sans)' }}>{s.value}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>{s.sub}</div>
         </div>
       ))}
     </div>
   );
 }
 
-function TrendChartSkeleton() {
-  return (
-    <div className="bg-card border border-border rounded-lg p-5 animate-pulse">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-20 bg-secondary rounded-md" />
-          <div className="h-7 w-24 bg-secondary rounded-md" />
-          <div className="h-7 w-20 bg-secondary rounded-md" />
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="h-6 w-16 bg-secondary rounded-md" />
-          <div className="h-6 w-20 bg-secondary rounded-md" />
-        </div>
-      </div>
-      <div className="flex items-center gap-8 mb-5">
-        <div>
-          <div className="h-3 w-24 bg-muted rounded mb-2" />
-          <div className="h-6 w-16 bg-muted rounded" />
-        </div>
-        <div className="w-px h-8 bg-border" />
-        <div>
-          <div className="h-3 w-20 bg-muted rounded mb-2" />
-          <div className="h-6 w-12 bg-muted rounded" />
-        </div>
-      </div>
-      <div className="h-[100px] w-full bg-secondary rounded-md" />
-      <div className="h-3 w-40 bg-muted rounded mt-3" />
-    </div>
-  );
-}
-
-function MentorshipSkeleton() {
-  return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Mentorship</span>
-        <button className="text-xs text-blue-600 hover:opacity-75 transition-opacity">Browse mentors ↗</button>
-      </div>
-      <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1 animate-pulse">
-        <div className="h-40 bg-secondary rounded-lg" />
-        <div className="h-3 w-24 bg-muted rounded" />
-        <div className="flex flex-col gap-1.5">
-          <div className="h-12 bg-secondary rounded-md" />
-          <div className="h-12 bg-secondary rounded-md" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InsightsSkeleton() {
-  return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Interview Practice Insights</span>
-        <button className="text-xs text-blue-600 hover:opacity-75 transition-opacity">View all ↗</button>
-      </div>
-      <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1 animate-pulse">
-        <div className="grid grid-cols-3 gap-2">
-          <div className="h-16 bg-secondary rounded-md" />
-          <div className="h-16 bg-secondary rounded-md" />
-          <div className="h-16 bg-secondary rounded-md" />
-        </div>
-        <div className="w-full aspect-square bg-secondary rounded-md" />
-        <div className="h-16 bg-secondary rounded-md" />
-      </div>
-    </div>
-  );
-}
-
-function CommunitySkeleton() {
-  return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Community Picks</span>
-        <button className="text-xs text-blue-600 hover:opacity-75 transition-opacity">Browse community ↗</button>
-      </div>
-      <div className="px-4 pb-4 pt-3 flex flex-col gap-3 flex-1 animate-pulse">
-        <div className="h-9 bg-secondary rounded-md" />
-        <div className="h-24 bg-secondary rounded-lg" />
-        <div className="h-24 bg-secondary rounded-lg" />
-        <div className="h-24 bg-secondary rounded-lg" />
-      </div>
-    </div>
-  );
-}
-
-// ─── Stats Row ─────────────────────────────────────────────────────────────────
-function StatsRow({ plan, stats, loading }: { plan: Plan; stats: DashboardStatsApi | null; loading: boolean }) {
-  if (loading) return <StatsRowSkeleton plan={plan} />;
-  const learningTime = stats ? formatMinutesAsHm(stats.totalLearningTimeMinutes ?? 0) : '—';
-  const sessions = stats ? (stats.sessionCompletedCount ?? 0) : '—';
-  return (
-    <div className="grid gap-3 grid-cols-2">
-      {/* Learning Time — sky blue */}
-      <div className="bg-secondary rounded-md overflow-hidden flex">
-        <div className="w-0.5 bg-blue-300 shrink-0" />
-        <div className="p-4 flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">Total Learning Time</span>
-            <Clock className="w-3.5 h-3.5 text-blue-300" />
-          </div>
-          <div className="text-2xl font-semibold tracking-tight mb-1 text-blue-300">{learningTime}</div>
-          <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
-        </div>
-      </div>
-
-      {/* Sessions — deep navy */}
-      <div className="bg-secondary rounded-md p-4 border-l-2" style={{ borderLeftColor: BLUES.deep }}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Sessions Completed</span>
-          <CheckCircle2 className="w-3.5 h-3.5" style={{ color: BLUES.deep }} />
-        </div>
-        <div className="text-2xl font-semibold tracking-tight mb-1" style={{ color: BLUES.deep }}>{sessions}</div>
-        <div className="text-xs text-muted-foreground">Mock + Mentorship · Apr</div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Trend Chart Section ───────────────────────────────────────────────────────
-const TABS: { id: ChartTab; label: string; premiumOnly: boolean }[] = [
-  { id: 'learning',     label: 'Learning Time', premiumOnly: false },
-  { id: 'sessions',     label: 'Sessions',      premiumOnly: false },
-];
-const TIME_RANGES: { id: TimeRange; label: string }[] = [
-  { id: '7d',  label: 'Last 7 Days'   },
-  { id: '30d', label: 'Last 30 Days'  },
-  { id: '3m',  label: 'Last 3 Months' },
-];
-
-function TrendChartSection({
-  plan,
+// ─── Chart card ───────────────────────────────────────────────────────────────
+function ChartCard({
   learningDaily,
   sessionsDaily,
-  loading,
 }: {
-  plan: Plan;
   learningDaily?: DailyEntry[];
   sessionsDaily?: DailyEntry[];
-  loading: boolean;
 }) {
-  const isPremium = plan === 'premium';
-  const [activeTab, setActiveTab] = useState<ChartTab>('learning');
-  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+  const [tab, setTab] = useState<ChartTab>('learning');
+  const [range, setRange] = useState<ChartRange>('30d');
+  const [hover, setHover] = useState<{ idx: number; x: number; y: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const W = 800, H = 180, PAD = 16;
 
-  const effectiveTab: ChartTab =
-    !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
+  const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  const unit = tab === 'sessions' ? 'sessions' : 'min';
+  const label = tab === 'sessions' ? 'Sessions per day' : 'Learning time per day (min)';
 
-  const color = CHART_COLORS[effectiveTab];
-  const rangeDays = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
-
-  // Use real daily data for learning/sessions tabs when the API provides it.
-  // No mock fallback: when the array is missing/empty (or for the applications
-  // tab, which has no endpoint), render an empty chart state instead.
-  const data = useMemo<number[]>(() => {
-    if (effectiveTab === 'learning' && Array.isArray(learningDaily) && learningDaily.length > 0) {
-      return learningDaily.slice(-rangeDays).map((d) => Number(d?.value) || 0);
-    }
-    if (effectiveTab === 'sessions' && Array.isArray(sessionsDaily) && sessionsDaily.length > 0) {
-      return sessionsDaily.slice(-rangeDays).map((d) => Number(d?.value) || 0);
-    }
-    return [];
-  }, [effectiveTab, timeRange, rangeDays, learningDaily, sessionsDaily]);
+  const { data, dates } = useMemo(() => {
+    const src = tab === 'sessions' ? sessionsDaily : learningDaily;
+    if (!Array.isArray(src) || src.length === 0) return { data: [] as number[], dates: [] as string[] };
+    const sliced = src.slice(-rangeDays);
+    return {
+      data: sliced.map((d) => Number(d?.value) || 0),
+      dates: sliced.map((d, i) => formatShortDate(d?.date, `Day ${i + 1}`)),
+    };
+  }, [tab, rangeDays, learningDaily, sessionsDaily]);
 
   const hasData = data.length > 0;
+  const { pts, linePath, areaPath } = useMemo(
+    () => (hasData ? buildChartPaths(data, W, H, PAD) : { pts: [], linePath: '', areaPath: '' }),
+    [data, hasData]
+  );
 
-  if (loading) return <TrendChartSkeleton />;
+  const totalVal = data.reduce((a, b) => a + b, 0);
+  const avgVal = hasData ? Math.round(totalVal / data.length) : 0;
+  const peakVal = hasData ? Math.max(...data) : 0;
 
-  const total      = data.reduce((s, v) => s + v, 0);
-  const activeDays = data.filter(v => v > 0).length;
-
-  const [sumLabel1, sumVal1, sumLabel2, sumVal2] = (() => {
-    if (!hasData) {
-      if (effectiveTab === 'applications') return ['Total Applications', '—', 'Daily Average', '—'];
-      if (effectiveTab === 'learning')     return ['Total Learning Time', '—', 'Avg per Session', '—'];
-      return ['Sessions Completed', '—', 'Mock Sessions', '—'];
-    }
-    if (effectiveTab === 'applications') {
-      return ['Total Applications', Math.round(total).toString(), 'Daily Average', (total / data.length).toFixed(1)];
-    } else if (effectiveTab === 'learning') {
-      const h = Math.floor(total / 60);
-      const m = Math.round(total % 60);
-      const avg = activeDays > 0 ? Math.round(total / activeDays) : 0;
-      return ['Total Learning Time', h > 0 ? `${h}h ${m}m` : `${Math.round(total)}m`, 'Avg per Session', `${avg}m`];
-    } else {
-      return ['Sessions Completed', Math.round(total).toString(), 'Mock Sessions', Math.round(total * 0.7).toString()];
-    }
-  })();
-
-  const fmtValue = effectiveTab === 'learning'
-    ? (v: number) => { const h = Math.floor(v / 60); const m = Math.round(v % 60); return h > 0 ? `${h}h ${m}m` : `${Math.round(v)}m`; }
-    : (v: number) => v.toFixed(1);
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg || !hasData) return;
+    const rect = svg.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const idx = Math.max(0, Math.min(pts.length - 1, Math.round((svgX / W) * (pts.length - 1))));
+    setHover({ idx, x: pts[idx].x, y: pts[idx].y });
+  }, [pts, hasData]);
 
   return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-1">
-          {TABS.map(({ id, label, premiumOnly }) => {
-            const locked    = premiumOnly && !isPremium;
-            const isActive  = effectiveTab === id;
-            const tabColor  = CHART_COLORS[id];
+    <section className="bg-card border border-border rounded-xl mb-5" style={{ padding: 16, fontFamily: 'var(--font-sans)' }}>
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <div className="flex items-center gap-1 rounded-full p-0.5" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
+          {(['learning', 'sessions'] as ChartTab[]).map((t) => {
+            const isActive = tab === t;
             return (
-              <button
-                key={id}
-                onClick={() => !locked && setActiveTab(id)}
-                disabled={locked}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  locked    ? 'text-muted-foreground/40 cursor-not-allowed' :
-                  isActive  ? 'bg-secondary text-foreground' :
-                  'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-                }`}
+              <button key={t} onClick={() => setTab(t)}
+                className="rounded-full flex items-center gap-1.5 transition-all"
+                style={{ padding: '6px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: isActive ? 'var(--card)' : 'transparent', color: isActive ? 'hsl(221 80% 45%)' : 'var(--muted-foreground)', boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.06)' : 'none', fontFamily: 'var(--font-sans)' }}
               >
-                {locked
-                  ? <Lock className="w-3 h-3 shrink-0" />
-                  : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tabColor, opacity: isActive ? 1 : 0.45 }} />
-                }
-                {label}
+                {t === 'learning' ? 'Learning Time' : 'Sessions'}
               </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-0.5">
-          {TIME_RANGES.map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setTimeRange(id)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                timeRange === id
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
+        <div className="flex gap-1">
+          {(['7d', '30d', '3m'] as ChartRange[]).map((r) => (
+            <button key={r} onClick={() => setRange(r)}
+              className="rounded-md transition-all"
+              style={{ padding: '4px 10px', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: range === r ? 'hsl(221 80% 45%)' : 'var(--muted-foreground)', background: range === r ? 'var(--secondary)' : 'transparent', fontFamily: 'var(--font-sans)' }}
             >
-              {label}
+              {r === '7d' ? 'Last 7 Days' : r === '30d' ? 'Last 30 Days' : 'Last 3 Months'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Summary metrics */}
-      <div className="flex items-center gap-8 mb-5">
-        <div>
-          <div className="text-xs text-muted-foreground mb-0.5">{sumLabel1}</div>
-          <div className="text-xl font-semibold tracking-tight" style={{ color }}>{sumVal1}</div>
-        </div>
-        <div className="w-px h-8 bg-border" />
-        <div>
-          <div className="text-xs text-muted-foreground mb-0.5">{sumLabel2}</div>
-          <div className="text-xl font-semibold tracking-tight" style={{ color }}>{sumVal2}</div>
-        </div>
+      <div className="flex gap-3 mb-3">
+        {[
+          { lbl: tab === 'sessions' ? 'Total Sessions' : 'Total Learning Time', val: !hasData ? '—' : tab === 'sessions' ? `${totalVal}` : `${Math.floor(totalVal / 60)}h ${totalVal % 60}m` },
+          { lbl: 'Daily Average', val: !hasData ? '—' : tab === 'sessions' ? `${avgVal}` : `${avgVal}m` },
+          { lbl: 'Peak Day', val: !hasData ? '—' : tab === 'sessions' ? `${peakVal}` : `${peakVal}m` },
+        ].map((c) => (
+          <div key={c.lbl} className="rounded-lg" style={{ background: 'var(--secondary)', padding: '10px 14px', minWidth: 130 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>{c.lbl}</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--foreground)', marginTop: 2, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-sans)' }}>{c.val}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Chart */}
       {hasData ? (
-        <CustomAreaChart data={data} color={color} formatValue={fmtValue} />
+        <div className="relative">
+          <svg ref={svgRef} className="w-full block" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height: 180 }} onMouseMove={handleMouseMove} onMouseLeave={() => setHover(null)} aria-hidden>
+            <defs>
+              <linearGradient id="dash-line-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="hsl(221 91% 60%)" stopOpacity="0.10" />
+                <stop offset="100%" stopColor="hsl(221 91% 60%)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={areaPath} fill="url(#dash-line-fill)" />
+            <path d={linePath} fill="none" stroke="hsl(221 91% 60%)" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+            {hover && <line x1={hover.x} y1={PAD} x2={hover.x} y2={H - PAD} stroke="rgba(37,99,235,0.25)" strokeWidth="1" strokeDasharray="3 3" />}
+          </svg>
+          {hover && (
+            <>
+              <div className="absolute pointer-events-none rounded-full bg-white border-2" style={{ width: 10, height: 10, left: `calc(${(hover.x / W) * 100}% - 5px)`, top: `calc(${(hover.y / H) * 100}% - 5px)`, borderColor: 'hsl(221 91% 60%)', boxShadow: '0 0 0 3px rgba(37,99,235,0.12)' }} />
+              <div className="absolute pointer-events-none bg-card border border-border rounded-lg z-10" style={{ left: `${(hover.x / W) * 100}%`, top: `${(hover.y / H) * 100}%`, transform: 'translate(-50%, calc(-100% - 10px))', padding: '8px 10px', boxShadow: '0 4px 12px rgba(15,23,42,0.10)', fontSize: 12, minWidth: 130, fontFamily: 'var(--font-sans)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted-foreground)', fontWeight: 500, marginBottom: 2 }}>{dates[hover.idx]}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'hsl(221 91% 60%)' }} />
+                  <span style={{ fontWeight: 600, color: 'hsl(221 80% 45%)', fontVariantNumeric: 'tabular-nums' }}>{data[hover.idx]}{unit}</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       ) : (
-        <div className="flex items-center justify-center w-full text-xs text-muted-foreground" style={{ height: 100 }}>
+        <div className="flex items-center justify-center w-full" style={{ height: 180, fontSize: 13, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>
           No activity yet
         </div>
       )}
-
-      {/* Legend */}
-      <div className="flex items-center gap-1.5 mt-3">
-        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        <span className="text-xs text-muted-foreground">
-          {effectiveTab === 'applications' ? 'Applications submitted' :
-           effectiveTab === 'learning'     ? 'Learning time per day (min)' :
-           'Sessions per day'}
-        </span>
+      <div className="flex items-center gap-1.5 mt-2" style={{ fontSize: 12, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>
+        <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'hsl(221 91% 60%)' }} />
+        {label}
       </div>
+    </section>
+  );
+}
+
+// ─── Stars ──────────────────────────────────────────────────────────────────
+function Stars({ count, total = 5 }: { count: number; total?: number }) {
+  return (
+    <div className="flex gap-px">
+      {Array.from({ length: total }, (_, i) => (
+        <svg key={i} viewBox="0 0 11 11" width="11" height="11" fill={i < count ? '#F59E0B' : '#E5E7EB'}>
+          <polygon points="5.5,1 6.7,4 10,4.2 7.4,6.4 8.3,9.6 5.5,7.8 2.7,9.6 3.6,6.4 1,4.2 4.3,4" />
+        </svg>
+      ))}
     </div>
   );
 }
 
-// ─── Mentorship Card ───────────────────────────────────────────────────────────
+// ─── Mentorship panel ─────────────────────────────────────────────────────────
 type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'COMPLETED';
 
 type Booking = {
@@ -604,22 +271,21 @@ function getInitials(name?: string): string {
 function formatBookingDateTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  const weekday = d.toLocaleDateString(undefined, { weekday: 'short' });
-  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${weekday} ${date}, ${time}`;
+  const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${date}, ${time}`;
 }
 
 function formatBookingShortDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function timeUntil(iso: string): string {
-  const d = new Date(iso).getTime();
-  if (isNaN(d)) return '';
-  const diffMs = d - Date.now();
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const diffMs = t - Date.now();
   if (diffMs <= 0) return 'Starting soon';
   const mins = Math.round(diffMs / 60000);
   if (mins < 60) return `In ${mins} min — get prepared`;
@@ -629,10 +295,10 @@ function timeUntil(iso: string): string {
   return `In ${days} day${days === 1 ? '' : 's'} — get prepared`;
 }
 
-function MentorshipCard() {
+function MentorshipPanel({ plan }: { plan: Plan }) {
   const navigate = useNavigate();
+  const locked = plan === 'free';
   const [bookings, setBookings] = useState<Booking[] | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -647,227 +313,212 @@ function MentorshipCard() {
         if (alive) setBookings(normalized);
       } catch {
         if (alive) setBookings([]);
-      } finally {
-        if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
   }, []);
 
-  if (loading) return <MentorshipSkeleton />;
-
-  // Upcoming = next CONFIRMED/PENDING future booking, soonest first.
   const now = Date.now();
   const upcoming = (bookings ?? [])
     .filter((b) => (b.status === 'CONFIRMED' || b.status === 'PENDING') && new Date(b.startTime).getTime() > now)
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   const nextSession = upcoming[0];
 
-  // Past = COMPLETED, most recent first.
   const pastBookings = (bookings ?? [])
     .filter((b) => b.status === 'COMPLETED')
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
     .slice(0, 3);
 
-  // Real data only — no mock fallback. Show the upcoming-session view when a
-  // future booking exists, otherwise the existing no-session empty state.
-  const state: 'hasSession' | 'noSession' = nextSession ? 'hasSession' : 'noSession';
-
-  // Map real past bookings into the shape the existing markup consumes. Empty
-  // when there are no completed bookings.
-  const pastList = pastBookings.map((b) => ({
-    id: b.id,
-    initials: getInitials(b.mentorName),
-    name: b.mentorName,
-    type: b.topicTitle || 'Session',
-    date: formatBookingShortDate(b.startTime),
-    reviewed: b.hasReview,
-    rating: Math.round(b.mentorAvgRating ?? 0),
-    navId: b.id as string | number,
-  }));
-
   return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Mentorship</span>
-        <button onClick={() => navigate('/coaching')} className="text-xs text-blue-600 hover:opacity-75 transition-opacity">Browse mentors ↗</button>
+    <section className="bg-card border border-border rounded-xl relative" style={{ padding: 16, fontFamily: 'var(--font-sans)' }}>
+      <div className="flex items-center justify-between mb-3.5">
+        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)' }}>Mentorship</span>
+        <button onClick={() => navigate('/coaching')} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
+          Browse mentors <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7L7 3M4 3h3v3"/></svg>
+        </button>
       </div>
 
-      <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1 overflow-y-auto">
-        {state === 'hasSession' ? (
-          <div className="border border-border rounded-lg overflow-hidden">
-            <div className="bg-blue-50 flex items-center justify-between px-3 py-2">
-              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-md">
-                Upcoming session
-              </span>
-              <span className="text-xs text-blue-600">{nextSession ? formatBookingDateTime(nextSession.startTime) : 'Mon Apr 14, 2:00 PM'}</span>
+      <div style={{ filter: locked ? 'blur(6px)' : 'none', pointerEvents: locked ? 'none' : undefined, opacity: locked ? 0.55 : 1 }}>
+        {nextSession ? (
+          <div className="border border-border rounded-[10px] bg-card" style={{ padding: 12, marginBottom: 14 }}>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="inline-flex items-center rounded-full px-2 py-0.5" style={{ background: 'hsl(221 91% 60% / 0.08)', color: 'hsl(221 80% 45%)', fontSize: 11, fontWeight: 500 }}>Upcoming session</span>
+              <span style={{ fontSize: 12, color: 'var(--muted-foreground)', fontWeight: 500 }}>{formatBookingDateTime(nextSession.startTime)}</span>
             </div>
-            <div className="p-3.5">
-              <div className="flex items-center gap-2.5 mb-3">
-                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0">
-                  {nextSession ? getInitials(nextSession.mentorName) : 'SJ'}
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-foreground">{nextSession ? nextSession.mentorName : 'Sarah Jenkins'}</div>
-                  <div className="text-xs text-muted-foreground">{nextSession ? `${nextSession.durationMinutes} min session` : 'Senior PM · TechCorp'}</div>
-                </div>
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <div className="rounded-full flex items-center justify-center shrink-0" style={{ width: 36, height: 36, background: 'hsl(221 91% 60% / 0.08)', color: 'hsl(221 60% 40%)', fontSize: 12, fontWeight: 600 }}>{getInitials(nextSession.mentorName)}</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>{nextSession.mentorName}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{nextSession.durationMinutes} min session</div>
               </div>
-              {/* Session goal — blue-300 left accent */}
-              <div className="bg-blue-50 border-l-2 border-blue-300 rounded-md p-2.5 mb-3">
-                <div className="text-xs text-muted-foreground mb-0.5">Session goal</div>
-                <div className="text-sm font-medium text-foreground mb-1.5">{nextSession ? (nextSession.topicTitle || 'Mentorship Session') : 'Mock Interview: Product Strategy'}</div>
-                <div className="text-xs text-muted-foreground mb-0.5">Mentor note</div>
-                <div className="text-xs text-foreground">{nextSession ? (nextSession.mentorNote || '—') : '"Please bring 2 product ideas to discuss."'}</div>
-              </div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                <span className="text-xs text-blue-600">{nextSession ? timeUntil(nextSession.startTime) : 'In 14 hours — get prepared'}</span>
-              </div>
-              <button
-                onClick={() => { if (nextSession?.meetingLink) window.open(nextSession.meetingLink, '_blank', 'noopener,noreferrer'); }}
-                className="w-full bg-blue-500 text-white rounded-md py-2 text-xs font-medium hover:opacity-90 transition-opacity"
-              >
-                Join session
-              </button>
             </div>
+            <div className="rounded-lg mb-2.5" style={{ background: 'var(--secondary)', padding: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 2 }}>Session goal</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)' }}>{nextSession.topicTitle || 'Mentorship Session'}</div>
+            </div>
+            <div className="flex items-center gap-1.5 mb-2.5" style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--primary)' }} />
+              {timeUntil(nextSession.startTime)}
+            </div>
+            <button
+              onClick={() => { if (nextSession.meetingLink) window.open(nextSession.meetingLink, '_blank', 'noopener,noreferrer'); }}
+              className="block w-full text-center rounded-lg transition-colors"
+              style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', padding: '9px 12px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}
+            >
+              Join Session
+            </button>
           </div>
         ) : (
-          /* No-session empty state */
-          <div className="border border-dashed border-blue-300 bg-blue-50 rounded-lg p-5 flex flex-col items-center text-center gap-3">
-            <Calendar className="w-5 h-5 text-blue-400" />
-            <p className="text-xs text-muted-foreground">No upcoming sessions. Ready for your next 1:1?</p>
-            <button onClick={() => navigate('/marketplace')} className="border border-blue-500 text-blue-600 rounded-md px-3 py-1.5 text-xs font-medium hover:bg-blue-50 transition-colors">
+          <div className="border border-dashed rounded-[10px] flex flex-col items-center text-center gap-2" style={{ borderColor: 'hsl(221 91% 60% / 0.4)', background: 'hsl(221 91% 60% / 0.04)', padding: 20, marginBottom: 14 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="hsl(221 80% 55%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <p style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>No upcoming sessions. Ready for your next 1:1?</p>
+            <button onClick={() => navigate('/marketplace')} className="rounded-lg" style={{ border: '1px solid var(--primary)', color: 'var(--primary)', padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', cursor: 'pointer' }}>
               Browse mentors →
             </button>
           </div>
         )}
 
-        {/* Past sessions */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-foreground">Past sessions</span>
-            <span className="text-xs text-muted-foreground flex items-center gap-0.5 cursor-pointer hover:text-blue-600 transition-colors">
-              {pastList.length} <ChevronRight className="w-3 h-3" />
-            </span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted-foreground)' }}>Past sessions</span>
+            <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{pastBookings.length} ›</span>
           </div>
           <div className="flex flex-col gap-1.5">
-            {pastList.map((s, idx) => (
-              <div
-                key={s.id}
-                className="bg-background border border-border rounded-md p-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-secondary/60 transition-colors"
-                onClick={() => navigate(`/session-detail/${s.navId}`)}
-              >
-                {/* Avatar — cycles through blue-100/200/50 palette steps */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${AVATAR_CYCLE[idx % AVATAR_CYCLE.length]}`}>
-                  {s.initials}
-                </div>
+            {pastBookings.map((b) => (
+              <div key={b.id} onClick={() => navigate('/history')} className="flex items-center gap-2.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary" style={{ padding: 8 }}>
+                <div className="rounded-full flex items-center justify-center shrink-0" style={{ width: 30, height: 30, background: 'hsl(221 91% 60% / 0.08)', color: 'hsl(221 60% 40%)', fontSize: 11, fontWeight: 600 }}>{getInitials(b.mentorName)}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-foreground truncate">{s.name}</div>
-                  <div className="text-xs text-muted-foreground">{s.type} · {s.date}</div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--foreground)' }}>{b.mentorName}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{(b.topicTitle || 'Session')} · {formatBookingShortDate(b.startTime)}</div>
                 </div>
-                <div className="flex flex-col items-end gap-0.5 shrink-0">
-                  {s.reviewed ? (
-                    <>
-                      <span className="px-1.5 py-0.5 bg-accent/15 text-accent-foreground text-[10px] font-medium rounded-sm">
-                        Reviewed
-                      </span>
-                      <div className="flex items-center gap-0.5">
-                        {[1,2,3,4,5].map(n => (
-                          <Star key={n} className={`w-2 h-2 ${n <= s.rating ? 'text-blue-500 fill-blue-500' : 'text-muted-foreground'}`} />
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-400 text-[10px] font-medium rounded-sm">
-                      Review pending
-                    </span>
-                  )}
+                <div className="flex flex-col items-end gap-1">
+                  <span className="inline-flex items-center rounded px-2 py-0.5" style={{ fontSize: 11, fontWeight: 500, color: b.hasReview ? '#065F46' : '#92400E', background: b.hasReview ? '#ECFDF5' : '#FFFBEB' }}>
+                    {b.hasReview ? 'Reviewed' : 'Review pending'}
+                  </span>
+                  {b.hasReview && Math.round(b.mentorAvgRating ?? 0) > 0 && <Stars count={Math.round(b.mentorAvgRating ?? 0)} />}
                 </div>
               </div>
             ))}
+            {pastBookings.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--muted-foreground)', padding: '8px 0' }}>No past sessions yet.</div>
+            )}
           </div>
         </div>
       </div>
-    </div>
-  );
-}
 
-// ─── Interview Practice Insights Card ─────────────────────────────────────────
-function InterviewInsightsCard({ insights, loading }: { insights?: InterviewInsights | null; loading: boolean }) {
-  const navigate = useNavigate();
-  if (loading) return <InsightsSkeleton />;
-
-  // Build radar dims from the API's categoryScores. No mock fallback: when there
-  // are no insights, render the existing "No practice sessions yet" empty state.
-  const hasInsights = insights != null && Array.isArray(insights.categoryScores) && insights.categoryScores.length > 0;
-  const hasSessions = hasInsights;
-  const dims = hasInsights
-    ? insights!.categoryScores.map((c) => ({ label: c.category, value: Math.round(Number(c.averageScore) || 0) }))
-    : [];
-  const avg       = hasInsights ? Math.round(Number(insights!.averageScore) || 0) : 0;
-  const best      = hasInsights ? Math.round(Number(insights!.bestScore) || 0) : 0;
-  const low       = hasInsights ? Math.round(Number(insights!.lowestScore) || 0) : 0;
-  const lowestDim = dims.length > 0 ? [...dims].sort((a, b) => a.value - b.value)[0] : { label: '', value: 0 };
-  const lowestBdg = qualityBadge(lowestDim.value);
-
-  return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Interview Practice Insights</span>
-        <button onClick={() => navigate('/history')} className="text-xs text-blue-600 hover:opacity-75 transition-opacity">View all ↗</button>
-      </div>
-
-      {hasSessions ? (
-        <div className="px-4 pb-4 pt-3 flex flex-col gap-4 flex-1">
-          {/* Score summary — three distinct blue steps */}
-          <div className="grid grid-cols-3 gap-2">
-            {([
-              { label: 'Avg',  value: avg,  bg: 'bg-blue-50  border border-blue-200', val: 'text-blue-600' },
-              { label: 'Best', value: best, bg: 'bg-blue-100 border border-blue-300', val: 'text-blue-500' },
-              { label: 'Low',  value: low,  bg: 'bg-blue-900/6 border border-blue-800/15', val: 'text-blue-700' },
-            ] as const).map(s => (
-              <div key={s.label} className={`rounded-md p-3 text-center ${s.bg}`}>
-                <div className={`text-lg font-semibold tracking-tight ${s.val}`}>{s.value}</div>
-                <div className="text-xs text-muted-foreground">{s.label}</div>
-              </div>
-            ))}
+      {locked && (
+        <div className="absolute flex flex-col items-center justify-center text-center" style={{ inset: '56px 16px 16px 16px', zIndex: 2, padding: '24px 20px', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(2px)', borderRadius: 10, gap: 8 }}>
+          <div className="flex items-center justify-center rounded-[10px] mb-1" style={{ width: 40, height: 40, background: 'var(--secondary)', color: 'hsl(221 80% 45%)' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
           </div>
-
-          {/* Radar */}
-          <CustomRadar data={dims} color={CHART_COLORS.sessions} />
-
-          {/* Focus callout — blue-50 surface + blue-200 border */}
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">Recommended focus area</div>
-              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                <span className="text-sm font-medium text-foreground">{lowestDim.label}</span>
-                <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-medium ${lowestBdg.cls}`}>
-                  {lowestBdg.label}
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground">{lowestDim.value}/100</div>
-            </div>
-            <button onClick={() => navigate('/personalized-practice')} className="text-xs text-blue-600 font-medium hover:opacity-75 transition-opacity whitespace-nowrap shrink-0 mt-0.5">
-              Practice {lowestDim.label} →
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Empty state */
-        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 text-center">
-          <Target className="w-8 h-8 text-blue-300" />
-          <p className="text-sm text-muted-foreground">No practice sessions yet</p>
-          <button onClick={() => navigate('/personalized-practice')} className="text-sm text-blue-600 font-medium hover:opacity-75 transition-opacity">
-            Practice now →
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>Mentorship is a member benefit</div>
+          <div style={{ fontSize: 12, color: 'var(--muted-foreground)', lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>Book 1:1 sessions with senior mentors and track every session in one place.</div>
+          <button onClick={() => navigate('/pricing')} className="rounded-lg" style={{ padding: '9px 16px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
+            Upgrade to membership
           </button>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-// ─── Community Picks Card ──────────────────────────────────────────────────────
+// ─── Interview Insights panel ─────────────────────────────────────────────────
+function InterviewInsightsPanel({ insights, loading }: { insights?: InterviewInsights | null; loading: boolean }) {
+  const navigate = useNavigate();
+  const [hoverDim, setHoverDim] = useState<number | null>(null);
+  const qualLabel = (v: number) => v >= 80 ? 'Strong' : v >= 70 ? 'Good' : v >= 60 ? 'Developing' : 'Needs Work';
+
+  const hasInsights = insights != null && Array.isArray(insights.categoryScores) && insights.categoryScores.length > 0;
+  const dims = hasInsights ? insights!.categoryScores.map((c) => ({ label: c.category, value: Math.round(Number(c.averageScore) || 0) })) : [];
+  const vals = dims.map((d) => d.value);
+  const n = dims.length;
+  const avg = hasInsights ? Math.round(Number(insights!.averageScore) || 0) : 0;
+  const best = hasInsights ? Math.round(Number(insights!.bestScore) || 0) : 0;
+  const low = hasInsights ? Math.round(Number(insights!.lowestScore) || 0) : 0;
+  const lowestDim = dims.length > 0 ? [...dims].sort((a, b) => a.value - b.value)[0] : { label: '', value: 0 };
+
+  return (
+    <section className="bg-card border border-border rounded-xl" style={{ padding: 16, fontFamily: 'var(--font-sans)' }}>
+      <div className="flex items-center justify-between mb-3.5">
+        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)' }}>Interview Practice Insights</span>
+        <button onClick={() => navigate('/history')} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
+          View all <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7L7 3M4 3h3v3"/></svg>
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse flex flex-col gap-4">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="h-16 rounded-lg" style={{ background: 'var(--secondary)' }} />
+            <div className="h-16 rounded-lg" style={{ background: 'var(--secondary)' }} />
+            <div className="h-16 rounded-lg" style={{ background: 'var(--secondary)' }} />
+          </div>
+          <div className="rounded-lg" style={{ background: 'var(--secondary)', height: 200 }} />
+        </div>
+      ) : hasInsights ? (
+        <>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[{ lbl: 'Avg', val: avg, color: 'var(--primary)' }, { lbl: 'Best', val: best, color: '#10B981' }, { lbl: 'Low', val: low, color: 'var(--muted-foreground)' }].map((c) => (
+              <div key={c.lbl} className="rounded-lg text-center" style={{ background: 'var(--secondary)', padding: '12px 8px' }}>
+                <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', color: c.color, fontFamily: 'var(--font-sans)' }}>{c.val}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 4, fontFamily: 'var(--font-sans)' }}>{c.lbl}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="relative flex justify-center mb-3.5">
+            <svg viewBox="0 0 360 260" className="w-full" style={{ maxWidth: 360, overflow: 'visible' }}>
+              {[0.25, 0.5, 0.75, 1].map((pct) => (
+                <polygon key={pct} points={radarGridPolygon(pct, n)} fill="none" stroke={pct === 1 ? 'hsl(220 16% 85%)' : 'hsl(220 16% 92%)'} strokeWidth="1" />
+              ))}
+              {dims.map((d, i) => { const o = radarPt(R_MAX, radarAngle(i, n)); return <line key={d.label} x1={R_CX} y1={R_CY} x2={o.x} y2={o.y} stroke="hsl(220 16% 90%)" strokeWidth="1" />; })}
+              <polygon points={radarPolygon(vals)} fill="hsl(221 91% 60% / 0.12)" stroke="hsl(221 91% 60%)" strokeWidth="1.5" />
+              {dims.map((d, i) => {
+                const pt = radarPt((vals[i] / 100) * R_MAX, radarAngle(i, n));
+                return <circle key={d.label} cx={pt.x} cy={pt.y} r={hoverDim === i ? 5 : 4} fill="hsl(221 91% 60%)" stroke="#fff" strokeWidth="2" className="cursor-pointer" onMouseEnter={() => setHoverDim(i)} onMouseLeave={() => setHoverDim(null)} />;
+              })}
+              {dims.map((d, i) => {
+                const ang = radarAngle(i, n);
+                const o = radarPt(R_MAX + 18, ang);
+                const cos = Math.cos(ang), sin = Math.sin(ang);
+                const anchor = cos > 0.25 ? 'start' : cos < -0.25 ? 'end' : 'middle';
+                const dy = sin > 0.3 ? 10 : sin < -0.3 ? -4 : 4;
+                return <text key={d.label} x={o.x} y={o.y + dy} textAnchor={anchor} fill={hoverDim === i ? 'var(--primary)' : 'var(--muted-foreground)'} style={{ fontSize: 11, fontFamily: 'var(--font-sans)', fontWeight: hoverDim === i ? 600 : 500 }}>{d.label}</text>;
+              })}
+            </svg>
+            {hoverDim !== null && (
+              <div className="absolute pointer-events-none bg-card border border-border rounded-lg z-10" style={{ left: `${(radarPt((vals[hoverDim] / 100) * R_MAX, radarAngle(hoverDim, n)).x / 360) * 100}%`, top: `${(radarPt((vals[hoverDim] / 100) * R_MAX, radarAngle(hoverDim, n)).y / 260) * 100}%`, transform: 'translate(-50%, calc(-100% - 10px))', padding: '8px 10px', boxShadow: '0 4px 12px rgba(15,23,42,0.08)', minWidth: 132, fontFamily: 'var(--font-sans)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted-foreground)', lineHeight: 1.3, marginBottom: 2 }}>{dims[hoverDim].label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)', letterSpacing: '-0.01em' }}>{vals[hoverDim]}<small style={{ fontWeight: 500, color: 'var(--muted-foreground)', fontSize: 12, marginLeft: 2 }}>/100</small></div>
+                <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 500, color: 'hsl(221 80% 45%)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{qualLabel(vals[hoverDim])}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[10px]" style={{ background: 'var(--secondary)', padding: '12px 14px' }}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span style={{ fontSize: 11, color: 'var(--muted-foreground)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.4px', fontFamily: 'var(--font-sans)' }}>Recommended focus area</span>
+              <button onClick={() => navigate('/personalized-practice')} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>Practice {lowestDim.label} →</button>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)', fontFamily: 'var(--font-sans)' }}>{lowestDim.label}</span>
+              <span style={{ fontSize: 12, color: 'var(--muted-foreground)', fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontFamily: 'var(--font-sans)' }}>{lowestDim.value}/100</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 6, lineHeight: 1.5, fontFamily: 'var(--font-sans)' }}>Your lowest recent dimension — focus here to lift your overall score.</p>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center text-center" style={{ padding: '40px 20px', gap: 10 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="hsl(221 80% 60%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          <p style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>No practice sessions yet</p>
+          <button onClick={() => navigate('/personalized-practice')} style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>Practice now →</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Community Picks panel ────────────────────────────────────────────────────
 type CommunityCardPost = {
   id: string;
   role: string;
@@ -883,15 +534,14 @@ function formatMonthLabel(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-function CommunityPicksCard() {
+function CommunityPicksPanel() {
   const navigate = useNavigate();
   const [targetRole, setTargetRole] = useState<string>('');
   const [targetCompanies, setTargetCompanies] = useState<string[]>([]);
   const [apiPosts, setApiPosts] = useState<CommunityCardPost[] | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -905,9 +555,9 @@ function CommunityPicksCard() {
         role = Array.isArray(data?.target_roles) ? (String(data!.target_roles[0] ?? '')) : '';
         companies = Array.isArray(data?.target_companies) ? (data!.target_companies as string[]) : [];
       } catch {
-        // No preferences yet — keep mock hint values.
+        // No preferences yet.
       }
-      if (alive && (role || companies.length)) {
+      if (alive) {
         if (role) setTargetRole(role);
         if (companies.length) setTargetCompanies(companies);
       }
@@ -936,111 +586,75 @@ function CommunityPicksCard() {
         if (alive) setApiPosts(mapped);
       } catch {
         if (alive) setApiPosts([]);
-      } finally {
-        if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
   }, []);
 
-  if (loading) return <CommunitySkeleton />;
-
-  // Real posts only — no mock fallback. When there are none, render the existing
-  // "No posts match your target roles yet" empty state.
   const posts = apiPosts ?? [];
   const hasPosts = posts.length > 0;
   const matchCompanies = targetCompanies.slice(0, 3).join(', ');
 
   return (
-    <div className="bg-card border border-border rounded-lg flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-        <span className="font-medium text-foreground">Community Picks</span>
-        <button onClick={() => navigate('/interview-insights')} className="text-xs text-blue-600 hover:opacity-75 transition-opacity">Browse community ↗</button>
+    <section className="bg-card border border-border rounded-xl" style={{ padding: 16, fontFamily: 'var(--font-sans)' }}>
+      <div className="flex items-center justify-between mb-3.5">
+        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)' }}>Community Picks</span>
+        <button onClick={() => navigate('/interview-insights')} className="flex items-center gap-1 hover:underline" style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
+          Browse community <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7L7 3M4 3h3v3"/></svg>
+        </button>
       </div>
 
       {hasPosts ? (
-        <div className="px-4 pb-4 pt-3 flex flex-col gap-3 flex-1">
-          {/* Personalisation hint */}
-          <div className="bg-secondary rounded-md px-3 py-2 flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground min-w-0 truncate">
-              Matched to <span className="font-medium text-foreground">{targetRole}</span>{matchCompanies ? ` · ${matchCompanies}` : ''}
-            </p>
-            <button onClick={() => navigate('/profile')} className="text-xs text-blue-600 hover:opacity-75 transition-opacity shrink-0">
-              Edit ↗
-            </button>
+        <>
+          <div className="flex items-center justify-between rounded-lg mb-3" style={{ background: 'var(--secondary)', padding: '8px 12px', fontSize: 12 }}>
+            <div className="min-w-0 truncate">
+              <span style={{ color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>Matched to </span>
+              <span style={{ color: 'var(--foreground)', fontWeight: 500, fontFamily: 'var(--font-sans)' }}>{targetRole || 'your profile'}</span>
+              {matchCompanies && <span style={{ color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}> · {matchCompanies}</span>}
+            </div>
+            <button onClick={() => navigate('/profile')} className="hover:underline shrink-0" style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 500, fontFamily: 'var(--font-sans)', background: 'none', border: 'none', cursor: 'pointer' }}>Edit ↗</button>
           </div>
-
-          {posts.map(post => (
-            <div
-              key={post.id}
-              className="rounded-lg border border-border p-3.5 flex flex-col gap-2.5 hover:bg-secondary/50 transition-colors cursor-pointer"
-            >
-              {/* Tags */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Role — blue-100 / blue-700 */}
-                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-medium rounded-sm">
-                  {post.role}
-                </span>
-                {/* Company — blue-50 / blue-600 (lighter step) */}
-                <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-medium rounded-sm">
-                  {post.company}
-                </span>
-                {/* Status */}
-                <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm ${
-                  post.status === 'Hired'
-                    ? 'bg-accent/15 text-accent-foreground'
-                    : 'bg-blue-200 text-blue-800'
-                }`}>
-                  {post.status}
-                </span>
-                <span className="text-[10px] text-muted-foreground ml-auto">{post.month}</span>
+          {posts.map((p, i) => (
+            <div key={p.id} onClick={() => navigate(`/experience/${p.id}`)} className="cursor-pointer hover:bg-secondary rounded-lg transition-colors" style={{ paddingTop: i === 0 ? 4 : 12, paddingBottom: 12, paddingLeft: 8, paddingRight: 8, borderTop: i === 0 ? 'none' : '1px solid var(--border)', margin: '0 -8px' }}>
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                {p.role && <span className="inline-flex items-center rounded px-2 py-0.5" style={{ fontSize: 11, fontWeight: 500, color: 'hsl(221 80% 45%)', background: 'hsl(221 91% 60% / 0.08)' }}>{p.role}</span>}
+                {p.company && <span className="inline-flex items-center rounded px-2 py-0.5" style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted-foreground)', background: 'var(--secondary)' }}>{p.company}</span>}
+                {p.month && <span className="ml-auto" style={{ fontSize: 11, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>{p.month}</span>}
               </div>
-              {/* Title */}
-              <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
-                {post.title}
-              </p>
-              {/* Footer */}
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Eye className="w-3 h-3" />{post.views.toLocaleString()}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MessageCircle className="w-3 h-3" />{post.comments}
-                </span>
-                <button onClick={() => navigate(`/experience/${post.id}`)} className="ml-auto text-blue-600 hover:opacity-75 transition-opacity">View post ↗</button>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)', lineHeight: 1.4, marginBottom: 8, fontFamily: 'var(--font-sans)' }}>{p.title}</div>
+              <div className="flex items-center justify-between" style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1" style={{ fontFamily: 'var(--font-sans)' }}>
+                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><ellipse cx="6" cy="6" rx="5" ry="3"/><circle cx="6" cy="6" r="1.5"/></svg>{p.views.toLocaleString()}
+                  </span>
+                  <span className="flex items-center gap-1" style={{ fontFamily: 'var(--font-sans)' }}>
+                    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><path d="M2 4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 10 4v3a1.5 1.5 0 0 1-1.5 1.5H5L3 10V8.5a1.5 1.5 0 0 1-1-1.5z"/></svg>{p.comments}
+                  </span>
+                </div>
+                <span className="hover:underline" style={{ color: 'var(--primary)', fontWeight: 500, fontFamily: 'var(--font-sans)' }}>View post ↗</span>
               </div>
             </div>
           ))}
-        </div>
+        </>
       ) : (
-        /* Empty state */
-        <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 text-center">
-          <Users className="w-8 h-8 text-blue-300" />
-          <p className="text-sm text-muted-foreground">No posts match your target roles yet</p>
-          <button onClick={() => navigate('/interview-insights')} className="text-sm text-blue-600 font-medium hover:opacity-75 transition-opacity">
-            Browse community →
-          </button>
+        <div className="flex flex-col items-center justify-center text-center" style={{ padding: '40px 20px', gap: 10 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="hsl(221 80% 60%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <p style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>No posts match your target roles yet</p>
+          <button onClick={() => navigate('/interview-insights')} style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>Browse community →</button>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 // ── Dashboard Home (main export) ─────────────────────────────────────────────
-type UserData = {
-  firstName?: string;
-  lastName?: string;
-  role?: string;
-};
-
 export function DashboardHome({ userData }: { userData: UserData | null }) {
   const userPlan = useUserPlan();
   const [plan, setPlan] = useState<Plan>(() => planFromUserPlan(userPlan.planData.currentPlan));
   const [stats, setStats] = useState<DashboardStatsApi | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Sync the initial plan with the resolved user plan once it loads (the toggle
-  // can still locally override afterward).
+  // Sync plan with the resolved user plan once it loads.
   const planInitedRef = useRef(false);
   useEffect(() => {
     if (planInitedRef.current) return;
@@ -1072,60 +686,30 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
     return () => { alive = false; };
   }, []);
 
-  const hour     = new Date().getHours();
+  const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const name     = userData?.firstName ? `, ${userData.firstName}` : '';
+  const name = userData?.firstName ? `, ${userData.firstName}` : '';
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
-
-      {/* ── Page header ── */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-foreground" style={{ fontFamily: 'var(--font-serif)', fontWeight: 700 }}>{greeting}{name}</h1>
-          
-        </div>
-
-        {/* Plan toggle — demonstrates both dashboard variants */}
-        <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 shrink-0">
-          {(['starter', 'premium'] as Plan[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPlan(p)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
-                plan === p
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {p === 'premium' && (
-                <Sparkles className="w-3 h-3 text-amber-500" />
-              )}
-              {p}
-            </button>
-          ))}
-        </div>
+    <div style={{ fontFamily: 'var(--font-sans)' }}>
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-6">
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 28, lineHeight: 1.2, color: 'var(--foreground)', margin: 0 }}>
+          {greeting}{name}
+        </h1>
       </div>
 
-      {/* ── 1. Stats row ── */}
-      <StatsRow plan={plan} stats={stats} loading={statsLoading} />
-
-      {/* ── 2. Trend chart ── */}
-      <TrendChartSection
-        key={plan}
-        plan={plan}
+      <StatsGrid plan={plan} stats={stats} loading={statsLoading} />
+      <ChartCard
         learningDaily={stats?.dailyLearningTimeMinutes}
         sessionsDaily={stats?.dailySessionCount}
-        loading={statsLoading}
       />
 
-      {/* ── 3. Bottom 3-column grid ── */}
-      <div className="grid grid-cols-3 gap-5">
-        <MentorshipCard />
-        <InterviewInsightsCard insights={stats?.interviewPracticeInsights ?? null} loading={statsLoading} />
-        <CommunityPicksCard />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', alignItems: 'start' }}>
+        <MentorshipPanel plan={plan} />
+        <InterviewInsightsPanel insights={stats?.interviewPracticeInsights ?? null} loading={statsLoading} />
+        <CommunityPicksPanel />
       </div>
-
     </div>
   );
 }

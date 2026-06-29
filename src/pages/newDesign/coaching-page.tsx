@@ -1,8 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
+import { ChevronDown, Check, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { WidePageContainer } from '@/components/newDesign/dashboard-page';
 import { getMentors } from '@/services/MentorService';
+import { ApplyMentorModal } from '@/components/newDesign/apply-mentor-modal';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasMentorRole } from '@/components/mentor/dashboard-mode';
 
 // SVG path data (inlined from the new design's MentorCard import).
 const cardSvg = {
@@ -69,6 +73,37 @@ const COMPANY_COLORS: Record<string, string> = {
   Google: '#4285F4', Stripe: '#6772E5', Meta: '#0866FF',
   Airbnb: '#FF5A5F', OpenAI: '#10A37F', Datadog: '#632CA6',
 };
+
+// ─── Filter / sort config (kept in sync with mentorship-marketplace.tsx) ──────
+
+const PRICE_TO_PARAMS: Record<string, { priceMin?: number; priceMax?: number }> = {
+  '$0–$50':    { priceMin: 0,     priceMax: 5000 },
+  '$50–$100':  { priceMin: 5000,  priceMax: 10000 },
+  '$100+':     { priceMin: 10000 },
+};
+const AVAIL_TO_API: Record<string, string> = {
+  'Has slots this week': 'THIS_WEEK',
+  'Next week':           'NEXT_WEEK',
+  'Flexible':            'FLEXIBLE',
+};
+const RATING_TO_MIN: Record<string, number> = {
+  '4.0+': 4.0, '4.5+': 4.5, '5.0 only': 5.0,
+};
+const SORT_TO_API: Record<string, { sortBy: string; sortDir: 'asc' | 'desc' }> = {
+  'Top rated':           { sortBy: 'rating', sortDir: 'desc' },
+  'Price: Low to high':  { sortBy: 'price',  sortDir: 'asc'  },
+  'Price: High to low':  { sortBy: 'price',  sortDir: 'desc' },
+  'Most reviewed':       { sortBy: 'review', sortDir: 'desc' },
+};
+
+const FILTERS = [
+  { id: 'role',         label: 'Role / Industry', options: ['Software Engineering', 'Product Management', 'Data Science', 'Design', 'Eng. Management'] },
+  { id: 'price',        label: 'Price Range',      options: ['$0–$50', '$50–$100', '$100+'] },
+  { id: 'availability', label: 'Availability',     options: ['Has slots this week', 'Next week', 'Flexible'] },
+  { id: 'rating',       label: 'Rating',           options: ['4.0+', '4.5+', '5.0 only'] },
+] as const;
+
+const SORT_OPTIONS = ['Top rated', 'Price: Low to high', 'Price: High to low', 'Most reviewed'];
 
 // ─── Mentor card ─────────────────────────────────────────────────────────────
 
@@ -226,17 +261,79 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────
 
-function FilterPill({ label }: { label: string }) {
+function FilterDropdown({
+  filter,
+  selected,
+  isOpen,
+  onToggle,
+  onSelect,
+  onClear,
+}: {
+  filter: (typeof FILTERS)[number];
+  selected: string | null;
+  isOpen: boolean;
+  onToggle: () => void;
+  onSelect: (val: string) => void;
+  onClear: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node) && isOpen) onToggle();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, onToggle]);
+
+  const isActive = !!selected;
   return (
-    <button
-      className="flex items-center gap-1 transition-colors hover:bg-secondary"
-      style={{ border: '1px solid var(--border)', background: '#ffffff', borderRadius: '9999px', padding: '6px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--foreground)', whiteSpace: 'nowrap' }}
-    >
-      {label}
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-        <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </button>
+    <div className="relative" ref={ref}>
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1.5 transition-colors hover:bg-secondary"
+        style={{
+          border: `1px solid ${isActive ? 'color-mix(in srgb, var(--primary) 45%, transparent)' : 'var(--border)'}`,
+          background: isActive ? 'color-mix(in srgb, var(--primary) 6%, transparent)' : '#ffffff',
+          borderRadius: '9999px', padding: '6px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px',
+          fontWeight: 500, color: isActive ? 'var(--primary)' : 'var(--foreground)', whiteSpace: 'nowrap',
+        }}
+      >
+        {selected || filter.label}
+        {isActive ? (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
+            className="flex items-center justify-center rounded-full transition-opacity hover:opacity-70"
+            style={{ width: '14px', height: '14px', background: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}
+          >
+            <X style={{ width: '8px', height: '8px', color: 'var(--primary)' }} />
+          </span>
+        ) : (
+          <ChevronDown style={{ width: '14px', height: '14px', color: 'var(--muted-foreground)', transition: 'transform 150ms', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        )}
+      </button>
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 z-30 overflow-hidden"
+          style={{ marginTop: '6px', width: '208px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', padding: '6px 0' }}
+        >
+          {filter.options.map((opt) => {
+            const active = selected === opt;
+            return (
+              <button
+                key={opt}
+                onClick={() => onSelect(opt)}
+                className="w-full flex items-center justify-between transition-colors hover:bg-secondary"
+                style={{ padding: '8px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px', color: active ? 'var(--primary)' : 'var(--foreground)', background: active ? 'color-mix(in srgb, var(--primary) 6%, transparent)' : 'transparent' }}
+              >
+                <span>{opt}</span>
+                {active && <Check style={{ width: '14px', height: '14px', color: 'var(--primary)' }} strokeWidth={2.5} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -244,20 +341,56 @@ function FilterPill({ label }: { label: string }) {
 
 export function CoachingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
+  const isAlreadyMentor = hasMentorRole(user);
+
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [openSort, setOpenSort] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string | null>>({
+    role: null, price: null, availability: null, rating: null,
+  });
+  const [sortBy, setSortBy] = useState('Top rated');
+  const sortRef = useRef<HTMLDivElement>(null);
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  const fetchMentorList = useCallback(async () => {
+    try {
+      const params: Record<string, unknown> = { page: 0, size: 20 };
+      if (filters.role) params.role = filters.role;
+      if (filters.availability) params.availability = AVAIL_TO_API[filters.availability];
+      if (filters.rating) params.ratingMin = RATING_TO_MIN[filters.rating];
+      if (filters.price) {
+        const p = PRICE_TO_PARAMS[filters.price];
+        if (p.priceMin !== undefined) params.priceMin = p.priceMin;
+        if (p.priceMax !== undefined) params.priceMax = p.priceMax;
+      }
+      const sort = SORT_TO_API[sortBy];
+      if (sort) {
+        params.sortBy = sort.sortBy;
+        params.sortDir = sort.sortDir;
+      }
+      const res = await getMentors(params);
+      const list = res.data?.data?.content ?? res.data?.content ?? res.data?.data ?? res.data ?? [];
+      return Array.isArray(list) ? list.map(mapApiMentor) : [];
+    } catch {
+      return [];
+    }
+  }, [filters, sortBy]);
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const res = await getMentors({ page: 0, size: 20 });
-        const list = res.data?.data?.content ?? res.data?.content ?? res.data?.data ?? res.data ?? [];
-        if (active) setMentors(Array.isArray(list) ? list.map(mapApiMentor) : []);
-      } catch {
-        if (active) setMentors([]);
-      }
-    })();
+    fetchMentorList().then((list) => { if (active) setMentors(list); });
     return () => { active = false; };
+  }, [fetchMentorList]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setOpenSort(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   return (
@@ -272,10 +405,12 @@ export function CoachingPage() {
             </p>
           </div>
           <button
-            className="flex items-center gap-1.5 transition-opacity hover:opacity-80 shrink-0"
+            onClick={() => setIsBecomeMentorOpen(true)}
+            disabled={isAlreadyMentor}
+            className="flex items-center gap-1.5 transition-opacity hover:opacity-80 shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
             style={{ background: 'color-mix(in srgb, var(--primary) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', padding: '10px 20px', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--primary)', whiteSpace: 'nowrap' }}
           >
-            Apply to Become a Mentor
+            {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor'}
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2.91667 7H11.0833" stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
               <path d={cardSvg.pf23dd00} stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
@@ -286,22 +421,58 @@ export function CoachingPage() {
         {/* ── Filter bar ── */}
         <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '32px' }}>
           <div className="flex items-center flex-wrap gap-2">
-            <FilterPill label="Role / Industry" />
-            <FilterPill label="Price Range" />
-            <FilterPill label="Availability" />
-            <FilterPill label="Rating" />
+            {FILTERS.map((filter) => (
+              <FilterDropdown
+                key={filter.id}
+                filter={filter}
+                selected={filters[filter.id]}
+                isOpen={openDropdown === filter.id}
+                onToggle={() => setOpenDropdown((p) => (p === filter.id ? null : filter.id))}
+                onSelect={(val) => { setFilters((p) => ({ ...p, [filter.id]: val })); setOpenDropdown(null); }}
+                onClear={() => setFilters((p) => ({ ...p, [filter.id]: null }))}
+              />
+            ))}
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => setFilters({ role: null, price: null, availability: null, rating: null })}
+                className="transition-colors hover:text-foreground"
+                style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--muted-foreground)', padding: '0 4px' }}
+              >
+                Clear all
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--muted-foreground)' }}>Sort by:</span>
+          <div className="relative" ref={sortRef}>
             <button
-              className="flex items-center gap-1 transition-colors hover:text-foreground"
-              style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--foreground)' }}
+              onClick={() => setOpenSort((v) => !v)}
+              className="flex items-center gap-1.5 transition-colors hover:text-foreground"
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--muted-foreground)' }}
             >
-              Top rated
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <span>Sort by:</span>
+              <span style={{ fontWeight: 500, color: 'var(--foreground)' }}>{sortBy}</span>
+              <ChevronDown style={{ width: '14px', height: '14px', color: 'var(--muted-foreground)', transition: 'transform 150ms', transform: openSort ? 'rotate(180deg)' : 'none' }} />
             </button>
+            {openSort && (
+              <div
+                className="absolute top-full right-0 z-30 overflow-hidden"
+                style={{ marginTop: '6px', width: '192px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', padding: '6px 0' }}
+              >
+                {SORT_OPTIONS.map((opt) => {
+                  const active = sortBy === opt;
+                  return (
+                    <button
+                      key={opt}
+                      onClick={() => { setSortBy(opt); setOpenSort(false); }}
+                      className="w-full flex items-center justify-between transition-colors hover:bg-secondary"
+                      style={{ padding: '8px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px', color: active ? 'var(--primary)' : 'var(--foreground)', background: active ? 'color-mix(in srgb, var(--primary) 6%, transparent)' : 'transparent' }}
+                    >
+                      {opt}
+                      {active && <Check style={{ width: '14px', height: '14px', color: 'var(--primary)' }} strokeWidth={2.5} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -317,6 +488,11 @@ export function CoachingPage() {
         </div>
 
       </WidePageContainer>
+
+      <ApplyMentorModal
+        open={isBecomeMentorOpen}
+        onClose={() => setIsBecomeMentorOpen(false)}
+      />
     </DashboardLayout>
   );
 }

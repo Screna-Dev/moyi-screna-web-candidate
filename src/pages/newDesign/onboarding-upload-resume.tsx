@@ -1298,7 +1298,7 @@ function Screen7YourHub({ data, onNext }: {
         onClick={onNext}
         className="w-full h-12 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.26)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.36)] hover:-translate-y-[1px] transition-all duration-200"
       >
-        Go to my dashboard
+        See my personalized practice
         <ArrowRight className="w-4 h-4" />
       </button>
     </div>
@@ -1730,7 +1730,7 @@ export function OnboardingUploadResumePage() {
         target_roles_count: roleLabels.length,
         resume_uploaded: !!data.uploadedFile,
       });
-      window.location.href = returnTo || '/dashboard';
+      window.location.href = returnTo || '/personalized-practice';
       return;
     }
     goTo(Math.min(step + 1, 7));

@@ -14,7 +14,6 @@ import { AuthPage } from './pages/newDesign/auth';
 import ForgotPassword from './pages/ForgetPassword';
 import { RefRedirect } from './pages/ref-redirect';
 import { SignupFlowPage } from './pages/newDesign/signup-flow';
-import { OnboardingPage } from './pages/newDesign/onboarding';
 
 // Dashboard / post-login pages
 import { DashboardPage } from './pages/newDesign/dashboard';
@@ -127,7 +126,6 @@ export const router = createBrowserRouter([
       { path: '/pgs/ref/:slug', element: <RefRedirect /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
-      { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
       { path: '/personalized-practice', element: <PersonalizedPracticePage /> },
       { path: '/quick-mock', element: <QuickMockPage /> },

@@ -115,7 +115,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   // ── Logo (shared) ──
   const Logo = (
     <div className="flex items-center px-6 shrink-0" style={{ height: '72px', borderBottom: '1px solid #E5E7EB' }}>
-      <Link to={isAdmin ? '/admin' : '/dashboard'} className="flex items-center">
+      <Link to="/" className="flex items-center">
         <img src={logoImg} alt="Screna" className="h-6 w-auto" />
       </Link>
     </div>

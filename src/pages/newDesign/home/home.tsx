@@ -6,10 +6,10 @@ import { PaymentService } from '@/services';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 import imgFeatureA from '@/imports/featurea-png.png';
 import imgWorkflowDiagram from '@/imports/Group_10.png';
-import imgTeacup from '@/imports/App/9ac083226e8851800b3f5c1ff4fc42afa6ae2771.png';
-import imgJobOffer from '@/imports/App/ae74c6398f48f9a5fa6c0d535f9c7f075c162a7c.png';
-import imgMicrophone from '@/imports/App/d73fd12be02c7a376b9c30c43ab2e65999fac317.png';
-import imgNotebook from '@/imports/App/a62fc5bf53f588ee8f57df9053ab9c23b0cdb966.png';
+import imgTeacup from '@/imports/App/landing-teacup.png';
+import imgJobOffer from '@/imports/App/landing-job-offer.png';
+import imgMicrophone from '@/imports/App/landing-microphone.png';
+import imgNotebook from '@/imports/App/landing-notebook.png';
 import imgFeatureB from '@/imports/featureb.png';
 import imgFeatureC from '@/imports/featurec.png';
 import imgDashboard from '@/imports/image-2.png';
@@ -559,6 +559,15 @@ export function HomePage() {
 
   const goAuth = () => navigate('/auth');
 
+  // Initials for the logged-in avatar
+  const nameParts = (user?.name || '').trim().split(' ');
+  const avatarInitials =
+    nameParts[0] && nameParts.length > 1
+      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+      : nameParts[0]
+      ? nameParts[0][0].toUpperCase()
+      : 'U';
+
   // Pricing CTA → POST /payments/subscriptions/tierUpdate
   const handleSelectPlan = async (plan: Plan) => {
     if (!user) {
@@ -710,24 +719,41 @@ export function HomePage() {
 
           {/* CTA */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={goAuth}
-              className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
-              style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif", background: 'transparent' }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#0A0A0A')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
-            >
-              Log in
-            </button>
-            <button
-              onClick={goAuth}
-              className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
-              style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#2E5BFF')}
-            >
-              Sign up
-            </button>
+            {user ? (
+              <button
+                onClick={() => navigate('/dashboard')}
+                aria-label="Go to dashboard"
+                title={user.name || 'Dashboard'}
+                className="hidden md:inline-flex w-9 h-9 rounded-full overflow-hidden items-center justify-center font-semibold text-[13px] text-white transition-all duration-150 hover:opacity-90 active:scale-95 bg-[#2E5BFF] border border-[#2E5BFF]"
+              >
+                {user.avatar ? (
+                  <img src={user.avatar} alt={avatarInitials} className="w-full h-full object-cover" />
+                ) : (
+                  avatarInitials
+                )}
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={goAuth}
+                  className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
+                  style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif", background: 'transparent' }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#0A0A0A')}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={goAuth}
+                  className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
+                  style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#2E5BFF')}
+                >
+                  Sign up
+                </button>
+              </>
+            )}
             <button
               className="md:hidden p-2 rounded-lg"
               style={{ color: '#0A0A0A' }}
@@ -756,20 +782,32 @@ export function HomePage() {
                 {link}
               </a>
             ))}
-            <button
-              onClick={goAuth}
-              className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium w-full"
-              style={{ color: '#4A4D57', background: 'transparent' }}
-            >
-              Log in
-            </button>
-            <button
-              onClick={goAuth}
-              className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
-              style={{ background: '#2E5BFF' }}
-            >
-              Sign up
-            </button>
+            {user ? (
+              <button
+                onClick={() => { setMobileMenuOpen(false); navigate('/dashboard'); }}
+                className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
+                style={{ background: '#2E5BFF' }}
+              >
+                Dashboard
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={goAuth}
+                  className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium w-full"
+                  style={{ color: '#4A4D57', background: 'transparent' }}
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={goAuth}
+                  className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
+                  style={{ background: '#2E5BFF' }}
+                >
+                  Sign up
+                </button>
+              </>
+            )}
           </div>
         )}
       </nav>
