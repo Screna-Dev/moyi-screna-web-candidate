@@ -493,10 +493,15 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                 </div>
               )}
               {selectedSlot && (
-                <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
-                  <span className="text-muted-foreground">Selected: </span>
-                  <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
-                </div>
+                <>
+                  <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
+                    <span className="text-muted-foreground">Selected: </span>
+                    <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    💡 Friendly Reminder: You can book sessions within the next 24 hours. Please note that to respect the mentor's schedule, bookings made within this timeframe are non-refundable once confirmed.
+                  </p>
+                </>
               )}
             </div>
           )}
@@ -677,7 +682,7 @@ export function MentorDetailsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout headerTitle="Mentor Profile" noSidebar>
+      <DashboardLayout headerTitle="Mentor Profile">
         <div className="flex items-center justify-center min-h-[60vh]">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
@@ -686,7 +691,7 @@ export function MentorDetailsPage() {
   }
 
   return (
-    <DashboardLayout headerTitle="Mentor Profile" noSidebar>
+    <DashboardLayout headerTitle="Mentor Profile">
       {activePlan && mentor && (
         <BookingModal
           plan={activePlan}
@@ -697,11 +702,11 @@ export function MentorDetailsPage() {
         />
       )}
 
-      <div className="w-full max-w-5xl mx-auto pb-24 pt-28">
+      <div className="w-full max-w-[1200px] mx-auto pb-24 pt-8">
 
         {/* Back link */}
         <div className="flex items-center justify-between mb-8">
-          <Link to="/marketplace" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <Link to="/coaching" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
             Back to Mentorship
           </Link>
@@ -785,44 +790,35 @@ export function MentorDetailsPage() {
             <section>
               <h2 className="text-foreground mb-5">Coaching Plans</h2>
               <div className="flex flex-col gap-4">
-                {plans.map(plan => {
-                  const Icon = plan.icon;
-                  return (
-                    <div
-                      key={plan.id}
-                      className="bg-card rounded-xl border border-border p-5 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0 text-muted-foreground p-[0px] mx-[0px] my-[20px]">
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
-                          <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
+                {plans.map(plan => (
+                  <div
+                    key={plan.id}
+                    className="bg-card rounded-xl border border-border p-6 hover:shadow-sm transition-shadow"
+                  >
+                    <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
+                    <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
 
-                          {/* Duration + pricing row */}
-                          <div className="flex flex-wrap items-center gap-2 mt-3">
-                            
-                            
-                            
+                    {/* Duration + pricing row */}
+                    <div className="flex items-center justify-between mt-5">
+                      <div className="flex items-center gap-5">
+                        {(['30min', '1hr'] as const).map(d => (
+                          <div key={d} className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {d === '30min' ? '30 min' : '1 hr'} · ${plan.pricing[d]}
+                            </span>
                           </div>
-                        </div>
-
-                        {/* CTA */}
-                        <div className="shrink-0 flex flex-col items-end gap-2 pl-2">
-                          
-                          
-                          <button
-                            onClick={() => setActivePlan(plan)}
-                            className="mt-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap mx-[0px] mt-[20px] mb-[0px]"
-                          >
-                            Book
-                          </button>
-                        </div>
+                        ))}
                       </div>
+                      <button
+                        onClick={() => setActivePlan(plan)}
+                        className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap"
+                      >
+                        Book
+                      </button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -830,28 +826,10 @@ export function MentorDetailsPage() {
             <section>
               <h2 className="text-foreground mb-5">Ratings & Reviews</h2>
 
-              <div className="bg-card border border-border rounded-xl p-6 mb-5">
-                <div className="flex flex-col md:flex-row gap-8 items-center">
-                  <div className="text-center md:w-1/3 shrink-0">
-                    <p className="text-5xl font-medium text-foreground tracking-tight">{ratingBreakdown.overall.toFixed(1)}</p>
-                    <div className="flex justify-center my-2"><StarRating rating={ratingBreakdown.overall} /></div>
-                    <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
-                  </div>
-                  {/* <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
-                    {[
-                      { label: 'Communication', val: ratingBreakdown.Communication },
-                      { label: 'Expertise',      val: ratingBreakdown.Expertise },
-                      { label: 'Helpfulness',    val: ratingBreakdown.Helpfulness },
-                      { label: 'Preparation',    val: ratingBreakdown.Preparation },
-                    ].map(item => (
-                      <div key={item.label} className="flex items-center gap-3 text-sm">
-                        <span className="w-28 text-muted-foreground text-xs">{item.label}</span>
-                        <div className="flex-1"><RatingBar value={item.val} /></div>
-                        <span className="w-8 text-right text-xs font-medium text-foreground">{item.val.toFixed(1)}</span>
-                      </div>
-                    ))}
-                  </div> */}
-                </div>
+              <div className="bg-card border border-border rounded-xl mb-5 flex flex-col items-center py-6 gap-2">
+                <p className="text-5xl font-medium text-foreground tracking-tight leading-none">{ratingBreakdown.overall.toFixed(1)}</p>
+                <StarRating rating={ratingBreakdown.overall} />
+                <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
               </div>
 
               <div className="space-y-3">

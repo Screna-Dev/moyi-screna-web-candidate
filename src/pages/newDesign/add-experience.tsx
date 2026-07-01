@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, ArrowRight, Building2, Briefcase, Shield, Check, Plus, Trash2, FileText, ChevronDown, X, Info, User, MapPin, Calendar, BarChart, Clock, Loader2, AlertCircle, Search } from 'lucide-react';
 import { Button } from '../../components/newDesign/ui/button';
 import { Input } from '../../components/newDesign/ui/input';
@@ -852,6 +852,9 @@ function TagSelector({ selected, onChange, hasError }: { selected: string[]; onC
 // ─── Main component ────────────────────────────────────
 export function AddExperiencePage() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
+  // Return to wherever the user came from (e.g. a company page); default to the directory.
+  const backTarget = (routeLocation.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/interview-insights';
   const [step, setStep] = useState(0);
   const [published, setPublished] = useState(false);
 
@@ -1006,7 +1009,7 @@ export function AddExperiencePage() {
       <div className="h-14 border-b border-[hsl(220,16%,92%)] bg-white/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-30 sticky top-0">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/interview-insights')}
+            onClick={() => navigate(backTarget)}
             className="flex items-center gap-2 text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] transition-colors text-sm"
           >
             <ArrowLeft className="w-4 h-4" />

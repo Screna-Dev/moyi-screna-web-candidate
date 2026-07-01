@@ -1770,7 +1770,7 @@ function SessionsTab() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
               <tr>
-                {["Session ID", "Student", "Mentor", "Service", "Time", "Status", "Payment", "Refund", "Actions"].map((h) => (
+                {["Session ID", "Student", "Mentor", "Time", "Status", "Payment", "Refund", "Actions"].map((h) => (
                   <th key={h} style={TH}>{h}</th>
                 ))}
               </tr>
@@ -1787,7 +1787,6 @@ function SessionsTab() {
                   <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: C.blue }}>{s.id}</td>
                   <td style={TD}>{s.student}</td>
                   <td style={TD}>{s.mentor}</td>
-                  <td style={TD}><ServiceChip label={s.serviceType} /></td>
                   <td style={TD}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       {s.within48h && <span style={badge("amber")}>48h</span>}

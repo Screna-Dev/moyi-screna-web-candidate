@@ -39,7 +39,7 @@ const SUPPORT_LINKS = [
 ];
 
 const SOCIAL_LINKS = [
-  { icon: XIcon, label: 'X', href: 'https://x.com/ScrenaAI' },
+  { icon: XIcon, label: 'X', href: 'https://x.com/screnaai_?s=21' },
   { icon: Linkedin, label: 'LinkedIn', href: 'https://www.linkedin.com/company/screnaai/' },
   { icon: DiscordIcon, label: 'Discord', href: 'https://discord.gg/7FqHDtea5X' },
   { icon: Mail, label: 'Email', href: 'mailto:operations@screna.ai' },

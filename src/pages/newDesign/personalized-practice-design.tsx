@@ -1,87 +1,42 @@
-import { useState, useEffect } from 'react';
-import { WidePageContainer } from '@/components/newDesign/dashboard-page';
-import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
-import { Link, useNavigate } from 'react-router';
-import {
-  Clock,
-  ArrowRight,
-  Coins,
-  Zap,
-  BarChart2,
-  Building2,
-  Search,
-  Sparkles,
-  Lock,
-  User,
-  Target,
-  Plus,
-  X,
-  FileText,
-  CheckCircle2,
-  ChevronRight,
-  Briefcase,
-  ClipboardPaste,
-  Calendar,
-  Crosshair,
-} from 'lucide-react';
-import { Button } from '@/components/newDesign/ui/button';
-import { Badge } from '@/components/newDesign/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/newDesign/ui/select';
+import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router';
+import { Clock, ArrowRight, Zap, BarChart2, Building2, Sparkles, Target, Plus, CheckCircle2, Calendar, ChevronLeft, ChevronRight, Crosshair, Loader2, AlertCircle, Trash2 } from 'lucide-react';
+import { Button } from '../../components/newDesign/ui/button';
+import { Badge } from '../../components/newDesign/ui/badge';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from '@/components/newDesign/ui/dialog';
+} from '../../components/newDesign/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../components/newDesign/ui/popover';
+import { Navbar } from '../../components/newDesign/home/navbar';
+import { Footer } from '../../components/newDesign/home/footer';
+import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
+import { WidePageContainer } from '../../components/newDesign/dashboard-page';
+import { GoalPage } from './goal-page';
+import { GoalUploadPage } from './goal-upload-page';
+import { InterviewService } from '@/services';
+import { getProfile } from '@/services/ProfileServices';
 import { useRecommendedJobs } from '@/hooks/useRecommendedJobs';
-
-// ─── Auth helper (same as navbar) ──────────────────────
-function useAuthState() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('screnaIsLoggedIn') === 'true';
-  });
-  const [userData, setUserData] = useState<{
-    firstName?: string;
-    lastName?: string;
-    role?: string;
-    experienceLevel?: string;
-  } | null>(() => {
-    try {
-      const raw = localStorage.getItem('screnaUserData');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    const handler = () => {
-      setIsLoggedIn(localStorage.getItem('screnaIsLoggedIn') === 'true');
-      try {
-        const raw = localStorage.getItem('screnaUserData');
-        setUserData(raw ? JSON.parse(raw) : null);
-      } catch {
-        setUserData(null);
-      }
-    };
-    window.addEventListener('screna-auth-change', handler);
-    return () => window.removeEventListener('screna-auth-change', handler);
-  }, []);
-
-  const hasProfile = !!(userData?.role && userData?.experienceLevel);
-  return { isLoggedIn, userData, hasProfile };
-}
+import type { RecommendedJob } from '@/hooks/useRecommendedJobs';
+import { createTrainingPlan } from '@/services/InterviewServices';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ─────────────────────────────────────────────
 interface PracticeSet {
   id: number;
+  module_id: string;
+  training_plan_id?: number;
   title: string;
   role: string;
   focus: string;
@@ -92,138 +47,50 @@ interface PracticeSet {
   popular?: boolean;
   category: string;
   company: string;
-  matchScore?: number; // For "For you" personalized ranking
+  topics?: string[];
+  whatToExpect?: string[];
 }
 
-// ─── Data ──────────────────────────────────────────────
-const PRACTICE_SETS: PracticeSet[] = [
-  {
-    id: 1,
-    title: 'Product Sense Essentials',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '30 min',
-    difficulty: 'Intermediate',
+function mapModuleToPracticeSet(module: any, index: number, planTitle?: string, planCompany?: string, planId?: number): PracticeSet {
+  const difficultyMap: Record<string, PracticeSet['difficulty']> = {
+    easy: 'Junior',
+    medium: 'Intermediate',
+    hard: 'Senior',
+    expert: 'Staff',
+  };
+  const categoryRoleMap: Record<string, string> = {
+    product: 'Product Manager',
+    'product sense': 'Product Manager',
+    behavioral: 'General',
+    'system-design': 'Software Engineer',
+    'system design': 'Software Engineer',
+    technical: 'Software Engineer',
+    analytical: 'Data Scientist',
+    leadership: 'Engineering Manager',
+    resume: 'General',
+  };
+  const cat = (module.category || '').toLowerCase();
+  const cfg = module.session_config || {};
+  const topics: string[] = (cfg.questions || []).map((q: any) => q.description).filter(Boolean);
+  const whatToExpect: string[] = (cfg.objectives || []).filter(Boolean);
+  return {
+    id: index,
+    module_id: module.module_id || String(module.id || index),
+    training_plan_id: planId,
+    title: module.title || 'Practice Session',
+    role: categoryRoleMap[cat] || 'General',
+    focus: module.topic || module.category || 'General',
+    time: module.duration_minutes ? `${module.duration_minutes} min` : '30 min',
+    difficulty: difficultyMap[(module.difficulty || '').toLowerCase()] || 'Intermediate',
     credits: 5,
-    practiced: 539,
-    popular: true,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 2,
-    title: 'Behavioral STAR Method',
-    role: 'General',
-    focus: 'Behavioral',
-    time: '45 min',
-    difficulty: 'Junior',
-    credits: 8,
-    practiced: 198,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 3,
-    title: 'System Design Scalability',
-    role: 'Software Engineer',
-    focus: 'System',
-    time: '48 min',
-    difficulty: 'Senior',
-    credits: 10,
-    practiced: 340,
-    category: 'system-design',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 4,
-    title: 'React Frontend Core',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '20 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 181,
-    category: 'technical',
-    company: 'Startups',
-  },
-  {
-    id: 5,
-    title: 'A/B Testing & Metrics',
-    role: 'Data Scientist',
-    focus: 'Analytical',
-    time: '30 min',
-    difficulty: 'Staff',
-    credits: 10,
-    practiced: 198,
-    category: 'analytical',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 6,
-    title: 'Leadership Principles',
-    role: 'Engineering Manager',
-    focus: 'Behavioral',
-    time: '25 min',
-    difficulty: 'Senior',
-    credits: 5,
-    practiced: 831,
-    popular: true,
-    category: 'behavioral',
-    company: 'Mid-size tech',
-  },
-  {
-    id: 7,
-    title: 'PM Strategy & Vision',
-    role: 'Product Manager',
-    focus: 'Product',
-    time: '35 min',
-    difficulty: 'Senior',
-    credits: 8,
-    practiced: 412,
-    category: 'product',
-    company: 'FAANG / Big Tech',
-  },
-  {
-    id: 8,
-    title: 'API Design Patterns',
-    role: 'Software Engineer',
-    focus: 'Technical',
-    time: '25 min',
-    difficulty: 'Intermediate',
-    credits: 5,
-    practiced: 267,
-    category: 'technical',
-    company: 'Mid-size tech',
-  },
-];
-
-const RECENT_SESSIONS = [
-  { id: 1, title: 'System Design Interview', score: 82, date: 'Today, 2:30 PM', duration: '28 min', tag: 'Technical' },
-  { id: 2, title: 'PM Product Sense', score: 74, date: 'Yesterday, 10:00 AM', duration: '32 min', tag: 'Product' },
-  { id: 3, title: 'Behavioral STAR', score: 91, date: 'Mar 12, 4:15 PM', duration: '22 min', tag: 'Behavioral' },
-];
-
-const SUGGESTED_ROLES = [
-  {
-    title: 'Software Engineer, Backend',
-    company: 'Tech Startup',
-    skills: 'API design, scalability, ownership',
-    description: 'We are looking for a backend engineer to design scalable APIs and take ownership of key features.',
-  },
-  {
-    title: 'Senior Product Manager',
-    company: 'Big Tech',
-    skills: 'Strategy, user research, roadmap',
-    description: 'Lead product strategy and roadmap for a high-impact product area.',
-  },
-  {
-    title: 'Frontend Developer',
-    company: 'Mid-size Company',
-    skills: 'React, performance, UI/UX',
-    description: 'Build performant and responsive user interfaces using React and modern frontend tools.',
-  },
-];
+    practiced: 0,
+    category: cat || 'general',
+    company: planCompany || planTitle || 'Your Training Plan',
+    popular: module.status !== 'completed',
+    topics,
+    whatToExpect,
+  };
+}
 
 // ─── Helpers ───────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
@@ -234,34 +101,39 @@ const ROLE_COLORS: Record<string, string> = {
   'Engineering Manager': 'bg-amber-50 text-amber-700 border-amber-200/60',
 };
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  Junior: 'text-emerald-600',
-  Intermediate: 'text-blue-600',
-  Senior: 'text-amber-600',
-  Staff: 'text-rose-600',
-};
-
-const AVATAR_COLOR_SETS = [
-  ['bg-rose-200 text-rose-700', 'bg-blue-200 text-blue-700', 'bg-amber-200 text-amber-700'],
-  ['bg-purple-200 text-purple-700', 'bg-green-200 text-green-700', 'bg-pink-200 text-pink-700'],
-  ['bg-cyan-200 text-cyan-700', 'bg-orange-200 text-orange-700', 'bg-indigo-200 text-indigo-700'],
-];
-
-const INITIALS = ['A', 'N', 'J', 'M', 'S', 'K', 'R', 'T'];
-
+// ════════════════════════════════════════════════════════
+// GENERATION PROGRESS BAR COMPONENT
+// ════════════════════════════════════════════════════════
+function GenerationProgressBar({ progress }: { progress: number }) {
+  return (
+    <div className="w-full max-w-md mx-auto mt-6">
+      <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+        <span className="font-medium">Generating your training plan</span>
+        <span className="font-mono text-blue-600">{progress}%</span>
+      </div>
+      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className="text-xs text-slate-400 text-center mt-3">
+        We're creating personalized practice modules based on your target role
+      </p>
+    </div>
+  );
+}
 
 // ════════════════════════════════════════════════════════
 // PRACTICE SET CARD (reused from mock-interview)
 // ════════════════════════════════════════════════════════
-function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boolean }) {
-  const colorSet = AVATAR_COLOR_SETS[set.id % AVATAR_COLOR_SETS.length];
-  const visibleAvatars = 3;
+function PracticeSetCard({ set, onClick, isLoading, userBalance }: { set: PracticeSet; onClick?: () => void; isLoading?: boolean; userBalance?: number }) {
+  const hasInsufficientBalance = userBalance !== undefined && userBalance < set.credits;
 
-  return (
-    <Link
-      to={`/session-confirm?session=${set.id}`}
-      className="group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col"
-    >
+  const cardClass = `group bg-white rounded-2xl border border-[#E2E8F0] hover:border-blue-200 hover:shadow-lg hover:shadow-slate-900/[0.06] transition-all duration-250 overflow-hidden flex flex-col ${isLoading ? 'opacity-60 pointer-events-none' : ''}`;
+
+  const inner = (
+    <>
       {/* Top: Role + Popular/Match badge */}
       <div className="px-5 pt-5 pb-0">
         <div className="flex items-start justify-between gap-3">
@@ -273,12 +145,7 @@ function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boo
           >
             {set.role}
           </Badge>
-          {showMatch && set.matchScore ? (
-            <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
-              <Target className="w-3 h-3" />
-              {set.matchScore}% Match
-            </Badge>
-          ) : set.popular ? (
+          {set.popular ? (
             <Badge className="bg-blue-600 text-white hover:bg-blue-600 border-blue-600 shadow-none font-semibold text-[11px] px-2.5 py-0.5 shrink-0 rounded-full gap-1">
               <Sparkles className="w-3 h-3" />
               Popular
@@ -295,7 +162,6 @@ function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boo
 
         {/* Metadata chips row */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          
           <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 border border-slate-100">
             <Zap className="w-3.5 h-3.5 text-slate-400" style={{ strokeWidth: 1.5 }} />
             <span>{set.focus}</span>
@@ -320,135 +186,293 @@ function PracticeSetCard({ set, showMatch }: { set: PracticeSet; showMatch?: boo
 
       {/* Footer */}
       <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex -space-x-1.5">
-            {colorSet.slice(0, visibleAvatars).map((color, i) => (
-              <div
-                key={i}
-                className={`w-6 h-6 rounded-full ${color} flex items-center justify-center text-[10px] font-semibold border-[1.5px] border-white`}
-              >
-                {INITIALS[(set.id + i) % INITIALS.length]}
-              </div>
-            ))}
-          </div>
-          <span className="text-xs font-medium text-slate-400">
-            +{set.practiced.toLocaleString()} practiced
-          </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {hasInsufficientBalance ? (
+            <>
+              <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+              <span className="text-xs text-orange-600 truncate">
+                Need {set.credits} credits
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-slate-400">
+              {set.practiced > 0 ? `${set.practiced.toLocaleString()} practiced` : 'Ready to practice'}
+            </span>
+          )}
         </div>
         <div className="w-7 h-7 rounded-full border border-transparent flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-          <ArrowRight className="w-3.5 h-3.5" />
+          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
         </div>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button onClick={onClick} className={`text-left w-full ${cardClass}`}>
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      to={`/session-confirm?session=${set.module_id}&title=${encodeURIComponent(set.title)}&category=${encodeURIComponent(set.category)}&focus=${encodeURIComponent(set.focus)}&time=${encodeURIComponent(set.time)}&difficulty=${set.difficulty}${set.topics?.length ? `&topics=${encodeURIComponent(JSON.stringify(set.topics))}` : ''}${set.whatToExpect?.length ? `&whatToExpect=${encodeURIComponent(JSON.stringify(set.whatToExpect))}` : ''}`}
+      className={cardClass}
+    >
+      {inner}
     </Link>
   );
 }
 
 
 // ════════════════════════════════════════════════════════
-// SIGN-IN MODAL (soft gate)
+// ENGLISH DATE PICKER (locale-independent)
 // ════════════════════════════════════════════════════════
-function SignInModal({
-  open,
-  onOpenChange,
-  message,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  message?: string;
-}) {
-  const navigate = useNavigate();
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[380px] rounded-2xl">
-        <DialogHeader>
-          <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-3">
-            <Lock className="w-5 h-5 text-blue-600" />
-          </div>
-          <DialogTitle className="text-center">Sign in to continue</DialogTitle>
-          <DialogDescription className="text-center text-sm text-slate-500">
-            {message || 'Sign in to personalize your mock and save progress.'}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-2.5 mt-2">
-          <Button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-            onClick={() => {
-              onOpenChange(false);
-              navigate('/auth');
-            }}
-          >
-            Sign in
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full text-slate-500 hover:text-slate-700"
-            onClick={() => onOpenChange(false)}
-          >
-            Not now
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const WEEKDAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function formatDateMDY(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return '';
+  return `${m}/${d}/${y}`;
 }
 
+function EnglishDatePicker({
+  value,
+  onChange,
+  minDate,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  minDate?: Date;
+}) {
+  const today = new Date();
+  const initialMonth = value
+    ? new Date(`${value}T00:00:00`)
+    : new Date(today.getFullYear(), today.getMonth(), 1);
+  const [viewYear, setViewYear] = useState(initialMonth.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialMonth.getMonth());
+  const [open, setOpen] = useState(false);
+
+  const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const minTime = minDate ? new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate()).getTime() : -Infinity;
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDayOfMonth; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const goPrev = () => {
+    if (viewMonth === 0) {
+      setViewYear(viewYear - 1);
+      setViewMonth(11);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+  const goNext = () => {
+    if (viewMonth === 11) {
+      setViewYear(viewYear + 1);
+      setViewMonth(0);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={`w-full h-11 text-sm bg-white border border-slate-200 rounded-xl pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 text-left relative ${
+            value ? 'text-slate-900' : 'text-slate-400'
+          }`}
+        >
+          <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          {value ? formatDateMDY(value) : 'Pick a date'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-3" align="start">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            type="button"
+            onClick={goPrev}
+            className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-600"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="text-sm font-semibold text-slate-900">
+            {MONTH_NAMES[viewMonth]} {viewYear}
+          </div>
+          <button
+            type="button"
+            onClick={goNext}
+            className="w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-600"
+            aria-label="Next month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-[11px] text-slate-400 mb-1">
+          {WEEKDAY_NAMES.map((w) => (
+            <div key={w} className="h-7 flex items-center justify-center font-medium">{w}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((d, i) => {
+            if (d === null) return <div key={i} className="h-8" />;
+            const cellTime = new Date(viewYear, viewMonth, d).getTime();
+            const disabled = cellTime < minTime;
+            const iso = `${viewYear}-${pad(viewMonth + 1)}-${pad(d)}`;
+            const isSelected = value === iso;
+            const isToday =
+              today.getFullYear() === viewYear &&
+              today.getMonth() === viewMonth &&
+              today.getDate() === d;
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  onChange(iso);
+                  setOpen(false);
+                }}
+                className={`h-8 text-sm rounded-md transition-colors ${
+                  isSelected
+                    ? 'bg-blue-600 text-white font-semibold'
+                    : disabled
+                    ? 'text-slate-300 cursor-not-allowed'
+                    : isToday
+                    ? 'bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // ════════════════════════════════════════════════════════
 // TARGET JOB MODAL
 // ════════════════════════════════════════════════════════
+
 function TargetJobModal({
   open,
   onOpenChange,
   onApply,
+  onPlanCreated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onApply: (job: string) => void;
+  onPlanCreated?: () => void;
 }) {
   const [tab, setTab] = useState<'quick' | 'paste'>('quick');
   const [selectedRole, setSelectedRole] = useState('');
-  const { recommendations, fetchRecommendations } = useRecommendedJobs();
-
-  // Pull profile-based job recommendations when the modal opens; the rendered
-  // list is mapped into the existing suggested-role shape, falling back to the
-  // static SUGGESTED_ROLES when no recommendations are available.
-  useEffect(() => {
-    if (open) fetchRecommendations();
-  }, [open, fetchRecommendations]);
-
-  const suggestedRoles =
-    recommendations.length > 0
-      ? recommendations.map((r) => ({
-          title: r.job_title,
-          company: `${r.match_percentage}% match`,
-          skills: r.key_requirements.slice(0, 3).join(', '),
-          description: r.reason,
-        }))
-      : SUGGESTED_ROLES;
-
+  const [selectedJobData, setSelectedJobData] = useState<RecommendedJob | null>(null);
   const [jobTitle, setJobTitle] = useState('');
   const [jobCompany, setJobCompany] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [interviewDate, setInterviewDate] = useState('');
   const [dailyPrepTime, setDailyPrepTime] = useState('2');
+  const { recommendations: recommendedJobs, isLoading, error: recError, fetchRecommendations, invalidate } = useRecommendedJobs();
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const posthog = usePostHog();
+  const recoTrackedRef = useRef(false);
 
-  const handleQuickApply = () => {
-    if (selectedRole) {
-      onApply(selectedRole);
+  useEffect(() => {
+    if (open) {
+      setSelectedRole('');
+      setSelectedJobData(null);
+      setTab('quick');
+      setApiError(null);
+      recoTrackedRef.current = false;
+      invalidate();
+      fetchRecommendations();
+    }
+  }, [open]);
+
+  // job_recommendations_viewed —— recommended job list finished rendering (fires once per open)
+  useEffect(() => {
+    if (open && !isLoading && recommendedJobs.length > 0 && !recoTrackedRef.current) {
+      recoTrackedRef.current = true;
+      safeCapture(posthog, EVENTS.JOB_RECOMMENDATIONS_VIEWED, {
+        count: recommendedJobs.length,
+      });
+    }
+  }, [open, isLoading, recommendedJobs.length, posthog]);
+
+  const handleQuickApply = async () => {
+    if (!selectedRole || !selectedJobData) return;
+    setIsCreatingPlan(true);
+    setApiError(null);
+    // mock_new_titles —— create a new training plan from a recommended JD
+    safeCapture(posthog, EVENTS.MOCK_NEW_TITLES, {
+      method: 'quick_select',
+      job_title: selectedJobData.job_title,
+    });
+    try {
+      await createTrainingPlan({
+        jobTitle: selectedJobData.job_title,
+        company: '',
+        jobDescription: selectedJobData.key_requirements.join(', '),
+      });
+      onApply(selectedJobData.job_title);
       onOpenChange(false);
       setSelectedRole('');
+      setSelectedJobData(null);
+      onPlanCreated?.();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
+    } finally {
+      setIsCreatingPlan(false);
     }
   };
 
-  const handlePasteApply = () => {
-    const label = jobTitle ? `${jobTitle}${jobCompany ? ` at ${jobCompany}` : ''}` : 'Custom JD';
-    onApply(label);
-    onOpenChange(false);
-    setJobTitle('');
-    setJobCompany('');
-    setJobDescription('');
-    setInterviewDate('');
-    setDailyPrepTime('2');
+  const handlePasteApply = async () => {
+    if (!jobTitle.trim() || !jobDescription.trim()) return;
+    setIsCreatingPlan(true);
+    setApiError(null);
+    // mock_new_titles —— create a new training plan from a pasted JD
+    safeCapture(posthog, EVENTS.MOCK_NEW_TITLES, {
+      method: 'paste_jd',
+      job_title: jobTitle.trim(),
+    });
+    try {
+      await createTrainingPlan({
+        jobTitle: jobTitle.trim(),
+        company: jobCompany.trim(),
+        jobDescription: jobDescription.trim(),
+      });
+      const label = `${jobTitle.trim()}${jobCompany.trim() ? ` at ${jobCompany.trim()}` : ''}`;
+      onApply(label);
+      onOpenChange(false);
+      setJobTitle('');
+      setJobCompany('');
+      setJobDescription('');
+      setInterviewDate('');
+      setDailyPrepTime('2');
+      onPlanCreated?.();
+    } catch (err: any) {
+      setApiError(err?.response?.data?.message || 'Failed to create plan. Please try again.');
+    } finally {
+      setIsCreatingPlan(false);
+    }
   };
 
   return (
@@ -490,67 +514,106 @@ function TargetJobModal({
           </div>
         </div>
 
-        {tab === 'quick' ? (
+        {tab === 'quick' && (
           <div className="px-6 pt-5 pb-6 space-y-4">
             <p className="text-sm text-slate-400">Suggested based on your profile</p>
-            <div className="space-y-3">
-              {suggestedRoles.map((role) => {
-                const roleKey = `${role.title}`;
-                const isSelected = selectedRole === roleKey;
-                return (
-                  <button
-                    key={roleKey}
-                    onClick={() => setSelectedRole(roleKey)}
-                    className={`w-full text-left px-5 py-4 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'border-blue-300 bg-blue-50/40'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Radio circle */}
-                      <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected ? 'border-blue-500' : 'border-slate-300'
-                      }`}>
-                        {isSelected && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                        )}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+              </div>
+            ) : recommendedJobs.length === 0 ? (
+              <div className="text-center py-4 space-y-3">
+                <p className="text-sm text-slate-400">
+                  {recError || 'No recommendations found yet. Your profile may still be processing.'}
+                </p>
+                <button
+                  onClick={() => { invalidate(); fetchRecommendations(); }}
+                  className="text-xs text-blue-500 hover:text-blue-600 underline"
+                >
+                  Retry
+                </button>
+                <p className="text-xs text-slate-400">Or use &ldquo;Paste JD&rdquo; to enter a custom role.</p>
+              </div>
+            ) : (
+              <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+                {recommendedJobs.map((role) => {
+                  const roleKey = role.job_title;
+                  const isSelected = selectedRole === roleKey;
+                  return (
+                    <button
+                      key={roleKey}
+                      onClick={() => {
+                        setSelectedRole(roleKey);
+                        setSelectedJobData(role);
+                      }}
+                      className={`w-full text-left px-5 py-4 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'border-blue-300 bg-blue-50/40'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Radio circle */}
+                        <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'border-blue-500' : 'border-slate-300'
+                        }`}>
+                          {isSelected && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-[15px] text-slate-900">{role.job_title}</h4>
+                            <span className="text-xs font-medium text-blue-600 bg-blue-50 rounded-full px-2 py-0.5 border border-blue-200/60">
+                              {role.match_percentage}% match
+                            </span>
+                          </div>
+                          {role.key_requirements.length > 0 && (
+                            <p className="text-sm text-slate-500 mt-0.5">
+                              {role.key_requirements.slice(0, 3).join(' · ')}
+                            </p>
+                          )}
+                          {role.reason && (
+                            <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
+                              {role.reason}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-[15px] text-slate-900">{role.title}</h4>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                          <span className="text-slate-600">{role.company}</span>
-                          <span className="mx-1.5 text-slate-300">&bull;</span>
-                          <span>{role.skills}</span>
-                        </p>
-                        <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">
-                          {role.description}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {apiError && (
+              <p className="text-sm text-red-500">{apiError}</p>
+            )}
             {/* Buttons */}
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button
                 variant="outline"
                 className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
                 onClick={() => onOpenChange(false)}
+                disabled={isCreatingPlan}
               >
                 Cancel
               </Button>
               <Button
                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!selectedRole}
+                disabled={!selectedRole || isCreatingPlan}
                 onClick={handleQuickApply}
               >
-                Use selected role
+                {isCreatingPlan ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
+                ) : (
+                  'Use selected role'
+                )}
               </Button>
             </div>
           </div>
-        ) : (
+        )}
+
+        {tab === 'paste' && (
           <div className="px-6 pt-5 pb-6 space-y-4">
             <div>
               <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
@@ -578,7 +641,7 @@ function TargetJobModal({
             </div>
             <div>
               <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
-                Job Description
+                Job Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 placeholder="Paste the job description here..."
@@ -593,25 +656,11 @@ function TargetJobModal({
                 <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
                   Interview Date
                 </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={interviewDate}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9/]/g, '');
-                      if (v.length <= 10) setInterviewDate(v);
-                    }}
-                    lang="en"
-                    className="w-full h-11 text-sm bg-white border border-slate-200 rounded-xl pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 text-slate-500"
-                    placeholder="MM/DD/YYYY"
-                  />
-                  {!interviewDate && (
-                    <span className="absolute left-10 top-1/2 -translate-y-1/2 text-sm text-blue-400 pointer-events-none">
-                      Pick a date
-                    </span>
-                  )}
-                </div>
+                <EnglishDatePicker
+                  value={interviewDate}
+                  onChange={setInterviewDate}
+                  minDate={new Date()}
+                />
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-900 mb-1.5 block">
@@ -628,21 +677,29 @@ function TargetJobModal({
                 />
               </div>
             </div>
+            {apiError && (
+              <p className="text-sm text-red-500">{apiError}</p>
+            )}
             {/* Buttons */}
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button
                 variant="outline"
                 className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none px-6"
                 onClick={() => onOpenChange(false)}
+                disabled={isCreatingPlan}
               >
                 Cancel
               </Button>
               <Button
                 className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-none px-6"
-                disabled={!jobTitle.trim()}
+                disabled={!jobTitle.trim() || !jobDescription.trim() || isCreatingPlan}
                 onClick={handlePasteApply}
               >
-                Generate Plan
+                {isCreatingPlan ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />Creating…</>
+                ) : (
+                  'Generate Plan'
+                )}
               </Button>
             </div>
           </div>
@@ -676,76 +733,263 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // MAIN PAGE
 // ════════════════════════════════════════════════════════
 export function PersonalizedPracticePage() {
-  const navigate = useNavigate();
-  const { isLoggedIn, userData, hasProfile } = useAuthState();
+  const posthog = usePostHog();
+  const { isAuthenticated: isLoggedIn } = useAuth();
+  const { planData } = useUserPlan();
+  const { fetchRecommendations: prefetchRecommendations } = useRecommendedJobs();
+  const userBalance = planData?.permanentCreditBalance;
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<'popular' | 'foryou'>('popular');
+  // Resume check
+  const [hasResume, setHasResume] = useState<boolean | null>(null);
+  const [hasSkippedTargetJob, setHasSkippedTargetJob] = useState(false);
 
-  // Filters (apply to Popular tab)
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const refetchProfile = () => {
+    getProfile()
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        setHasResume(!!(data?.resume_path));
+      })
+      .catch(() => setHasResume(false));
+  };
 
-  // Target Job
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setHasResume(null);
+      setHasSkippedTargetJob(false);
+      return;
+    }
+    refetchProfile();
+    prefetchRecommendations();
+  }, [isLoggedIn]);
+
+  // ── All state declarations ──
+  const [planSets, setPlanSets] = useState<PracticeSet[]>([]);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [isModulesGenerating, setIsModulesGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [isPartiallyReady, setIsPartiallyReady] = useState(false);
+  const [existingPlanId, setExistingPlanId] = useState<number | null>(null);
+  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
   const [targetJob, setTargetJob] = useState<string | null>(null);
   const [showTargetJobModal, setShowTargetJobModal] = useState(false);
 
-  // Sign-in modal
-  const [showSignIn, setShowSignIn] = useState(false);
-  const [signInMessage, setSignInMessage] = useState('');
-
-  // Toast
+  // mock_recommendations_viewed —— practice set list rendered (fires once)
+  const mockRecoTrackedRef = useRef(false);
+  useEffect(() => {
+    if (isLoggedIn && planSets.length > 0 && !mockRecoTrackedRef.current) {
+      mockRecoTrackedRef.current = true;
+      safeCapture(posthog, EVENTS.MOCK_RECOMMENDATIONS_VIEWED, {
+        count: planSets.length,
+      });
+    }
+  }, [isLoggedIn, planSets.length, posthog]);
   const [toast, setToast] = useState({ visible: false, message: '' });
 
+  // ── Helper functions ──
   const showToast = (message: string) => {
     setToast({ visible: true, message });
     setTimeout(() => setToast({ visible: false, message: '' }), 2500);
   };
 
-  // Quick Start personalization
-  const [personalizeWith, setPersonalizeWith] = useState<'profile' | 'targetjob' | null>(null);
+  // ── Fetch plans function ──
+  const refetchPlans = async () => {
+    if (!isLoggedIn) return;
 
-  // Gate check helper
-  const requireAuth = (msg?: string) => {
-    if (!isLoggedIn) {
-      setSignInMessage(msg || 'Sign in to personalize your mock and save progress.');
-      setShowSignIn(true);
-      return true;
+    try {
+      const response = await InterviewService.getTrainingPlans();
+      let plansData = response.data?.data ?? response.data ?? [];
+      if (!Array.isArray(plansData)) plansData = [];
+
+      // Set target job from the first plan if it exists
+      if (plansData.length > 0 && !targetJob) {
+        const firstPlan = plansData[0];
+        setTargetJob(firstPlan.target_job_title || 'Your Training Plan');
+        setExistingPlanId(firstPlan.id);
+      }
+
+      // Check plan status and modules
+      const hasAnyModules = plansData.some((plan: any) => (plan.modules || []).length > 0);
+      const planStatus = plansData[0]?.status;
+      const apiProgress = plansData[0]?.progress;
+
+      if (planStatus === 'active' && hasAnyModules) {
+        // Fully ready
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(false);
+        setGenerationProgress(100);
+
+        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
+        for (const plan of plansData) {
+          const planTitle = plan.target_job_title || 'Your Training Plan';
+          const planId = plan.id;
+          const modules: any[] = plan.modules || [];
+          for (const m of modules) {
+            if (m.status === 'pending') {
+              pendingModules.push({ module: m, planTitle, planId });
+            }
+          }
+        }
+        const first8 = pendingModules.slice(0, 8);
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) =>
+          mapModuleToPracticeSet(module, i, planTitle, undefined, planId)
+        ));
+      } else if (planStatus === 'partially_ready' && hasAnyModules) {
+        // First batch of modules ready, more still generating
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(true);
+        if (apiProgress != null) setGenerationProgress(apiProgress);
+
+        const pendingModules: { module: any; planTitle: string; planId: number }[] = [];
+        for (const plan of plansData) {
+          const planTitle = plan.target_job_title || 'Your Training Plan';
+          const planId = plan.id;
+          const modules: any[] = plan.modules || [];
+          for (const m of modules) {
+            if (m.status === 'pending') {
+              pendingModules.push({ module: m, planTitle, planId });
+            }
+          }
+        }
+        const first8 = pendingModules.slice(0, 8);
+        setPlanSets(first8.map(({ module, planTitle, planId }, i) =>
+          mapModuleToPracticeSet(module, i, planTitle, undefined, planId)
+        ));
+      } else if (plansData.length > 0) {
+        // Plan exists but no modules yet — still processing
+        setIsModulesGenerating(true);
+        setIsPartiallyReady(false);
+        if (apiProgress != null) setGenerationProgress(apiProgress);
+      } else {
+        setIsModulesGenerating(false);
+        setIsPartiallyReady(false);
+        setPlanSets([]);
+      }
+    } catch (error) {
+      console.error('Error fetching plans:', error);
     }
-    return false;
   };
 
-  // ─── Filtered sets (Popular tab) ──────────────
-  const popularSets = PRACTICE_SETS.filter((set) => {
-    if (roleFilter !== 'all' && set.role !== roleFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        set.title.toLowerCase().includes(q) ||
-        set.role.toLowerCase().includes(q) ||
-        set.focus.toLowerCase().includes(q) ||
-        set.company.toLowerCase().includes(q)
-      );
+  // ── Delete plan function ──
+  const handleDeletePlan = async () => {
+    if (!existingPlanId) return;
+
+    setIsDeletingPlan(true);
+    try {
+      await InterviewService.deleteTrainingPlan(existingPlanId);
+      setTargetJob(null);
+      setExistingPlanId(null);
+      setPlanSets([]);
+      setIsPartiallyReady(false);
+      setHasSkippedTargetJob(false);
+      showToast('Training plan deleted successfully');
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      showToast('Failed to delete training plan');
+    } finally {
+      setIsDeletingPlan(false);
     }
-    return true;
-  }).sort((a, b) => (b.practiced || 0) - (a.practiced || 0));
+  };
 
-  // ─── Personalized sets (For you tab) ──────────
-  const personalizedSets: PracticeSet[] = PRACTICE_SETS.map((set) => ({
-    ...set,
-    matchScore: Math.floor(65 + Math.random() * 30),
-  })).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  // ── Effects ──
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setPlanSets([]);
+      setExistingPlanId(null);
+      setTargetJob(null);
+      return;
+    }
 
+    setIsLoadingPlan(true);
+    refetchPlans().finally(() => setIsLoadingPlan(false));
+  }, [isLoggedIn]);
+
+  // ── Poll while modules are still generating or partially ready ──
+  useEffect(() => {
+    if (!isModulesGenerating && !isPartiallyReady) return;
+
+    // Poll the API every 3 seconds
+    const pollInterval = setInterval(() => {
+      refetchPlans();
+    }, 3000);
+
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [isModulesGenerating, isPartiallyReady]);
+
+  // ─── Gate: not signed in ──────────────────────────────
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center pt-[150px]">
+          <GoalPage returnTo="/personalized-practice" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // ─── Gate: signed in but no resume → upload resume (onboarding) ───
+  if (isLoggedIn && hasResume === false) {
+    return (
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            onUploadSuccess={() => { refetchProfile(); setHasSkippedTargetJob(false); }}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
+        </main>
+        <TargetJobModal
+          open={showTargetJobModal}
+          onOpenChange={setShowTargetJobModal}
+          onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
+          onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
+        />
+        <Footer />
+      </div>
+    );
+  }
+
+  // ─── Gate: resume uploaded but no target job yet → add target job (onboarding) ───
+  if (isLoggedIn && hasResume === true && !isLoadingPlan && !targetJob && !hasSkippedTargetJob) {
+    return (
+      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+          <GoalUploadPage
+            initialState="target-job"
+            onUploadSuccess={() => setHasSkippedTargetJob(true)}
+            onAddTargetJob={() => setShowTargetJobModal(true)}
+          />
+        </main>
+        <TargetJobModal
+          open={showTargetJobModal}
+          onOpenChange={setShowTargetJobModal}
+          onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
+          onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
+        />
+        <Footer />
+      </div>
+    );
+  }
+
+  // ─── Main practice page (new design shell) ────────────
   return (
     <DashboardLayout headerTitle="Personalized Practice" fullBleed>
-    <WidePageContainer maxWidth="none">
-      <div className="space-y-6">
-          {/* ─── Quick Start / Custom Session ───────── */}
-          
+      <WidePageContainer maxWidth="none">
+        <div className="space-y-6">
+          {/* ─── Intro ─────────────────────────────────── */}
+          <div>
+            <p className="text-slate-500 max-w-2xl">
+              AI-powered mock interviews tailored to your profile and target roles.
+            </p>
+          </div>
+
           {/* ─── Target Job Bar ────────────────────── */}
-          <div className="mb-8">
-            {targetJob ? (
-              /* Active target job state */
+          {targetJob && (
+            <div>
               <div className="flex items-center justify-between bg-gradient-to-r from-blue-50/80 to-white rounded-2xl border border-blue-100 px-5 py-4">
                 <div className="flex items-center gap-4">
                   <div className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
@@ -762,166 +1006,136 @@ export function PersonalizedPracticePage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full border-slate-200 text-slate-600 hover:bg-slate-50 shadow-none text-xs h-9 px-4"
-                    onClick={() => setShowTargetJobModal(true)}
-                  >
-                    Change
-                  </Button>
                   <button
-                    onClick={() => {
-                      setTargetJob(null);
-                      showToast('Target Job cleared');
-                    }}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                    onClick={handleDeletePlan}
+                    disabled={isDeletingPlan}
+                    title="Delete training plan"
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
                   >
-                    <X className="w-4 h-4" />
+                    {isDeletingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
-            ) : (
-              /* Empty target job state */
-              <div className="flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white rounded-2xl border border-slate-200/80 px-5 py-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
-                    <Crosshair className="w-5 h-5 text-blue-500" />
+            </div>
+          )}
+
+          {/* ── Practice Sets Content ─────────────────── */}
+          {isLoadingPlan ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden flex flex-col animate-pulse">
+                  <div className="px-5 pt-5 pb-0">
+                    <div className="h-6 w-28 bg-slate-100 rounded-full" />
                   </div>
-                  <div>
-                    <span className="text-sm font-semibold text-slate-900">Target job</span>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      Add a job description to tailor sessions, or keep using recommendations based on your profile.
-                    </p>
+                  <div className="px-5 pt-3 pb-0 flex-1">
+                    <div className="h-5 w-3/4 bg-slate-100 rounded mb-2" />
+                    <div className="h-4 w-1/2 bg-slate-100 rounded mb-4" />
+                    <div className="flex gap-2 mb-3">
+                      <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                      <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-6 w-20 bg-slate-100 rounded-full" />
+                      <div className="h-6 w-24 bg-slate-100 rounded-full" />
+                    </div>
+                  </div>
+                  <div className="px-5 py-4 mt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="h-4 w-24 bg-slate-100 rounded" />
+                    <div className="w-7 h-7 bg-slate-100 rounded-full" />
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  className="rounded-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-none text-xs h-9 px-4 shrink-0 gap-1.5"
-                  onClick={() => setShowTargetJobModal(true)}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add target job
-                </Button>
+              ))}
+            </div>
+          ) : isModulesGenerating ? (
+            /* Plan exists but modules still generating - with progress bar */
+            <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/50 to-white py-12 px-6 text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                <div className="relative">
+                  <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+              <h3 className="text-[18px] font-bold text-slate-900 mb-3">
+                Crafting your personalized training plan
+              </h3>
+              <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
+                We're analyzing your target role and creating practice modules tailored to your needs.
+                This usually takes 15-30 seconds.
+              </p>
+              <GenerationProgressBar progress={generationProgress || 10} />
 
-          {/* ─── Curated Practice Sets ────────────────  */}
-          <div className="mb-12">
-            {/* Section header + tabs + filters */}
-            
-
-            {/* ── Popular Tab Content ─────────────────── */}
-            {activeTab === 'popular' && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                  {popularSets.map((set) => (
-                    <PracticeSetCard key={set.id} set={set} />
-                  ))}
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Sparkles className="w-3 h-3 mr-1 text-blue-500" />
+                  Analyzing job requirements
+                </Badge>
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Target className="w-3 h-3 mr-1 text-blue-500" />
+                  Identifying skill gaps
+                </Badge>
+                <Badge variant="outline" className="bg-white/50 text-xs">
+                  <Clock className="w-3 h-3 mr-1 text-blue-500" />
+                  Creating practice modules
+                </Badge>
+              </div>
+            </div>
+          ) : planSets.length === 0 ? (
+            /* No training plan yet */
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+                <Target className="w-6 h-6 text-blue-500" />
+              </div>
+              <h3 className="text-[16px] font-bold text-slate-900 mb-2">Add a target job to start</h3>
+              <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
+                Set your target role to get a personalized training plan with practice sessions tailored to your goal.
+              </p>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
+                onClick={() => setShowTargetJobModal(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add target job
+              </Button>
+            </div>
+          ) : (
+            /* Show practice sets */
+            <>
+              {isPartiallyReady && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-700">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>More practice modules are being generated…</span>
                 </div>
-                {popularSets.length === 0 && (
-                  <div className="text-center py-16">
-                    <p className="text-sm text-slate-500 mb-3">No practice sets match your search.</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setRoleFilter('all');
-                        setSearchQuery('');
-                      }}
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {planSets.map((set) => (
+                  <PracticeSetCard
+                    key={set.id}
+                    set={set}
+                    userBalance={userBalance}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-            {/* ── For You Tab Content ─────────────────── */}
-            {activeTab === 'foryou' && (
-              <>
-                {/* Not signed in: soft gate */}
-                {!isLoggedIn ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                      <Lock className="w-6 h-6 text-slate-400" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">
-                      Sign in to get personalized practice sets
-                    </h3>
-                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
-                      We'll recommend sets based on your profile, experience level, and target roles.
-                    </p>
-                    <div className="flex items-center justify-center gap-3">
-                      <Button
-                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
-                        onClick={() => navigate('/auth')}
-                      >
-                        Sign in
-                      </Button>
-                      <button
-                        onClick={() => setActiveTab('popular')}
-                        className="text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors"
-                      >
-                        Continue browsing
-                      </button>
-                    </div>
-                  </div>
-                ) : !hasProfile ? (
-                  /* Signed in but profile incomplete */
-                  <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50/30 py-16 px-6 text-center">
-                    <div className="mx-auto w-14 h-14 rounded-full bg-blue-100/60 flex items-center justify-center mb-4">
-                      <User className="w-6 h-6 text-blue-500" />
-                    </div>
-                    <h3 className="text-[16px] font-bold text-slate-900 mb-2">
-                      Complete your profile to personalize recommendations
-                    </h3>
-                    <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
-                      Add your role and experience level so we can tailor practice sets for you.
-                    </p>
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-none"
-                      onClick={() => navigate('/settings')}
-                    >
-                      Complete profile
-                    </Button>
-                  </div>
-                ) : (
-                  /* Signed in + profile exists: show personalized */
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                      {personalizedSets.map((set) => (
-                        <PracticeSetCard key={set.id} set={set} showMatch />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* ─── Recent Sessions ──────────────────────  */}
-
-          {/* Modals */}
-          <>
-          <SignInModal
-        open={showSignIn}
-        onOpenChange={setShowSignIn}
-        message={signInMessage}
-      />
-      <TargetJobModal
-        open={showTargetJobModal}
-        onOpenChange={setShowTargetJobModal}
-        onApply={(job) => {
-          setTargetJob(job);
-          showToast(`Target Job set: ${job}`);
-        }}
-      />
-          <Toast message={toast.message} visible={toast.visible} />
-          </>
-      </div>
-    </WidePageContainer>
+        {/* Modals */}
+        <TargetJobModal
+          open={showTargetJobModal}
+          onOpenChange={setShowTargetJobModal}
+          onApply={(job) => {
+            setTargetJob(job);
+            showToast(`Target Job set: ${job}`);
+          }}
+          onPlanCreated={() => {
+            setIsLoadingPlan(true);
+            refetchPlans().finally(() => setIsLoadingPlan(false));
+          }}
+        />
+        <Toast message={toast.message} visible={toast.visible} />
+      </WidePageContainer>
     </DashboardLayout>
   );
 }

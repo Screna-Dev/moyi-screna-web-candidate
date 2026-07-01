@@ -35,13 +35,26 @@ function TopBarWrapper() {
   }, []);
 
   useLayoutEffect(() => {
+    const root = document.documentElement;
     if (isLoggedIn) {
-      document.documentElement.style.setProperty('--topbar-h', '0px');
+      root.style.setProperty('--topbar-h', '0px');
       return;
     }
     const el = document.getElementById('top-bar');
-    const h = el ? el.getBoundingClientRect().height : 0;
-    document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+    if (!el) {
+      root.style.setProperty('--topbar-h', '0px');
+      return;
+    }
+    // Keep --topbar-h in sync with the top bar's real height. A one-shot
+    // measurement goes stale when the bar's height changes later (text
+    // wrapping on resize, or web fonts loading after first paint), which
+    // pushes the navbar up and makes it overlap the top bar.
+    const sync = () =>
+      root.style.setProperty('--topbar-h', `${el.getBoundingClientRect().height}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [isLoggedIn]);
 
   if (isLoggedIn) return null;

@@ -319,11 +319,13 @@ function GlobalTopHeader({
               >
                 {breadcrumb.label}
               </Link>
-              <span style={{ fontSize: '18px', color: 'var(--muted-foreground)', fontWeight: 400, lineHeight: 1 }}>›</span>
               {pageTitle && (
-                <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--muted-foreground)', whiteSpace: 'nowrap', fontFamily: 'var(--font-serif)' }}>
-                  {pageTitle}
-                </span>
+                <>
+                  <span style={{ fontSize: '18px', color: 'var(--muted-foreground)', fontWeight: 400, lineHeight: 1 }}>›</span>
+                  <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--muted-foreground)', whiteSpace: 'nowrap', fontFamily: 'var(--font-serif)' }}>
+                    {pageTitle}
+                  </span>
+                </>
               )}
             </div>
           ) : pageTitle ? (
@@ -341,13 +343,13 @@ function GlobalTopHeader({
         {/* Right: Global Nav Links */}
         <nav className="hidden md:flex items-center gap-7">
           <Link
-            to="/pricing"
+            to="/#pricing"
             className={`text-sm font-medium transition-colors ${isLinkActive('/pricing') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Pricing
           </Link>
           <Link
-            to="/help"
+            to="/#faq"
             className={`text-sm font-medium transition-colors ${isLinkActive('/help') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
             FAQ
@@ -458,15 +460,12 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
   const hasSidebar = !noSidebar && !isApplications && location.pathname !== '/marketplace';
 
   // Title shown in the header: explicit prop wins, else mapped from path.
-  const pageTitle =
-    headerTitle ??
-    PAGE_TITLES[location.pathname] ??
-    (location.pathname.startsWith('/interview-insights/') ? 'InterviewPrep Note' : undefined);
+  const pageTitle = headerTitle ?? PAGE_TITLES[location.pathname];
 
   const breadcrumb =
     location.pathname === '/mentor-details'
-      ? { label: 'Find Your Coach', path: '/marketplace' }
-      : location.pathname.startsWith('/interview-insights/')
+      ? { label: 'Find Your Coach', path: '/coaching' }
+      : location.pathname.startsWith('/interview-insights/') || location.pathname.startsWith('/experience/')
       ? { label: 'InterviewPrep Note', path: '/interview-insights' }
       : undefined;
 

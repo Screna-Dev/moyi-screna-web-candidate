@@ -33,6 +33,8 @@ type ApiPost = {
   likeCount?: number;
   saveCount?: number;
   commentCount?: number;
+  liked?: boolean;
+  saved?: boolean;
   createdAt?: string;
 };
 
@@ -95,6 +97,9 @@ function mapPostToNote(post: ApiPost, index: number): InterviewNote {
     upvotes: post.likeCount ?? 0,
     comments: post.commentCount ?? 0,
     saves: post.saveCount ?? 0,
+    liked: post.liked ?? false,
+    saved: post.saved ?? false,
+    createdAtMs: post.createdAt ? new Date(post.createdAt).getTime() : (post.date ? new Date(post.date).getTime() : 0),
     featured: index === 0,
   };
 }
@@ -287,7 +292,7 @@ function LoadingRows({ count = 5 }: { count?: number }) {
 
 export function InterviewInsightsPage() {
   const { isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<"companies" | "feed">("feed");
+  const [activeTab, setActiveTab] = useState<"companies" | "feed">("companies");
   const [interviewNotes, setInterviewNotes] = useState<InterviewNote[]>([]);
   const [latest, setLatest] = useState<string[]>([]);
   const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
@@ -368,8 +373,48 @@ export function InterviewInsightsPage() {
   const [notesTime, setNotesTime] = useState("Time");
   const [notesPage, setNotesPage] = useState(1);
   const NOTES_PER_PAGE = 5;
-  const notesTotalPages = Math.max(1, Math.ceil(interviewNotes.length / NOTES_PER_PAGE));
-  const paginatedNotes = interviewNotes.slice((notesPage - 1) * NOTES_PER_PAGE, notesPage * NOTES_PER_PAGE);
+
+  // Distinct values for the filter dropdowns (derived from the loaded feed).
+  const noteOptions = useMemo(() => {
+    const uniq = (vals: string[]) =>
+      Array.from(new Set(vals.filter((v) => v && !["Unknown", "Unknown Role", "Not specified", ""].includes(v)))).sort();
+    return {
+      role: uniq(interviewNotes.map((n) => n.role)),
+      company: uniq(interviewNotes.map((n) => n.company)),
+      round: uniq(interviewNotes.map((n) => n.round)),
+      level: uniq(interviewNotes.map((n) => n.level)),
+    };
+  }, [interviewNotes]);
+
+  // Apply the active filters + sort to the loaded feed (client-side).
+  const filteredNotes = useMemo(() => {
+    let list = interviewNotes;
+    if (notesRole !== "Role") list = list.filter((n) => n.role === notesRole);
+    if (notesCompany !== "Company") list = list.filter((n) => n.company === notesCompany);
+    if (notesRound !== "Round") list = list.filter((n) => n.round === notesRound);
+    if (notesLevel !== "Level") list = list.filter((n) => n.level === notesLevel);
+    if (notesTime !== "Time") {
+      const days: Record<string, number> = { "Past week": 7, "Past month": 30, "Past 3 months": 90, "Past year": 365 };
+      const window = days[notesTime];
+      if (window) {
+        const cutoff = Date.now() - window * 86400000;
+        list = list.filter((n) => (n.createdAtMs ?? 0) >= cutoff);
+      }
+    }
+    const sorted = [...list];
+    if (notesSort === "New") sorted.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
+    else if (notesSort === "Top") sorted.sort((a, b) => b.upvotes - a.upvotes);
+    else sorted.sort((a, b) => b.upvotes + b.comments - (a.upvotes + a.comments)); // Hot
+    return sorted;
+  }, [interviewNotes, notesRole, notesCompany, notesRound, notesLevel, notesTime, notesSort]);
+
+  // Reset to page 1 whenever the filter/sort selection changes.
+  useEffect(() => {
+    setNotesPage(1);
+  }, [notesRole, notesCompany, notesRound, notesLevel, notesTime, notesSort]);
+
+  const notesTotalPages = Math.max(1, Math.ceil(filteredNotes.length / NOTES_PER_PAGE));
+  const paginatedNotes = filteredNotes.slice((notesPage - 1) * NOTES_PER_PAGE, notesPage * NOTES_PER_PAGE);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Directory is API-driven: company name, category, and counts come from the
@@ -661,6 +706,7 @@ export function InterviewInsightsPage() {
             onLevelChange={setNotesLevel}
             time={notesTime}
             onTimeChange={setNotesTime}
+            options={noteOptions}
           />
 
           {notesLoading ? (

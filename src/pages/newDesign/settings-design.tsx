@@ -664,13 +664,6 @@ function SecurityTab() {
               Manage your password and connected login methods.
             </p>
           </div>
-          {/* Demo state toggle */}
-          <button
-            onClick={() => setHasPassword(v => !v)}
-            className="shrink-0 ml-4 px-2.5 py-1 rounded-md border border-border text-xs text-muted-foreground hover:bg-secondary transition-colors"
-          >
-            Demo: {hasPassword ? 'Has password' : 'Google only'}
-          </button>
         </div>
 
         {/* Rows */}
@@ -732,10 +725,7 @@ function SecurityTab() {
 }
 
 const NOTIF_ITEMS = [
-  { key: 'applicationUpdates', title: 'Application updates',       desc: 'When a job application changes status',          default: true },
-  { key: 'actionNeeded',       title: 'Action needed',             desc: 'When a job requires your review before submitting', default: true },
   { key: 'mentorReminders',    title: 'Mentor session reminders',  desc: '24 hours before a scheduled session',           default: true },
-  { key: 'preInterview',       title: 'Pre-interview warm-up',     desc: 'Morning of a scheduled interview',              default: false },
 ] as const;
 
 function NotificationsTab() {

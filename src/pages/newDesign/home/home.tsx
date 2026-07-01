@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useLocation } from 'react-router';
 import { Menu, X, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
@@ -547,6 +547,7 @@ function HowItWorksSection() {
 // ─── Main Home Page ───────────────────────────────────────────────────────────
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<Tab>('AI Mock');
@@ -621,6 +622,17 @@ export function HomePage() {
     return () => observer.disconnect();
   }, []);
 
+  // ── Scroll to hash target (e.g. /#pricing, /#faq) ─────────────────────────
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.slice(1);
+    // Defer so the section (and any reveal animations) have mounted first.
+    const t = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [location.hash]);
+
   useEffect(() => {
     const idx = TABS.indexOf(activeTab);
     const el = tabRefs.current[idx];
@@ -672,8 +684,9 @@ export function HomePage() {
     >
       {/* ─── Nav ─── */}
       <nav
-        className="fixed top-0 left-0 right-0 z-50"
+        className="fixed left-0 right-0 z-50"
         style={{
+          top: 'var(--topbar-h, 0px)',
           height: 72,
           backgroundColor: scrolled ? 'rgba(255,255,255,0.82)' : '#ffffff',
           backdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
@@ -814,8 +827,9 @@ export function HomePage() {
 
       {/* ─── Hero ─── */}
       <section
-        className="snap-s pt-[72px] flex flex-col relative"
+        className="snap-s flex flex-col relative"
         style={{
+          paddingTop: 'calc(72px + var(--topbar-h, 0px))',
           minHeight: '100svh',
           backgroundColor: '#ffffff',
           backgroundImage: 'radial-gradient(circle at 12px 12px, rgba(46,91,255,0.13) 1px, transparent 1px)',
@@ -978,7 +992,7 @@ export function HomePage() {
             /* ── Scroll snap ─────────────────────────────────────────────── */
             html {
               scroll-snap-type: y proximity;
-              scroll-padding-top: 72px;
+              scroll-padding-top: calc(72px + var(--topbar-h, 0px));
             }
             .snap-s {
               scroll-snap-align: start;

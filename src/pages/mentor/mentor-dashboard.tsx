@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from 'react';
 import { toast } from 'sonner';
 import {
-  LayoutDashboard, CalendarCheck, Clock, MessageSquare, User,
+  LayoutDashboard, CalendarCheck, MessageSquare, User,
   ShieldCheck, Star, DollarSign, Bell, Search, ChevronRight,
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
   MoreHorizontal, Edit3, Trash2, Eye, Video,
@@ -324,11 +324,9 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   const { bookings, loading: bookingsLoading } = useMyMentorBookings();
   const profileLoading = !!ctx?.loading;
   const upcomingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
-  const pendingBookings = bookings.filter(b => b.status === 'pending');
 
   const summaryCards = [
     { label: 'Upcoming Sessions', value: String(upcomingBookings.length), icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
-    { label: 'Pending Requests', value: String(pendingBookings.length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Unread Messages', value: '3', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/8' },
     { label: 'Average Rating', value: profile?.averageRating != null ? String(profile.averageRating) : '—', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
@@ -354,7 +352,7 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {summaryCards.map(c => (
           c.label === 'Unread Messages' ? null : (
             <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">

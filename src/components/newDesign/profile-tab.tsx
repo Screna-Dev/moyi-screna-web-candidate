@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
 import { PageHead } from '@/components/newDesign/page-head';
+import { WidePageContainer } from './dashboard-page';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
 type UserData = {
@@ -483,11 +484,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       </div>
 
       {/* ── Row 1: Resume + Target Role ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.3fr)_minmax(360px,1fr)] gap-6 items-start">
 
         {/* Resume Card */}
         <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -646,7 +647,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
         {/* Target Role Card */}
         <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -816,11 +817,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       </div>
 
       {/* ── Row 2: Target Companies + Work Authorization ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.3fr)_minmax(360px,1fr)] gap-6 items-start">
 
         {/* Target Companies */}
         <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -1007,7 +1008,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
         {/* Work Authorization */}
         <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -1226,12 +1227,14 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
   return (
-    <div className="flex flex-col gap-6">
-      <PageHead
-        title="Profile"
-        subtitle="Your career profile, target roles, and saved preferences."
-      />
-      <ProfileCoreContent userData={userData} />
-    </div>
+    <WidePageContainer maxWidth="none">
+      <div className="flex flex-col gap-6">
+        <PageHead
+          title="Profile"
+          subtitle="Your career profile, target roles, and saved preferences."
+        />
+        <ProfileCoreContent userData={userData} />
+      </div>
+    </WidePageContainer>
   );
 }

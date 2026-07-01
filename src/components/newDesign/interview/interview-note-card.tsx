@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import svgPaths from "./svg-article-margin";
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
+import { useAuth } from "@/contexts/AuthContext";
+import { likePost, unlikePost, savePost, unsavePost } from "@/services/CommunityService";
+import { SharePopover } from "@/components/newDesign/share-popover";
+import { toast } from "sonner";
 
 export interface InterviewNote {
   id: string;
@@ -17,6 +21,9 @@ export interface InterviewNote {
   upvotes: number;
   comments: number;
   saves: number;
+  liked?: boolean;
+  saved?: boolean;
+  createdAtMs?: number;
   featured?: boolean;
 }
 
@@ -132,6 +139,45 @@ export function InterviewNoteCard({ note }: { note: InterviewNote }) {
   const visibleQuestions = note.questions.slice(0, 3);
   const extraCount = note.questions.length - visibleQuestions.length;
 
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const [liked, setLiked] = useState(!!note.liked);
+  const [saved, setSaved] = useState(!!note.saved);
+  const [upvotes, setUpvotes] = useState(note.upvotes);
+  const [saves, setSaves] = useState(note.saves);
+
+  const isAlreadyError = (err: any) => err?.response?.data?.errorCode === "BAD_REQUEST";
+
+  const toggleLike = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate("/auth"); return; }
+    const next = !liked;
+    setLiked(next);
+    setUpvotes((v) => Math.max(0, v + (next ? 1 : -1)));
+    (next ? likePost(note.id) : unlikePost(note.id)).catch((err: any) => {
+      if (isAlreadyError(err)) return;
+      setLiked(!next);
+      setUpvotes((v) => Math.max(0, v + (next ? -1 : 1)));
+      toast.error("Something went wrong. Please try again.");
+    });
+  };
+
+  const toggleSave = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) { navigate("/auth"); return; }
+    const next = !saved;
+    setSaved(next);
+    setSaves((v) => Math.max(0, v + (next ? 1 : -1)));
+    (next ? savePost(note.id) : unsavePost(note.id)).catch((err: any) => {
+      if (isAlreadyError(err)) return;
+      setSaved(!next);
+      setSaves((v) => Math.max(0, v + (next ? -1 : 1)));
+      toast.error("Something went wrong. Please try again.");
+    });
+  };
+
   return (
     <div
       className={`relative w-full rounded-[16px] bg-white p-[0.667px] ${
@@ -210,28 +256,45 @@ export function InterviewNoteCard({ note }: { note: InterviewNote }) {
           <div className="flex items-center gap-[16px] text-muted-foreground">
             <button
               type="button"
-              className="flex items-center gap-[6px] transition-colors hover:text-foreground"
+              onClick={toggleLike}
+              aria-pressed={liked}
+              className={`flex items-center gap-[6px] transition-colors ${liked ? "text-primary" : "hover:text-foreground"}`}
             >
               <UpvoteIcon />
-              <span className="font-sans text-[12px] font-medium leading-[16px]">{note.upvotes}</span>
+              <span className="font-sans text-[12px] font-medium leading-[16px]">{upvotes}</span>
             </button>
-            <div className="flex items-center gap-[6px]">
-              <CommentIcon />
-              <span className="font-sans text-[12px] font-normal leading-[16px]">{note.comments}</span>
-            </div>
-            <button
-              type="button"
+            <Link
+              to={`/experience/${note.id}`}
               className="flex items-center gap-[6px] transition-colors hover:text-foreground"
             >
-              <SaveIcon />
-              <span className="font-sans text-[12px] font-medium leading-[16px]">{note.saves}</span>
-            </button>
+              <CommentIcon />
+              <span className="font-sans text-[12px] font-normal leading-[16px]">{note.comments}</span>
+            </Link>
             <button
               type="button"
-              className="flex items-center justify-center size-[24px] rounded-full bg-primary transition-opacity hover:opacity-80"
+              onClick={toggleSave}
+              aria-pressed={saved}
+              className={`flex items-center gap-[6px] transition-colors ${saved ? "text-primary" : "hover:text-foreground"}`}
             >
-              <span className="text-white"><ShareIcon /></span>
+              <SaveIcon />
+              <span className="font-sans text-[12px] font-medium leading-[16px]">{saves}</span>
             </button>
+            <SharePopover
+              data={{
+                title: `${note.company} · ${note.role}`,
+                subtitle: note.round,
+                summary: note.excerpt,
+                url: `${window.location.origin}/experience/${note.id}`,
+              }}
+            >
+              <button
+                type="button"
+                onClick={(e) => e.preventDefault()}
+                className="flex items-center justify-center size-[24px] rounded-full bg-primary transition-opacity hover:opacity-80"
+              >
+                <span className="text-white"><ShareIcon /></span>
+              </button>
+            </SharePopover>
           </div>
           <Link
             to={`/experience/${note.id}`}

@@ -2,8 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router';
 import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, Eye, MapPin, ExternalLink, CircleAlert, ChevronsUpDown, Coins } from 'lucide-react';
-import { Navbar } from '../../components/newDesign/home/navbar';
-import { Footer } from '../../components/newDesign/home/footer';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPost, getPostAccessInfo, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
@@ -616,32 +615,28 @@ export function ExperienceDetailPage() {
 
   if (postLoading) {
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <main className="pt-24 pb-20 bg-[#f9fafb]">
+      <DashboardLayout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 flex items-center justify-center py-32">
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)]" />
           </div>
-        </main>
-        <Footer />
+        </div>
         {gateOverlays}
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (!post) {
     const gated = showPaymentPrompt || showInsufficient;
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <main className="pt-24 pb-20 bg-[#f9fafb]">
+      <DashboardLayout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
             {gated ? 'Confirm to view this post.' : 'Post not found.'}
           </div>
-        </main>
-        <Footer />
+        </div>
         {gateOverlays}
-      </div>
+      </DashboardLayout>
     );
   }
 
@@ -653,10 +648,8 @@ export function ExperienceDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-
-      <main className="pt-24 pb-20 bg-[#f9fafb]">
+    <DashboardLayout fullBleed>
+      <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
           {/* ─── Breadcrumb ─── */}
@@ -1428,10 +1421,8 @@ export function ExperienceDetailPage() {
 
           </div>
         </div>
-      </main>
-
-      <Footer />
+      </div>
       {gateOverlays}
-    </div>
+    </DashboardLayout>
   );
 }

@@ -1,4 +1,13 @@
+import { useState } from "react";
+
 type SortOption = "Hot" | "New" | "Top";
+
+interface FilterOptions {
+  role: string[];
+  company: string[];
+  round: string[];
+  level: string[];
+}
 
 interface InterviewNotesFilterBarProps {
   sort: SortOption;
@@ -13,7 +22,11 @@ interface InterviewNotesFilterBarProps {
   onLevelChange: (l: string) => void;
   time: string;
   onTimeChange: (t: string) => void;
+  options: FilterOptions;
 }
+
+const TIME_OPTIONS = ["Past week", "Past month", "Past 3 months", "Past year"];
+const SORT_OPTIONS: SortOption[] = ["Hot", "New", "Top"];
 
 function ChevronDownIcon() {
   return (
@@ -33,27 +46,70 @@ function FilterIcon() {
   );
 }
 
-function FilterPill({
+/**
+ * A pill that opens a dropdown of options. `label` doubles as the "unset"
+ * sentinel value — selecting "All" resets `value` back to it.
+ */
+function FilterDropdown({
   label,
   value,
-  onClick,
+  options,
+  onSelect,
 }: {
   label: string;
-  value?: string;
-  onClick?: () => void;
+  value: string;
+  options: string[];
+  onSelect: (v: string) => void;
 }) {
-  const isActive = !!value && value !== label;
+  const [open, setOpen] = useState(false);
+  const isActive = value !== label;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex h-[32px] items-center gap-[6px] rounded-full border bg-white px-[12.667px] py-[0.667px] font-sans text-[12px] font-medium leading-[16px] transition-colors hover:bg-secondary ${
-        isActive ? "border-primary/40 text-primary" : "border-border text-muted-foreground"
-      }`}
-    >
-      {isActive ? value : label}
-      <ChevronDownIcon />
-    </button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex h-[32px] items-center gap-[6px] rounded-full border bg-white px-[12.667px] py-[0.667px] font-sans text-[12px] font-medium leading-[16px] transition-colors hover:bg-secondary ${
+          isActive ? "border-primary/40 text-primary" : "border-border text-muted-foreground"
+        }`}
+      >
+        {isActive ? value : label}
+        <ChevronDownIcon />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-[38px] z-50 flex max-h-[280px] min-w-[180px] flex-col overflow-auto rounded-[12px] border border-border bg-white p-1 shadow-lg">
+            <button
+              type="button"
+              onClick={() => { onSelect(label); setOpen(false); }}
+              className={`w-full rounded-md px-3 py-2 text-left font-sans text-[13px] transition-colors ${
+                !isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-secondary"
+              }`}
+            >
+              All
+            </button>
+            {options.length === 0 ? (
+              <div className="px-3 py-2 font-sans text-[12px] text-muted-foreground">No options</div>
+            ) : (
+              options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { onSelect(opt); setOpen(false); }}
+                  className={`w-full rounded-md px-3 py-2 text-left font-sans text-[13px] transition-colors ${
+                    opt === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -70,34 +126,52 @@ export function InterviewNotesFilterBar({
   onLevelChange,
   time,
   onTimeChange,
+  options,
 }: InterviewNotesFilterBarProps) {
-  const sortCycle: SortOption[] = ["Hot", "New", "Top"];
-
-  function cycleSort() {
-    const idx = sortCycle.indexOf(sort);
-    onSortChange(sortCycle[(idx + 1) % sortCycle.length]);
-  }
+  const [sortOpen, setSortOpen] = useState(false);
 
   return (
     <div className="flex w-full items-center gap-[16px]">
       {/* Filter pills row */}
       <div className="flex flex-1 flex-wrap items-center gap-[8px]">
-        <FilterPill label="Role" value={role !== "Role" ? role : undefined} onClick={() => onRoleChange("Role")} />
-        <FilterPill label="Company" value={company !== "Company" ? company : undefined} onClick={() => onCompanyChange("Company")} />
-        <FilterPill label="Round" value={round !== "Round" ? round : undefined} onClick={() => onRoundChange("Round")} />
-        <FilterPill label="Level" value={level !== "Level" ? level : undefined} onClick={() => onLevelChange("Level")} />
-        <FilterPill label="Time" value={time !== "Time" ? time : undefined} onClick={() => onTimeChange("Time")} />
+        <FilterDropdown label="Role" value={role} options={options.role} onSelect={onRoleChange} />
+        <FilterDropdown label="Company" value={company} options={options.company} onSelect={onCompanyChange} />
+        <FilterDropdown label="Round" value={round} options={options.round} onSelect={onRoundChange} />
+        <FilterDropdown label="Level" value={level} options={options.level} onSelect={onLevelChange} />
+        <FilterDropdown label="Time" value={time} options={TIME_OPTIONS} onSelect={onTimeChange} />
       </div>
 
-      {/* Sort button */}
-      <button
-        type="button"
-        onClick={cycleSort}
-        className="flex shrink-0 items-center gap-[6px] font-sans text-[14px] font-medium leading-[20px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <FilterIcon />
-        Sort: {sort}
-      </button>
+      {/* Sort dropdown */}
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => setSortOpen((o) => !o)}
+          className="flex items-center gap-[6px] font-sans text-[14px] font-medium leading-[20px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <FilterIcon />
+          Sort: {sort}
+          <ChevronDownIcon />
+        </button>
+        {sortOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setSortOpen(false)} />
+            <div className="absolute right-0 top-[28px] z-50 flex min-w-[140px] flex-col rounded-[12px] border border-border bg-white p-1 shadow-lg">
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { onSortChange(opt); setSortOpen(false); }}
+                  className={`w-full rounded-md px-3 py-2 text-left font-sans text-[13px] transition-colors ${
+                    opt === sort ? "bg-primary/10 text-primary" : "text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

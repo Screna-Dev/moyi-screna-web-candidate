@@ -16,8 +16,7 @@ import {
   TrendingUp,
   FileText,
 } from 'lucide-react';
-import { Navbar } from '../../components/newDesign/home/navbar';
-import { Footer } from '../../components/newDesign/home/footer';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile } from '../../services/CommunityService';
 import { toast } from 'sonner';
@@ -329,9 +328,8 @@ export function CompanyDetailPage() {
   const getQuestions = (post: Post) => post.questions || [];
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      <main className="pt-24 pb-20 bg-[#f9fafb]">
+    <DashboardLayout fullBleed>
+      <div className="pb-20 bg-[#f9fafb]">
         <div className="max-w-6xl mx-auto px-6 my-[24px]">
           {/* Back Link */}
           <Link
@@ -381,7 +379,7 @@ export function CompanyDetailPage() {
             {/* CTA — reuses the shared Button, consistent with the listing page */}
             <Link
               to={isAuthenticated ? '/add-experience' : '/auth'}
-              state={!isAuthenticated ? { from: { pathname: `/interview-insights/${companyId}` } } : undefined}
+              state={{ from: { pathname: `/interview-insights/${companyId}` } }}
               className="shrink-0"
             >
               <Button className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
@@ -458,7 +456,7 @@ export function CompanyDetailPage() {
                   <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
                   <Link
                     to={isAuthenticated ? '/add-experience' : '/auth'}
-                    state={!isAuthenticated ? { from: { pathname: `/interview-insights/${companyId}` } } : undefined}
+                    state={{ from: { pathname: `/interview-insights/${companyId}` } }}
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
                   >
                     Be the first to share
@@ -666,9 +664,8 @@ export function CompanyDetailPage() {
             </aside>
           </div>
         </div>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
 
