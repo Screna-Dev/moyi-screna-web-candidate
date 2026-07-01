@@ -18,8 +18,6 @@ import {
   updateMentorProfile,
   updateMentorStatus,
   setMentorIdentityVerification,
-  createMentorTopic,
-  updateMentorTopic,
   listBookings,
   adminCancelBooking,
   adminRescheduleBooking,
@@ -125,11 +123,15 @@ function mapApiMentor(api: any): Mentor {
   const rate30 = price30s.length ? Math.min(...price30s) / 100 : 0;
   const rate60 = price60s.length ? Math.min(...price60s) / 100 : 0;
 
+  // Service offerings are persisted on the profile's expertiseTags, so an
+  // offering is "enabled" when its service-type label is present there.
+  const expertiseTags: string[] = Array.isArray(api?.expertiseTags) ? api.expertiseTags : [];
   const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
     const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
+    const enabled = expertiseTags.some((tag) => (tag || "").toLowerCase() === t.label.toLowerCase());
     return {
       typeId: t.id,
-      enabled: !!matched && !!matched.active,
+      enabled,
       rate: Number(matched?.price60min) || 0,
       pricingType: "per-hour",
       duration: 60,
@@ -149,7 +151,7 @@ function mapApiMentor(api: any): Mentor {
     email: api?.email || api?.workEmail || "",
     bio: api?.bio || "",
     timezone: api?.googleTimezone || "",
-    expertiseTags: Array.isArray(api?.expertiseTags) ? api.expertiseTags : [],
+    expertiseTags,
     rate30,
     rate60,
     status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
@@ -1084,53 +1086,21 @@ function MentorDirectory() {
     return true;
   });
 
-  const syncOfferingToTopic = async (mentorId: string, prev: ServiceOffering, next: ServiceOffering) => {
-    const serviceLabel = ALL_SERVICE_TYPES.find((t) => t.id === next.typeId)?.label || next.typeId;
-    const payload = {
-      title: serviceLabel,
-      description: next.description || "",
-      mentorNote: next.mentorNote || "",
-      price30min: Math.max(0, Math.round(Number(next.price30min) || Number(next.rate) || 0)),
-      price60min: Math.max(0, Math.round(Number(next.price60min) || Number(next.rate) || 0)),
-      active: next.enabled,
-      pricesConsistent: true,
-      bothPricesSet: true,
-    };
-    try {
-      if (next.topicId) {
-        await updateMentorTopic(mentorId, next.topicId, payload);
-      } else if (next.enabled) {
-        const res = await createMentorTopic(mentorId, payload);
-        const newTopicId = res?.data?.data?.id;
-        if (newTopicId) {
-          next.topicId = newTopicId;
-        }
-      }
-    } catch (err: any) {
-      console.error("Failed to sync topic", err);
-      toast.error(err?.response?.data?.message || "Failed to update service");
-      throw err;
-    }
-  };
-
+  // Service offerings are persisted as the mentor's expertiseTags (profile),
+  // not as bookable topics. Enabled offerings map to their service-type labels.
   const updateOfferings = async (mentorId: string, offerings: ServiceOffering[]) => {
     const current = mentorList.find((m) => m.id === mentorId);
     if (!current) return;
     setMentorList((prev) => prev.map((m) => m.id === mentorId ? { ...m, offerings } : m));
     setSelected((prev) => prev?.id === mentorId ? { ...prev, offerings } : prev);
-    for (const next of offerings) {
-      const prevOffering = current.offerings.find((o) => o.typeId === next.typeId);
-      if (!prevOffering) continue;
-      const changed =
-        prevOffering.enabled !== next.enabled ||
-        prevOffering.description !== next.description ||
-        prevOffering.mentorNote !== next.mentorNote ||
-        prevOffering.rate !== next.rate ||
-        prevOffering.price30min !== next.price30min ||
-        prevOffering.price60min !== next.price60min;
-      if (changed) {
-        try { await syncOfferingToTopic(mentorId, prevOffering, next); } catch { /* toast already shown */ }
-      }
+    const expertiseTags = offerings
+      .filter((o) => o.enabled)
+      .map((o) => ALL_SERVICE_TYPES.find((t) => t.id === o.typeId)?.label || o.typeId);
+    try {
+      await updateMentorProfile(mentorId, { expertiseTags });
+    } catch (err: any) {
+      console.error("Failed to update service offerings", err);
+      toast.error(err?.response?.data?.message || "Failed to update service offerings");
     }
   };
 
