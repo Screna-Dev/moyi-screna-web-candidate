@@ -244,6 +244,8 @@ export function ExperienceDetailPage() {
       if (err?.response?.data?.errorCode === 'INSUFFICIENT_CREDITS') {
         toast.error('Not enough credits to view this post.');
         setShowInsufficient(true);
+      } else {
+        console.error('[experience-detail] getPost failed for', id, err?.response?.status, err?.response?.data ?? err);
       }
     } finally {
       setPostLoading(false);
@@ -274,8 +276,10 @@ export function ExperienceDetailPage() {
         setPostLoading(false);
         return;
       }
+      console.warn('[experience-detail] unhandled access reason for', id, reason);
       setPostLoading(false);
-    } catch {
+    } catch (err: any) {
+      console.error('[experience-detail] access-info fetch failed for', id, err?.response?.status, err?.response?.data ?? err);
       setPostLoading(false);
     }
   }, [id, fetchPost]);
