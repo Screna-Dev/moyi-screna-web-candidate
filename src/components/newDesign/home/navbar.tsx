@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { getPersonalInfo } from '../../../services/ProfileServices';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -23,6 +24,7 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
   const avatarRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const isLoggedIn = !!user;
@@ -43,6 +45,17 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Fetch the profile avatar so the icon matches the personal center header.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    getPersonalInfo()
+      .then((res: { data: { data?: { avatarUrl?: string } } }) => {
+        const url = (res.data?.data ?? res.data)?.avatarUrl;
+        if (url) setAvatarUrl(url);
+      })
+      .catch(() => {});
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -109,8 +122,8 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                     : 'bg-[hsl(221,91%,60%)] border border-[hsl(221,91%,55%)]'
                 }`}
               >
-                {user?.avatar ? (
-                  <img src={user.avatar} alt={initials} className="w-full h-full object-cover" />
+                {avatarUrl || user?.avatar ? (
+                  <img src={avatarUrl || user?.avatar} alt={initials} className="w-full h-full object-cover" />
                 ) : (
                   initials
                 )}
@@ -129,11 +142,14 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                       <p className="text-sm font-semibold text-[#0A0A0A] truncate">
                         {user?.name || 'My Account'}
                       </p>
-                      <p className="text-xs text-[#8a8f9a] mt-0.5">
-                        {isPlanLoading
-                          ? 'Loading…'
-                          : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Coins className="w-3 h-3 text-[hsl(221,91%,60%)]" />
+                        <span className="text-xs text-[#8a8f9a]">
+                          {isPlanLoading
+                            ? 'Loading…'
+                            : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
+                        </span>
+                      </div>
                     </div>
                     <Link
                       to="/dashboard"
@@ -142,6 +158,14 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                     >
                       <LayoutDashboard className="w-4 h-4 opacity-50" />
                       Personal Center
+                    </Link>
+                    <Link
+                      to="/settings"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors"
+                    >
+                      <Settings className="w-4 h-4 opacity-50" />
+                      Settings
                     </Link>
                     <div className="border-t border-[#F0F0F2] mt-1 pt-1">
                       <button
@@ -226,7 +250,14 @@ export function Navbar({ transparent: _transparent = false }: NavbarProps) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-3 py-2.5 text-[14px] font-[500] text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-xl transition-colors"
                 >
-                  Dashboard
+                  Personal Center
+                </Link>
+                <Link
+                  to="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2.5 text-[14px] font-[500] text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-xl transition-colors"
+                >
+                  Settings
                 </Link>
                 <button
                   onClick={() => { handleSignOut(); setMobileMenuOpen(false); }}

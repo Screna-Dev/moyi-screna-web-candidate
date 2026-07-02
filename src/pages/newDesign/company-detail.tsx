@@ -19,6 +19,7 @@ import {
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
+import { toRoleEnum, toRoundEnum } from '../../utils/communityEnums';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -166,8 +167,8 @@ export function CompanyDetailPage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   // ── Filter options (from GET /community/posts/options) + applied selections ──
-  const [roleOptions, setRoleOptions] = useState<string[] | undefined>(undefined);
-  const [roleCategories, setRoleCategories] = useState<string[] | undefined>(undefined);
+  type RoleGroup = { category: string; options: string[] };
+  const [roleGroups, setRoleGroups] = useState<RoleGroup[] | undefined>(undefined);
   const [roundOptions, setRoundOptions] = useState<string[] | undefined>(undefined);
   const [filterRole, setFilterRole] = useState('');
   const [filterRound, setFilterRound] = useState('');
@@ -180,13 +181,9 @@ export function CompanyDetailPage() {
       .then(res => {
         const data = res?.data?.data ?? res?.data;
         if (!data || cancelled) return;
-        type Group = { category: string; options: string[] };
-        const roles: Group[] = Array.isArray(data.roles) ? data.roles : [];
-        const rounds: Group[] = Array.isArray(data.rounds) ? data.rounds : [];
-        if (roles.length) {
-          setRoleCategories(roles.map(g => g.category));
-          setRoleOptions([...new Set(roles.flatMap(g => g.options ?? []))]);
-        }
+        const roles: RoleGroup[] = Array.isArray(data.roles) ? data.roles : [];
+        const rounds: RoleGroup[] = Array.isArray(data.rounds) ? data.rounds : [];
+        if (roles.length) setRoleGroups(roles.map(g => ({ category: g.category, options: g.options ?? [] })));
         if (rounds.length) setRoundOptions(rounds.flatMap(g => g.options ?? []));
       })
       .catch(() => { /* filters fall back to their hardcoded options */ });
@@ -323,8 +320,8 @@ export function CompanyDetailPage() {
         company: company.name,
       };
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
-      if (filterRole) params.role = filterRole;
-      if (filterRound) params.round = filterRound;
+      if (filterRole) params.role = toRoleEnum(filterRole);
+      if (filterRound) params.round = toRoundEnum(filterRound);
       if (filterLevel) params.level = filterLevel;
       if (filterTime) params.time = TIME_TO_API[filterTime] || undefined;
 
@@ -435,7 +432,7 @@ export function CompanyDetailPage() {
               {/* Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                 <div className="flex flex-wrap items-center gap-2">
-                  <RoleFilter singleSelect options={roleOptions} categories={roleCategories} onApply={sel => setFilterRole(sel[0] || '')} />
+                  <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
                   <RoundFilter singleSelect options={roundOptions} onApply={sel => setFilterRound(sel[0] || '')} />
                   <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
                   <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />

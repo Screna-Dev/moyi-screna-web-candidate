@@ -8,6 +8,7 @@ import { Textarea } from '../../components/newDesign/ui/textarea';
 import { Label } from '../../components/newDesign/ui/label';
 import logoImg from '../../assets/Navbar.png';
 import { createPost, getPostOptions } from '../../services/CommunityService';
+import { ROLE_TO_ENUM, ROUND_TO_ENUM, CATEGORY_TO_ENUM, toRoleEnum, toRoundEnum, toCategoryEnum } from '../../utils/communityEnums';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Step definitions ──────────────────────────────────
@@ -113,69 +114,6 @@ const TAG_CATEGORIES: { label: string; tags: string[] }[] = [
 ];
 const QUESTION_TAGS = TAG_CATEGORIES.flatMap(c => c.tags);
 
-// ─── API Enum Maps ──────────────────────────────────────
-const ROLE_TO_ENUM: Record<string, string> = {
-  'Product Manager': 'PRODUCT_MANAGER',
-  'Associate Product Manager': 'ASSOCIATE_PRODUCT_MANAGER',
-  'Growth Product Manager': 'GROWTH_PRODUCT_MANAGER',
-  'Technical Product Manager': 'TECHNICAL_PRODUCT_MANAGER',
-  'Software Engineer': 'SOFTWARE_ENGINEER',
-  'Frontend Engineer': 'FRONTEND_ENGINEER',
-  'Backend Engineer': 'BACKEND_ENGINEER',
-  'Full Stack Engineer': 'FULL_STACK_ENGINEER',
-  'Mobile Engineer': 'MOBILE_ENGINEER',
-  'DevOps Engineer': 'DEVOPS_ENGINEER',
-  'QA / Test Engineer': 'QA_TEST_ENGINEER',
-  'Data Scientist': 'DATA_SCIENTIST',
-  'Data Analyst': 'DATA_ANALYST',
-  'Machine Learning Engineer': 'ML_ENGINEER',
-  'AI Engineer': 'AI_ENGINEER',
-  'Product Designer': 'PRODUCT_DESIGNER',
-  'UX Designer': 'UX_DESIGNER',
-  'UX Researcher': 'UX_RESEARCHER',
-  'Business Analyst': 'BUSINESS_ANALYST',
-  'Consultant': 'CONSULTANT',
-};
-
-const ROUND_TO_ENUM: Record<string, string> = {
-  'Recruiter / HR Screen': 'RECRUITER',
-  'Online Assessment (OA)': 'ONLINE_ASSESSMENT',
-  'Technical Phone Screen': 'TECHNICAL_PHONE_SCREEN',
-  'Hiring Manager Screen': 'HIRING_MANAGER',
-  'Take-home Assignment': 'TAKE_HOME',
-  'Onsite - Coding / Algorithms': 'ONSITE_CODING',
-  'Onsite - System Design / Architecture': 'ONSITE_SYSTEM_DESIGN',
-  'Onsite - Behavioral / Leadership': 'ONSITE_BEHAVIORAL',
-  'Onsite - Product Sense / Strategy': 'ONSITE_PRODUCT',
-  'Onsite - Cross-functional / Panel': 'ONSITE_PANEL',
-  'Executive / Final Round': 'EXECUTIVE',
-};
-
-const CATEGORY_TO_ENUM: Record<string, string> = {
-  'Behavioral': 'BEHAVIORAL',
-  'Technical': 'TECHNICAL',
-  'Situational / Judgment': 'SITUATIONAL_JUDGMENT',
-  'Product Sense': 'PRODUCT_SENSE',
-  'Execution': 'EXECUTION',
-  'Strategy': 'STRATEGY',
-  'Analytical / Metrics': 'ANALYTICAL_METRICS',
-  'Case Study': 'CASE_STUDY',
-  'Coding': 'CODING',
-  'System Design': 'SYSTEM_DESIGN',
-  'Debugging / Troubleshooting': 'DEBUGGING_TROUBLESHOOTING',
-  'Leadership': 'LEADERSHIP',
-  'Communication': 'COMMUNICATION',
-  'Stakeholder Management': 'STAKEHOLDER_MANAGEMENT',
-  'Collaboration / Conflict': 'COLLABORATION_CONFLICT',
-  'Resume / Background': 'RESUME_BACKGROUND',
-  'Experience Deep Dive': 'EXPERIENCE_DEEP_DIVE',
-  'Career Motivation': 'CAREER_MOTIVATION',
-  'Company-specific Questions': 'COMPANY_SPECIFIC',
-};
-
-const toRoleEnum = (v: string) => ROLE_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
-const toRoundEnum = (v: string) => ROUND_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
-const toCategoryEnum = (v: string) => CATEGORY_TO_ENUM[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 
 
 interface QuestionEntry {

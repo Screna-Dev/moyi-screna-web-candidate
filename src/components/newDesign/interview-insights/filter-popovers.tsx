@@ -136,7 +136,6 @@ function CheckboxRow({
 }
 
 // ─── Role filter ──────────────────────────────────────────────────────────────
-const ROLE_CATEGORIES = ['Engineering', 'Data / AI', 'Product', 'Design', 'Business / Other'];
 const ROLE_OPTIONS = [
   'Software Engineer',
   'Frontend Engineer',
@@ -148,19 +147,23 @@ const ROLE_OPTIONS = [
   'Business Analyst',
 ];
 
-export function RoleFilter({ options, categories, onApply, singleSelect }: { options?: string[]; categories?: string[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+// Default (fallback) grouping when no live groups are supplied.
+const ROLE_GROUPS_FALLBACK = [{ category: 'Top Roles', options: ROLE_OPTIONS }];
+
+export function RoleFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  const roleOptions = options && options.length ? options : ROLE_OPTIONS;
-  const roleCategories = categories && categories.length ? categories : ROLE_CATEGORIES;
+  const roleGroups = groups && groups.length ? groups : ROLE_GROUPS_FALLBACK;
 
   useEffect(() => {
     if (isOpen) {
       setTempSelected(new Set(selected));
       setSearch('');
+      setActiveCategory(null);
     }
   }, [isOpen, selected]);
 
@@ -177,19 +180,27 @@ export function RoleFilter({ options, categories, onApply, singleSelect }: { opt
   const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
-  const filteredOptions = roleOptions.filter((o) =>
-    o.toLowerCase().includes(search.toLowerCase())
-  );
+  const q = search.toLowerCase();
+  // Only the active category (if any), each with its search-filtered roles.
+  const visibleGroups = (activeCategory ? roleGroups.filter((g) => g.category === activeCategory) : roleGroups)
+    .map((g) => ({ category: g.category, options: g.options.filter((o) => o.toLowerCase().includes(q)) }))
+    .filter((g) => g.options.length > 0);
 
   const topContent = (
     <div className="flex flex-wrap gap-1.5">
-      {roleCategories.map((c) => (
-        <span
-          key={c}
-          className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium text-secondary-foreground"
+      {roleGroups.map((g) => (
+        <button
+          key={g.category}
+          type="button"
+          onClick={() => setActiveCategory(activeCategory === g.category ? null : g.category)}
+          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            activeCategory === g.category
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
+          }`}
         >
-          {c}
-        </span>
+          {g.category}
+        </button>
       ))}
     </div>
   );
@@ -207,22 +218,27 @@ export function RoleFilter({ options, categories, onApply, singleSelect }: { opt
       onApply={handleApply}
       topContent={topContent}
     >
-      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
-        TOP ROLES
-      </div>
-      <div className="space-y-0.5">
-        {filteredOptions.map((option) => (
-          <CheckboxRow
-            key={option}
-            option={option}
-            checked={tempSelected.has(option)}
-            onChange={() => toggle(option)}
-          />
-        ))}
-        {filteredOptions.length === 0 && (
-          <div className="py-4 text-center text-sm text-muted-foreground">No roles found</div>
-        )}
-      </div>
+      {visibleGroups.length === 0 ? (
+        <div className="py-4 text-center text-sm text-muted-foreground">No roles found</div>
+      ) : (
+        visibleGroups.map((g) => (
+          <div key={g.category} className="mb-2">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
+              {g.category}
+            </div>
+            <div className="space-y-0.5">
+              {g.options.map((option) => (
+                <CheckboxRow
+                  key={option}
+                  option={option}
+                  checked={tempSelected.has(option)}
+                  onChange={() => toggle(option)}
+                />
+              ))}
+            </div>
+          </div>
+        ))
+      )}
     </FilterDropdown>
   );
 }
