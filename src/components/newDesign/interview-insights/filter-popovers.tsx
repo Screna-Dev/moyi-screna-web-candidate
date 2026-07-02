@@ -136,19 +136,15 @@ function CheckboxRow({
 }
 
 // ─── Role filter ──────────────────────────────────────────────────────────────
-const ROLE_OPTIONS = [
-  'Software Engineer',
-  'Frontend Engineer',
-  'Backend Engineer',
-  'Data Scientist',
-  'ML Engineer',
-  'Product Manager',
-  'Designer',
-  'Business Analyst',
+// Default (fallback) grouping when no live groups are supplied — mirrors the
+// GET /community/posts/options `roles` shape.
+const ROLE_GROUPS_FALLBACK = [
+  { category: 'Product', options: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager'] },
+  { category: 'Engineering', options: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer', 'Mobile Engineer', 'DevOps Engineer', 'QA / Test Engineer'] },
+  { category: 'Data & AI', options: ['Data Scientist', 'Data Analyst', 'Machine Learning Engineer', 'AI Engineer'] },
+  { category: 'Design & Research', options: ['Product Designer', 'UX Designer', 'UX Researcher'] },
+  { category: 'Business / Consulting', options: ['Business Analyst', 'Consultant'] },
 ];
-
-// Default (fallback) grouping when no live groups are supplied.
-const ROLE_GROUPS_FALLBACK = [{ category: 'Top Roles', options: ROLE_OPTIONS }];
 
 export function RoleFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
@@ -336,37 +332,29 @@ export function CompanyFilter() {
 }
 
 // ─── Round filter ──────────────────────────────────────────────────────────────
-const COMMON_ROUNDS = [
-  'Recruiter / HR Screen',
-  'Phone Screen',
-  'Technical Screen',
-  'Onsite / Virtual Onsite',
-  'Hiring Manager',
-  'Behavioral',
-];
-const ADVANCED_ROUNDS = [
-  'System Design',
-  'Bar Raiser (Amazon)',
-  'Take-home / OA',
-  'Final / Team Match',
+// Fallback grouping when no live groups are supplied — mirrors the
+// GET /community/posts/options `rounds` shape.
+const ROUND_GROUPS_FALLBACK = [
+  { category: 'Initial Screening', options: ['Recruiter / HR Screen', 'Online Assessment (OA)'] },
+  { category: 'Mid-Level Evaluation', options: ['Technical Phone Screen', 'Hiring Manager Screen', 'Take-home Assignment'] },
+  { category: 'Onsite / Virtual Loop', options: ['Onsite - Coding / Algorithms', 'Onsite - System Design / Architecture', 'Onsite - Portfolio / Case Presentation', 'Onsite - Product Sense / Strategy', 'Onsite - Behavioral / Leadership', 'Onsite - Cross-functional / Panel', 'Onsite - Multi Round'] },
+  { category: 'Final Stages', options: ['Executive / Final Round', 'Team Matching'] },
 ];
 
-export function RoundFilter({ options, onApply, singleSelect }: { options?: string[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+export function RoundFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  // When live options are supplied (from /community/posts/options) show them as
-  // a single group; otherwise fall back to the curated common/advanced split.
-  const useApi = !!(options && options.length);
-  const commonSource = useApi ? options! : COMMON_ROUNDS;
-  const advancedSource = useApi ? [] : ADVANCED_ROUNDS;
+  const roundGroups = groups && groups.length ? groups : ROUND_GROUPS_FALLBACK;
 
   useEffect(() => {
     if (isOpen) {
       setTempSelected(new Set(selected));
       setSearch('');
+      setActiveCategory(null);
     }
   }, [isOpen, selected]);
 
@@ -383,17 +371,28 @@ export function RoundFilter({ options, onApply, singleSelect }: { options?: stri
   const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
-  const filteredCommon = commonSource.filter((o) =>
-    o.toLowerCase().includes(search.toLowerCase())
-  );
-  const filteredAdvanced = advancedSource.filter((o) =>
-    o.toLowerCase().includes(search.toLowerCase())
-  );
+  const q = search.toLowerCase();
+  const visibleGroups = (activeCategory ? roundGroups.filter((g) => g.category === activeCategory) : roundGroups)
+    .map((g) => ({ category: g.category, options: g.options.filter((o) => o.toLowerCase().includes(q)) }))
+    .filter((g) => g.options.length > 0);
 
   const topContent = (
-    <p className="text-xs text-muted-foreground">
-      Company naming varies — these are normalized stages.
-    </p>
+    <div className="flex flex-wrap gap-1.5">
+      {roundGroups.map((g) => (
+        <button
+          key={g.category}
+          type="button"
+          onClick={() => setActiveCategory(activeCategory === g.category ? null : g.category)}
+          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            activeCategory === g.category
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
+          }`}
+        >
+          {g.category}
+        </button>
+      ))}
+    </div>
   );
 
   return (
@@ -409,62 +408,136 @@ export function RoundFilter({ options, onApply, singleSelect }: { options?: stri
       onApply={handleApply}
       topContent={topContent}
     >
-      {filteredCommon.length > 0 && (
-        <>
-          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-            {useApi ? 'ROUNDS' : 'COMMON ROUNDS'}
-          </div>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {filteredCommon.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => toggle(r)}
-                className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors
-                  ${
-                    tempSelected.has(r)
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-border bg-background text-foreground hover:bg-secondary hover:border-primary/50'
-                  }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {filteredCommon.length > 0 && filteredAdvanced.length > 0 && (
-        <div className="my-3 border-t border-border" />
-      )}
-
-      {filteredAdvanced.length > 0 && (
-        <>
-          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-            ADVANCED / OPTIONAL
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {filteredAdvanced.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => toggle(r)}
-                className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors
-                  ${
-                    tempSelected.has(r)
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-border bg-background text-foreground hover:bg-secondary hover:border-primary/50'
-                  }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {filteredCommon.length === 0 && filteredAdvanced.length === 0 && (
+      {visibleGroups.length === 0 ? (
         <div className="py-4 text-center text-sm text-muted-foreground">No rounds found</div>
+      ) : (
+        visibleGroups.map((g) => (
+          <div key={g.category} className="mb-3">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+              {g.category}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {g.options.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => toggle(r)}
+                  className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors
+                    ${
+                      tempSelected.has(r)
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border bg-background text-foreground hover:bg-secondary hover:border-primary/50'
+                    }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </FilterDropdown>
+  );
+}
+
+// ─── Category filter ────────────────────────────────────────────────────────────
+// Fallback grouping when no live groups are supplied — mirrors the
+// GET /community/posts/options `categories` shape.
+const CATEGORY_GROUPS_FALLBACK = [
+  { category: 'Core Interview Types', options: ['Behavioral', 'Technical', 'Situational / Judgment'] },
+  { category: 'Product / Business', options: ['Product Sense', 'Execution', 'Strategy', 'Analytical / Metrics', 'Case Study'] },
+  { category: 'Engineering', options: ['Coding', 'System Design', 'Debugging / Troubleshooting'] },
+  { category: 'Leadership & Communication', options: ['Leadership', 'Communication', 'Stakeholder Management', 'Collaboration / Conflict'] },
+  { category: 'Career / Background', options: ['Resume / Background', 'Experience Deep Dive', 'Career Motivation', 'Company-specific Questions'] },
+];
+
+export function CategoryFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const categoryGroups = groups && groups.length ? groups : CATEGORY_GROUPS_FALLBACK;
+
+  useEffect(() => {
+    if (isOpen) {
+      setTempSelected(new Set(selected));
+      setSearch('');
+      setActiveCategory(null);
+    }
+  }, [isOpen, selected]);
+
+  const toggle = (option: string) => {
+    setTempSelected((prev) => {
+      if (singleSelect) return prev.has(option) ? new Set() : new Set([option]);
+      const next = new Set(prev);
+      if (next.has(option)) next.delete(option);
+      else next.add(option);
+      return next;
+    });
+  };
+
+  const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
+  const handleReset = () => setTempSelected(new Set());
+
+  const q = search.toLowerCase();
+  const visibleGroups = (activeCategory ? categoryGroups.filter((g) => g.category === activeCategory) : categoryGroups)
+    .map((g) => ({ category: g.category, options: g.options.filter((o) => o.toLowerCase().includes(q)) }))
+    .filter((g) => g.options.length > 0);
+
+  const topContent = (
+    <div className="flex flex-wrap gap-1.5">
+      {categoryGroups.map((g) => (
+        <button
+          key={g.category}
+          type="button"
+          onClick={() => setActiveCategory(activeCategory === g.category ? null : g.category)}
+          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            activeCategory === g.category
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/70'
+          }`}
+        >
+          {g.category}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <FilterDropdown
+      isOpen={isOpen}
+      onOpenChange={setIsOpen}
+      label="Category"
+      activeCount={selected.size}
+      searchPlaceholder="Search category..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onReset={handleReset}
+      onApply={handleApply}
+      topContent={topContent}
+    >
+      {visibleGroups.length === 0 ? (
+        <div className="py-4 text-center text-sm text-muted-foreground">No categories found</div>
+      ) : (
+        visibleGroups.map((g) => (
+          <div key={g.category} className="mb-2">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
+              {g.category}
+            </div>
+            <div className="space-y-0.5">
+              {g.options.map((option) => (
+                <CheckboxRow
+                  key={option}
+                  option={option}
+                  checked={tempSelected.has(option)}
+                  onChange={() => toggle(option)}
+                />
+              ))}
+            </div>
+          </div>
+        ))
       )}
     </FilterDropdown>
   );

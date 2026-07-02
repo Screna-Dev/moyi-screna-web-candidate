@@ -13,13 +13,11 @@ import {
   Bookmark,
   Share2,
   Lock,
-  TrendingUp,
-  FileText,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
-import { toRoleEnum, toRoundEnum } from '../../utils/communityEnums';
+import { toRoleEnum, toRoundEnum, toCategoryEnum } from '../../utils/communityEnums';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -28,7 +26,7 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
-import { RoleFilter, RoundFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
+import { RoleFilter, RoundFilter, CategoryFilter } from '@/components/newDesign/interview-insights/filter-popovers';
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -68,13 +66,6 @@ const SORT_TO_API: Record<SortOption, string> = {
   Newest: 'NEWEST',
   Hot: 'HOT',
   'Most Saved': 'MOST_SAVED',
-};
-
-const TIME_TO_API: Record<string, string> = {
-  'Past week': 'PAST_WEEK',
-  'Past month': 'PAST_MONTH',
-  'Past 3 months': 'PAST_3_MONTH',
-  'Past year': 'PAST_YEAR',
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -166,14 +157,18 @@ export function CompanyDetailPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-  // ── Filter options (from GET /community/posts/options) + applied selections ──
-  type RoleGroup = { category: string; options: string[] };
-  const [roleGroups, setRoleGroups] = useState<RoleGroup[] | undefined>(undefined);
-  const [roundOptions, setRoundOptions] = useState<string[] | undefined>(undefined);
+  // ── Filter options (from GET /community/posts/options) + applied selections.
+  // Only Role and Round are offered here — the options endpoint provides those;
+  // it has no Level/Time option sets, so those filters were removed. ──
+  type OptionGroup = { category: string; options: string[] };
+  const [roleGroups, setRoleGroups] = useState<OptionGroup[] | undefined>(undefined);
+  const [roundGroups, setRoundGroups] = useState<OptionGroup[] | undefined>(undefined);
+  const [categoryGroups, setCategoryGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [filterRole, setFilterRole] = useState('');
   const [filterRound, setFilterRound] = useState('');
-  const [filterLevel, setFilterLevel] = useState('');
-  const [filterTime, setFilterTime] = useState('');
+  // Category isn't a /community/posts/search param, so it filters loaded posts
+  // client-side (by matching each post's question categories).
+  const [filterCategory, setFilterCategory] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -181,10 +176,12 @@ export function CompanyDetailPage() {
       .then(res => {
         const data = res?.data?.data ?? res?.data;
         if (!data || cancelled) return;
-        const roles: RoleGroup[] = Array.isArray(data.roles) ? data.roles : [];
-        const rounds: RoleGroup[] = Array.isArray(data.rounds) ? data.rounds : [];
+        const roles: OptionGroup[] = Array.isArray(data.roles) ? data.roles : [];
+        const rounds: OptionGroup[] = Array.isArray(data.rounds) ? data.rounds : [];
+        const categories: OptionGroup[] = Array.isArray(data.categories) ? data.categories : [];
         if (roles.length) setRoleGroups(roles.map(g => ({ category: g.category, options: g.options ?? [] })));
-        if (rounds.length) setRoundOptions(rounds.flatMap(g => g.options ?? []));
+        if (rounds.length) setRoundGroups(rounds.map(g => ({ category: g.category, options: g.options ?? [] })));
+        if (categories.length) setCategoryGroups(categories.map(g => ({ category: g.category, options: g.options ?? [] })));
       })
       .catch(() => { /* filters fall back to their hardcoded options */ });
     return () => { cancelled = true; };
@@ -197,6 +194,17 @@ export function CompanyDetailPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // Client-side category filter over already-loaded posts (server search has no
+  // category param). Question categories are stored as enums, so match on the
+  // enum; also accept the raw label as a fallback.
+  const visiblePosts = useMemo(() => {
+    if (!filterCategory) return posts;
+    const enumVal = toCategoryEnum(filterCategory);
+    return posts.filter(p =>
+      (p.questions || []).some(qn => (qn.categories || []).some(c => c === enumVal || c === filterCategory))
+    );
+  }, [posts, filterCategory]);
 
   // interview_notes_browsed —— 进入公司详情页（每次进入上报一次）
   useEffect(() => {
@@ -322,8 +330,6 @@ export function CompanyDetailPage() {
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (filterRole) params.role = toRoleEnum(filterRole);
       if (filterRound) params.round = toRoundEnum(filterRound);
-      if (filterLevel) params.level = filterLevel;
-      if (filterTime) params.time = TIME_TO_API[filterTime] || undefined;
 
       const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
       const res = await fetchFn(isAuthenticated ? params : { page: 0, company: company.name });
@@ -342,7 +348,7 @@ export function CompanyDetailPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, company.name, initInteractions]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, isAuthenticated, company.name, initInteractions]);
 
   useEffect(() => {
     fetchPosts(0, true);
@@ -392,23 +398,6 @@ export function CompanyDetailPage() {
                 <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
                   {company.description}
                 </p>
-                <div className="mt-4 flex flex-wrap items-center gap-6 text-sm text-[hsl(222,12%,45%)]">
-                  {company.totalNotes > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <FileText className="size-4" />
-                      <span className="font-medium text-[hsl(222,22%,15%)]">{company.totalNotes.toLocaleString()}</span> total notes
-                    </div>
-                  )}
-                  {company.last30Days > 0 && (
-                    <div className="flex items-center gap-1.5 text-emerald-600">
-                      <TrendingUp className="size-4" />
-                      <span className="font-medium">+{company.last30Days}</span> last 30 days
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1.5">
-                    <span>Updated {company.updatedAgo}</span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -433,9 +422,8 @@ export function CompanyDetailPage() {
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                 <div className="flex flex-wrap items-center gap-2">
                   <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
-                  <RoundFilter singleSelect options={roundOptions} onApply={sel => setFilterRound(sel[0] || '')} />
-                  <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
-                  <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />
+                  <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
+                  <CategoryFilter singleSelect groups={categoryGroups} onApply={sel => setFilterCategory(sel[0] || '')} />
                 </div>
                 <div className="relative">
                   <button
@@ -486,7 +474,19 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Empty */}
+              {/* Empty — no posts match the active category (client-side filter) */}
+              {!loading && !error && !isInitialLoading && posts.length > 0 && visiblePosts.length === 0 && (
+                <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
+                  <p className="text-[hsl(222,12%,45%)]">No loaded experiences match “{filterCategory}”.</p>
+                  {hasMore && (
+                    <button onClick={() => fetchPosts(page + 1, false)} className="mt-2 text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">
+                      Load more to search further
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Empty — no posts at all for this company */}
               {!loading && !error && !isInitialLoading && posts.length === 0 && (
                 <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
@@ -502,7 +502,7 @@ export function CompanyDetailPage() {
 
               {/* Posts */}
               <div className="space-y-4">
-                {posts.map((post, i) => (
+                {visiblePosts.map((post, i) => (
                   <motion.article
                     key={post.id}
                     initial={{ opacity: 0, y: 12 }}

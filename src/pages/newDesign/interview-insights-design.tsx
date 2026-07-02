@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Clock, Search } from "lucide-react";
+import { ArrowRight, Clock } from "lucide-react";
 import { DashboardLayout } from "@/components/newDesign/dashboard-layout";
 import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
@@ -297,7 +297,6 @@ export function InterviewInsightsPage() {
   }, []);
 
   const [activeCategory, setActiveCategory] = useState("All");
-  const [query, setQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
   // Directory is API-driven: company name, category, and counts come from the
@@ -332,12 +331,8 @@ export function InterviewInsightsPage() {
     if (activeCategory !== "All") {
       filtered = filtered.filter((c) => c.category === activeCategory);
     }
-    if (query.trim()) {
-      const text = query.toLowerCase();
-      filtered = filtered.filter((c) => `${c.name} ${c.description} ${c.category}`.toLowerCase().includes(text));
-    }
     return filtered;
-  }, [companies, activeCategory, query]);
+  }, [companies, activeCategory]);
 
   const ITEMS_PER_PAGE = activeCategory === "All" ? 27 : 19;
   const paginatedCompanies = displayedCompanies.slice(0, currentPage * ITEMS_PER_PAGE);
@@ -345,11 +340,6 @@ export function InterviewInsightsPage() {
 
   const handleCategoryChange = (cat: string) => {
     setActiveCategory(cat);
-    setCurrentPage(1);
-  };
-
-  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value);
     setCurrentPage(1);
   };
 
@@ -433,21 +423,7 @@ export function InterviewInsightsPage() {
             })}
           </div>
 
-          {/* Search & Filters */}
           <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <label className="flex flex-1 items-center gap-3 rounded-full border border-border bg-background px-4 py-2.5 transition focus-within:border-primary focus-within:ring-1 focus-within:ring-ring">
-                <Search className="size-4 shrink-0 text-muted-foreground" />
-                <input
-                  value={query}
-                  onChange={handleQueryChange}
-                  placeholder="Search companies, roles, rounds, or interview notes..."
-                  className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                  style={{ fontFamily: "var(--font-sans)" }}
-                />
-              </label>
-            </div>
-
             {/* Latest Ticker */}
             <div className="flex items-center border-t border-border pt-6">
               <span className="mr-4 inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted-foreground z-10" style={{ fontFamily: "var(--font-sans)" }}>
