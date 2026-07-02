@@ -498,9 +498,11 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                     <span className="text-muted-foreground">Selected: </span>
                     <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    💡 Friendly Reminder: You can book sessions within the next 24 hours. Please note that to respect the mentor's schedule, bookings made within this timeframe are non-refundable once confirmed.
-                  </p>
+                  {new Date(selectedSlot).getTime() - Date.now() < 24 * 60 * 60 * 1000 && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      💡 Friendly Reminder: This session starts within the next 24 hours. Please note that to respect the mentor's schedule, bookings made within this timeframe are non-refundable once confirmed.
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -711,7 +713,7 @@ export function MentorDetailsPage() {
             Back to Mentorship
           </Link>
           <Link
-            to="/dashboard"
+            to="/history?tab=mentor"
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Calendar className="w-3.5 h-3.5" />
@@ -745,11 +747,11 @@ export function MentorDetailsPage() {
               <span className="font-medium text-foreground">{mentor?.currentCompany}</span>
             </div>
 
-            <div className="flex flex-wrap gap-2 mt-4">
+            {/* <div className="flex flex-wrap gap-2 mt-4">
               {(mentor?.expertiseTags ?? []).map(tag => (
                 <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
               ))}
-            </div>
+            </div> */}
 
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-2xl">{mentor?.bio}</p>
 

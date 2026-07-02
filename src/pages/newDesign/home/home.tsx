@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Menu, X, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 import imgFeatureA from '@/imports/featurea-png.png';
-import imgWorkflowDiagram from '@/imports/Group_10.png';
+import imgWorkflowDiagram from '@/imports/Group_18.png';
 import imgTeacup from '@/imports/App/landing-teacup.png';
 import imgJobOffer from '@/imports/App/landing-job-offer.png';
 import imgMicrophone from '@/imports/App/landing-microphone.png';
@@ -26,7 +27,8 @@ import avEthan from '@/imports/avatars/ethan-wu.jpg';
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
 
-// Landing-page subscription tier (maps to POST /payments/subscriptions/tierUpdate)
+// Landing-page subscription tier. FREE is UI-only; the paid tiers map to the
+// backend enum (BASIC | ADVANCED | FLAGSHIP), billed MONTHLY for now.
 type PlanTier = 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP';
 
 interface Plan {
@@ -549,6 +551,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<Tab>('AI Mock');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -569,7 +572,10 @@ export function HomePage() {
       ? nameParts[0][0].toUpperCase()
       : 'U';
 
-  // Pricing CTA → POST /payments/subscriptions/tierUpdate
+  // Pricing CTA. New subscribers → POST /payments/subscriptions (Stripe Checkout).
+  // Existing subscribers manage plan changes in Settings → Billing, so send them
+  // there rather than changing tier from the landing page.
+  // Billing cycle is MONTHLY-only for now.
   const handleSelectPlan = async (plan: Plan) => {
     if (!user) {
       navigate('/auth');
@@ -581,15 +587,39 @@ export function HomePage() {
     }
     setLoadingTier(plan.tier);
     try {
-      const res = await PaymentService.updateTier(plan.tier);
+      // If the user already has a subscription, they change plans in Settings.
+      let hasSubscription = false;
+      try {
+        const subRes = await PaymentService.getSubscription();
+        const sub = subRes?.data?.data ?? subRes?.data;
+        hasSubscription = !!(sub && (sub.tier || sub.plan || sub.status || sub.memberPlan));
+      } catch {
+        // 404 / no record → treat as a new subscriber.
+        hasSubscription = false;
+      }
+
+      if (hasSubscription) {
+        navigate('/settings?tab=billing');
+        return;
+      }
+
+      const res = await PaymentService.createSubscription(plan.tier, 'MONTHLY');
       const url = res?.data?.data?.url ?? res?.data?.url;
       if (url) {
         window.location.href = url;
       } else {
-        navigate('/billing');
+        // No Checkout URL (e.g. saved payment method) — subscription created directly.
+        toast({ title: 'Subscription started', description: `You're now on ${plan.name}.` });
+        navigate('/settings?tab=billing');
       }
     } catch (err) {
-      console.error('tierUpdate error:', err);
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Something went wrong. Please try again.';
+      console.error('subscription error:', err);
+      toast({ title: 'Unable to start plan', description: message, variant: 'destructive' });
     } finally {
       setLoadingTier(null);
     }
@@ -700,7 +730,7 @@ export function HomePage() {
           transition: 'background-color 220ms ease-out, backdrop-filter 220ms ease-out, -webkit-backdrop-filter 220ms ease-out, border-color 220ms ease-out, box-shadow 220ms ease-out',
         }}
       >
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 h-full flex items-center justify-between">
+        <div className="relative max-w-[1440px] mx-auto px-6 lg:px-10 h-full flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex-shrink-0 flex items-center">
             <img
@@ -711,7 +741,7 @@ export function HomePage() {
           </Link>
 
           {/* Desktop nav links */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
             {['Features', 'Blog', 'Pricing', 'FAQ'].map((link) => (
               <a
                 key={link}
@@ -1414,7 +1444,7 @@ export function HomePage() {
                 Empowering careers through AI and human judgment.
               </p>
               <div className="flex gap-3">
-                <SocialIcon aria-label="Twitter">
+                <SocialIcon aria-label="X" href="https://x.com/screnaai_">
                   <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
                     <path
                       d="M16.5 3C16.5 3 15.975 4.575 15 5.55C16.2 13.05 7.95 18.525 1.5 14.25C3.15 14.325 4.8 13.8 6 12.75C2.25 11.625 0.375 7.2 2.25 3.75C3.9 5.7 6.45 6.825 9 6.75C8.325 3.6 12 1.8 14.25 3.9C15.075 3.9 16.5 3 16.5 3Z"
@@ -1422,20 +1452,20 @@ export function HomePage() {
                     />
                   </svg>
                 </SocialIcon>
-                <SocialIcon aria-label="LinkedIn">
+                <SocialIcon aria-label="LinkedIn" href="https://www.linkedin.com/company/screnaai/">
                   <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
                     <path d="M12 6C13.1935 6 14.3381 6.47411 15.182 7.31802C16.0259 8.16193 16.5 9.30653 16.5 10.5V15.75H13.5V10.5C13.5 10.1022 13.342 9.72064 13.0607 9.43934C12.7794 9.15804 12.3978 9 12 9C11.6022 9 11.2206 9.15804 10.9393 9.43934C10.658 9.72064 10.5 10.1022 10.5 10.5V15.75H7.5V10.5C7.5 9.30653 7.97411 8.16193 8.81802 7.31802C9.66193 6.47411 10.8065 6 12 6Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M4.5 6.75H1.5V15.75H4.5V6.75Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M3 4.5C3.82843 4.5 4.5 3.82843 4.5 3C4.5 2.17157 3.82843 1.5 3 1.5C2.17157 1.5 1.5 2.17157 1.5 3C1.5 3.82843 2.17157 4.5 3 4.5Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </SocialIcon>
-                <SocialIcon aria-label="Email">
+                <SocialIcon aria-label="Email" href="mailto:operations@screna.ai">
                   <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
                     <path d="M15 3H3C2.17157 3 1.5 3.67157 1.5 4.5V13.5C1.5 14.3284 2.17157 15 3 15H15C15.8284 15 16.5 14.3284 16.5 13.5V4.5C16.5 3.67157 15.8284 3 15 3Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M16.5 5.25L9.7725 9.525C9.54095 9.67007 9.27324 9.74701 9 9.74701C8.72676 9.74701 8.45905 9.67007 8.2275 9.525L1.5 5.25" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </SocialIcon>
-                <SocialIcon aria-label="Discord">
+                <SocialIcon aria-label="Discord" href="https://discord.gg/7FqHDtea5X">
                   <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
                     <path d="M13.545 3.894A12.894 12.894 0 0 0 10.599 3a.048.048 0 0 0-.051.025c-.13.232-.275.535-.376.773a11.892 11.892 0 0 0-3.546 0 7.805 7.805 0 0 0-.382-.773.05.05 0 0 0-.051-.025 12.862 12.862 0 0 0-2.946.894.045.045 0 0 0-.021.018C1.648 6.757 1.131 9.55 1.38 12.308a.054.054 0 0 0 .02.036 12.953 12.953 0 0 0 3.9 1.97.05.05 0 0 0 .055-.018c.3-.41.567-.843.796-1.298a.05.05 0 0 0-.027-.069 8.527 8.527 0 0 1-1.217-.58.05.05 0 0 1-.005-.083c.082-.061.163-.125.241-.19a.048.048 0 0 1 .05-.007c2.552 1.165 5.315 1.165 7.837 0a.048.048 0 0 1 .051.006c.078.065.16.13.242.191a.05.05 0 0 1-.004.083 7.99 7.99 0 0 1-1.218.579.05.05 0 0 0-.026.07c.233.455.5.887.795 1.297a.05.05 0 0 0 .055.019 12.918 12.918 0 0 0 3.907-1.97.051.051 0 0 0 .02-.035c.295-3.046-.494-5.816-2.09-8.396a.04.04 0 0 0-.02-.018ZM6.51 10.67c-.765 0-1.394-.702-1.394-1.563 0-.862.617-1.563 1.394-1.563.783 0 1.406.707 1.394 1.563 0 .861-.617 1.563-1.394 1.563Zm5.155 0c-.764 0-1.394-.702-1.394-1.563 0-.862.617-1.563 1.394-1.563.784 0 1.407.707 1.394 1.563 0 .861-.61 1.563-1.394 1.563Z" fill="#90A1B9" />
                   </svg>
@@ -1470,7 +1500,7 @@ export function HomePage() {
                 Community
               </p>
               <a
-                href="https://discord.gg/screna"
+                href="https://discord.gg/7FqHDtea5X"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-[14px] leading-[20px] mb-3 transition-colors duration-150"
@@ -1554,19 +1584,41 @@ function FooterLink({ label, to }: { label: string; to: string }) {
   );
 }
 
-function SocialIcon({ children, 'aria-label': label }: { children: ReactNode; 'aria-label': string }) {
+function SocialIcon({ children, 'aria-label': label, href }: { children: ReactNode; 'aria-label': string; href?: string }) {
   const [hovered, setHovered] = useState(false);
+  const style = {
+    width: 40,
+    height: 40,
+    border: '0.667px solid #F1F5F9',
+    background: hovered ? '#F7F9FF' : 'transparent',
+    opacity: hovered ? 1 : 0.85,
+  } as const;
+  const className = 'flex items-center justify-center rounded-2xl transition-all duration-150';
+
+  // Render an anchor when a destination is provided so the icon is actually clickable.
+  // mailto: links stay in-page; external links open in a new tab.
+  if (href) {
+    const isExternal = /^https?:/.test(href);
+    return (
+      <a
+        aria-label={label}
+        href={href}
+        className={className}
+        style={style}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      >
+        {children}
+      </a>
+    );
+  }
+
   return (
     <button
       aria-label={label}
-      className="flex items-center justify-center rounded-2xl transition-all duration-150"
-      style={{
-        width: 40,
-        height: 40,
-        border: '0.667px solid #F1F5F9',
-        background: hovered ? '#F7F9FF' : 'transparent',
-        opacity: hovered ? 1 : 0.85,
-      }}
+      className={className}
+      style={style}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

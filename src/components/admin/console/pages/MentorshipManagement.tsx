@@ -97,6 +97,7 @@ type Mentor = {
   calConnected: boolean;
   emailVerified: boolean;
   linkedinUrl: string;
+  resumeUrl: string;
   verified: boolean;
   sessions: number;
   revenue: number;
@@ -161,6 +162,7 @@ function mapApiMentor(api: any): Mentor {
     calConnected: !!api?.calendarConnected,
     emailVerified: !!(api?.emailVerified ?? api?.workEmail),
     linkedinUrl: api?.linkedinUrl || "",
+    resumeUrl: api?.resumeUrl || api?.resumePath || api?.resume_url || "",
     verified: !!api?.identityVerified,
     sessions: 0,
     revenue: 0,
@@ -283,11 +285,6 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
       {name.slice(0, 2).toUpperCase()}
     </div>
   );
-}
-
-// Filled chip — used for service types
-function ServiceChip({ label }: { label: string }) {
-  return <span style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 600, background: C.blueBg, color: C.blue, border: `1px solid ${C.blueBorder}`, whiteSpace: "nowrap" as const }}>{label}</span>;
 }
 
 // Outline chip — used for expertise tags
@@ -1364,20 +1361,22 @@ function MentorDirectory() {
                   <span style={badge(selected.status === "Active" ? "green" : selected.status === "Suspend" ? "red" : selected.status === "Pending" ? "amber" : "gray")}>{selected.status}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: C.textMuted }}>
-                  {selected.email && (
+                  {selected.email ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <span>Email: {selected.email}</span>
-                      <button 
+                      <button
                         onClick={() => {
                           navigator.clipboard.writeText(selected.email!);
                           toast.success("Email copied");
-                        }} 
+                        }}
                         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.textMuted, display: "flex" }}
                         title="Copy email"
                       >
                         <Copy size={12} />
                       </button>
                     </div>
+                  ) : (
+                    <span style={{ fontStyle: "italic" }}>No email on file</span>
                   )}
                 </div>
               </div>
@@ -1400,19 +1399,34 @@ function MentorDirectory() {
                   </div>
                 </div>
                 <DrawerDivider />
-                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
-
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, marginTop: 12 }}>Proposed Services</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
-                  {selected.offerings.filter(o => o.enabled).length > 0 ? (
-                    selected.offerings.filter(o => o.enabled).map((o) => (
-                      <ServiceChip key={o.typeId} label={ALL_SERVICE_TYPES.find(t => t.id === o.typeId)?.label || o.typeId} />
-                    ))
-                  ) : (
-                    <span style={{ fontSize: 12, color: C.textSub }}>—</span>
-                  )}
-                </div>
+                <DrawerField label="Mentor Full Name" value={selected.name || <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>} />
+                <DrawerField label="Work Email" value={selected.email || <span style={{ color: C.textSub, fontStyle: "italic" }}>No email on file</span>} />
+                <DrawerField
+                  label="LinkedIn URL"
+                  value={selected.linkedinUrl ? (
+                    <a
+                      href={selected.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: C.blue, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none", wordBreak: "break-all" }}
+                    >
+                      <Link2 size={12} style={{ flexShrink: 0 }} />{selected.linkedinUrl}
+                    </a>
+                  ) : <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>}
+                />
+                <DrawerField
+                  label="Resume"
+                  value={selected.resumeUrl ? (
+                    <a
+                      href={selected.resumeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: C.blue, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}
+                    >
+                      <ExternalLink size={12} style={{ flexShrink: 0 }} />Download resume
+                    </a>
+                  ) : <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>}
+                />
               </div>
             ) : (
               <>

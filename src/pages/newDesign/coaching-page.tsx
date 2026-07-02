@@ -24,6 +24,7 @@ interface Mentor {
   name: string;
   title: string;
   company: string;
+  avatarUrl?: string;
   price: number;
   rating: number;
   reviews: number;
@@ -59,6 +60,7 @@ function mapApiMentor(m: ApiMentor): Mentor {
     name: m.name ?? '',
     title: m.currentRole ?? '',
     company: m.currentCompany ?? '',
+    avatarUrl: m.avatarUrl ?? '',
     price: typeof m.priceFrom === 'number' ? m.priceFrom / 100 : 0,
     rating: m.averageRating ?? 0,
     reviews: m.reviewCount ?? 0,
@@ -125,12 +127,20 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
             className="rounded-full shrink-0 overflow-hidden"
             style={{ width: '40px', height: '40px', boxShadow: '0 0 0 2px var(--surface-1), 0 1px 3px rgba(0,0,0,0.1)' }}
           >
-            <div
-              className="w-full h-full flex items-center justify-center"
-              style={{ background: COMPANY_COLORS[mentor.company] || 'var(--primary)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '15px', letterSpacing: '0.5px' }}
-            >
-              {mentor.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-            </div>
+            {mentor.avatarUrl ? (
+              <img
+                src={mentor.avatarUrl}
+                alt={mentor.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center"
+                style={{ background: COMPANY_COLORS[mentor.company] || 'var(--primary)', color: '#fff', fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '15px', letterSpacing: '0.5px' }}
+              >
+                {mentor.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+              </div>
+            )}
           </div>
 
           {/* Name + title */}

@@ -931,47 +931,47 @@ export function PersonalizedPracticePage() {
   }
 
   // ─── Gate: signed in but no resume → upload resume (onboarding) ───
+  // Rendered inside DashboardLayout so the sidebar + top header stay consistent
+  // with the rest of the dashboard.
   if (isLoggedIn && hasResume === false) {
     return (
-      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
-        <Navbar />
-        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+      <DashboardLayout headerTitle="Personalized Practice" fullBleed>
+        <div className="flex items-start justify-center pt-10 pb-16 px-6">
           <GoalUploadPage
             onUploadSuccess={() => { refetchProfile(); setHasSkippedTargetJob(false); }}
             onAddTargetJob={() => setShowTargetJobModal(true)}
           />
-        </main>
+        </div>
         <TargetJobModal
           open={showTargetJobModal}
           onOpenChange={setShowTargetJobModal}
           onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
           onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
         />
-        <Footer />
-      </div>
+      </DashboardLayout>
     );
   }
 
   // ─── Gate: resume uploaded but no target job yet → add target job (onboarding) ───
+  // Rendered inside DashboardLayout so the sidebar + top header stay consistent
+  // with the rest of the dashboard.
   if (isLoggedIn && hasResume === true && !isLoadingPlan && !targetJob && !hasSkippedTargetJob) {
     return (
-      <div className="min-h-screen bg-[hsl(220,20%,98%)] flex flex-col">
-        <Navbar />
-        <main className="flex-1 flex items-start justify-center pt-[150px] pb-16 px-6">
+      <DashboardLayout headerTitle="Personalized Practice" fullBleed>
+        <div className="flex items-start justify-center pt-10 pb-16 px-6">
           <GoalUploadPage
             initialState="target-job"
             onUploadSuccess={() => setHasSkippedTargetJob(true)}
             onAddTargetJob={() => setShowTargetJobModal(true)}
           />
-        </main>
+        </div>
         <TargetJobModal
           open={showTargetJobModal}
           onOpenChange={setShowTargetJobModal}
           onApply={(job) => { setTargetJob(job); setHasSkippedTargetJob(true); }}
           onPlanCreated={() => { refetchPlans(); setHasSkippedTargetJob(true); }}
         />
-        <Footer />
-      </div>
+      </DashboardLayout>
     );
   }
 

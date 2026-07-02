@@ -148,11 +148,14 @@ const ROLE_OPTIONS = [
   'Business Analyst',
 ];
 
-export function RoleFilter() {
+export function RoleFilter({ options, categories, onApply, singleSelect }: { options?: string[]; categories?: string[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+
+  const roleOptions = options && options.length ? options : ROLE_OPTIONS;
+  const roleCategories = categories && categories.length ? categories : ROLE_CATEGORIES;
 
   useEffect(() => {
     if (isOpen) {
@@ -163,6 +166,7 @@ export function RoleFilter() {
 
   const toggle = (option: string) => {
     setTempSelected((prev) => {
+      if (singleSelect) return prev.has(option) ? new Set() : new Set([option]);
       const next = new Set(prev);
       if (next.has(option)) next.delete(option);
       else next.add(option);
@@ -170,16 +174,16 @@ export function RoleFilter() {
     });
   };
 
-  const handleApply = () => setSelected(new Set(tempSelected));
+  const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
-  const filteredOptions = ROLE_OPTIONS.filter((o) =>
+  const filteredOptions = roleOptions.filter((o) =>
     o.toLowerCase().includes(search.toLowerCase())
   );
 
   const topContent = (
     <div className="flex flex-wrap gap-1.5">
-      {ROLE_CATEGORIES.map((c) => (
+      {roleCategories.map((c) => (
         <span
           key={c}
           className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium text-secondary-foreground"
@@ -331,11 +335,17 @@ const ADVANCED_ROUNDS = [
   'Final / Team Match',
 ];
 
-export function RoundFilter() {
+export function RoundFilter({ options, onApply, singleSelect }: { options?: string[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+
+  // When live options are supplied (from /community/posts/options) show them as
+  // a single group; otherwise fall back to the curated common/advanced split.
+  const useApi = !!(options && options.length);
+  const commonSource = useApi ? options! : COMMON_ROUNDS;
+  const advancedSource = useApi ? [] : ADVANCED_ROUNDS;
 
   useEffect(() => {
     if (isOpen) {
@@ -346,6 +356,7 @@ export function RoundFilter() {
 
   const toggle = (option: string) => {
     setTempSelected((prev) => {
+      if (singleSelect) return prev.has(option) ? new Set() : new Set([option]);
       const next = new Set(prev);
       if (next.has(option)) next.delete(option);
       else next.add(option);
@@ -353,13 +364,13 @@ export function RoundFilter() {
     });
   };
 
-  const handleApply = () => setSelected(new Set(tempSelected));
+  const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
-  const filteredCommon = COMMON_ROUNDS.filter((o) =>
+  const filteredCommon = commonSource.filter((o) =>
     o.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredAdvanced = ADVANCED_ROUNDS.filter((o) =>
+  const filteredAdvanced = advancedSource.filter((o) =>
     o.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -385,7 +396,7 @@ export function RoundFilter() {
       {filteredCommon.length > 0 && (
         <>
           <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-            COMMON ROUNDS
+            {useApi ? 'ROUNDS' : 'COMMON ROUNDS'}
           </div>
           <div className="flex flex-wrap gap-2 mb-4">
             {filteredCommon.map((r) => (
@@ -446,7 +457,7 @@ export function RoundFilter() {
 // ─── Level filter ──────────────────────────────────────────────────────────────
 const LEVEL_OPTIONS = ['Junior', 'Intermediate', 'Senior', 'Staff'];
 
-export function LevelFilter() {
+export function LevelFilter({ onApply, singleSelect }: { onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
@@ -461,6 +472,7 @@ export function LevelFilter() {
 
   const toggle = (option: string) => {
     setTempSelected((prev) => {
+      if (singleSelect) return prev.has(option) ? new Set() : new Set([option]);
       const next = new Set(prev);
       if (next.has(option)) next.delete(option);
       else next.add(option);
@@ -468,7 +480,7 @@ export function LevelFilter() {
     });
   };
 
-  const handleApply = () => setSelected(new Set(tempSelected));
+  const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
   const filteredOptions = LEVEL_OPTIONS.filter((o) =>
@@ -510,7 +522,7 @@ export function LevelFilter() {
 // ─── Time filter ──────────────────────────────────────────────────────────────
 const TIME_OPTIONS = ['Past week', 'Past month', 'Past 3 months', 'Past year'];
 
-export function TimeFilter() {
+export function TimeFilter({ onApply, singleSelect }: { onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
@@ -525,6 +537,7 @@ export function TimeFilter() {
 
   const toggle = (option: string) => {
     setTempSelected((prev) => {
+      if (singleSelect) return prev.has(option) ? new Set() : new Set([option]);
       const next = new Set(prev);
       if (next.has(option)) next.delete(option);
       else next.add(option);
@@ -532,7 +545,7 @@ export function TimeFilter() {
     });
   };
 
-  const handleApply = () => setSelected(new Set(tempSelected));
+  const handleApply = () => { setSelected(new Set(tempSelected)); onApply?.(Array.from(tempSelected)); };
   const handleReset = () => setTempSelected(new Set());
 
   const filteredOptions = TIME_OPTIONS.filter((o) =>

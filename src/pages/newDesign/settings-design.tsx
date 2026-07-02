@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User,
@@ -1829,7 +1830,18 @@ const TAB_PANELS: Record<string, React.ReactNode> = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(
+    TABS.some((t) => t.id === tabParam) ? (tabParam as string) : 'profile',
+  );
+
+  // Keep the URL in sync so tabs (esp. Billing) are deep-linkable.
+  useEffect(() => {
+    if (searchParams.get('tab') !== activeTab) {
+      setSearchParams({ tab: activeTab }, { replace: true });
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <DashboardLayout headerTitle="Settings" fullBleed>

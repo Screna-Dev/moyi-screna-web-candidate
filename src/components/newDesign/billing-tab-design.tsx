@@ -286,7 +286,6 @@ function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?
   const [code,   setCode]   = useState('');
   const [status, setStatus] = useState<RedeemStatus>('idle');
   const [apiError, setApiError] = useState('');
-  const creditsAwarded = 50;
 
   const handleRedeem = async () => {
     if (!code.trim()) return;
@@ -330,12 +329,9 @@ function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?
             <div className="w-14 h-14 rounded-full bg-green-50 border border-green-100 flex items-center justify-center mb-4">
               <CheckCircle2 className="w-6 h-6 text-green-500" />
             </div>
-            <p className="font-medium text-foreground mb-1.5" style={{ fontSize: 17 }}>Code applied!</p>
-            <p className="text-sm text-muted-foreground mb-1">
-              +{creditsAwarded} credits added to your balance
-            </p>
-            <p className="text-xs text-muted-foreground mb-6">
-              New balance: <span className="text-foreground font-medium">170 credits</span>
+            <p className="font-medium text-foreground mb-1.5" style={{ fontSize: 17 }}>Code redeemed successfully!</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Your credits have been added to your balance.
             </p>
             <button onClick={onClose} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
               Done

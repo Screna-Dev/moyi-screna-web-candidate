@@ -20,6 +20,8 @@ vi.mock('@/services/CommunityService', () => ({
   getReplies: vi.fn(),
   createReply: vi.fn(),
   deleteReply: vi.fn(),
+  getPostOptions: vi.fn(() => Promise.resolve({ data: { data: {} } })),
+  getCommunityCompanies: vi.fn(() => Promise.resolve({ data: { data: [] } })),
 }));
 
 // ─── AuthContext Mock ─────────────────────────────────────

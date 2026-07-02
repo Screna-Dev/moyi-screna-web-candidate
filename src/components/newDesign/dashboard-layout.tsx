@@ -45,7 +45,8 @@ const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Users, label: 'Coaching', path: '/coaching' },
   { icon: FileText, label: 'InterviewPrep Note', path: '/interview-insights' },
-  { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
+  // Hidden per request — keep for later re-enable
+  // { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
   { icon: Target, label: 'Personalized Practice', path: '/personalized-practice' },
 ];
 
@@ -198,8 +199,8 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
       {/* Bottom utility area */}
       <div className="px-3 pb-6 mt-auto shrink-0 flex flex-col gap-0">
-        {/* Refer & Earn card */}
-        <Link to="/refer" className="block mb-5 rounded-2xl p-4 no-underline hover:opacity-90 transition-opacity" style={{ background: '#EEF4FF' }}>
+        {/* Refer & Earn card — hidden per request, keep for later re-enable */}
+        {/* <Link to="/refer" className="block mb-5 rounded-2xl p-4 no-underline hover:opacity-90 transition-opacity" style={{ background: '#EEF4FF' }}>
           <div className="flex items-center gap-2">
             <Gift className="w-4 h-4 shrink-0 text-primary" />
             <span className="flex-1 text-sm font-medium text-foreground">Refer &amp; Earn</span>
@@ -209,7 +210,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           <p className="text-xs text-foreground/70 leading-relaxed">
             Invite friends or share on LinkedIn to earn extra rewards!
           </p>
-        </Link>
+        </Link> */}
 
         {/* Settings & Payment row */}
         <Link to="/settings" className={navItemClass(currentPath.startsWith('/settings'))}>

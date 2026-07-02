@@ -19,7 +19,7 @@ import {
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompaniesStats } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompaniesStats, getPostOptions, getCommunityCompanies } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -417,7 +417,44 @@ export function InterviewInsightsPage() {
   const [companySearch, setCompanySearch] = useState('');
   const [companySizeChip, setCompanySizeChip] = useState<CompanySizeChip | null>(null);
   const [roleSearch, setRoleSearch] = useState('');
-  const [roleCategoryChip, setRoleCategoryChip] = useState<RoleCategoryChip | null>(null);
+  const [roleCategoryChip, setRoleCategoryChip] = useState<string | null>(null);
+
+  // ─── Filter option lists: roles + rounds from GET /community/posts/options,
+  // companies from GET /community/companies (dynamic). Hardcoded arrays are the
+  // fallback if a request fails or returns empty. ───
+  const [roleChips, setRoleChips] = useState<readonly string[]>(ROLE_CATEGORY_CHIPS);
+  const [rolesByCategory, setRolesByCategory] = useState<Record<string, string[]>>(ROLE_BY_CATEGORY);
+  const [allRoles, setAllRoles] = useState<string[]>(ALL_ROLES);
+  const [roundGroups, setRoundGroups] = useState<{ label: string; options: string[] }[]>(ROUND_GROUPS as unknown as { label: string; options: string[] }[]);
+  const [allCompanies, setAllCompanies] = useState<string[]>(ALL_COMPANIES);
+
+  useEffect(() => {
+    let cancelled = false;
+    type Group = { category: string; options: string[] };
+    getPostOptions()
+      .then(res => {
+        const data = res?.data?.data ?? res?.data;
+        if (!data || cancelled) return;
+        const roles: Group[] = Array.isArray(data.roles) ? data.roles : [];
+        const rounds: Group[] = Array.isArray(data.rounds) ? data.rounds : [];
+        if (roles.length) {
+          setRoleChips(roles.map(g => g.category));
+          setRolesByCategory(Object.fromEntries(roles.map(g => [g.category, g.options ?? []])));
+          setAllRoles([...new Set(roles.flatMap(g => g.options ?? []))].sort());
+        }
+        if (rounds.length) setRoundGroups(rounds.map(g => ({ label: g.category, options: g.options ?? [] })));
+      })
+      .catch(() => { /* keep hardcoded fallbacks */ });
+    getCommunityCompanies()
+      .then(res => {
+        const data = res?.data?.data ?? res?.data;
+        if (cancelled) return;
+        const list: string[] = Array.isArray(data) ? data : Array.isArray(data?.companies) ? data.companies : [];
+        if (list.length) setAllCompanies([...new Set(list)]);
+      })
+      .catch(() => { /* keep hardcoded fallback */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Companies directory state ──
   const [activeCategory, setActiveCategory] = useState('All');
@@ -962,7 +999,7 @@ export function InterviewInsightsPage() {
                                   </div>
                                   <div className="max-h-56 overflow-y-auto">
                                     <div className="p-2 space-y-0.5">
-                                      {(companySizeChip ? COMPANY_BY_SIZE[companySizeChip] : ALL_COMPANIES).filter(c =>
+                                      {(companySizeChip ? COMPANY_BY_SIZE[companySizeChip] : allCompanies).filter(c =>
                                         companySearch ? c.toLowerCase().includes(companySearch.toLowerCase()) : true
                                       ).slice(0, 50).map(option => (
                                         <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
@@ -983,7 +1020,7 @@ export function InterviewInsightsPage() {
                               {filter === 'Role' && (
                                 <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
                                   <div className="p-2 flex flex-wrap gap-1.5 border-b border-[hsl(220,16%,92%)]">
-                                    {ROLE_CATEGORY_CHIPS.map(chip => (
+                                    {roleChips.map(chip => (
                                       <button
                                         key={chip}
                                         onClick={() => setRoleCategoryChip(roleCategoryChip === chip ? null : chip)}
@@ -1012,7 +1049,7 @@ export function InterviewInsightsPage() {
                                   </div>
                                   <div className="max-h-56 overflow-y-auto">
                                     <div className="p-2 space-y-0.5">
-                                      {(roleCategoryChip ? ROLE_BY_CATEGORY[roleCategoryChip] : ALL_ROLES).filter(r =>
+                                      {(roleCategoryChip ? (rolesByCategory[roleCategoryChip] ?? []) : allRoles).filter(r =>
                                         roleSearch ? r.toLowerCase().includes(roleSearch.toLowerCase()) : true
                                       ).slice(0, 50).map(option => (
                                         <label key={option} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-[hsl(220,20%,98%)] cursor-pointer transition-colors">
@@ -1033,7 +1070,7 @@ export function InterviewInsightsPage() {
                               {filter === 'Round' && (
                                 <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden">
                                   <div className="max-h-64 overflow-y-auto">
-                                    {ROUND_GROUPS.map((group, gi) => (
+                                    {roundGroups.map((group, gi) => (
                                       <div key={group.label}>
                                         {gi > 0 && <div className="mx-3 border-t border-[hsl(220,16%,94%)]" />}
                                         <div className="px-3 pt-2 pb-1.5">

@@ -498,7 +498,7 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   );
 }
 
-function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; onComplete: (id: string, link: string) => void }) {
+function CompleteSessionButton({ bookingId, onComplete, label = 'Mark as completed' }: { bookingId: string; onComplete: (id: string, link: string) => void; label?: string }) {
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -570,7 +570,7 @@ function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; o
         className="px-3 py-1.5 text-xs rounded-md border transition-colors"
         style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)', cursor: 'pointer' }}
       >
-        Mark as completed
+        {label}
       </button>
 
       {open && (
@@ -664,13 +664,7 @@ function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; o
             </p>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={handleClose}
-                style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', background: 'none', border: 'none', cursor: 'pointer', padding: 'var(--space-2) var(--space-3)' }}
-              >
-                Cancel
-              </button>
+            <div className="flex items-center justify-end">
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
@@ -683,7 +677,7 @@ function CompleteSessionButton({ bookingId, onComplete }: { bookingId: string; o
                   border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed',
                 }}
               >
-                {submitting ? 'Uploading…' : 'Submit & mark completed'}
+                {submitting ? 'Uploading…' : 'Submit'}
               </button>
             </div>
             {err && (
@@ -1090,18 +1084,21 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
                         {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
                       </button>
                       {b.status === 'confirmed' && (
-                        <>
-                          <CompleteSessionButton
-                            bookingId={b.id}
-                            onComplete={(id, link) => setCompletedIds(prev => new Set([...prev, id]))}
-                          />
-                          <button onClick={e => e.stopPropagation()} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">Join</button>
-                        </>
+                        <button onClick={e => e.stopPropagation()} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">Join</button>
                       )}
                     </>
                   )}
-                  {completedIds.has(b.id) && (
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'hsl(165,60%,35%)' }}>Completed ✓</span>
+                  {/* Completed bookings: upload the session recording / records. */}
+                  {b.status === 'completed' && !cancelledIds.has(b.id) && (
+                    completedIds.has(b.id) ? (
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'hsl(165,60%,35%)' }}>Records uploaded ✓</span>
+                    ) : (
+                      <CompleteSessionButton
+                        bookingId={b.id}
+                        label="Upload Records"
+                        onComplete={(id, link) => setCompletedIds(prev => new Set([...prev, id]))}
+                      />
+                    )
                   )}
                   {rescheduledIds.has(b.id) && (
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'hsl(258,60%,40%)' }}>Awaiting approval</span>

@@ -8,7 +8,7 @@ const BASE_URL = '/payments';
 const toApiEnum = (v) => String(v).toUpperCase();
 
 // First-time subscription: creates a new sub for the user. Returns Stripe URL.
-// body: { tier: 'STARTER' | 'PREMIUM', billingCycle: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' }
+// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP', billingCycle: 'MONTHLY' } (MONTHLY only for now)
 export const createSubscription = (tier, billingCycle) => {
   return API.post(`${BASE_URL}/subscriptions`, {
     tier: toApiEnum(tier),
@@ -21,17 +21,10 @@ export const getSubscription = () => {
   return API.get(`${BASE_URL}/subscriptions`);
 };
 
-// Change tier (Starter ↔ Premium). Upgrade prorated immediate, downgrade pending.
-// body: { tier: 'STARTER' | 'PREMIUM' }
+// Change tier for an existing subscriber. Upgrade prorated immediate, downgrade pending.
+// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP' }
 export const changeTier = (tier) => {
   return API.post(`${BASE_URL}/subscriptions/tier`, { tier: toApiEnum(tier) });
-};
-
-// Landing-page tier selection (Free / Basic / Advanced / Flagship).
-// New endpoint — backend not fully implemented yet. Returns Stripe URL when available.
-// body: { tier: 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP' }
-export const updateTier = (tier) => {
-  return API.post(`${BASE_URL}/subscriptions/tierUpdate`, { tier: toApiEnum(tier) });
 };
 
 // Change billing cycle. Upgrade prorated immediate, downgrade pending.
@@ -100,7 +93,6 @@ const PaymentService = {
   createSubscription,
   getSubscription,
   changeTier,
-  updateTier,
   changeBillingCycle,
   cancelPendingDowngrade,
   cancelSubscription,

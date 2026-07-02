@@ -7,7 +7,7 @@ import { Input } from '../../components/newDesign/ui/input';
 import { Textarea } from '../../components/newDesign/ui/textarea';
 import { Label } from '../../components/newDesign/ui/label';
 import logoImg from '../../assets/Navbar.png';
-import { createPost } from '../../services/CommunityService';
+import { createPost, getPostOptions } from '../../services/CommunityService';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Step definitions ──────────────────────────────────
@@ -351,14 +351,20 @@ function RoleSelect({
   value,
   onChange,
   hasError = false,
+  categoryChips,
+  rolesByCategory,
+  allRoles,
 }: {
   value: string;
   onChange: (v: string) => void;
   hasError?: boolean;
+  categoryChips: readonly string[];
+  rolesByCategory: Record<string, string[]>;
+  allRoles: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
-  const [categoryChip, setCategoryChip] = useState<RoleCategoryChip | null>(null);
+  const [categoryChip, setCategoryChip] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -382,7 +388,7 @@ function RoleSelect({
     if (e.key === 'Enter') {
       e.preventDefault();
       if (inputValue.trim()) {
-        const exact = ALL_ROLES.find(r => r.toLowerCase() === inputValue.toLowerCase());
+        const exact = allRoles.find(r => r.toLowerCase() === inputValue.toLowerCase());
         onChange(exact || inputValue.trim());
         setInputValue(exact || inputValue.trim());
       }
@@ -391,8 +397,12 @@ function RoleSelect({
     if (e.key === 'Escape') { setOpen(false); setInputValue(value); inputRef.current?.blur(); }
   };
 
-  const categoryPool = categoryChip ? ROLE_BY_CATEGORY[categoryChip] : ALL_ROLES;
-  const topList = categoryChip ? TOP_BY_CATEGORY[categoryChip] : ROLE_TOP_LIST;
+  const categoryPool = categoryChip ? (rolesByCategory[categoryChip] ?? []) : allRoles;
+  // "Top" hints are static; keep only those present in the live pool, and fall
+  // back to the first few of the pool when the static hints don't apply.
+  const topHints = categoryChip ? (TOP_BY_CATEGORY[categoryChip as RoleCategoryChip] ?? []) : ROLE_TOP_LIST;
+  const topFromHints = topHints.filter(r => categoryPool.includes(r));
+  const topList = topFromHints.length ? topFromHints : categoryPool.slice(0, 8);
   const q = inputValue.trim().toLowerCase();
 
   const renderRoleList = () => {
@@ -516,7 +526,7 @@ function RoleSelect({
             >
               {/* Category chips */}
               <div className="p-2 flex flex-wrap gap-1.5 border-b border-[hsl(220,16%,92%)]">
-                {ROLE_CATEGORY_CHIPS.map(chip => (
+                {categoryChips.map(chip => (
                   <button key={chip} type="button"
                     onClick={() => setCategoryChip(categoryChip === chip ? null : chip)}
                     className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
@@ -701,7 +711,7 @@ function MonthYearPicker({ value, onChange, hasError = false }: { value: string;
 }
 
 // ─── Tag selector ──────────────────────────────────────
-function TagSelector({ selected, onChange, hasError }: { selected: string[]; onChange: (tags: string[]) => void; hasError?: boolean }) {
+function TagSelector({ selected, onChange, hasError, tagGroups }: { selected: string[]; onChange: (tags: string[]) => void; hasError?: boolean; tagGroups: { label: string; tags: string[] }[] }) {
   const [open, setOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -776,12 +786,12 @@ function TagSelector({ selected, onChange, hasError }: { selected: string[]; onC
             <div className="overflow-y-auto flex-1">
               {(() => {
                 const q = tagSearch.trim().toLowerCase();
-                const filteredCategories = TAG_CATEGORIES.map(category => ({
+                const filteredCategories = tagGroups.map(category => ({
                   ...category,
                   tags: category.tags.filter(tag => !q || tag.toLowerCase().includes(q)),
                 })).filter(category => category.tags.length > 0);
 
-                const exactMatch = TAG_CATEGORIES.some(c => c.tags.some(t => t.toLowerCase() === q));
+                const exactMatch = tagGroups.some(c => c.tags.some(t => t.toLowerCase() === q));
                 const alreadySelected = selected.some(t => t.toLowerCase() === q);
                 const showCustom = q.length > 0 && !exactMatch && !alreadySelected;
 
@@ -866,6 +876,51 @@ export function AddExperiencePage() {
   const [date, setDate] = useState('');
   const [outcome, setOutcome] = useState('');
   const [location, setLocation] = useState('');
+
+  // ─── Option lists: live from GET /community/posts/options, with the
+  // hardcoded arrays as fallback if the request fails or returns empty. ───
+  const [companyOptions, setCompanyOptions] = useState<string[]>(COMPANIES);
+  const [roleCategoryChips, setRoleCategoryChips] = useState<readonly string[]>(ROLE_CATEGORY_CHIPS);
+  const [rolesByCategory, setRolesByCategory] = useState<Record<string, string[]>>(ROLE_BY_CATEGORY);
+  const [allRoles, setAllRoles] = useState<string[]>(ALL_ROLES);
+  const [roundOptions, setRoundOptions] = useState<string[]>(ROUNDS);
+  const [tagGroups, setTagGroups] = useState<{ label: string; tags: string[] }[]>(TAG_CATEGORIES);
+
+  useEffect(() => {
+    let cancelled = false;
+    type Group = { category: string; options: string[] };
+    getPostOptions()
+      .then(res => {
+        const data = res?.data?.data ?? res?.data;
+        if (!data || cancelled) return;
+        const roleGroups: Group[] = Array.isArray(data.roles) ? data.roles : [];
+        const roundGroups: Group[] = Array.isArray(data.rounds) ? data.rounds : [];
+        const categoryGroups: Group[] = Array.isArray(data.categories) ? data.categories : [];
+        const companies: string[] = Array.isArray(data.companies) ? data.companies : [];
+
+        if (companies.length) setCompanyOptions(companies);
+        if (roleGroups.length) {
+          setRoleCategoryChips(roleGroups.map(g => g.category));
+          setRolesByCategory(Object.fromEntries(roleGroups.map(g => [g.category, g.options ?? []])));
+          setAllRoles([...new Set(roleGroups.flatMap(g => g.options ?? []))].sort());
+        }
+        if (roundGroups.length) setRoundOptions(roundGroups.flatMap(g => g.options ?? []));
+        if (categoryGroups.length) setTagGroups(categoryGroups.map(g => ({ label: g.category, tags: g.options ?? [] })));
+
+        // Flag any server option lacking an enum mapping — these fall back to
+        // an auto-derived UPPER_SNAKE value in to*Enum(), which may not match
+        // the backend. Surfaces frontend/backend drift during development.
+        if (import.meta.env?.DEV) {
+          const missing: string[] = [];
+          roleGroups.flatMap(g => g.options ?? []).forEach(r => { if (!ROLE_TO_ENUM[r]) missing.push(`role: ${r}`); });
+          roundGroups.flatMap(g => g.options ?? []).forEach(r => { if (!ROUND_TO_ENUM[r]) missing.push(`round: ${r}`); });
+          categoryGroups.flatMap(g => g.options ?? []).forEach(c => { if (!CATEGORY_TO_ENUM[c]) missing.push(`category: ${c}`); });
+          if (missing.length) console.warn('[add-experience] Server options with no enum mapping (using auto fallback):', missing);
+        }
+      })
+      .catch(() => { /* keep hardcoded fallbacks */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Step 2: Questions
   const [questions, setQuestions] = useState<QuestionEntry[]>([
@@ -1121,10 +1176,10 @@ export function AddExperiencePage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <DropdownSelect label="Company" icon={Building2} placeholder="Select company" options={COMPANIES} value={company} onChange={setCompany} hasError={showErrors && !company} />
-                    <RoleSelect value={role} onChange={setRole} hasError={showErrors && !role} />
+                    <DropdownSelect label="Company" icon={Building2} placeholder="Select company" options={companyOptions} value={company} onChange={setCompany} hasError={showErrors && !company} />
+                    <RoleSelect value={role} onChange={setRole} hasError={showErrors && !role} categoryChips={roleCategoryChips} rolesByCategory={rolesByCategory} allRoles={allRoles} />
                     <DropdownSelect label="Level" icon={BarChart} placeholder="Select level" options={LEVELS} value={level} onChange={setLevel} hasError={showErrors && !level} />
-                    <DropdownSelect label="Round type" icon={FileText} placeholder="Select round" options={ROUNDS} value={round} onChange={setRound} hasError={showErrors && !round} />
+                    <DropdownSelect label="Round type" icon={FileText} placeholder="Select round" options={roundOptions} value={round} onChange={setRound} hasError={showErrors && !round} />
                     <MonthYearPicker value={date} onChange={setDate} hasError={showErrors && !date} />
                     <DropdownSelect label="Outcome" icon={Check} placeholder="Select outcome" options={OUTCOMES} value={outcome} onChange={setOutcome} optional />
                   </div>
@@ -1215,7 +1270,7 @@ export function AddExperiencePage() {
                         {/* Tags */}
                         <div className="mb-4">
                           <Label className={`text-xs mb-1.5 block ${tagsError ? 'text-red-500' : 'text-[hsl(222,12%,55%)]'}`}>Category <span className="text-red-400">*</span> <span className="text-[hsl(222,12%,70%)]">(1–3)</span></Label>
-                          <TagSelector selected={q.tags} onChange={tags => updateQuestion(q.id, { tags })} hasError={tagsError} />
+                          <TagSelector selected={q.tags} onChange={tags => updateQuestion(q.id, { tags })} hasError={tagsError} tagGroups={tagGroups} />
                         </div>
 
                         {/* Notes */}

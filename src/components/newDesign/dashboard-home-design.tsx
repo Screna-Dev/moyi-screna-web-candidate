@@ -295,9 +295,10 @@ function timeUntil(iso: string): string {
   return `In ${days} day${days === 1 ? '' : 's'} — get prepared`;
 }
 
-function MentorshipPanel({ plan }: { plan: Plan }) {
+function MentorshipPanel() {
   const navigate = useNavigate();
-  const locked = plan === 'free';
+  // Mentorship is available to all users — no plan gating.
+  const locked = false;
   const [bookings, setBookings] = useState<Booking[] | null>(null);
 
   useEffect(() => {
@@ -372,7 +373,7 @@ function MentorshipPanel({ plan }: { plan: Plan }) {
           <div className="border border-dashed rounded-[10px] flex flex-col items-center text-center gap-2" style={{ borderColor: 'hsl(221 91% 60% / 0.4)', background: 'hsl(221 91% 60% / 0.04)', padding: 20, marginBottom: 14 }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="hsl(221 80% 55%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
             <p style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>No upcoming sessions. Ready for your next 1:1?</p>
-            <button onClick={() => navigate('/marketplace')} className="rounded-lg" style={{ border: '1px solid var(--primary)', color: 'var(--primary)', padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', cursor: 'pointer' }}>
+            <button onClick={() => navigate('/coaching')} className="rounded-lg" style={{ border: '1px solid var(--primary)', color: 'var(--primary)', padding: '6px 12px', fontSize: 12, fontWeight: 500, background: 'none', cursor: 'pointer' }}>
               Browse mentors →
             </button>
           </div>
@@ -706,7 +707,7 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', alignItems: 'start' }}>
-        <MentorshipPanel plan={plan} />
+        <MentorshipPanel />
         <InterviewInsightsPanel insights={stats?.interviewPracticeInsights ?? null} loading={statsLoading} />
         <CommunityPicksPanel />
       </div>

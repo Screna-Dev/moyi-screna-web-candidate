@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
@@ -67,6 +67,13 @@ const SORT_TO_API: Record<SortOption, string> = {
   Newest: 'NEWEST',
   Hot: 'HOT',
   'Most Saved': 'MOST_SAVED',
+};
+
+const TIME_TO_API: Record<string, string> = {
+  'Past week': 'PAST_WEEK',
+  'Past month': 'PAST_MONTH',
+  'Past 3 months': 'PAST_3_MONTH',
+  'Past year': 'PAST_YEAR',
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -157,6 +164,34 @@ export function CompanyDetailPage() {
   const [sortOpen, setSortOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  // ── Filter options (from GET /community/posts/options) + applied selections ──
+  const [roleOptions, setRoleOptions] = useState<string[] | undefined>(undefined);
+  const [roleCategories, setRoleCategories] = useState<string[] | undefined>(undefined);
+  const [roundOptions, setRoundOptions] = useState<string[] | undefined>(undefined);
+  const [filterRole, setFilterRole] = useState('');
+  const [filterRound, setFilterRound] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
+  const [filterTime, setFilterTime] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getPostOptions()
+      .then(res => {
+        const data = res?.data?.data ?? res?.data;
+        if (!data || cancelled) return;
+        type Group = { category: string; options: string[] };
+        const roles: Group[] = Array.isArray(data.roles) ? data.roles : [];
+        const rounds: Group[] = Array.isArray(data.rounds) ? data.rounds : [];
+        if (roles.length) {
+          setRoleCategories(roles.map(g => g.category));
+          setRoleOptions([...new Set(roles.flatMap(g => g.options ?? []))]);
+        }
+        if (rounds.length) setRoundOptions(rounds.flatMap(g => g.options ?? []));
+      })
+      .catch(() => { /* filters fall back to their hardcoded options */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // API state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -288,6 +323,10 @@ export function CompanyDetailPage() {
         company: company.name,
       };
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
+      if (filterRole) params.role = filterRole;
+      if (filterRound) params.round = filterRound;
+      if (filterLevel) params.level = filterLevel;
+      if (filterTime) params.time = TIME_TO_API[filterTime] || undefined;
 
       const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
       const res = await fetchFn(isAuthenticated ? params : { page: 0, company: company.name });
@@ -306,7 +345,7 @@ export function CompanyDetailPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [activeSort, debouncedSearchQuery, isAuthenticated, company.name, initInteractions]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, company.name, initInteractions]);
 
   useEffect(() => {
     fetchPosts(0, true);
@@ -396,10 +435,10 @@ export function CompanyDetailPage() {
               {/* Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                 <div className="flex flex-wrap items-center gap-2">
-                  <RoleFilter />
-                  <RoundFilter />
-                  <LevelFilter />
-                  <TimeFilter />
+                  <RoleFilter singleSelect options={roleOptions} categories={roleCategories} onApply={sel => setFilterRole(sel[0] || '')} />
+                  <RoundFilter singleSelect options={roundOptions} onApply={sel => setFilterRound(sel[0] || '')} />
+                  <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
+                  <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />
                 </div>
                 <div className="relative">
                   <button

@@ -6,9 +6,6 @@ import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
 import { type CompanyData } from "@/components/newDesign/interview/company-card";
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
-import { RoleFilter, CompanyFilter, RoundFilter, LevelFilter, TimeFilter } from "@/components/newDesign/interview/filter-popovers";
-import { InterviewNoteCard, type InterviewNote } from "@/components/newDesign/interview/interview-note-card";
-import { InterviewNotesFilterBar } from "@/components/newDesign/interview/interview-notes-filter-bar";
 import { getPosts, getPublicPosts, getCompaniesStats } from "@/services/CommunityService";
 import { useAuth } from "@/contexts/AuthContext";
 import imgFaang from "@/assets/newDesign/cat-faang.png";
@@ -38,31 +35,6 @@ type ApiPost = {
   createdAt?: string;
 };
 
-// Map an API outcome string onto the card's outcome union.
-function mapOutcome(outcome: string | undefined): InterviewNote["outcome"] {
-  const o = (outcome ?? "").toLowerCase();
-  if (o.includes("offer") && !o.includes("no")) return "Offer";
-  if (o.includes("reject")) return "Rejected";
-  if (o.includes("no offer") || o.includes("no response")) return "No Offer";
-  return "Pending";
-}
-
-// Read a question's display title whether it's a string or an object.
-function questionTitle(q: ApiPostQuestion | string): string {
-  if (typeof q === "string") return q;
-  return q.title || q.label || "Question";
-}
-
-// Format an ISO/date string into a short "Mon YYYY" label.
-function formatNoteDate(dateStr: string | undefined): string {
-  if (!dateStr) return "";
-  try {
-    return new Date(dateStr).toLocaleDateString("en-US", { month: "short", year: "numeric" });
-  } catch {
-    return "";
-  }
-}
-
 // Format an ISO timestamp into a short "x ago" label for the ticker.
 function timeAgo(iso: string | undefined): string {
   if (!iso) return "";
@@ -79,29 +51,6 @@ function timeAgo(iso: string | undefined): string {
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
-}
-
-// ApiPost -> the exact shape InterviewNoteCard consumes.
-function mapPostToNote(post: ApiPost, index: number): InterviewNote {
-  return {
-    id: post.id,
-    company: post.company || "Unknown",
-    role: post.role || "Unknown Role",
-    round: post.round || "Not specified",
-    level: post.level || "",
-    outcome: mapOutcome(post.outcome),
-    date: formatNoteDate(post.date),
-    author: post.isAnonymous ? "Anonymous" : (post.user?.name || "Anonymous"),
-    excerpt: post.summary || "",
-    questions: (post.questions ?? []).map(questionTitle),
-    upvotes: post.likeCount ?? 0,
-    comments: post.commentCount ?? 0,
-    saves: post.saveCount ?? 0,
-    liked: post.liked ?? false,
-    saved: post.saved ?? false,
-    createdAtMs: post.createdAt ? new Date(post.createdAt).getTime() : (post.date ? new Date(post.date).getTime() : 0),
-    featured: index === 0,
-  };
 }
 
 // Shape returned per-company by GET /community/companies/stats
@@ -280,27 +229,14 @@ function LoadingCards({ count = 9 }: { count?: number }) {
   );
 }
 
-function LoadingRows({ count = 5 }: { count?: number }) {
-  return (
-    <div className="flex flex-col gap-[12px]">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="animate-pulse rounded-[var(--radius)] border border-border bg-secondary/40" style={{ height: 120 }} />
-      ))}
-    </div>
-  );
-}
-
 export function InterviewInsightsPage() {
   const { isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<"companies" | "feed">("companies");
-  const [interviewNotes, setInterviewNotes] = useState<InterviewNote[]>([]);
   const [latest, setLatest] = useState<string[]>([]);
   const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
   const [rollup, setRollup] = useState<{ totalCompanyCount: number; totalPostCount: number; totalRecentPostCount: number } | null>(null);
-  const [notesLoading, setNotesLoading] = useState(true);
   const [companiesLoading, setCompaniesLoading] = useState(true);
 
-  // Fetch the interview-experience feed on mount and map it into the card/ticker shapes.
+  // Fetch the newest posts on mount to populate the "Latest" ticker.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -310,7 +246,6 @@ export function InterviewInsightsPage() {
         const data = res.data?.data ?? res.data;
         const content: ApiPost[] = Array.isArray(data) ? data : [];
         if (cancelled) return;
-        setInterviewNotes(content.map(mapPostToNote));
         // Ticker: derived from the newest posts (Company · Round · time-ago).
         setLatest(
           content.slice(0, 6).map((p) =>
@@ -320,9 +255,7 @@ export function InterviewInsightsPage() {
           )
         );
       } catch (err) {
-        console.error("Failed to fetch interview notes:", err);
-      } finally {
-        if (!cancelled) setNotesLoading(false);
+        console.error("Failed to fetch latest posts:", err);
       }
     })();
     return () => { cancelled = true; };
@@ -365,56 +298,6 @@ export function InterviewInsightsPage() {
 
   const [activeCategory, setActiveCategory] = useState("All");
   const [query, setQuery] = useState("");
-  const [notesSort, setNotesSort] = useState<"Hot" | "New" | "Top">("Hot");
-  const [notesRole, setNotesRole] = useState("Role");
-  const [notesCompany, setNotesCompany] = useState("Company");
-  const [notesRound, setNotesRound] = useState("Round");
-  const [notesLevel, setNotesLevel] = useState("Level");
-  const [notesTime, setNotesTime] = useState("Time");
-  const [notesPage, setNotesPage] = useState(1);
-  const NOTES_PER_PAGE = 5;
-
-  // Distinct values for the filter dropdowns (derived from the loaded feed).
-  const noteOptions = useMemo(() => {
-    const uniq = (vals: string[]) =>
-      Array.from(new Set(vals.filter((v) => v && !["Unknown", "Unknown Role", "Not specified", ""].includes(v)))).sort();
-    return {
-      role: uniq(interviewNotes.map((n) => n.role)),
-      company: uniq(interviewNotes.map((n) => n.company)),
-      round: uniq(interviewNotes.map((n) => n.round)),
-      level: uniq(interviewNotes.map((n) => n.level)),
-    };
-  }, [interviewNotes]);
-
-  // Apply the active filters + sort to the loaded feed (client-side).
-  const filteredNotes = useMemo(() => {
-    let list = interviewNotes;
-    if (notesRole !== "Role") list = list.filter((n) => n.role === notesRole);
-    if (notesCompany !== "Company") list = list.filter((n) => n.company === notesCompany);
-    if (notesRound !== "Round") list = list.filter((n) => n.round === notesRound);
-    if (notesLevel !== "Level") list = list.filter((n) => n.level === notesLevel);
-    if (notesTime !== "Time") {
-      const days: Record<string, number> = { "Past week": 7, "Past month": 30, "Past 3 months": 90, "Past year": 365 };
-      const window = days[notesTime];
-      if (window) {
-        const cutoff = Date.now() - window * 86400000;
-        list = list.filter((n) => (n.createdAtMs ?? 0) >= cutoff);
-      }
-    }
-    const sorted = [...list];
-    if (notesSort === "New") sorted.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
-    else if (notesSort === "Top") sorted.sort((a, b) => b.upvotes - a.upvotes);
-    else sorted.sort((a, b) => b.upvotes + b.comments - (a.upvotes + a.comments)); // Hot
-    return sorted;
-  }, [interviewNotes, notesRole, notesCompany, notesRound, notesLevel, notesTime, notesSort]);
-
-  // Reset to page 1 whenever the filter/sort selection changes.
-  useEffect(() => {
-    setNotesPage(1);
-  }, [notesRole, notesCompany, notesRound, notesLevel, notesTime, notesSort]);
-
-  const notesTotalPages = Math.max(1, Math.ceil(filteredNotes.length / NOTES_PER_PAGE));
-  const paginatedNotes = filteredNotes.slice((notesPage - 1) * NOTES_PER_PAGE, notesPage * NOTES_PER_PAGE);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Directory is API-driven: company name, category, and counts come from the
@@ -502,30 +385,7 @@ export function InterviewInsightsPage() {
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="mb-10 flex w-full p-[4px]">
-        {(["companies", "feed"] as const).map((tab) => {
-          const label = tab === "companies" ? "Companies" : "Feed";
-          const isActive = activeTab === tab;
-          return (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`flex items-center justify-center rounded-full px-5 py-2 text-sm font-semibold transition-all mr-2 last:mr-0 ${
-                isActive ? "bg-primary/10 text-primary" : "bg-muted/50 text-muted-foreground hover:bg-muted"
-              }`}
-              style={{ fontFamily: "var(--font-sans)" }}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Tab 1: Companies ── */}
-      {activeTab === "companies" && (
-        <div className="space-y-16">
+      <div className="space-y-16">
           {/* Category Tiles */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '24px' }}>
             {categoryTiles.map((cat) => {
@@ -586,13 +446,6 @@ export function InterviewInsightsPage() {
                   style={{ fontFamily: "var(--font-sans)" }}
                 />
               </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <RoleFilter />
-                <CompanyFilter />
-                <RoundFilter />
-                <LevelFilter />
-                <TimeFilter />
-              </div>
             </div>
 
             {/* Latest Ticker */}
@@ -676,83 +529,7 @@ export function InterviewInsightsPage() {
               <div className="py-12 text-center text-sm text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>No companies found matching your search.</div>
             )}
           </section>
-        </div>
-      )}
-
-      {/* ── Tab 2: Feed ── */}
-      {activeTab === "feed" && (
-        <section className="space-y-6">
-          <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
-            <div>
-              <h2 className="text-foreground" style={{ fontFamily: "var(--font-serif)", fontSize: "28px", fontWeight: 600, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
-                Recent Interview Notes
-              </h2>
-              <p className="mt-2 text-base text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-                Fresh notes and experiences across the directory.
-              </p>
-            </div>
-          </div>
-
-          <InterviewNotesFilterBar
-            sort={notesSort}
-            onSortChange={setNotesSort}
-            role={notesRole}
-            onRoleChange={setNotesRole}
-            company={notesCompany}
-            onCompanyChange={setNotesCompany}
-            round={notesRound}
-            onRoundChange={setNotesRound}
-            level={notesLevel}
-            onLevelChange={setNotesLevel}
-            time={notesTime}
-            onTimeChange={setNotesTime}
-            options={noteOptions}
-          />
-
-          {notesLoading ? (
-            <LoadingRows count={5} />
-          ) : paginatedNotes.length > 0 ? (
-            <div className="flex flex-col gap-[12px]">
-              {paginatedNotes.map((note) => (
-                <InterviewNoteCard key={note.id} note={note} />
-              ))}
-            </div>
-          ) : (
-            <div className="py-12 text-center text-sm text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>No interview notes yet.</div>
-          )}
-
-          <div className="flex items-center justify-center gap-2 border-t border-border/60 pt-6">
-            <button
-              onClick={() => setNotesPage(p => Math.max(1, p - 1))}
-              disabled={notesPage === 1}
-              className="flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-transparent px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
-              style={{ fontFamily: "var(--font-sans)" }}
-            >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: notesTotalPages }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setNotesPage(n)}
-                  className={`flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-sm font-medium ${n === notesPage ? "bg-primary text-primary-foreground shadow" : "border border-border bg-transparent text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"}`}
-                  style={{ fontFamily: "var(--font-sans)" }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setNotesPage(p => Math.min(notesTotalPages, p + 1))}
-              disabled={notesPage === notesTotalPages}
-              className="flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-transparent px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
-              style={{ fontFamily: "var(--font-sans)" }}
-            >
-              Next
-            </button>
-          </div>
-        </section>
-      )}
+      </div>
 
     </WidePageContainer>
     </DashboardLayout>

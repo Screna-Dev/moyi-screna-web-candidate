@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
-  UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
+  UploadCloud, FileText, Eye, Download, Settings,
   BadgeCheck, Building2, Coins, Camera, Loader2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -146,7 +146,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [roleQuery, setRoleQuery] = useState('');
 
   // ── Work Authorization state ──
-  const [editingVisa, setEditingVisa] = useState(false);
   const [visaStatus, setVisaStatus] = useState<string>('');
   const [showVisaDialog, setShowVisaDialog] = useState(false);
   const [pendingVisaStatus, setPendingVisaStatus] = useState<string>('');
@@ -384,19 +383,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     };
     setUserPrefs(updated);
     saveProfilePreferences(updated).catch(() => {});
-  };
-
-  const handleVisaDone = () => {
-    setEditingVisa(false);
-    if (!visaStatus) return;
-    savePreferences({ workAuthorization: visaStatus });
-    if (structuredResume) {
-      const updated = {
-        ...structuredResume,
-        profile: { ...(structuredResume.profile as Record<string, unknown>), visa_status: visaStatus },
-      };
-      updateProfile(updated).then(() => setStructuredResume(updated)).catch(() => {});
-    }
   };
 
   const handleVisaModalSave = () => {
@@ -816,8 +802,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
       </div>
 
-      {/* ── Row 2: Target Companies + Work Authorization ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.3fr)_minmax(360px,1fr)] gap-6 items-start">
+      {/* ── Row 2: Target Companies ── */}
+      <div>
 
         {/* Target Companies */}
         <div
@@ -1003,94 +989,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                 </div>
               )
             )}
-          </div>
-        </div>
-
-        {/* Work Authorization */}
-        <div
-          className="overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
-          <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-            <h3 style={panelTitleStyle}>Work Authorization</h3>
-            {!loadingPreferences && (
-              <button
-                onClick={() => editingVisa ? handleVisaDone() : setEditingVisa(true)}
-                className={`flex items-center gap-1.5 text-sm font-medium border rounded-md px-3 py-1.5 transition-colors ${
-                  editingVisa
-                    ? 'border-border text-muted-foreground hover:text-foreground'
-                    : 'border-primary/30 text-primary hover:bg-primary/5'
-                }`}
-              >
-                {editingVisa ? <><Check className="w-3.5 h-3.5" />Done</> : <><Pencil className="w-3.5 h-3.5" />Edit</>}
-              </button>
-            )}
-          </div>
-          <div className="px-5 py-4 flex flex-col gap-3">
-            {loadingPreferences && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2.5">
-                  <SkeletonBlock className="w-8 h-8 rounded-md shrink-0" />
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <SkeletonBlock className="h-4 w-40" />
-                    <SkeletonBlock className="h-3 w-28" />
-                  </div>
-                </div>
-                <SkeletonBlock className="h-3 w-56" />
-              </div>
-            )}
-            <AnimatePresence mode="wait">
-              {!loadingPreferences && editingVisa ? (
-                <motion.div key="visa-edit" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }} className="flex flex-col gap-2">
-                  {VISA_OPTIONS.map(({ id, label, sub }) => {
-                    const sel = visaStatus === id;
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => setVisaStatus(id)}
-                        className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-lg border text-left transition-all ${
-                          sel ? 'border-primary bg-primary/5 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]' : 'border-border bg-card hover:border-primary/40'
-                        }`}
-                      >
-                        <div>
-                          <p className={`text-sm font-medium ${sel ? 'text-primary' : 'text-foreground'}`}>{label}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-                        </div>
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                          sel ? 'border-primary bg-primary' : 'border-border bg-card'
-                        }`}>
-                          {sel && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              ) : (
-                <motion.div key="visa-view" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.15 }} className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                      <ShieldCheck className="w-4 h-4 text-primary" />
-                    </div>
-                    <div>
-                      {visaStatus ? (
-                        <>
-                          <span className="text-sm font-medium text-foreground">{VISA_OPTIONS.find(v => v.id === visaStatus)?.label ?? visaStatus}</span>
-                          {VISA_OPTIONS.find(v => v.id === visaStatus)?.sub && (
-                            <>
-                              <span className="text-sm text-muted-foreground mx-1.5">·</span>
-                              <span className="text-sm text-muted-foreground">{VISA_OPTIONS.find(v => v.id === visaStatus)?.sub}</span>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Not set — click Edit to add</span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">This affects which jobs we match you to.</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </div>

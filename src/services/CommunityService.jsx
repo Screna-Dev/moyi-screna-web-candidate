@@ -20,6 +20,22 @@ export const getCompanyProfile = (company) => {
   return API.get('/community/companies/profile', { params: { company } });
 };
 
+// Grouped option lists for the "Share Your Experience" posting form and the
+// search-page filters. Returns { roles, categories, rounds } as arrays of
+// { category, options } groups, plus a flat `companies` string array.
+// Requires a normal CANDIDATE JWT (no X-Service-Token — that is the internal
+// AI-only /internal/community/posting-context endpoint, now 401 for the frontend).
+export const getPostOptions = () => {
+  return API.get('/community/posts/options');
+};
+
+// Dynamic company list (companies that actually have posts) — used by the
+// search page's company filter. Distinct from the fixed `companies` array in
+// getPostOptions(), which is only for the posting form.
+export const getCommunityCompanies = (params = {}) => {
+  return API.get('/community/companies', { params });
+};
+
 export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };

@@ -4,6 +4,9 @@ import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { SupportCTA } from '../../components/newDesign/home/support-cta';
 
+// Destination inbox for contact submissions.
+const CONTACT_EMAIL = 'operations@screna.ai';
+
 export function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
@@ -19,11 +22,26 @@ export function ContactPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent(`Contact from ${form.firstName} ${form.lastName}`);
-    const body = encodeURIComponent(
-      `From: ${form.firstName} ${form.lastName}\nEmail: ${form.email}\n\n${form.message}`
-    );
-    window.location.href = `mailto:operations@screna.ai?subject=${subject}&body=${body}`;
+
+    // Assemble every field into the email body and hand it off to the
+    // user's own mail client via mailto:. They send it from their own
+    // email platform, which reliably reaches operations@screna.ai.
+    const fullName = `${form.firstName} ${form.lastName}`.trim();
+    const subject = `Contact from ${fullName}`;
+    const body = [
+      `First name: ${form.firstName}`,
+      `Last name: ${form.lastName}`,
+      `Email: ${form.email}`,
+      '',
+      'Message:',
+      form.message,
+    ].join('\n');
+
+    const mailto = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
+
+    window.location.href = mailto;
     setSubmitted(true);
   };
 
@@ -93,9 +111,20 @@ export function ContactPage() {
                     <div className="w-14 h-14 rounded-full bg-[hsl(150,60%,94%)] flex items-center justify-center mx-auto mb-5">
                       <CheckCircle className="w-7 h-7 text-[hsl(150,60%,40%)]" />
                     </div>
-                    <h2 className="text-xl text-[hsl(222,22%,15%)] mb-2">Message sent!</h2>
+                    <h2 className="text-xl text-[hsl(222,22%,15%)] mb-2">Almost there!</h2>
                     <p className="text-sm text-[hsl(222,12%,45%)] max-w-xs mx-auto">
-                      Thanks for reaching out. We'll get back to you within 24 hours.
+                      We've opened your email app with your message ready to go.
+                      Just hit send and we'll get back to you within 24 hours.
+                    </p>
+                    <p className="text-xs text-[hsl(222,12%,55%)] max-w-xs mx-auto mt-3">
+                      Nothing opened?{' '}
+                      <a
+                        href={`mailto:${CONTACT_EMAIL}`}
+                        className="text-[hsl(221,91%,60%)] hover:underline"
+                      >
+                        Email us directly
+                      </a>
+                      .
                     </p>
                   </div>
                 ) : (
@@ -175,8 +204,6 @@ export function ContactPage() {
                       Submit
                       <ArrowRight className="w-4 h-4" />
                     </button>
-
-                    
                   </form>
                 )}
               </div>

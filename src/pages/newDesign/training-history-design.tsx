@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -16,7 +16,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview, cancelBooking, rescheduleBooking, submitDispute, submitDisputeScreenshot, getMentor, getMentorSlots } from '@/services/MentorService';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import svgPaths from './svg-training-history';
 
 // ─── Types ────────────────────────────────────────────
@@ -24,7 +23,6 @@ type AIMockType = 'System Design' | 'Behavioral' | 'Coding' | 'Product Sense' | 
 type MentorSessionType = 'Career Strategy' | 'Resume Review' | 'Mock Interview' | 'Offer Negotiation' | 'Behavioral';
 type ReviewStatus = 'Reviewed' | 'Pending Review';
 type MainTab = 'ai-mock' | 'mentor';
-type PlanState = 'free' | 'starter' | 'premium';
 
 type AIMockDifficulty = 'Junior' | 'Intermediate' | 'Senior' | 'Staff';
 
@@ -1320,11 +1318,10 @@ function EmptyState() {
 // ══════════════════════════════════════════════════════
 export function TrainingHistoryPage() {
   const navigate = useNavigate();
-  const { planData } = useUserPlan();
-  // Derive the demo PlanState from the real plan: Free → 'free' (locked),
-  // any paid tier (Pro/Elite) → 'premium' (unlocked).
-  const plan: PlanState = planData.currentPlan === 'Free' ? 'free' : 'premium';
-  const [activeTab,        setActiveTab]        = useState<MainTab>('ai-mock');
+  const [searchParams] = useSearchParams();
+  const [activeTab,        setActiveTab]        = useState<MainTab>(
+    searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
+  );
   const [mentorFilter,     setMentorFilter]     = useState<'all' | 'Upcoming' | 'Completed' | 'Cancelled'>('all');
   const [roleFilter,       setRoleFilter]       = useState<string | 'all'>('all');
   const [typeFilter,       setTypeFilter]       = useState<AIMockType | 'all'>('all');
@@ -1333,7 +1330,8 @@ export function TrainingHistoryPage() {
   const [aiSessions,     setAiSessions]     = useState<AIMockSession[]>([]);
   const [mentorSessions, setMentorSessions] = useState<MentorSession[]>([]);
 
-  const isFree = plan === 'free';
+  // Mentor Sessions are available to all users — no plan gating.
+  const isFree = false;
 
   useEffect(() => {
     let cancelled = false;
