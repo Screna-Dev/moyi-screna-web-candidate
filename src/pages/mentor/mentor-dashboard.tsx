@@ -996,7 +996,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     <div className="flex-1 flex overflow-hidden">
       <div className={`flex flex-col overflow-hidden transition-all ${selectedBooking ? 'flex-1' : 'flex-1'}`}>
         {/* Tabs */}
-        <div className="px-6 pt-6 bg-card">
+        <div className="px-6 pt-6">
           <div className="flex items-center gap-[4px]">
             {tabs.map(t => (
               <button
@@ -1222,7 +1222,6 @@ function AvailabilityPage() {
   const [vacationMode, setVacationMode] = useState(false);
   const [vacationSaving, setVacationSaving] = useState(false);
   const [bufferTime, setBufferTime] = useState('15 min');
-  const [minNotice, setMinNotice] = useState('24 hours');
   const [maxWindow, setMaxWindow] = useState('4 weeks');
   const [timezone, setTimezone] = useState('Pacific Time (US & Canada)');
   const [savingHours, setSavingHours] = useState(false);
@@ -1828,7 +1827,6 @@ function AvailabilityPage() {
             <h3 className="text-foreground text-sm">Booking Settings</h3>
             {[
               { label: 'Timezone', value: timezone, hint: 'From Google Calendar' },
-              { label: 'Minimum Notice', value: minNotice, hint: 'Platform default' },
             ].map(s => (
               <div key={s.label}>
                 <label className="text-xs text-muted-foreground">{s.label}</label>
@@ -2277,6 +2275,9 @@ function ProfilePage() {
   const [editServiceValue, setEditServiceValue] = useState('');
   const [workEmail, setWorkEmail] = useState('');
   const [linkedin, setLinkedin] = useState('');
+  // Verification fields are already approved — editing them re-triggers review,
+  // so they stay read-only behind an explicit "Edit" button (unlike other cards).
+  const [editingVerify, setEditingVerify] = useState(false);
 
   // Avatar upload — wires the existing Camera button to a hidden <input type="file">.
   const avatarFileRef = useRef<HTMLInputElement>(null);
@@ -2333,7 +2334,7 @@ function ProfilePage() {
   const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
 
   // PUT supports partial updates, so each section sends only its own fields.
-  const saveSection = (payload: Record<string, any>, set: React.Dispatch<React.SetStateAction<SaveStatus>>) => {
+  const saveSection = (payload: Record<string, any>, set: React.Dispatch<React.SetStateAction<SaveStatus>>, onSuccess?: () => void) => {
     set(s => ({ ...s, saving: true, error: null }));
     updateMyMentorProfile(payload)
       .then(res => {
@@ -2341,6 +2342,7 @@ function ProfilePage() {
         if (updated) ctx?.setProfile(updated);
         set({ dirty: false, saving: false, saved: true, error: null });
         setTimeout(() => set(s => ({ ...s, saved: false })), 2500);
+        onSuccess?.();
       })
       .catch((err: any) => set(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save. Please try again.' })));
   };
@@ -2349,7 +2351,15 @@ function ProfilePage() {
   const saveServices = () => saveSection({ expertiseTags: services }, setSvc);
   // workEmail / linkedinUrl aren't in the documented schema yet — sent so they
   // persist once the backend adds the fields (unknown fields are ignored).
-  const saveVerify = () => saveSection({ workEmail, linkedinUrl: linkedin }, setVerify);
+  const saveVerify = () => saveSection({ workEmail, linkedinUrl: linkedin }, setVerify, () => setEditingVerify(false));
+
+  // Re-seed from the approved profile values and drop the dirty flag.
+  const cancelVerify = () => {
+    setWorkEmail((profile as any)?.workEmail ?? (user as any)?.email ?? '');
+    setLinkedin((profile as any)?.linkedinUrl ?? '');
+    setVerify(CLEAN_STATUS);
+    setEditingVerify(false);
+  };
 
   const handleAddService = () => {
     if (newService.trim() && !services.includes(newService.trim())) {
@@ -2662,9 +2672,19 @@ function ProfilePage() {
 
         {/* Verification Section */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5">
-          <div className="mb-4">
-            <h3 className="text-foreground text-lg font-medium mb-1">Identity Verification</h3>
-            <p className="text-sm text-muted-foreground">Verify your identity to show a trusted badge on your profile.</p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-foreground text-lg font-medium mb-1">Identity Verification</h3>
+              <p className="text-sm text-muted-foreground">Verify your identity to show a trusted badge on your profile.</p>
+            </div>
+            {!editingVerify && (
+              <button
+                onClick={() => setEditingVerify(true)}
+                className="shrink-0 px-3 py-1.5 text-xs border border-input rounded-md text-foreground hover:bg-secondary transition-colors"
+              >
+                Edit
+              </button>
+            )}
           </div>
 
           {/* Status Card */}
@@ -2681,6 +2701,14 @@ function ProfilePage() {
             </div>
           </div>
 
+          {/* Re-review notice — only while editing */}
+          {editingVerify && (
+            <div className="mb-4 flex items-start gap-2 p-3 rounded-[var(--radius-sm)] bg-[hsl(38,92%,95%)] border border-[hsl(38,92%,80%)]">
+              <AlertCircle className="w-4 h-4 text-[hsl(38,80%,40%)] mt-0.5 shrink-0" />
+              <p className="text-xs text-[hsl(38,60%,30%)]">Changing your work email or LinkedIn profile will require our team to re-verify your identity. Your <strong>Verified</strong> badge stays active until the review is complete.</p>
+            </div>
+          )}
+
           {/* Verification Items */}
           <div className="space-y-3">
             <div className="flex items-start gap-3 p-3 bg-surface-0 rounded-[var(--radius-sm)]">
@@ -2692,13 +2720,17 @@ function ProfilePage() {
                   <span className="text-sm font-medium text-foreground">Work Email<span className="text-destructive ml-0.5">*</span></span>
                   {workEmail && <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)]" />}
                 </div>
-                <input
-                  type="email"
-                  value={workEmail}
-                  onChange={e => { setWorkEmail(e.target.value); markVerify(); }}
-                  placeholder="you@company.com"
-                  className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-                />
+                {editingVerify ? (
+                  <input
+                    type="email"
+                    value={workEmail}
+                    onChange={e => { setWorkEmail(e.target.value); markVerify(); }}
+                    placeholder="you@company.com"
+                    className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                  />
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground break-all">{workEmail || <span className="italic">Not provided</span>}</p>
+                )}
               </div>
             </div>
 
@@ -2711,13 +2743,17 @@ function ProfilePage() {
                   <span className="text-sm font-medium text-foreground">LinkedIn Profile<span className="text-destructive ml-0.5">*</span></span>
                   {linkedin && <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)]" />}
                 </div>
-                <input
-                  type="url"
-                  value={linkedin}
-                  onChange={e => { setLinkedin(e.target.value); markVerify(); }}
-                  placeholder="linkedin.com/in/your-handle"
-                  className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-                />
+                {editingVerify ? (
+                  <input
+                    type="url"
+                    value={linkedin}
+                    onChange={e => { setLinkedin(e.target.value); markVerify(); }}
+                    placeholder="linkedin.com/in/your-handle"
+                    className="mt-1 w-full text-xs border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                  />
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground break-all">{linkedin || <span className="italic">Not provided</span>}</p>
+                )}
               </div>
             </div>
           </div>
@@ -2728,7 +2764,32 @@ function ProfilePage() {
             <p className="text-xs text-muted-foreground">Documents are used only for internal review and are <strong className="text-foreground">never shown publicly</strong>.</p>
           </div>
 
-          <SectionSaveRow status={verify} onSave={saveVerify} />
+          {editingVerify && (
+            <div className="flex items-center justify-end gap-3 pt-3 mt-4 border-t border-border">
+              {verify.error && (
+                <span className="mr-auto text-xs text-red-600 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {verify.error}</span>
+              )}
+              <button
+                onClick={cancelVerify}
+                disabled={verify.saving}
+                className="px-3 py-1.5 text-xs border border-input rounded-md text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveVerify}
+                disabled={verify.saving || !verify.dirty}
+                className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {verify.saving ? 'Submitting…' : 'Submit for review'}
+              </button>
+            </div>
+          )}
+          {!editingVerify && verify.saved && (
+            <div className="flex items-center justify-end pt-3 mt-4 border-t border-border">
+              <span className="text-xs text-[hsl(165,60%,30%)] flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Submitted for review</span>
+            </div>
+          )}
         </div>
 
         {/* Google Calendar */}
