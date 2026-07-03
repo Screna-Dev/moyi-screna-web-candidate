@@ -62,14 +62,8 @@ export const getCreditUsage = (page = 0) => {
 };
 
 // ─── Credit packs (pay-as-you-go) ─────────────────────────────────
-export const purchaseStarterPack = () => {
-  return API.post(`${BASE_URL}/credits/starter`);
-};
-
-export const purchaseGrowthPack = () => {
-  return API.post(`${BASE_URL}/credits/growth`);
-};
-
+// Fixed-price top-up: numberOfCredits must be 50–1000 in multiples of 10.
+// Price is a flat $0.10 / credit (total = numberOfCredits × 0.10).
 export const purchaseCustomPack = (numberOfCredits) => {
   return API.post(`${BASE_URL}/credits/custom`, { numberOfCredits });
 };
@@ -99,8 +93,6 @@ const PaymentService = {
   resumeSubscription,
   getCredits,
   getCreditUsage,
-  purchaseStarterPack,
-  purchaseGrowthPack,
   purchaseCustomPack,
   createOneTimeSession,
   redeemCode,

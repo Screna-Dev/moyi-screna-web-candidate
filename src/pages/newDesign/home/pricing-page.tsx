@@ -259,14 +259,13 @@ function FeatureGroupBlock({ group }: { group: FeatureGroup }) {
 }
 
 // ─── Credit pack price model ────────────────────────────
+// Flat pricing: $0.10 per credit (total = numberOfCredits × 0.10).
+const CREDIT_UNIT_PRICE = 0.1;
+const CREDIT_MIN = 50;
+const CREDIT_MAX = 1000;
+const CREDIT_STEP = 10;
 function creditPrice(q: number): number {
-  const p100 = 0.1499;
-  const p1000 = 0.12;
-  const theory = p100 - (p100 - p1000) * Math.log10(q / 100);
-  const total = q * theory;
-  const step = 0.5;
-  const rounded = Math.ceil(total / step) * step - 0.01;
-  return Math.max(rounded, 14.99 + 5);
+  return q * CREDIT_UNIT_PRICE;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -281,10 +280,10 @@ export function PricingPage() {
   const premium = PREMIUM_PRICES[cycle];
 
   // Credit pack slider state
-  const [credits, setCredits] = useState(300);
+  const [credits, setCredits] = useState(100);
   const customTotal = creditPrice(credits);
-  const customUnit = customTotal / credits;
-  const fillPct = ((credits - 150) / (1000 - 150)) * 100;
+  const customUnit = CREDIT_UNIT_PRICE;
+  const fillPct = ((credits - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN)) * 100;
 
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
   const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
@@ -335,7 +334,7 @@ export function PricingPage() {
 
   // ─── Handlers (credit packs only — subscriptions not wired) ───
   const buyPack = async (
-    kind: 'trial' | 'standard' | 'custom',
+    kind: 'custom',
     fn: () => Promise<{ data?: { data?: { url?: string } } }>,
   ) => {
     if (!user) {
@@ -354,8 +353,6 @@ export function PricingPage() {
     }
   };
 
-  const handleBuyTrial    = () => buyPack('trial',    () => PaymentService.purchaseStarterPack());
-  const handleBuyStandard = () => buyPack('standard', () => PaymentService.purchaseGrowthPack());
   const handleBuyCustom   = () => buyPack('custom',   () => PaymentService.purchaseCustomPack(credits));
 
   return (
@@ -643,64 +640,6 @@ export function PricingPage() {
               </div>
             </FadeIn>
 
-            {/* Two preset packs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-              {[
-                { kind: 'trial' as const,    name: 'Trial',    credits: 50,  price: '$9.99',  per: '$0.20',   rate: '≈ 50 min of AI practice — try it once',                    handler: handleBuyTrial    },
-                { kind: 'standard' as const, name: 'Standard', credits: 100, price: '$14.99', per: '$0.1499', rate: '≈ 100 min of AI practice — a couple of full mocks', handler: handleBuyStandard },
-              ].map((p) => (
-                <FadeIn key={p.kind}>
-                  <article className="h-full bg-white border border-[#E5E5E5] rounded-[18px] px-7 pt-7 pb-6 flex flex-col gap-1.5 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-[0_24px_60px_-28px_rgba(46,91,255,0.22)] transition-all">
-                    <p className="text-[11px] font-mono tracking-[0.12em] uppercase text-[#6B6B6B] mb-1.5">
-                      {p.name}
-                    </p>
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        style={{ fontFamily: "'Playfair Display', serif" }}
-                        className="text-[48px] font-[600] leading-none tracking-[-0.02em] text-[#0A0A0A]"
-                      >
-                        {p.credits}
-                      </span>
-                      <span className="text-[14px] text-[#6B6B6B] font-[500]">credits</span>
-                    </div>
-                    <div className="flex items-baseline gap-2 mt-0.5">
-                      <span
-                        style={{ fontFamily: "'Playfair Display', serif" }}
-                        className="text-[26px] font-[600] text-[#0A0A0A]"
-                      >
-                        {p.price}
-                      </span>
-                      <span
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                        className="text-[12px] text-[#A0A0A0] tracking-[0.04em]"
-                      >
-                        {p.per} / credit
-                      </span>
-                    </div>
-                    <p className="text-[12.5px] text-[#A0A0A0] mt-1">{p.rate}</p>
-                    <span
-                      className="inline-flex items-center gap-1.5 text-[11.5px] font-mono tracking-[0.04em] mt-3"
-                      style={{ color: ACCENT }}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: ACCENT }} />
-                      Refund after the mock
-                    </span>
-                    <button
-                      onClick={p.handler}
-                      disabled={loadingPack === p.kind}
-                      className="mt-4 flex items-center justify-center w-full rounded-full py-3 px-4 text-[14px] font-[500] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors disabled:opacity-60"
-                    >
-                      {loadingPack === p.kind ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        `Buy ${p.credits} credits`
-                      )}
-                    </button>
-                  </article>
-                </FadeIn>
-              ))}
-            </div>
-
             {/* Customize slider card */}
             <FadeIn delay={0.1}>
               <div
@@ -723,10 +662,10 @@ export function PricingPage() {
                       style={{ fontFamily: "'Playfair Display', serif" }}
                       className="text-[clamp(22px,2.4vw,28px)] font-[600] text-[#0A0A0A] leading-tight mt-2"
                     >
-                      Need more than 100? Build your own pack.
+                      Build your own credit pack.
                     </div>
                     <p className="text-[14px] text-[#6B6B6B] max-w-[38ch] mt-1.5">
-                      Slide to choose any amount from 150 to 1,000 credits, in steps of 50. The more you buy, the lower the per-credit price.
+                      Slide to choose any amount from 50 to 1,000 credits, in steps of 10. Flat $0.10 per credit.
                     </p>
                   </div>
                   <div className="text-right min-w-[180px]">
@@ -749,7 +688,7 @@ export function PricingPage() {
                       style={{ fontFamily: "'JetBrains Mono', monospace" }}
                       className="text-[11.5px] text-[#A0A0A0] tracking-[0.04em] mt-0.5"
                     >
-                      ${customUnit.toFixed(4)} / credit
+                      ${customUnit.toFixed(2)} / credit
                     </div>
                   </div>
                 </div>
@@ -758,9 +697,9 @@ export function PricingPage() {
                 <div className="relative pt-2 pb-8">
                   <input
                     type="range"
-                    min={150}
-                    max={1000}
-                    step={50}
+                    min={CREDIT_MIN}
+                    max={CREDIT_MAX}
+                    step={CREDIT_STEP}
                     value={credits}
                     onChange={(e) => setCredits(Number(e.target.value))}
                     aria-label="Credits amount"
@@ -773,8 +712,8 @@ export function PricingPage() {
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                     className="absolute inset-x-0 bottom-0 flex justify-between text-[10.5px] text-[#A0A0A0] tracking-[0.04em] pointer-events-none"
                   >
-                    <span>150</span>
-                    <span>300</span>
+                    <span>50</span>
+                    <span>250</span>
                     <span>500</span>
                     <span>750</span>
                     <span>1,000</span>

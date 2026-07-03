@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentService } from '@/services';
+import { BuyCreditsModal } from './BuyCreditsModal';
 
 // ─── Formatting helpers (mirror billing.tsx) ─────────────────────────────────────
 const formatDate = (iso: string | null | undefined) => {
@@ -180,112 +181,15 @@ function CancelConfirmModal({ onClose, accessEndsDate = 'Jul 24, 2026' }: { onCl
 }
 
 // ─── Buy Credits Modal ──────────────────────────────────────────────────────────
-const CREDIT_PICKS = [150, 300, 500, 1000] as const;
-
-function BuyCreditsModal({ onClose, onPurchase }: { onClose: () => void; onPurchase?: (credits: number) => void | Promise<void> }) {
-  const [credits, setCredits] = useState(300);
-  const [purchasing, setPurchasing] = useState(false);
-  const pricePerCredit = 0.10;
-  const total = (credits * pricePerCredit).toFixed(2);
-
-  const handleCheckout = async () => {
-    if (!onPurchase) return;
-    setPurchasing(true);
-    try { await onPurchase(credits); } finally { setPurchasing(false); }
-  };
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }} transition={{ duration: 0.16 }}
-        className="bg-card w-[420px] rounded-2xl p-6" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.14)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <p className="font-medium text-foreground" style={{ fontSize: 17 }}>Buy extra credits</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Credits never expire</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors">
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        {/* Credit amount display */}
-        <div className="bg-secondary rounded-xl p-5 text-center mb-4">
-          <p className="font-semibold text-foreground leading-none" style={{ fontSize: 44 }}>{credits}</p>
-          <p className="text-xs text-muted-foreground mt-1.5">credits</p>
-        </div>
-
-        {/* Quick picks */}
-        <div className="grid grid-cols-4 gap-2 mb-3">
-          {CREDIT_PICKS.map(v => (
-            <button
-              key={v}
-              onClick={() => setCredits(v)}
-              className={`py-2 rounded-lg text-xs font-medium border transition-colors ${
-                credits === v
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground hover:bg-secondary'
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-
-        {/* Slider */}
-        <div className="mb-1">
-          <input
-            type="range" min={150} max={1000} step={50} value={credits}
-            onChange={e => setCredits(Number(e.target.value))}
-            className="w-full accent-primary"
-          />
-          <div className="flex justify-between mt-0.5">
-            <span className="text-[10px] text-muted-foreground">150</span>
-            <span className="text-[10px] text-muted-foreground">1,000</span>
-          </div>
-        </div>
-
-        {/* Price breakdown */}
-        <div className="bg-secondary rounded-lg px-4 py-3 mb-5 mt-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-foreground">{credits} credits</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              $0.10 per credit
-            </p>
-          </div>
-          <p className="font-semibold text-foreground" style={{ fontSize: 20 }}>${total}</p>
-        </div>
-
-        <button
-          onClick={handleCheckout}
-          disabled={purchasing}
-          className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2"
-        >
-          {purchasing && <Loader2 className="w-4 h-4 animate-spin" />}
-          Continue to checkout
-        </button>
-        <p className="text-xs text-muted-foreground text-center mt-2.5">
-          Secure checkout · No subscription required
-        </p>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ─── Redeem Code Modal ──────────────────────────────────────────────────────────
 type RedeemStatus = 'idle' | 'loading' | 'success' | 'error_expired' | 'error_used' | 'error_invalid';
 
-function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?: (code: string) => Promise<{ ok: boolean; message?: string }> }) {
+function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?: (code: string) => Promise<{ ok: boolean; message?: string; creditsAdded?: number; totalCredits?: number }> }) {
   const [code,   setCode]   = useState('');
   const [status, setStatus] = useState<RedeemStatus>('idle');
   const [apiError, setApiError] = useState('');
+  const [creditsAdded, setCreditsAdded] = useState<number | null>(null);
+  const [totalCredits, setTotalCredits] = useState<number | null>(null);
 
   const handleRedeem = async () => {
     if (!code.trim()) return;
@@ -293,7 +197,11 @@ function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?
     setApiError('');
     if (onRedeem) {
       const res = await onRedeem(code.trim());
-      if (res.ok) { setStatus('success'); }
+      if (res.ok) {
+        setCreditsAdded(res.creditsAdded ?? null);
+        setTotalCredits(res.totalCredits ?? null);
+        setStatus('success');
+      }
       else { setStatus('error_invalid'); setApiError(res.message || 'Invalid code. Please check and try again.'); }
       return;
     }
@@ -329,10 +237,18 @@ function RedeemCodeModal({ onClose, onRedeem }: { onClose: () => void; onRedeem?
             <div className="w-14 h-14 rounded-full bg-green-50 border border-green-100 flex items-center justify-center mb-4">
               <CheckCircle2 className="w-6 h-6 text-green-500" />
             </div>
-            <p className="font-medium text-foreground mb-1.5" style={{ fontSize: 17 }}>Code redeemed successfully!</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              Your credits have been added to your balance.
+            <p className="font-medium text-foreground mb-1.5" style={{ fontSize: 17 }}>Code applied!</p>
+            <p className="text-sm text-muted-foreground mb-1">
+              {creditsAdded != null
+                ? <><span className="font-semibold text-foreground">+{creditsAdded.toLocaleString()}</span> credits added to your balance</>
+                : 'Your credits have been added to your balance.'}
             </p>
+            {totalCredits != null && (
+              <p className="text-sm text-muted-foreground mb-6">
+                New balance: <span className="font-semibold text-foreground">{totalCredits.toLocaleString()} credits</span>
+              </p>
+            )}
+            {totalCredits == null && <div className="mb-6" />}
             <button onClick={onClose} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
               Done
             </button>
@@ -539,12 +455,24 @@ export function BillingTab() {
     setShowBuyCredits(false);
   };
 
-  const handleRedeem = async (code: string): Promise<{ ok: boolean; message?: string }> => {
+  const handleRedeem = async (code: string): Promise<{ ok: boolean; message?: string; creditsAdded?: number; totalCredits?: number }> => {
     try {
       const res = await PaymentService.redeemCode(code);
       if (res.data?.status === 'success' || res.status === 200) {
-        await fetchCredits();
-        return { ok: true };
+        const payload = res.data?.data ?? {};
+        const creditsAdded: number | undefined = payload.creditsAdded;
+        const totalCredits: number | undefined = payload.totalCredits;
+        if (typeof totalCredits === 'number') {
+          // Refresh balance from the redeem response — no extra GET /payments/credits needed.
+          setCredits(prev => ({
+            ...prev,
+            permanentCreditBalance: prev.permanentCreditBalance + (creditsAdded ?? 0),
+            totalBalance: totalCredits,
+          }));
+        } else {
+          await fetchCredits();
+        }
+        return { ok: true, creditsAdded, totalCredits };
       }
       return { ok: false, message: res.data?.message };
     } catch (err: unknown) {

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Menu, X, Loader2, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
+import { BuyCreditsModal } from '@/components/newDesign/BuyCreditsModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { getPersonalInfo } from '@/services/ProfileServices';
@@ -566,8 +568,34 @@ export function HomePage() {
   const [loadingTier, setLoadingTier] = useState<PlanTier | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [pillStyle, setPillStyle] = useState({ left: 4, width: 196 });
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   const goAuth = () => navigate('/auth');
+
+  // Pay-as-you-go top-up. Signed-out visitors go to auth first (can't pay without
+  // an account); signed-in users open the Buy-credits modal and check out via Stripe.
+  const handleAddCredits = () => {
+    if (!user) { goAuth(); return; }
+    setShowBuyCredits(true);
+  };
+
+  const handleBuyCredits = async (n: number) => {
+    try {
+      const res = await PaymentService.purchaseCustomPack(n);
+      const url = res?.data?.data?.url ?? res?.data?.url;
+      if (url) { window.location.href = url; return; }
+      toast({ title: 'Credits added', description: `${n} credits added to your balance.` });
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Unable to start checkout. Please try again.';
+      toast({ title: 'Checkout failed', description: message, variant: 'destructive' });
+    } finally {
+      setShowBuyCredits(false);
+    }
+  };
 
   // Initials for the logged-in avatar
   const nameParts = (user?.name || '').trim().split(' ');
@@ -746,6 +774,13 @@ export function HomePage() {
       className="min-h-screen bg-white"
       style={{ fontFamily: "'Inter', sans-serif" }}
     >
+      {/* ─── Buy credits modal (pay-as-you-go) ─── */}
+      <AnimatePresence>
+        {showBuyCredits && (
+          <BuyCreditsModal onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />
+        )}
+      </AnimatePresence>
+
       {/* ─── Nav ─── */}
       <nav
         className="fixed left-0 right-0 z-50"
@@ -1419,7 +1454,7 @@ export function HomePage() {
           </div>
 
           {/* Credits add-on */}
-          <CreditsAddOn revealDelay={400} onAddCredits={goAuth} />
+          <CreditsAddOn revealDelay={400} onAddCredits={handleAddCredits} />
         </div>
       </section>
 
