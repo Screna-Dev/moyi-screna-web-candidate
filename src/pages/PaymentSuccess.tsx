@@ -48,7 +48,7 @@ const PaymentSuccess = () => {
 
   const handleOnboardingClose = () => {
     setOnboardingTier(null);
-    navigate("/billing");
+    navigate("/settings?tab=billing");
   };
 
   return (

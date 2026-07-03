@@ -42,12 +42,12 @@ export default function PremiumOnboardingPage() {
   };
 
   const handleSkip = () => {
-    navigate('/billing');
+    navigate('/settings?tab=billing');
   };
 
   const handleDiscordClose = () => {
     setShowDiscordWelcome(false);
-    navigate('/billing');
+    navigate('/settings?tab=billing');
   };
 
   if (isLoading || !subscription || subscription.plan !== 'premium') {

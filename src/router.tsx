@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Outlet, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -24,7 +24,6 @@ import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
 import { TrainingHistoryPage as HistoryPage } from './pages/newDesign/training-history-design';
 import { ReferEarnPage } from './pages/newDesign/refer-earn-design';
 import { SettingsPage } from './pages/newDesign/settings-design';
-import { BillingPage } from './pages/newDesign/billing';
 import { EvaluationPage } from './pages/newDesign/evaluation-page';
 import { AddExperiencePage } from './pages/newDesign/add-experience';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
@@ -144,7 +143,9 @@ export const router = createBrowserRouter([
       { path: '/refer', element: <ReferEarnPage /> },
       { path: '/history', element: <HistoryPage /> },
       { path: '/settings', element: <SettingsPage /> },
-      { path: '/billing', element: <BillingPage /> },
+      // /billing is deprecated — billing now lives under Settings. Redirect old
+      // links/bookmarks to the canonical location.
+      { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
       { path: '/payment-success', element: <PaymentSuccess /> },
       { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },

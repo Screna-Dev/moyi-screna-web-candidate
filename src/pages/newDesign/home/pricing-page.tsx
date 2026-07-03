@@ -301,7 +301,7 @@ export function PricingPage() {
       return;
     }
     if (isActiveMember) {
-      navigate('/billing');
+      navigate('/settings?tab=billing');
       return;
     }
     setLoadingTier(plan);

@@ -1460,7 +1460,7 @@ export function TrainingHistoryPage() {
 
         {/* ── Session List / Lock Gate ── */}
         {activeTab === 'mentor' && isFree ? (
-          <MentorLockGate onUpgrade={() => navigate('/billing')} />
+          <MentorLockGate onUpgrade={() => navigate('/settings?tab=billing')} />
         ) : (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
             {displayList.length === 0 ? <EmptyState /> : (
