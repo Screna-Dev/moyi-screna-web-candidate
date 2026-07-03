@@ -515,7 +515,7 @@ export function ExperienceDetailPage() {
             Cancel
           </Button>
           <Button
-            onClick={() => navigate('/pricing')}
+            onClick={() => navigate('/#pricing')}
             className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
           >
             Upgrade plan

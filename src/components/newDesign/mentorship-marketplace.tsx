@@ -392,7 +392,7 @@ export function MentorshipMarketplacePage() {
                 Mentorship sessions are available to members. Booking is unlocked when you join.
               </p>
             </div>
-            <Link to="/pricing" className="shrink-0">
+            <Link to="/#pricing" className="shrink-0">
               <button className="flex items-center gap-1.5 text-[12.5px] font-medium text-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,50%)] transition-colors whitespace-nowrap">
                 Explore plans
                 <ArrowRight className="w-3 h-3" />
@@ -680,7 +680,7 @@ export function MentorshipMarketplacePage() {
                   <button className="w-full py-4 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[15px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-all shadow-[0_4px_20px_rgba(67,118,248,0.25)] active:scale-[0.98]">
                     Upgrade to unlock
                   </button>
-                  <Link to="/pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
+                  <Link to="/#pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
                     See all plans
                   </Link>
                 </div>

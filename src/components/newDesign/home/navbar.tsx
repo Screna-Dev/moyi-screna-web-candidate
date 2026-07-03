@@ -16,7 +16,7 @@ const NAV_LINKS = [
   // { label: 'Jobs', path: '/applications' },
   { label: 'Quick AI Mock', path: '/personalized-practice' },
   { label: 'InterviewPrep Note', path: '/interview-insights' },
-  { label: 'Pricing', path: '/pricing' },
+  { label: 'Pricing', path: '/#pricing' },
   { label: 'FAQ', path: '/help' },
 ];
 

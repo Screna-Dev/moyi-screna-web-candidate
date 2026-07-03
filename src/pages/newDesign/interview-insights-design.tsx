@@ -423,8 +423,7 @@ export function InterviewInsightsPage() {
             })}
           </div>
 
-          <div className="space-y-6">
-            {/* Latest Ticker */}
+          {/* <div className="space-y-6">
             <div className="flex items-center border-t border-border pt-6">
               <span className="mr-4 inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted-foreground z-10" style={{ fontFamily: "var(--font-sans)" }}>
                 <Clock className="size-4" /> Latest
@@ -445,7 +444,7 @@ export function InterviewInsightsPage() {
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Companies Grid */}
           <section className="space-y-6">

@@ -27,7 +27,7 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
-import { RoleFilter, RoundFilter, CategoryFilter } from '@/components/newDesign/interview-insights/filter-popovers';
+import { RoleFilter, RoundFilter, CategoryFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -67,6 +67,14 @@ const SORT_TO_API: Record<SortOption, string> = {
   Newest: 'NEWEST',
   Hot: 'HOT',
   'Most Saved': 'MOST_SAVED',
+};
+
+// Relative-time filter labels → the search API's `time` enum.
+const TIME_TO_API: Record<string, string> = {
+  'Past week': 'PAST_WEEK',
+  'Past month': 'PAST_MONTH',
+  'Past 3 months': 'PAST_3_MONTH',
+  'Past year': 'PAST_YEAR',
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -169,14 +177,18 @@ export function CompanyDetailPage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   // ── Filter options (from GET /community/posts/options) + applied selections.
-  // Only Role and Round are offered here — the options endpoint provides those;
-  // it has no Level/Time option sets, so those filters were removed. ──
+  // Role and Round come from the options endpoint; Level and Time use fixed
+  // option sets (the options endpoint has none), so they're wired directly. ──
   type OptionGroup = { category: string; options: string[] };
   const [roleGroups, setRoleGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [roundGroups, setRoundGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [categoryGroups, setCategoryGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [filterRole, setFilterRole] = useState('');
   const [filterRound, setFilterRound] = useState('');
+  // Level → search `level` param (raw label, matching create-post); Time →
+  // search `time` param (via TIME_TO_API enum).
+  const [filterLevel, setFilterLevel] = useState('');
+  const [filterTime, setFilterTime] = useState('');
   // Category isn't a /community/posts/search param, so it filters loaded posts
   // client-side (by matching each post's question categories).
   const [filterCategory, setFilterCategory] = useState('');
@@ -341,6 +353,8 @@ export function CompanyDetailPage() {
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (filterRole) params.role = toRoleEnum(filterRole);
       if (filterRound) params.round = toRoundEnum(filterRound);
+      if (filterLevel) params.level = filterLevel;
+      if (filterTime) params.time = TIME_TO_API[filterTime];
 
       const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
       const res = await fetchFn(isAuthenticated ? params : { page: 0, company: company.name });
@@ -361,7 +375,7 @@ export function CompanyDetailPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, isAuthenticated, isLowTier, company.name, initInteractions]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions]);
 
   useEffect(() => {
     fetchPosts(0, true);
@@ -440,7 +454,9 @@ export function CompanyDetailPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
                     <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
+                    <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
                     <CategoryFilter singleSelect groups={categoryGroups} onApply={sel => setFilterCategory(sel[0] || '')} />
+                    <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />
                   </div>
                   <div className="relative">
                     <button
@@ -487,7 +503,7 @@ export function CompanyDetailPage() {
                     </div>
                   </div>
                   <Button
-                    onClick={() => navigate('/pricing')}
+                    onClick={() => navigate('/#pricing')}
                     className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
                   >
                     Upgrade
@@ -557,7 +573,7 @@ export function CompanyDetailPage() {
                       !isAuthenticated
                         ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } })
                         : locked
-                          ? () => navigate('/pricing')
+                          ? () => navigate('/#pricing')
                           : undefined
                     }
                   >

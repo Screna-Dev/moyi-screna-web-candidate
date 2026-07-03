@@ -414,7 +414,7 @@ function MentorshipPanel() {
           </div>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>Mentorship is a member benefit</div>
           <div style={{ fontSize: 12, color: 'var(--muted-foreground)', lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>Book 1:1 sessions with senior mentors and track every session in one place.</div>
-          <button onClick={() => navigate('/pricing')} className="rounded-lg" style={{ padding: '9px 16px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
+          <button onClick={() => navigate('/#pricing')} className="rounded-lg" style={{ padding: '9px 16px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
             Upgrade to membership
           </button>
         </div>

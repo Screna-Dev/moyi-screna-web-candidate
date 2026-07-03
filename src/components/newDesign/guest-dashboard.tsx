@@ -87,12 +87,12 @@ function LockedCard({
 
         {/* CTAs */}
         <div className="flex items-center gap-2">
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <button className="px-4 py-2 bg-[hsl(221,91%,60%)] text-white rounded-xl text-[13px] font-semibold hover:bg-[hsl(221,80%,55%)] transition-all shadow-sm shadow-[hsl(221,91%,60%)]/20">
               Upgrade to unlock
             </button>
           </Link>
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <button className="px-3 py-2 text-[13px] font-semibold text-slate-400 hover:text-slate-600 transition-colors">
               See plans →
             </button>
@@ -198,7 +198,7 @@ function GuestSidebar() {
           <p className="text-xs text-white/80 leading-relaxed mb-3">
             Job Apply, Mentorship, and your full career roadmap.
           </p>
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <button className="w-full py-2 bg-white text-[hsl(221,91%,55%)] rounded-lg text-xs font-bold hover:bg-white/90 transition-colors">
               See Plans
             </button>
@@ -250,7 +250,7 @@ function StageProgressBar() {
         {/* Upgrade prompt */}
         <div className="flex items-center gap-2.5 ml-4 shrink-0">
           <span className="text-[12px] text-slate-400 hidden md:inline">Upgrade to unlock your career roadmap</span>
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <button className="text-[12px] font-semibold text-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/10 px-3 py-1.5 rounded-lg hover:bg-[hsl(221,91%,60%)]/20 transition-colors whitespace-nowrap flex items-center gap-1">
               See Plans <ArrowRight className="w-3 h-3" />
             </button>
@@ -286,7 +286,7 @@ export function GuestDashboardPage() {
           {[
             { label: 'Practice', href: '/mock-interview' },
             { label: 'Community', href: '/interview-insights' },
-            { label: 'Pricing', href: '/pricing' },
+            { label: 'Pricing', href: '/#pricing' },
           ].map((link) => (
             <Link key={link.label} to={link.href} className="text-[13px] font-medium text-slate-500 hover:text-blue-600 transition-colors">
               {link.label}
@@ -301,7 +301,7 @@ export function GuestDashboardPage() {
               Log in
             </button>
           </Link>
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <button className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm shadow-[hsl(221,91%,60%)]/25 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5" /> Upgrade
             </button>
@@ -353,12 +353,12 @@ export function GuestDashboardPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 shrink-0">
-                <Link to="/pricing">
+                <Link to="/#pricing">
                   <button className="text-[13px] font-semibold text-[hsl(221,91%,60%)] hover:text-blue-700 transition-colors">
                     See plans
                   </button>
                 </Link>
-                <Link to="/pricing">
+                <Link to="/#pricing">
                   <button className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5" /> Upgrade Now
                   </button>
@@ -625,7 +625,7 @@ export function GuestDashboardPage() {
                     ))}
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-100">
-                    <Link to="/pricing">
+                    <Link to="/#pricing">
                       <button className="w-full py-2.5 bg-[hsl(221,91%,60%)] text-white rounded-xl text-[13px] font-semibold hover:bg-[hsl(221,80%,55%)] transition-all shadow-sm flex items-center justify-center gap-2">
                         <Zap className="w-3.5 h-3.5" /> Start with Pro
                       </button>

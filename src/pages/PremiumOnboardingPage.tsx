@@ -31,7 +31,7 @@ export default function PremiumOnboardingPage() {
       return;
     }
     if (!subscription || subscription.plan !== 'premium') {
-      navigate('/pricing');
+      navigate('/#pricing');
     }
   }, [user, subscription, isAuthLoading, isSubLoading, navigate]);
 

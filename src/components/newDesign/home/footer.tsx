@@ -33,7 +33,7 @@ const COMMUNITY_LINKS = [
 ];
 
 const SUPPORT_LINKS = [
-  { label: 'Pricing', href: '/pricing' },
+  { label: 'Pricing', href: '/#pricing' },
   { label: 'Help Center', href: '/help' },
   { label: 'Contact', href: '/contact' },
 ];

@@ -846,7 +846,7 @@ export function BillingTab() {
   // via POST /subscriptions/tier. Send the user to /pricing so they can pick
   // tier + cycle fresh (cleaner UX than reusing stale values).
   const handleResubscribe = () => {
-    navigate('/pricing');
+    navigate('/#pricing');
   };
 
   // ── Render ──
@@ -904,7 +904,7 @@ export function BillingTab() {
           nextBillingDate={formatDate(subscription?.currentPeriodEnd)}
           nextBillingAmount={nextBillingAmount}
           userName={userName}
-          onUpgrade={() => { window.location.href = '/pricing'; }}
+          onUpgrade={() => { window.location.href = '/#pricing'; }}
         />
 
         {/* MODULE 2 — Subscription Plan & History */}
