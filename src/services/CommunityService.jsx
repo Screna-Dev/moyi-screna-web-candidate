@@ -40,10 +40,6 @@ export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
 
-export const getPostAccessInfo = (postId) => {
-  return API.get(`/community/posts/${postId}/access-info`);
-};
-
 export const createPost = (data) => {
   return API.post('/community/posts', data);
 };

@@ -7,15 +7,12 @@ import {
   Bell,
   CreditCard,
   Globe,
-  Mail,
   Lock,
   Check,
   CheckCircle2,
   Download,
   Eye,
   EyeOff,
-  KeyRound,
-  Send,
   Zap,
   AlertTriangle,
   AlertCircle,
@@ -95,122 +92,6 @@ function DarkBtn({ type = 'button', disabled, onClick, children }: {
   );
 }
 
-// ─── Set Password Modal (Google OAuth users) ──────────────────────────────────
-
-function SetPasswordModal({ onClose }: { onClose: () => void }) {
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const handleSend = () => {
-    setSending(true);
-    setTimeout(() => { setSending(false); setSent(true); }, 800);
-  };
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
-        transition={{ duration: 0.16 }}
-        className="bg-card w-[400px] rounded-xl shadow-2xl p-8 flex flex-col items-center text-center"
-        onClick={e => e.stopPropagation()}
-      >
-        {sent ? (
-          <>
-            {/* Success state */}
-            <div className="w-16 h-16 rounded-full bg-green-50 border border-green-100 flex items-center justify-center mb-5">
-              <CheckCircle2 className="w-7 h-7 text-green-500" />
-            </div>
-            <h2 className="text-foreground mb-2">Check your inbox</h2>
-            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-              We sent a secure link to{' '}
-              <span className="text-foreground font-medium">alex.chen@gmail.com</span>.
-              The link expires in 24 hours.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              Done
-            </button>
-            <p className="text-xs text-muted-foreground mt-4">
-              You can still log in with Google at any time.
-            </p>
-          </>
-        ) : (
-          <>
-            {/* Illustrated lock icon */}
-            <div className="relative mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <KeyRound className="w-7 h-7 text-primary" />
-              </div>
-              {/* Small envelope badge */}
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card border-2 border-card shadow-sm flex items-center justify-center">
-                <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center">
-                  <Mail className="w-2.5 h-2.5 text-primary" />
-                </div>
-              </div>
-            </div>
-
-            {/* Title */}
-            <h2 className="text-foreground mb-2">Set a password for your account</h2>
-
-            {/* Body */}
-            <p className="text-sm text-muted-foreground mb-7 leading-relaxed">
-              We'll send a secure link to{' '}
-              <span className="text-foreground font-medium">alex.chen@gmail.com</span>.
-              Click the link to create a password for email login.
-            </p>
-
-            {/* Primary action */}
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-            >
-              {sending ? (
-                <>
-                  <motion.span
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
-                    className="inline-block w-3.5 h-3.5 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full"
-                  />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  Send me the link
-                </>
-              )}
-            </button>
-
-            {/* Cancel */}
-            <button
-              onClick={onClose}
-              className="mt-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-
-            {/* Reassurance */}
-            <p className="text-xs text-muted-foreground mt-5">
-              You can still log in with Google at any time.
-            </p>
-          </>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ─── Change Password Modal ────────────────────────────────────────────────────
 
 function getStrengthScore(pwd: string): number {
@@ -274,6 +155,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
 
   const score = getStrengthScore(newPwd);
   const isValid =
@@ -285,12 +167,13 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = async () => {
     if (!isValid) return;
     setSaving(true);
+    setError('');
     try {
       await changePassword({ oldPassword: curPwd, newPassword: newPwd, confirmNewPassword: confirmPwd });
       setDone(true);
       setTimeout(onClose, 1200);
-    } catch {
-      // silently fail (no error UI placeholder in this design)
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to update password.');
     } finally {
       setSaving(false);
     }
@@ -359,6 +242,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                   <p className="text-xs text-destructive mt-1">Passwords don't match</p>
                 )}
               </div>
+
+              {error && <p className="text-xs text-destructive mb-4">{error}</p>}
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-3">
@@ -639,37 +524,30 @@ function ProfileTab() {
 function SecurityTab() {
   const { user } = useAuth();
   const [showChangePwd, setShowChangePwd] = useState(false);
-  const [showSetPwd,    setShowSetPwd]    = useState(false);
   // Whether the account has an email/password credential (vs. Google-only).
-  // Google accounts have no password credential and instead see the "set a
-  // password" flow. Derived from the authenticated user; see detectHasPassword.
-  const [hasPassword, setHasPassword] = useState(!!user?.hasPassword);
-
-  useEffect(() => {
-    setHasPassword(!!user?.hasPassword);
-  }, [user?.hasPassword]);
+  // Google accounts have no password credential: they sign in through Google
+  // and can't set or change a password here. Derived from the authenticated
+  // user; see detectHasPassword in AuthContext.
+  const hasPassword = !!user?.hasPassword;
+  const email = user?.email || '';
 
   return (
     <>
       <AnimatePresence>
         {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
-        {showSetPwd    && <SetPasswordModal    onClose={() => setShowSetPwd(false)}    />}
       </AnimatePresence>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         {/* Card header */}
-        <div className="px-6 pt-6 pb-5 border-b border-border flex items-start justify-between">
-          <div>
-            <h2 className="text-foreground">Security</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Manage your password and connected login methods.
-            </p>
-          </div>
+        <div className="px-6 pt-6 pb-5 border-b border-border">
+          <h2 className="text-foreground">Security</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {hasPassword ? 'Manage your account password.' : 'Manage how you sign in.'}
+          </p>
         </div>
 
-        {/* Rows */}
-        <div className="divide-y divide-border">
-          {/* Password row */}
+        {hasPassword ? (
+          /* Password row — email/password accounts */
           <div className="flex items-center justify-between px-6 py-5">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
@@ -677,31 +555,21 @@ function SecurityTab() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">Password</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {hasPassword ? 'Last changed 3 months ago' : 'Not set — Google login only'}
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Email &amp; password login enabled</p>
               </div>
             </div>
-            {hasPassword ? (
-              <button
-                onClick={() => setShowChangePwd(true)}
-                className="px-3.5 py-1.5 rounded-md border border-foreground/70 bg-card text-sm font-medium text-foreground hover:bg-secondary transition-colors"
-              >
-                Change password
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowSetPwd(true)}
-                className="px-3.5 py-1.5 rounded-md border border-primary/60 bg-primary/5 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-              >
-                Set a password
-              </button>
-            )}
+            <button
+              onClick={() => setShowChangePwd(true)}
+              className="px-3.5 py-1.5 rounded-md border border-foreground/70 bg-card text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              Change password
+            </button>
           </div>
-
-          {/* Google login row */}
-          <div className="flex items-center justify-between px-6 py-5">
-            <div className="flex items-center gap-3">
+        ) : (
+          /* Google accounts: sign-in is managed by Google — no password controls */
+          <div className="divide-y divide-border">
+            {/* Google login (informational; sign-in can't be disconnected here) */}
+            <div className="flex items-center gap-3 px-6 py-5">
               <div className="w-9 h-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -712,14 +580,23 @@ function SecurityTab() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">Google login</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Connected · alex.chen@gmail.com</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {email ? `Connected · ${email}` : 'Connected'}
+                </p>
               </div>
             </div>
-            <button className="px-3.5 py-1.5 rounded-md border border-destructive/60 bg-card text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors">
-              Disconnect
-            </button>
+            {/* Password not available for Google accounts */}
+            <div className="px-6 py-8 text-center">
+              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
+                <Lock className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">You sign in with Google</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Password settings aren't available for Google accounts, so you can't change your password here.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );

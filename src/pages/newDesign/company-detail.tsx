@@ -20,6 +20,7 @@ import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, g
 import { toRoleEnum, toRoundEnum, toCategoryEnum } from '../../utils/communityEnums';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
@@ -126,8 +127,18 @@ function resolveCompany(companyId: string | undefined): CompanyMeta {
 export function CompanyDetailPage() {
   const { companyId } = useParams();
   const { isAuthenticated } = useAuth();
+  const { isPremium, isLoading: isPlanLoading } = useUserPlan();
   const navigate = useNavigate();
   const posthog = usePostHog();
+
+  // Plan-tier gating. The product has two tiers: Free/Basic (low) and
+  // Advanced/Flagship (Premium, high). Low-tier signed-in users can only browse
+  // a company's newest posts, first page, with no sort/search/pagination, and
+  // can open only the 2 most recent posts per company (the 3rd+ is locked).
+  // We wait for the plan to resolve before restricting so we don't penalize
+  // Premium users with a flash of locked UI.
+  const isLowTier = isAuthenticated && !isPlanLoading && !isPremium;
+  const FREE_VISIBLE_LIMIT = 2;
 
   const fallbackCompany = useMemo(() => resolveCompany(companyId), [companyId]);
 
@@ -338,7 +349,9 @@ export function CompanyDetailPage() {
 
       setPosts(prev => reset ? content : [...prev, ...content]);
       initInteractions(content, reset);
-      setHasMore(isAuthenticated ? content.length >= 10 : false);
+      // Low-tier users are locked to the first page (backend forces page=0), so
+      // never offer "load more"; guests never paginate either.
+      setHasMore(isAuthenticated && !isLowTier ? content.length >= 10 : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch company posts:', err);
@@ -348,7 +361,7 @@ export function CompanyDetailPage() {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, isAuthenticated, company.name, initInteractions]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, isAuthenticated, isLowTier, company.name, initInteractions]);
 
   useEffect(() => {
     fetchPosts(0, true);
@@ -418,43 +431,69 @@ export function CompanyDetailPage() {
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
             {/* Main Column */}
             <div className="space-y-6 min-w-0">
-              {/* Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
-                  <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
-                  <CategoryFilter singleSelect groups={categoryGroups} onApply={sel => setFilterCategory(sel[0] || '')} />
+              {/* Toolbar — sort & filters. Hidden for low-tier users: the backend
+                  ignores every search param except `company` for Free/Basic
+                  (forces NEWEST + page 0), so exposing these controls would
+                  mislead. */}
+              {!isLowTier && (
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
+                    <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
+                    <CategoryFilter singleSelect groups={categoryGroups} onApply={sel => setFilterCategory(sel[0] || '')} />
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setSortOpen(o => !o)}
+                      className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors"
+                    >
+                      <ListFilter className="w-4 h-4" />
+                      Sort: {activeSort}
+                    </button>
+                    {sortOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setSortOpen(false)} />
+                        <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden p-1">
+                          {SORT_OPTIONS.map(sort => (
+                            <button
+                              key={sort}
+                              onClick={() => { setActiveSort(sort); setSortOpen(false); }}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                activeSort === sort
+                                  ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] font-medium'
+                                  : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
+                              }`}
+                            >
+                              {sort}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="relative">
-                  <button
-                    onClick={() => setSortOpen(o => !o)}
-                    className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors"
+              )}
+
+              {/* Low-tier upgrade banner — explains the browse limit up front. */}
+              {isLowTier && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(221,91%,60%)]/10">
+                      <Lock className="size-4 text-[hsl(221,91%,60%)]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">Showing the {FREE_VISIBLE_LIMIT} newest experiences</p>
+                      <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">Upgrade to Advanced for full search, sorting, and unlimited access to every post.</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => navigate('/pricing')}
+                    className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
                   >
-                    <ListFilter className="w-4 h-4" />
-                    Sort: {activeSort}
-                  </button>
-                  {sortOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setSortOpen(false)} />
-                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-[hsl(220,16%,90%)] z-50 overflow-hidden p-1">
-                        {SORT_OPTIONS.map(sort => (
-                          <button
-                            key={sort}
-                            onClick={() => { setActiveSort(sort); setSortOpen(false); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                              activeSort === sort
-                                ? 'bg-[hsl(221,91%,60%)]/10 text-[hsl(221,91%,60%)] font-medium'
-                                : 'text-[hsl(222,22%,15%)] hover:bg-[hsl(220,20%,98%)]'
-                            }`}
-                          >
-                            {sort}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
+                    Upgrade
+                  </Button>
                 </div>
-              </div>
+              )}
 
               {/* Initial Loading */}
               {isInitialLoading && (
@@ -502,15 +541,25 @@ export function CompanyDetailPage() {
 
               {/* Posts */}
               <div className="space-y-4">
-                {visiblePosts.map((post, i) => (
+                {visiblePosts.map((post, i) => {
+                  // Free/Basic users can only open the 2 newest posts per company;
+                  // the rest are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
+                  const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
+                  return (
                   <motion.article
                     key={post.id}
                     initial={{ opacity: 0, y: 12 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
-                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${!isAuthenticated ? 'cursor-pointer' : ''}`}
-                    onClick={!isAuthenticated ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } }) : undefined}
+                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${(!isAuthenticated || locked) ? 'cursor-pointer' : ''}`}
+                    onClick={
+                      !isAuthenticated
+                        ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } })
+                        : locked
+                          ? () => navigate('/pricing')
+                          : undefined
+                    }
                   >
                     <div className="p-6">
                       {/* Header */}
@@ -554,6 +603,31 @@ export function CompanyDetailPage() {
                             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(220,16%,90%)] shadow-sm">
                               <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
                               <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Sign in to view details</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : locked ? (
+                        <div className="relative">
+                          <div className="blur-sm select-none pointer-events-none">
+                            <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
+                            </div>
+                            <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
+                              {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mb-5">
+                              {getQuestions(post).slice(0, 3).map((q, qi) => (
+                                <span key={q.id || qi} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate">
+                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
+                                  {q.title || 'Question'}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(221,91%,60%)]/20 shadow-sm">
+                              <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
+                              <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Upgrade to Advanced to unlock</span>
                             </div>
                           </div>
                         </div>
@@ -636,7 +710,8 @@ export function CompanyDetailPage() {
                       )}
                     </div>
                   </motion.article>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Load More */}
@@ -661,17 +736,20 @@ export function CompanyDetailPage() {
 
             {/* ── Sidebar ── */}
             <aside className="space-y-5 lg:sticky lg:top-24 lg:h-fit">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
-                <input
-                  type="text"
-                  placeholder="Search experiences..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full rounded-xl border border-[hsl(220,16%,90%)] bg-white py-2.5 pl-10 pr-4 text-sm text-[hsl(222,22%,15%)] outline-none placeholder:text-[hsl(222,12%,55%)] focus:border-[hsl(221,91%,60%)] focus:ring-1 focus:ring-[hsl(221,91%,60%)] transition-all"
-                />
-              </div>
+              {/* Search — hidden for low-tier users (backend ignores the search
+                  param for Free/Basic). */}
+              {!isLowTier && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
+                  <input
+                    type="text"
+                    placeholder="Search experiences..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full rounded-xl border border-[hsl(220,16%,90%)] bg-white py-2.5 pl-10 pr-4 text-sm text-[hsl(222,22%,15%)] outline-none placeholder:text-[hsl(222,12%,55%)] focus:border-[hsl(221,91%,60%)] focus:ring-1 focus:ring-[hsl(221,91%,60%)] transition-all"
+                  />
+                </div>
+              )}
 
               {/* Community Guidelines */}
               <div className="bg-white rounded-2xl p-5 border border-[hsl(220,16%,90%)] shadow-sm">
