@@ -1,5 +1,16 @@
 import { useState } from 'react';
 import { cn } from './utils';
+import bytedanceLogo from '@/assets/logos/bytedance.svg';
+
+// Local logo assets for companies whose logos can't be fetched reliably
+const LOCAL_LOGOS: Record<string, string> = {
+  'bytedance': bytedanceLogo,
+  '字节跳动': bytedanceLogo,
+};
+
+function getLocalLogo(company: string): string | null {
+  return LOCAL_LOGOS[company.trim().toLowerCase()] ?? null;
+}
 
 // Map company names to their domains for logo fetching
 const COMPANY_DOMAINS: Record<string, string> = {
@@ -129,7 +140,10 @@ function getLogoUrl(domain: string): string {
 
 // Resolve a company name to a logo URL (or null if no domain can be derived).
 export function getCompanyLogoUrl(company?: string): string | null {
-  const domain = company ? getCompanyDomain(company) : null;
+  if (!company) return null;
+  const local = getLocalLogo(company);
+  if (local) return local;
+  const domain = getCompanyDomain(company);
   return domain ? getLogoUrl(domain) : null;
 }
 
@@ -142,8 +156,7 @@ interface CompanyLogoProps {
 export function CompanyLogo({ company, className, size = 'md' }: CompanyLogoProps) {
   const [failed, setFailed] = useState(false);
 
-  const domain = company ? getCompanyDomain(company) : null;
-  const logoUrl = domain ? getLogoUrl(domain) : null;
+  const logoUrl = company ? getCompanyLogoUrl(company) : null;
   const fallbackLetter = company?.[0] || '?';
 
   const sizeClasses = size === 'sm' ? 'w-7 h-7' : 'w-8 h-8';

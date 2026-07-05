@@ -3,8 +3,6 @@ import { Link, useSearchParams, useNavigate } from 'react-router';
 import { ArrowLeft, Clock, Coins, Mic, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Navbar } from './home/navbar';
-import { Footer } from './home/footer';
 import { DashboardLayout } from './dashboard-layout';
 import { motion, AnimatePresence } from 'motion/react';
 import imgRectangle from '@/assets/a7264fd48ee44c90a6ee1d9d5f038a62ea570b04.png';
@@ -245,7 +243,6 @@ export function SessionConfirmPage() {
   const navigate = useNavigate();
   const sessionParam = searchParams.get('session') || '1';
   const sessionId = Number(sessionParam);
-  const isDashboard = searchParams.get('source') === 'dashboard';
 
   // mock_set_detail_viewed —— 进入题目详情页，离开时记录 duration_seconds
   useDwellTracking(EVENTS.MOCK_SET_DETAIL_VIEWED, () => ({ mock_set_id: sessionParam }));
@@ -320,33 +317,25 @@ export function SessionConfirmPage() {
   const hasEnoughCredits = isPlanLoading || (planData.permanentCreditBalance >= creditCost);
   // If session not found
   if (!session) {
-    const notFound = (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl text-slate-900 mb-2">Session Not Found</h1>
-          <p className="text-slate-500 mb-6">The requested session doesn't exist.</p>
-          <Link to="/dashboard/mock-interview">
-            <Button variant="outline">Back to Dashboard</Button>
-          </Link>
-        </div>
-      </div>
-    );
-    if (isDashboard) {
-      return <DashboardLayout headerTitle="Session">{notFound}</DashboardLayout>;
-    }
     return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <Navbar />
-        <main className="flex-1 flex items-center justify-center">{notFound}</main>
-        <Footer />
-      </div>
+      <DashboardLayout headerTitle="Session">
+        <div className="flex-1 flex items-center justify-center py-24">
+          <div className="text-center">
+            <h1 className="text-2xl text-slate-900 mb-2">Session Not Found</h1>
+            <p className="text-slate-500 mb-6">The requested session doesn't exist.</p>
+            <Link to="/dashboard/mock-interview">
+              <Button variant="outline">Back to Dashboard</Button>
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   const diffConfig = DIFFICULTY_CONFIG[session.difficulty];
 
   const cardContent = (
-        <div className={`max-w-3xl mx-auto px-6 pb-16 ${isDashboard ? 'pt-8' : 'pt-[130px]'}`}>
+        <div className="max-w-3xl mx-auto px-6 pb-16 pt-8">
           {/* Back link */}
           <button
             onClick={() => navigate(-1)}
@@ -667,19 +656,9 @@ export function SessionConfirmPage() {
         </div>
   );
 
-  if (isDashboard) {
-    return (
-      <DashboardLayout headerTitle={session.title}>
-        {cardContent}
-      </DashboardLayout>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col">
-      <Navbar />
-      <main className="flex-1">{cardContent}</main>
-      <Footer />
-    </div>
+    <DashboardLayout headerTitle={session.title}>
+      {cardContent}
+    </DashboardLayout>
   );
 }
