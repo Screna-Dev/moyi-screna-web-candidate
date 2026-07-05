@@ -16,6 +16,8 @@ import {
   getMentor,
   onboardMentor,
   updateMentorProfile,
+  updateMentorTopic,
+  listMentorTopics,
   updateMentorStatus,
   setMentorIdentityVerification,
   listBookings,
@@ -103,6 +105,9 @@ type Mentor = {
   revenue: number;
   unpaid: number;
   offerings: ServiceOffering[];
+  // Raw bookable topics — kept so price edits can PUT each real topic by id,
+  // regardless of whether its title maps to a known service type.
+  topics: { id: string; price30min: number; price60min: number }[];
   reviews: Review[];
 };
 
@@ -168,6 +173,13 @@ function mapApiMentor(api: any): Mentor {
     revenue: 0,
     unpaid: 0,
     offerings,
+    topics: apiTopics
+      .filter((t) => t?.id)
+      .map((t) => ({
+        id: String(t.id),
+        price30min: Number(t?.price30min) || 0,
+        price60min: Number(t?.price60min) || 0,
+      })),
     reviews: Array.isArray(api?.reviews)
       ? api.reviews.map((r: any, i: number) => ({
           id: r?.id || String(i),
@@ -557,7 +569,7 @@ function ManageReviews({ reviews: initialReviews }: { reviews: Review[] }) {
   );
 }
 
-// ─── Service Offerings section (inside Drawer) ────────────────────────────────
+// ─── Expertise tag chip (inside Drawer) ───────────────────────────────────────
 
 const serviceTagStyle: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 5,
@@ -567,131 +579,6 @@ const serviceTagStyle: React.CSSProperties = {
   color: "#1e232f", whiteSpace: "nowrap" as const,
   fontFamily: "'Inter', sans-serif",
 };
-
-function ServiceOfferingsSection({
-  offerings,
-  onChange,
-}: {
-  offerings: ServiceOffering[];
-  onChange: (updated: ServiceOffering[]) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [customTags, setCustomTags] = useState<string[]>([]);
-  const [customInput, setCustomInput] = useState("");
-
-  const enabledTypes = ALL_SERVICE_TYPES.filter((t) => offerings.find((o) => o.typeId === t.id)?.enabled);
-  const disabledTypes = ALL_SERVICE_TYPES.filter((t) => !offerings.find((o) => o.typeId === t.id)?.enabled);
-
-  const addCustom = () => {
-    const val = customInput.trim();
-    if (val && !customTags.includes(val)) setCustomTags((prev) => [...prev, val]);
-    setCustomInput("");
-  };
-
-  const remove = (typeId: string) => {
-    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: false } : o));
-  };
-
-  const add = (typeId: string) => {
-    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: true } : o));
-  };
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Service Offerings
-        </div>
-        <button
-          onClick={() => setEditing((v) => !v)}
-          title={editing ? "Done" : "Edit services"}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: editing ? C.blue : C.textMuted, display: "flex", alignItems: "center", borderRadius: 5 }}
-        >
-          {editing ? <Check size={13} /> : <Pencil size={13} />}
-        </button>
-      </div>
-
-      {/* Tag strip — view mode */}
-      {!editing && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {enabledTypes.length === 0 && customTags.length === 0
-            ? <span style={{ fontSize: 12, color: C.textMuted }}>No services enabled</span>
-            : <>
-                {enabledTypes.map((t) => <span key={t.id} style={serviceTagStyle}>{t.label}</span>)}
-                {customTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
-              </>}
-        </div>
-      )}
-
-      {/* Edit mode */}
-      {editing && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* Enabled tags with X */}
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Enabled</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {enabledTypes.length === 0 && customTags.length === 0
-                ? <span style={{ fontSize: 11, color: C.textMuted }}>None</span>
-                : <>
-                    {enabledTypes.map((t) => (
-                      <span key={t.id} style={{ ...serviceTagStyle, paddingRight: 7 }}>
-                        {t.label}
-                        <button onClick={() => remove(t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
-                          <X size={11} />
-                        </button>
-                      </span>
-                    ))}
-                    {customTags.map((t) => (
-                      <span key={t} style={{ ...serviceTagStyle, paddingRight: 7 }}>
-                        {t}
-                        <button onClick={() => setCustomTags((prev) => prev.filter((c) => c !== t))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
-                          <X size={11} />
-                        </button>
-                      </span>
-                    ))}
-                  </>}
-            </div>
-          </div>
-
-          {/* Disabled — click to add */}
-          {disabledTypes.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Add service</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {disabledTypes.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => add(t.id)}
-                    style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
-                  >
-                    <Plus size={10} style={{ color: C.textMuted }} /> {t.label}
-                  </button>
-                ))}
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px 0 10px", background: "white", border: `1px dashed ${C.border}`, borderRadius: 9999 }}>
-                  <input
-                    value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
-                    placeholder="Custom…"
-                    style={{ border: "none", outline: "none", background: "transparent", fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, width: 80 }}
-                  />
-                  <button
-                    onClick={addCustom}
-                    disabled={!customInput.trim()}
-                    style={{ background: "none", border: "none", cursor: customInput.trim() ? "pointer" : "default", padding: 0, display: "flex", alignItems: "center", color: customInput.trim() ? C.blue : C.textMuted }}
-                  >
-                    <Plus size={12} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Verification Section ─────────────────────────────────────────────────────
 
@@ -1083,24 +970,6 @@ function MentorDirectory() {
     return true;
   });
 
-  // Service offerings are persisted as the mentor's expertiseTags (profile),
-  // not as bookable topics. Enabled offerings map to their service-type labels.
-  const updateOfferings = async (mentorId: string, offerings: ServiceOffering[]) => {
-    const current = mentorList.find((m) => m.id === mentorId);
-    if (!current) return;
-    setMentorList((prev) => prev.map((m) => m.id === mentorId ? { ...m, offerings } : m));
-    setSelected((prev) => prev?.id === mentorId ? { ...prev, offerings } : prev);
-    const expertiseTags = offerings
-      .filter((o) => o.enabled)
-      .map((o) => ALL_SERVICE_TYPES.find((t) => t.id === o.typeId)?.label || o.typeId);
-    try {
-      await updateMentorProfile(mentorId, { expertiseTags });
-    } catch (err: any) {
-      console.error("Failed to update service offerings", err);
-      toast.error(err?.response?.data?.message || "Failed to update service offerings");
-    }
-  };
-
   const openDetail = async (m: Mentor) => {
     setSelected(m);
     setEditForm(m);
@@ -1168,11 +1037,43 @@ function MentorDirectory() {
 
   const saveProfile = async (form: Mentor) => {
     try {
+      // 1) Profile — real name + expertise tags (and bio/headline).
       await updateMentorProfile(form.id, {
+        realName: form.name || "",
         bio: form.bio || "",
         headline: "",
         expertiseTags: form.expertiseTags || [],
       });
+
+      // 2) Topic prices — apply the edited rates (dollars → cents) to every
+      //    bookable topic. null/omitted leaves a price unchanged, and prices
+      //    must be ≥ 1000 cents, so only send values that clear that floor.
+      const price30min = Math.round((Number(form.rate30) || 0) * 100);
+      const price60min = Math.round((Number(form.rate60) || 0) * 100);
+      const pricePayload: { price30min?: number; price60min?: number } = {};
+      if (price30min >= 1000) pricePayload.price30min = price30min;
+      if (price60min >= 1000) pricePayload.price60min = price60min;
+      if (pricePayload.price30min || pricePayload.price60min) {
+        // The edit form doesn't reliably carry the topic list, so fetch the
+        // mentor's real topics (a single auto-created "Mentorship Session") and
+        // PUT the new prices to each one by id.
+        let topicIds = Array.from(new Set((form.topics || []).map((t) => t.id).filter(Boolean)));
+        if (!topicIds.length) {
+          const res = await listMentorTopics(form.id);
+          const raw = res?.data?.data;
+          const arr: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.content) ? raw.content : [];
+          topicIds = Array.from(new Set(arr.map((t) => t?.id).filter(Boolean).map(String)));
+        }
+        if (topicIds.length) {
+          await Promise.all(
+            topicIds.map((topicId) => updateMentorTopic(form.id, topicId, pricePayload))
+          );
+        } else {
+          toast.error("No bookable topic found for this mentor — price not updated");
+        }
+      }
+
+      // 3) Status change (if any).
       const apiStatusFromUi: Record<Mentor["status"], ApiStatus> = {
         Pending: "PENDING",
         Active: "APPROVED",
@@ -1183,7 +1084,21 @@ function MentorDirectory() {
         await updateMentorStatus(form.id, { status: targetApiStatus });
       }
       toast.success("Profile saved");
+      // Refetch so the list and the open detail drawer reflect the saved
+      // changes immediately.
       await loadMentors();
+      try {
+        const res = await getMentor(form.id);
+        const detail = res?.data?.data;
+        if (detail) {
+          const mapped = mapApiMentor(detail);
+          setSelected(mapped);
+          setEditForm(mapped);
+          setMentorList((prev) => prev.map((x) => x.id === mapped.id ? mapped : x));
+        }
+      } catch (e) {
+        console.error("Failed to refresh mentor detail after save", e);
+      }
       setIsEditing(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to save profile");
@@ -1467,11 +1382,17 @@ function MentorDirectory() {
 
                 <DrawerDivider />
 
-                {/* Service Offerings */}
-                <ServiceOfferingsSection
-                  offerings={selected.offerings}
-                  onChange={(updated) => updateOfferings(selected.id, updated)}
-                />
+                {/* Expertise Tags */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                    Expertise Tags
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {selected.expertiseTags.length === 0
+                      ? <span style={{ fontSize: 12, color: C.textMuted }}>No expertise tags</span>
+                      : selected.expertiseTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
+                  </div>
+                </div>
 
                 {/* Manage Reviews */}
                 <ManageReviews reviews={selected.reviews} />
@@ -1555,18 +1476,32 @@ function MentorDirectory() {
                   }}
                 />
               </div>
-            </div>
-
-            
-
-            <DrawerDivider />
-            
-            <div>
-               <label style={labelStyle}>Service Settings</label>
-               <ServiceOfferingsSection
-                 offerings={editForm.offerings}
-                 onChange={(updated) => setEditForm({...editForm, offerings: updated})}
-               />
+              {/* Suggestions — the platform service offerings, minus ones
+                  already selected. Click to add. */}
+              {(() => {
+                const selectedSet = new Set(editForm.expertiseTags || []);
+                const suggestions = ALL_SERVICE_TYPES.map((t) => t.label).filter((t) => !selectedSet.has(t));
+                if (!suggestions.length) return null;
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Suggestions</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {suggestions.map((t) => (
+                        <button
+                          key={t}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setEditForm(prev => prev && !prev.expertiseTags.includes(t) ? ({ ...prev, expertiseTags: [...prev.expertiseTags, t] }) : prev);
+                          }}
+                          style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
+                        >
+                          <Plus size={10} style={{ color: C.textMuted }} /> {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1782,9 +1717,9 @@ function SessionsTab() {
                   <td style={TD}><span style={badge(s.refundEligible ? "amber" : "gray")}>{s.refundEligible ? "Eligible" : "No"}</span></td>
                   <td style={TD}>
                     <div style={{ display: "flex", gap: 5 }}>
-                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); openReschedule(s); }}>Reschedule</button>
+                      <button style={{ ...ghostBtn, background: C.bgWhite, border: `1px solid ${C.border}` }} onClick={(e) => { e.stopPropagation(); openReschedule(s); }}>Reschedule</button>
                       {s.status !== "Cancelled" && (
-                        <button style={{ ...ghostBtn, color: C.red }} onClick={(e) => { e.stopPropagation(); if (window.confirm(`Cancel session ${s.id}? This will issue a refund if applicable.`)) cancelSession(s.id); }}>Cancel</button>
+                        <button style={{ ...ghostBtn, color: C.red, background: C.bgWhite, border: `1px solid ${C.redBorder}` }} onClick={(e) => { e.stopPropagation(); if (window.confirm(`Cancel session ${s.id}? This will issue a refund if applicable.`)) cancelSession(s.id); }}>Cancel</button>
                       )}
                     </div>
                   </td>
