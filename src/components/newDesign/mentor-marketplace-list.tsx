@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Calendar, Clock, ChevronDown, ChevronRight, SlidersHorizontal, X, Check, Shield, ArrowRight, Lock, Users, Loader2 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
-import { Footer } from './home/footer';
 import { getMentors } from '../../services/MentorService';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasMentorRole } from '../mentor/dashboard-mode';
@@ -353,18 +352,7 @@ export function MentorMarketplaceListPage() {
             </Link>
           </div>
         )}
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            SECTION 1 — What you can get help with
-        ════════════════════════════════════════════════════════════════════ */}
-        
-        {/* Divider */}
-        <div className="border-t border-slate-100" />
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            SECTION 2 — Mentor discovery
-        ════════════════════════════════════════════════════════════════════ */}
-                <section className="relative min-h-[500px]">
+        <section className="relative min-h-[500px]">
           {/* Content container - Blurred when locked */}
           <div className={`transition-all duration-500 ${!isMember ? 'blur-[8px] pointer-events-none select-none opacity-50' : ''}`}>
             <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
@@ -538,8 +526,6 @@ export function MentorMarketplaceListPage() {
         open={isBecomeMentorOpen}
         onClose={() => setIsBecomeMentorOpen(false)}
       />
-
-      <Footer />
     </DashboardLayout>
   );
 }
