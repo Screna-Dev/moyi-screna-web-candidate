@@ -991,7 +991,7 @@ export function HomePage() {
 
       {/* ─── Hero ─── */}
       <section
-        className="snap-s flex flex-col relative"
+        className="snap-s flex flex-col relative overflow-x-hidden"
         style={{
           paddingTop: 'calc(72px + var(--topbar-h, 0px))',
           minHeight: '100svh',
@@ -1076,14 +1076,17 @@ export function HomePage() {
           {/* Headline */}
           <h1
             data-reveal data-delay="100"
-            className="text-center font-medium tracking-[-1.5px] leading-tight mb-7 max-w-[1100px]"
+            className="text-center font-medium tracking-[-0.5px] sm:tracking-[-1.5px] leading-tight mb-7 max-w-[1100px] px-1"
             style={{
-              fontSize: 'clamp(40px, 6vw, 64px)',
+              fontSize: 'clamp(30px, 5vw, 60px)',
               color: '#0A0A0A',
               fontFamily: "'Inter', sans-serif",
             }}
           >
-            Turning practice and mentorship<br />
+            {/* Break to two lines only on wide screens; wrap naturally below xl
+                so the long first line never overflows narrow viewports. */}
+            Turning practice and mentorship{' '}
+            <br className="hidden xl:block" />
             into your next offer.
           </h1>
 
@@ -1262,10 +1265,10 @@ export function HomePage() {
                   key={tab}
                   ref={(el) => { tabRefs.current[idx] = el; }}
                   onClick={() => setActiveTab(tab)}
-                  className="relative z-10 px-5 rounded-[22px] text-[15px] font-medium whitespace-nowrap transition-colors duration-200"
+                  className="relative z-10 px-3 sm:px-5 rounded-[22px] text-[13px] sm:text-[15px] font-medium whitespace-nowrap transition-colors duration-200"
                   style={{
                     height: 44,
-                    minWidth: 140,
+                    minWidth: 0,
                     color: activeTab === tab ? '#FBFBFB' : '#767676',
                     fontFamily: "'Inter', sans-serif",
                     background: 'transparent',
