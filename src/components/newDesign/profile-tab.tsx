@@ -2,16 +2,17 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
-  UploadCloud, FileText, Eye, Download, ShieldCheck, Settings,
-  BadgeCheck, Building2, Coins,
+  UploadCloud, FileText, Eye, Download, Settings,
+  BadgeCheck, Building2, Coins, Camera, Loader2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
 import { PageHead } from '@/components/newDesign/page-head';
+import { WidePageContainer } from './dashboard-page';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
 type UserData = {
@@ -118,6 +119,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [personalName, setPersonalName] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
   const [timezone, setTimezone] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const displayName = personalName || (userData?.firstName
     ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
@@ -142,7 +146,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [roleQuery, setRoleQuery] = useState('');
 
   // ── Work Authorization state ──
-  const [editingVisa, setEditingVisa] = useState(false);
   const [visaStatus, setVisaStatus] = useState<string>('');
   const [showVisaDialog, setShowVisaDialog] = useState(false);
   const [pendingVisaStatus, setPendingVisaStatus] = useState<string>('');
@@ -156,6 +159,28 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [specificCompanies, setSpecificCompanies] = useState<string[]>([]);
   const [companyQuery, setCompanyQuery] = useState('');
   const [editingCompanies, setEditingCompanies] = useState(false);
+
+  const handleAvatarFile = async (file: File) => {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return;
+    // Optimistic local preview while the upload is in flight
+    const localPreview = URL.createObjectURL(file);
+    const prevUrl = avatarUrl;
+    setAvatarUrl(localPreview);
+    setAvatarUploading(true);
+    try {
+      const res = await uploadAvatar(file);
+      const newUrl = res.data?.data ?? res.data;
+      if (typeof newUrl === 'string' && newUrl) {
+        setAvatarUrl(newUrl);
+      }
+    } catch {
+      // Revert to the previous avatar on failure
+      setAvatarUrl(prevUrl);
+    } finally {
+      setAvatarUploading(false);
+      URL.revokeObjectURL(localPreview);
+    }
+  };
 
   const processResumeFile = async (file: File) => {
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
@@ -264,11 +289,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }).catch(() => {}).finally(() => setLoadingPreferences(false));
 
     // Fetch personal info (name, email, timezone)
-    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string } } }) => {
+    getPersonalInfo().then((res: { data: { data?: { name?: string; email?: string; timezone?: string; avatarUrl?: string } } }) => {
       const data = res.data?.data ?? res.data;
       if (data?.name) setPersonalName(data.name);
       if (data?.email) setPersonalEmail(data.email);
       if (data?.timezone) setTimezone(data.timezone);
+      if (data?.avatarUrl) setAvatarUrl(data.avatarUrl);
     }).catch(() => {}).finally(() => setLoadingPersonal(false));
 
     return () => { if (resumeTimerRef.current) clearInterval(resumeTimerRef.current); };
@@ -359,19 +385,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     saveProfilePreferences(updated).catch(() => {});
   };
 
-  const handleVisaDone = () => {
-    setEditingVisa(false);
-    if (!visaStatus) return;
-    savePreferences({ workAuthorization: visaStatus });
-    if (structuredResume) {
-      const updated = {
-        ...structuredResume,
-        profile: { ...(structuredResume.profile as Record<string, unknown>), visa_status: visaStatus },
-      };
-      updateProfile(updated).then(() => setStructuredResume(updated)).catch(() => {});
-    }
-  };
-
   const handleVisaModalSave = () => {
     if (!pendingVisaStatus) return;
     setVisaStatus(pendingVisaStatus);
@@ -398,8 +411,45 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       {/* ── Hero ── */}
       <div className="flex flex-col sm:flex-row sm:items-start gap-5 pt-2">
         <div className="shrink-0">
-          <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-lg ring-4 ring-primary/15">
-            {initials}
+          <div className="relative w-16 h-16">
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="group block w-16 h-16 rounded-full ring-4 ring-primary/15 overflow-hidden focus:outline-none focus-visible:ring-primary/40 disabled:cursor-not-allowed"
+              aria-label="Change profile photo"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={displayName || 'Profile photo'} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-primary text-primary-foreground flex items-center justify-center font-medium text-lg">
+                  {initials}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                {avatarUploading
+                  ? <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  : <Camera className="w-5 h-5 text-white" />}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center shadow-sm hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Edit profile photo"
+            >
+              {avatarUploading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Pencil className="w-3 h-3" />}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarFile(f); e.target.value = ''; }}
+            />
           </div>
         </div>
         <div className="flex-1 min-w-0">
@@ -420,11 +470,11 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       </div>
 
       {/* ── Row 1: Resume + Target Role ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.3fr)_minmax(360px,1fr)] gap-6 items-start">
 
         {/* Resume Card */}
         <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -583,7 +633,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
         {/* Target Role Card */}
         <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -752,12 +802,12 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
       </div>
 
-      {/* ── Row 2: Target Companies + Work Authorization ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* ── Row 2: Target Companies ── */}
+      <div>
 
         {/* Target Companies */}
         <div
-          className="lg:col-span-7 overflow-hidden transition-colors"
+          className="overflow-hidden transition-colors"
           style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
         >
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
@@ -920,7 +970,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                   ))}
                 </div>
                 {!editingCompanies && (
-                  <p className="text-xs text-muted-foreground -mt-1">Screna delivers relevant InterviewPrep Notes to your Dashboard every day, tailored to your preferences.</p>
+                  <p className="text-xs text-muted-foreground -mt-1">Screna targets outreach and applies to open roles at these companies on your behalf.</p>
                 )}
               </>
             ) : (
@@ -939,93 +989,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                 </div>
               )
             )}
-          </div>
-        </div>
-
-        {/* Work Authorization */}
-        <div
-          className="lg:col-span-5 overflow-hidden transition-colors"
-          style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12 }}
-        >
-          <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-            <h3 style={panelTitleStyle}>Work Authorization</h3>
-            {!loadingPreferences && (
-              <button
-                onClick={() => editingVisa ? handleVisaDone() : setEditingVisa(true)}
-                className={`flex items-center gap-1.5 text-sm font-medium border rounded-md px-3 py-1.5 transition-colors ${
-                  editingVisa
-                    ? 'border-border text-muted-foreground hover:text-foreground'
-                    : 'border-primary/30 text-primary hover:bg-primary/5'
-                }`}
-              >
-                {editingVisa ? <><Check className="w-3.5 h-3.5" />Done</> : <><Pencil className="w-3.5 h-3.5" />Edit</>}
-              </button>
-            )}
-          </div>
-          <div className="px-5 py-4 flex flex-col gap-3">
-            {loadingPreferences && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2.5">
-                  <SkeletonBlock className="w-8 h-8 rounded-md shrink-0" />
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <SkeletonBlock className="h-4 w-40" />
-                    <SkeletonBlock className="h-3 w-28" />
-                  </div>
-                </div>
-                <SkeletonBlock className="h-3 w-56" />
-              </div>
-            )}
-            <AnimatePresence mode="wait">
-              {!loadingPreferences && editingVisa ? (
-                <motion.div key="visa-edit" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }} className="flex flex-col gap-2">
-                  {VISA_OPTIONS.map(({ id, label, sub }) => {
-                    const sel = visaStatus === id;
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => setVisaStatus(id)}
-                        className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-lg border text-left transition-all ${
-                          sel ? 'border-primary bg-primary/5 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]' : 'border-border bg-card hover:border-primary/40'
-                        }`}
-                      >
-                        <div>
-                          <p className={`text-sm font-medium ${sel ? 'text-primary' : 'text-foreground'}`}>{label}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-                        </div>
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                          sel ? 'border-primary bg-primary' : 'border-border bg-card'
-                        }`}>
-                          {sel && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              ) : (
-                <motion.div key="visa-view" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.15 }} className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                      <ShieldCheck className="w-4 h-4 text-primary" />
-                    </div>
-                    <div>
-                      {visaStatus ? (
-                        <>
-                          <span className="text-sm font-medium text-foreground">{VISA_OPTIONS.find(v => v.id === visaStatus)?.label ?? visaStatus}</span>
-                          {VISA_OPTIONS.find(v => v.id === visaStatus)?.sub && (
-                            <>
-                              <span className="text-sm text-muted-foreground mx-1.5">·</span>
-                              <span className="text-sm text-muted-foreground">{VISA_OPTIONS.find(v => v.id === visaStatus)?.sub}</span>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Not set — click Edit to add</span>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </div>
@@ -1162,12 +1125,14 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
   return (
-    <div className="flex flex-col gap-6">
-      <PageHead
-        title="Profile"
-        subtitle="Your career profile, target roles, and saved preferences."
-      />
-      <ProfileCoreContent userData={userData} />
-    </div>
+    <WidePageContainer maxWidth="none">
+      <div className="flex flex-col gap-6">
+        <PageHead
+          title="Profile"
+          subtitle="Your career profile, target roles, and saved preferences."
+        />
+        <ProfileCoreContent userData={userData} />
+      </div>
+    </WidePageContainer>
   );
 }

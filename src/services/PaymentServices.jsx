@@ -8,7 +8,7 @@ const BASE_URL = '/payments';
 const toApiEnum = (v) => String(v).toUpperCase();
 
 // First-time subscription: creates a new sub for the user. Returns Stripe URL.
-// body: { tier: 'STARTER' | 'PREMIUM', billingCycle: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' }
+// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP', billingCycle: 'MONTHLY' } (MONTHLY only for now)
 export const createSubscription = (tier, billingCycle) => {
   return API.post(`${BASE_URL}/subscriptions`, {
     tier: toApiEnum(tier),
@@ -21,8 +21,8 @@ export const getSubscription = () => {
   return API.get(`${BASE_URL}/subscriptions`);
 };
 
-// Change tier (Starter ↔ Premium). Upgrade prorated immediate, downgrade pending.
-// body: { tier: 'STARTER' | 'PREMIUM' }
+// Change tier for an existing subscriber. Upgrade prorated immediate, downgrade pending.
+// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP' }
 export const changeTier = (tier) => {
   return API.post(`${BASE_URL}/subscriptions/tier`, { tier: toApiEnum(tier) });
 };
@@ -62,14 +62,8 @@ export const getCreditUsage = (page = 0) => {
 };
 
 // ─── Credit packs (pay-as-you-go) ─────────────────────────────────
-export const purchaseStarterPack = () => {
-  return API.post(`${BASE_URL}/credits/starter`);
-};
-
-export const purchaseGrowthPack = () => {
-  return API.post(`${BASE_URL}/credits/growth`);
-};
-
+// Fixed-price top-up: numberOfCredits must be 50–1000 in multiples of 10.
+// Price is a flat $0.10 / credit (total = numberOfCredits × 0.10).
 export const purchaseCustomPack = (numberOfCredits) => {
   return API.post(`${BASE_URL}/credits/custom`, { numberOfCredits });
 };
@@ -99,8 +93,6 @@ const PaymentService = {
   resumeSubscription,
   getCredits,
   getCreditUsage,
-  purchaseStarterPack,
-  purchaseGrowthPack,
   purchaseCustomPack,
   createOneTimeSession,
   redeemCode,

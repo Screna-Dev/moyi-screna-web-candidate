@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, Coins, Mic, Video, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle, Check } from 'lucide-react';
+import { ArrowLeft, Clock, Coins, Mic, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Navbar } from './home/navbar';
-import { Footer } from './home/footer';
 import { DashboardLayout } from './dashboard-layout';
 import { motion, AnimatePresence } from 'motion/react';
 import imgRectangle from '@/assets/a7264fd48ee44c90a6ee1d9d5f038a62ea570b04.png';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Session Detail Data ─────────────────────────────────
 interface SessionDetail {
@@ -229,10 +229,11 @@ const DIFFICULTY_CONFIG: Record<string, { color: string; dots: number }> = {
   Staff: { color: 'text-red-500', dots: 4 },
 };
 
-const MODE_ICON: Record<string, typeof Mic> = {
-  Voice: Mic,
-  Video: Video,
-};
+// Voice is the only supported mode for now. Video mode retained for future use:
+// const MODE_ICON: Record<string, typeof Mic> = {
+//   Voice: Mic,
+//   Video: Video,   // needs `Video` from lucide-react
+// };
 
 // ════════════════════════════════════════════════════════════
 // SESSION CONFIRM PAGE
@@ -242,22 +243,26 @@ export function SessionConfirmPage() {
   const navigate = useNavigate();
   const sessionParam = searchParams.get('session') || '1';
   const sessionId = Number(sessionParam);
-  const isDashboard = searchParams.get('source') === 'dashboard';
 
-  const [selectedMode, setSelectedMode] = useState<'Voice' | 'Video'>('Voice');
-  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  // mock_set_detail_viewed —— 进入题目详情页，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.MOCK_SET_DETAIL_VIEWED, () => ({ mock_set_id: sessionParam }));
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
-        setModeDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-  
+  // Voice is the only supported mode for now. Video-mode selection retained for future use
+  // (needs `useState, useRef, useEffect` from react):
+  // const [selectedMode, setSelectedMode] = useState<'Voice' | 'Video'>('Voice');
+  // const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  // const modeDropdownRef = useRef<HTMLDivElement>(null);
+  //
+  // useEffect(() => {
+  //   function handleClickOutside(e: MouseEvent) {
+  //     if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+  //       setModeDropdownOpen(false);
+  //     }
+  //   }
+  //   document.addEventListener('mousedown', handleClickOutside);
+  //   return () => document.removeEventListener('mousedown', handleClickOutside);
+  // }, []);
+
   // Build a session from URL params when the ID isn't in the static map
   const categoryDomainMap: Record<string, string> = {
     product: 'Product Sense',
@@ -302,41 +307,35 @@ export function SessionConfirmPage() {
   const [expectOpen, setExpectOpen] = useState(false);
   const { planData, isLoading: isPlanLoading } = useUserPlan();
 
-  // Credits = duration (min) × rate (1/min voice, 2/min video)
+  // Credits = duration (min) × rate. Only Voice mode is supported (1 credit/min).
+  // Video mode was 2 credits/min — retained for future use:
+  // const creditsPerMin = selectedMode === 'Video' ? 2 : 1;
   const durationMins = parseInt(session?.time ?? dynamicTimeStr) || 30;
-  const creditsPerMin = selectedMode === 'Video' ? 2 : 1;
+  const creditsPerMin = 1;
   const creditCost = durationMins * creditsPerMin;
 
   const hasEnoughCredits = isPlanLoading || (planData.permanentCreditBalance >= creditCost);
   // If session not found
   if (!session) {
-    const notFound = (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl text-slate-900 mb-2">Session Not Found</h1>
-          <p className="text-slate-500 mb-6">The requested session doesn't exist.</p>
-          <Link to="/dashboard/mock-interview">
-            <Button variant="outline">Back to Dashboard</Button>
-          </Link>
-        </div>
-      </div>
-    );
-    if (isDashboard) {
-      return <DashboardLayout headerTitle="Session">{notFound}</DashboardLayout>;
-    }
     return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <Navbar />
-        <main className="flex-1 flex items-center justify-center">{notFound}</main>
-        <Footer />
-      </div>
+      <DashboardLayout headerTitle="Session">
+        <div className="flex-1 flex items-center justify-center py-24">
+          <div className="text-center">
+            <h1 className="text-2xl text-slate-900 mb-2">Session Not Found</h1>
+            <p className="text-slate-500 mb-6">The requested session doesn't exist.</p>
+            <Link to="/dashboard/mock-interview">
+              <Button variant="outline">Back to Dashboard</Button>
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   }
 
   const diffConfig = DIFFICULTY_CONFIG[session.difficulty];
 
   const cardContent = (
-        <div className={`max-w-3xl mx-auto px-6 pb-16 ${isDashboard ? 'pt-8' : 'pt-[130px]'}`}>
+        <div className="max-w-3xl mx-auto px-6 pb-16 pt-8">
           {/* Back link */}
           <button
             onClick={() => navigate(-1)}
@@ -398,7 +397,22 @@ export function SessionConfirmPage() {
                   </div>
                 </div>
 
-                {/* Mode */}
+                {/* Mode — Voice only */}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                    <Mic className="w-4 h-4 text-indigo-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Mode</p>
+                    <p className="text-sm text-slate-900">Voice</p>
+                  </div>
+                </div>
+
+                {/* Voice/Video mode selector — retained for future use. Re-enable the
+                    `selectedMode`/`modeDropdownOpen`/`modeDropdownRef` state above, restore
+                    the `MODE_ICON` map, and re-import `Video`, `Check`, `ChevronDown` from
+                    lucide-react. Then replace the static Mode block above with this: */}
+                {/*
                 <div className="relative" ref={modeDropdownRef}>
                   <button
                     onClick={() => setModeDropdownOpen(!modeDropdownOpen)}
@@ -431,7 +445,7 @@ export function SessionConfirmPage() {
                         transition={{ duration: 0.15 }}
                         className="absolute top-full left-0 mt-2 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden"
                       >
-                        {(['Voice', 'Video'] as const).map((mode) => {
+                        {(['Voice', 'Video']).map((mode) => {
                           const isSelected = selectedMode === mode;
                           const MIcon = MODE_ICON[mode];
                           const isVideo = mode === 'Video';
@@ -466,6 +480,7 @@ export function SessionConfirmPage() {
                     )}
                   </AnimatePresence>
                 </div>
+                */}
 
                 {/* Questions */}
                 <div className="flex items-center gap-2.5">
@@ -584,7 +599,7 @@ export function SessionConfirmPage() {
                     </p>
                   </div>
                   <Link
-                    to="/pricing"
+                    to="/#pricing"
                     className="shrink-0 text-xs font-medium text-red-600 hover:text-red-800 underline underline-offset-2 whitespace-nowrap"
                   >
                     Buy credits
@@ -619,8 +634,8 @@ export function SessionConfirmPage() {
                     const type = domainTypeMap[session.domain] ?? 'behavioral';
                     const difficulty = session.difficulty.toLowerCase();
                     const duration = session.time.replace(' min', '');
-                    const mode = selectedMode.toLowerCase();
-                    return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=${mode}`;
+                    // Voice-only for now. Future: const mode = selectedMode.toLowerCase();
+                    return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=voice`;
                   })()}>
                     <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
                       Begin Session
@@ -628,7 +643,7 @@ export function SessionConfirmPage() {
                     </Button>
                   </Link>
                 ) : (
-                  <Link to="/pricing">
+                  <Link to="/#pricing">
                     <Button className="bg-red-500 hover:bg-red-600 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm shadow-red-200">
                       <Coins className="w-4 h-4" />
                       Get More Credits
@@ -641,19 +656,9 @@ export function SessionConfirmPage() {
         </div>
   );
 
-  if (isDashboard) {
-    return (
-      <DashboardLayout headerTitle={session.title}>
-        {cardContent}
-      </DashboardLayout>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col">
-      <Navbar />
-      <main className="flex-1">{cardContent}</main>
-      <Footer />
-    </div>
+    <DashboardLayout headerTitle={session.title}>
+      {cardContent}
+    </DashboardLayout>
   );
 }

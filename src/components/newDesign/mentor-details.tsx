@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   ArrowLeft, Clock, Calendar, Briefcase, Award, Video, ShieldCheck, X,
@@ -7,6 +7,10 @@ import {
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -123,6 +127,7 @@ interface BookingModalProps {
 }
 
 function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: BookingModalProps) {
+  const posthog = usePostHog();
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
   const [timezone, setTimezone] = useState(TIMEZONES[0]);
@@ -136,6 +141,18 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+
+  // IANA id extracted from the selected label, e.g. "America/Los_Angeles (PDT, UTC−7)" → "America/Los_Angeles"
+  const tz = timezone.split(' ')[0];
+
+  // Date parts (year, month 0-indexed, day) of a UTC instant rendered in the selected timezone
+  const zonedParts = useCallback((iso: string) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
+    }).formatToParts(new Date(iso));
+    const get = (t: string) => Number(parts.find(p => p.type === t)?.value);
+    return { year: get('year'), month: get('month') - 1, day: get('day') };
+  }, [tz]);
 
   // Fetch available slots when duration changes
   useEffect(() => {
@@ -151,40 +168,46 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
         console.log('[mentor-slots] received', list.length, 'slots; sample:', list[0]);
         setSlots(list);
         if (list.length > 0) {
-          const first = new Date(list[0].startTime);
-          setCalYear(first.getFullYear());
-          setCalMonth(first.getMonth());
+          const first = zonedParts(list[0].startTime);
+          setCalYear(first.year);
+          setCalMonth(first.month);
         }
       })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
   }, [mentorId, plan.id, duration]);
 
-  // Days that have at least one slot
+  // Days that have at least one slot (computed in the selected timezone)
   const availableDaysSet = useMemo(() => {
     const s = new Set<string>();
     slots.forEach(sl => {
-      const d = new Date(sl.startTime);
-      s.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+      const d = zonedParts(sl.startTime);
+      s.add(`${d.year}-${d.month}-${d.day}`);
     });
     return s;
-  }, [slots]);
+  }, [slots, zonedParts]);
 
-  // Slots for the currently selected day
+  // Slots for the currently selected day (matched in the selected timezone)
   const slotsForDay = useMemo(() => {
     if (selectedDay === null) return [];
     return slots.filter(sl => {
-      const d = new Date(sl.startTime);
-      return d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === selectedDay;
+      const d = zonedParts(sl.startTime);
+      return d.year === calYear && d.month === calMonth && d.day === selectedDay;
     });
-  }, [slots, selectedDay, calYear, calMonth]);
+  }, [slots, selectedDay, calYear, calMonth, zonedParts]);
+
+  // Changing timezone can shift a slot onto a different calendar day, so clear the selection.
+  useEffect(() => {
+    setSelectedDay(null);
+    setSelectedSlot(null);
+  }, [tz]);
 
   function isDayAvailable(year: number, month: number, day: number) {
     return availableDaysSet.has(`${year}-${month}-${day}`);
   }
 
   function formatSlotTime(iso: string) {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz });
   }
 
   // Close on Escape
@@ -238,6 +261,12 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
       });
       const data = res.data?.data ?? res.data ?? {};
       if (data.checkoutUrl) {
+        // session_booked —— 成功创建预约（即将跳转 Stripe 付款；实际扣款由 webhook 确认）
+        safeCapture(posthog, EVENTS.SESSION_BOOKED, {
+          mentor_id: mentorId,
+          session_plan: plan.id,
+          duration_minutes: duration === '30min' ? 30 : 60,
+        });
         window.location.href = data.checkoutUrl;
         return;
       }
@@ -337,7 +366,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                           <Clock className="w-4 h-4" />
                           {label}
                         </div>
-                        <span className="text-xs text-muted-foreground">${p} / session</span>
+                        <span className="text-xs text-muted-foreground">${p.toFixed(2)} / session</span>
                       </button>
                     );
                   })}
@@ -346,7 +375,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
               <div className="bg-muted/60 rounded-lg px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Session total</span>
-                <span className="text-lg font-medium text-foreground">${price}</span>
+                <span className="text-lg font-medium text-foreground">${price.toFixed(2)}</span>
               </div>
             </div>
           )}
@@ -464,10 +493,17 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                 </div>
               )}
               {selectedSlot && (
-                <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
-                  <span className="text-muted-foreground">Selected: </span>
-                  <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
-                </div>
+                <>
+                  <div className="bg-secondary border border-border rounded-lg px-4 py-3 text-sm">
+                    <span className="text-muted-foreground">Selected: </span>
+                    <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
+                  </div>
+                  {new Date(selectedSlot).getTime() - Date.now() < 24 * 60 * 60 * 1000 && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      💡 Friendly Reminder: This session starts within the next 24 hours. Please note that to respect the mentor's schedule, bookings made within this timeframe are non-refundable once confirmed.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -522,7 +558,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
               <div className="flex items-center justify-between bg-muted/60 rounded-lg px-4 py-3">
                 <span className="text-sm font-medium text-foreground">Total</span>
-                <span className="text-xl font-medium text-foreground">${price}</span>
+                <span className="text-xl font-medium text-foreground">${price.toFixed(2)}</span>
               </div>
 
               <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-secondary border border-border rounded-lg px-3 py-2.5">
@@ -617,6 +653,11 @@ export function MentorDetailsPage() {
   const [mentor, setMentor] = useState<MentorData | null>(null);
   const [loading, setLoading] = useState(!!mentorId);
 
+  // mentor_profile_viewed —— 进入 mentor 主页，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.MENTOR_PROFILE_VIEWED, () => ({ mentor_id: mentorId }), {
+    enabled: !!mentorId,
+  });
+
   useEffect(() => {
     if (!mentorId) return;
     setLoading(true);
@@ -643,7 +684,7 @@ export function MentorDetailsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout headerTitle="Mentor Profile" noSidebar>
+      <DashboardLayout headerTitle="Mentor Profile">
         <div className="flex items-center justify-center min-h-[60vh]">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
@@ -652,7 +693,7 @@ export function MentorDetailsPage() {
   }
 
   return (
-    <DashboardLayout headerTitle="Mentor Profile" noSidebar>
+    <DashboardLayout headerTitle="Mentor Profile">
       {activePlan && mentor && (
         <BookingModal
           plan={activePlan}
@@ -663,16 +704,16 @@ export function MentorDetailsPage() {
         />
       )}
 
-      <div className="w-full max-w-5xl mx-auto pb-24 pt-28">
+      <div className="w-full max-w-[1200px] mx-auto pb-24 pt-8">
 
         {/* Back link */}
         <div className="flex items-center justify-between mb-8">
-          <Link to="/marketplace" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <Link to="/coaching" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
             Back to Mentorship
           </Link>
           <Link
-            to="/dashboard"
+            to="/history?tab=mentor"
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Calendar className="w-3.5 h-3.5" />
@@ -706,11 +747,11 @@ export function MentorDetailsPage() {
               <span className="font-medium text-foreground">{mentor?.currentCompany}</span>
             </div>
 
-            <div className="flex flex-wrap gap-2 mt-4">
+            {/* <div className="flex flex-wrap gap-2 mt-4">
               {(mentor?.expertiseTags ?? []).map(tag => (
                 <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
               ))}
-            </div>
+            </div> */}
 
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-2xl">{mentor?.bio}</p>
 
@@ -751,44 +792,35 @@ export function MentorDetailsPage() {
             <section>
               <h2 className="text-foreground mb-5">Coaching Plans</h2>
               <div className="flex flex-col gap-4">
-                {plans.map(plan => {
-                  const Icon = plan.icon;
-                  return (
-                    <div
-                      key={plan.id}
-                      className="bg-card rounded-xl border border-border p-5 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0 text-muted-foreground p-[0px] mx-[0px] my-[20px]">
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
-                          <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
+                {plans.map(plan => (
+                  <div
+                    key={plan.id}
+                    className="bg-card rounded-xl border border-border p-6 hover:shadow-sm transition-shadow"
+                  >
+                    <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
+                    <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
 
-                          {/* Duration + pricing row */}
-                          <div className="flex flex-wrap items-center gap-2 mt-3">
-                            
-                            
-                            
+                    {/* Duration + pricing row */}
+                    <div className="flex items-center justify-between mt-5">
+                      <div className="flex items-center gap-5">
+                        {(['30min', '1hr'] as const).map(d => (
+                          <div key={d} className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {d === '30min' ? '30 min' : '1 hr'} · ${plan.pricing[d]}
+                            </span>
                           </div>
-                        </div>
-
-                        {/* CTA */}
-                        <div className="shrink-0 flex flex-col items-end gap-2 pl-2">
-                          
-                          
-                          <button
-                            onClick={() => setActivePlan(plan)}
-                            className="mt-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap mx-[0px] mt-[20px] mb-[0px]"
-                          >
-                            Book
-                          </button>
-                        </div>
+                        ))}
                       </div>
+                      <button
+                        onClick={() => setActivePlan(plan)}
+                        className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity whitespace-nowrap"
+                      >
+                        Book
+                      </button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -796,28 +828,10 @@ export function MentorDetailsPage() {
             <section>
               <h2 className="text-foreground mb-5">Ratings & Reviews</h2>
 
-              <div className="bg-card border border-border rounded-xl p-6 mb-5">
-                <div className="flex flex-col md:flex-row gap-8 items-center">
-                  <div className="text-center md:w-1/3 shrink-0">
-                    <p className="text-5xl font-medium text-foreground tracking-tight">{ratingBreakdown.overall.toFixed(1)}</p>
-                    <div className="flex justify-center my-2"><StarRating rating={ratingBreakdown.overall} /></div>
-                    <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
-                  </div>
-                  {/* <div className="flex-1 w-full space-y-3 md:pl-8 md:border-l border-border">
-                    {[
-                      { label: 'Communication', val: ratingBreakdown.Communication },
-                      { label: 'Expertise',      val: ratingBreakdown.Expertise },
-                      { label: 'Helpfulness',    val: ratingBreakdown.Helpfulness },
-                      { label: 'Preparation',    val: ratingBreakdown.Preparation },
-                    ].map(item => (
-                      <div key={item.label} className="flex items-center gap-3 text-sm">
-                        <span className="w-28 text-muted-foreground text-xs">{item.label}</span>
-                        <div className="flex-1"><RatingBar value={item.val} /></div>
-                        <span className="w-8 text-right text-xs font-medium text-foreground">{item.val.toFixed(1)}</span>
-                      </div>
-                    ))}
-                  </div> */}
-                </div>
+              <div className="bg-card border border-border rounded-xl mb-5 flex flex-col items-center py-6 gap-2">
+                <p className="text-5xl font-medium text-foreground tracking-tight leading-none">{ratingBreakdown.overall.toFixed(1)}</p>
+                <StarRating rating={ratingBreakdown.overall} />
+                <p className="text-xs text-muted-foreground">Based on {mentor?.reviewCount ?? 0} reviews</p>
               </div>
 
               <div className="space-y-3">

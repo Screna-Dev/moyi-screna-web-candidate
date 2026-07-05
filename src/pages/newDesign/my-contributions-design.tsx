@@ -1,0 +1,854 @@
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Plus,
+  Eye,
+  Pencil,
+  Trash2,
+  ThumbsUp,
+  MessageSquare,
+  Clock,
+  Search,
+  FileText,
+  Bookmark,
+  MoreHorizontal,
+  AlertTriangle,
+  ChevronDown,
+  CheckCircle2,
+} from 'lucide-react';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { WidePageContainer } from '@/components/newDesign/dashboard-page';
+import { Button } from '@/components/newDesign/ui/button';
+import { getMyPosts, getMyComments, getMySavedPosts, deletePost } from '@/services/CommunityService';
+
+// ─── Color Mappings ────────────────────────────────────
+const ROLE_COLORS: Record<string, string> = {
+  'Software Engineer': 'bg-blue-50 text-blue-700 border-blue-200',
+  'Product Manager': 'bg-violet-50 text-violet-700 border-violet-200',
+  'Data Scientist': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Engineering Manager': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'Product Designer': 'bg-pink-50 text-pink-700 border-pink-200',
+};
+
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
+  Published: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  'Under Review': { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' },
+  Draft: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+};
+
+// ─── Types ──────────��─────────────────────────────────
+interface Post {
+  id: string | number;
+  company: string;
+  role: string;
+  round: string;
+  status: 'Published' | 'Under Review' | 'Draft';
+  date: string;
+  likes: number;
+  comments: number;
+  questions: number;
+  views: number;
+}
+
+interface CommentItem {
+  id: string | number;
+  postTitle: string;
+  postCompany: string;
+  content: string;
+  date: string;
+  likes: number;
+  referencedQuestion: string | null;
+}
+
+interface SavedPost {
+  id: string | number;
+  company: string;
+  role: string;
+  round: string;
+  author: string;
+  date: string;
+  likes: number;
+  comments: number;
+  questions: number;
+}
+
+// ─── API → UI mapping ──────────────────────────────────
+// Backend returns status as: PENDING | APPROVED | DRAFT | REJECTED (etc.).
+// The UI uses Published / Under Review / Draft (sentence-case).
+function mapPostStatus(raw: unknown): 'Published' | 'Under Review' | 'Draft' {
+  const s = String(raw ?? '').toUpperCase();
+  if (s === 'APPROVED' || s === 'PUBLISHED') return 'Published';
+  if (s === 'PENDING' || s === 'IN_REVIEW') return 'Under Review';
+  return 'Draft';
+}
+
+function formatPostDate(iso?: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatRelative(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
+  if (isNaN(ms)) return '';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} day${day === 1 ? '' : 's'} ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk} week${wk === 1 ? '' : 's'} ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ApiPost — fields the backend returns from GET /community/posts/me
+interface ApiPost {
+  id: string;
+  user?: { id?: string; name?: string };
+  company?: string;
+  role?: string;
+  level?: string;
+  round?: string;
+  date?: string;
+  outcome?: string;
+  location?: string;
+  questions?: Array<{ id?: string; seq?: number; label?: string; title?: string; categories?: string[]; notes?: string }>;
+  summary?: string;
+  status?: string;
+  isAnonymous?: boolean;
+  likeCount?: number;
+  saveCount?: number;
+  commentCount?: number;
+  liked?: boolean;
+  saved?: boolean;
+  createdAt?: string;
+}
+
+interface ApiComment {
+  id: string;
+  postId?: string;
+  questionSeq?: number;
+  questionTitle?: string;
+  content?: string;
+  status?: string;
+  isAnonymous?: boolean;
+  createdAt?: string;
+}
+
+function mapApiPost(p: ApiPost): Post {
+  return {
+    id: p.id,
+    company: p.company ?? 'Unknown',
+    role: p.role ?? 'Unknown role',
+    round: p.round ?? '—',
+    status: mapPostStatus(p.status),
+    date: formatPostDate(p.createdAt ?? p.date),
+    likes: p.likeCount ?? 0,
+    comments: p.commentCount ?? 0,
+    questions: Array.isArray(p.questions) ? p.questions.length : 0,
+    views: p.saveCount ?? 0, // API has no views field — show saves instead
+  };
+}
+
+function mapApiComment(c: ApiComment): CommentItem {
+  return {
+    id: c.id,
+    postTitle: c.questionTitle ?? 'Comment on post',
+    postCompany: '',
+    content: c.content ?? '',
+    date: formatRelative(c.createdAt),
+    likes: 0,
+    referencedQuestion: c.questionTitle ?? null,
+  };
+}
+
+function mapApiSavedPost(p: ApiPost): SavedPost {
+  const author = p.isAnonymous ? 'Anonymous' : (p.user?.name ?? 'Anonymous');
+  return {
+    id: p.id,
+    company: p.company ?? 'Unknown',
+    role: p.role ?? 'Unknown role',
+    round: p.round ?? '—',
+    author,
+    date: formatPostDate(p.createdAt ?? p.date),
+    likes: p.likeCount ?? 0,
+    comments: p.commentCount ?? 0,
+    questions: Array.isArray(p.questions) ? p.questions.length : 0,
+  };
+}
+
+type TabKey = 'posts' | 'comments' | 'saved';
+
+// ═══════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════
+export function MyContributionsPage() {
+  const [activeTab, setActiveTab] = useState<TabKey>('posts');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
+  const [actionMenuOpen, setActionMenuOpen] = useState<string | number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Published' | 'Under Review' | 'Draft'>('All');
+
+  // Live data from the backend
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [savedLoading, setSavedLoading] = useState(true);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPosts() {
+      try {
+        const res = await getMyPosts({ page: 0, size: 50 });
+        if (cancelled) return;
+        const content: ApiPost[] = res.data?.data?.content ?? [];
+        setPosts(content.map(mapApiPost));
+        setPostsError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setPostsError(e instanceof Error ? e.message : 'Failed to load posts');
+        setPosts([]);
+      } finally {
+        if (!cancelled) setPostsLoading(false);
+      }
+    }
+    async function loadComments() {
+      try {
+        const res = await getMyComments({ page: 0, size: 50 });
+        if (cancelled) return;
+        const content: ApiComment[] = res.data?.data?.content ?? [];
+        setComments(content.map(mapApiComment));
+        setCommentsError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setCommentsError(e instanceof Error ? e.message : 'Failed to load comments');
+        setComments([]);
+      } finally {
+        if (!cancelled) setCommentsLoading(false);
+      }
+    }
+    async function loadSaved() {
+      try {
+        const res = await getMySavedPosts({ page: 0, size: 50 });
+        if (cancelled) return;
+        const content: ApiPost[] = res.data?.data?.content ?? [];
+        setSavedPosts(content.map(mapApiSavedPost));
+        setSavedError(null);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setSavedError(e instanceof Error ? e.message : 'Failed to load saved posts');
+        setSavedPosts([]);
+      } finally {
+        if (!cancelled) setSavedLoading(false);
+      }
+    }
+    loadPosts();
+    loadComments();
+    loadSaved();
+    return () => { cancelled = true; };
+  }, []);
+
+  const TABS: { key: TabKey; label: string; icon: React.ReactNode; count: number }[] = [
+    { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: posts.length },
+    { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: comments.length },
+    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: savedPosts.length },
+  ];
+
+  // Filtered posts
+  const filteredPosts = posts.filter(p => {
+    if (statusFilter !== 'All' && p.status !== statusFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        p.company.toLowerCase().includes(q) ||
+        p.role.toLowerCase().includes(q) ||
+        p.round.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const filteredComments = comments.filter(c => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return c.content.toLowerCase().includes(q) || c.postTitle.toLowerCase().includes(q);
+  });
+
+  const filteredSaved = savedPosts.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      s.company.toLowerCase().includes(q) ||
+      s.role.toLowerCase().includes(q) ||
+      s.round.toLowerCase().includes(q)
+    );
+  });
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    // Optimistically remove + close dialog (keeps existing UI unchanged).
+    setPosts(prev => prev.filter(p => p.id !== target.id));
+    setDeleteTarget(null);
+    try {
+      await deletePost(String(target.id));
+    } catch {
+      // On failure, restore the post so it remains visible.
+      setPosts(prev => (prev.some(p => p.id === target.id) ? prev : [...prev, target]));
+    }
+  };
+
+  // Close action menu on outside click
+  const closeActionMenu = () => setActionMenuOpen(null);
+
+  return (
+    <DashboardLayout headerTitle="My Contributions" fullBleed>
+      <WidePageContainer maxWidth="none">
+      <div>
+        {/* ─── Tabs + CTA ─── */}
+        <div className="flex items-center gap-2 mb-6">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setSearchQuery(''); setStatusFilter('All'); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all duration-150 select-none ${
+                activeTab === tab.key
+                  ? 'bg-muted text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                activeTab === tab.key
+                  ? 'bg-foreground/10 text-foreground'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+          <Link to="/add-experience" className="ml-auto shrink-0">
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-9 text-xs gap-1.5 shadow-md shadow-primary/20 px-4">
+              <Plus className="w-3.5 h-3.5" />
+              Add Interview Experience
+            </Button>
+          </Link>
+        </div>
+
+        {/* ─── Controls Bar ─── */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
+            <input
+              type="text"
+              placeholder={
+                activeTab === 'posts' ? 'Search your posts…' :
+                activeTab === 'comments' ? 'Search your comments…' :
+                'Search saved posts…'
+              }
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 h-9 rounded-xl border border-[hsl(220,16%,90%)] bg-white text-sm focus:border-[hsl(221,91%,60%)] focus:ring-2 focus:ring-[hsl(221,91%,60%)]/20 outline-none transition-all"
+            />
+          </div>
+
+          {activeTab === 'posts' && (
+            <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
+          )}
+        </div>
+
+        {/* ─── Posts Tab ─── */}
+        {activeTab === 'posts' && (
+          <div>
+            {filteredPosts.length === 0 ? (
+              <EmptyState
+                title="No interview experiences yet"
+                description="Share your interview journey to help others prepare — and track your contributions here."
+                ctaLabel="Add Interview Experience"
+                ctaHref="/add-experience"
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] overflow-hidden shadow-sm">
+                {/* Table header */}
+                <div className="hidden md:grid md:grid-cols-[1fr_130px_110px_140px_80px] gap-4 px-5 py-3 bg-[hsl(220,20%,98%)] border-b border-[hsl(220,16%,92%)] text-[11px] font-semibold text-[hsl(222,12%,50%)] uppercase tracking-wider">
+                  <span>Post</span>
+                  <span>Status</span>
+                  <span>Date</span>
+                  <span>Engagement</span>
+                  <span className="text-right">Actions</span>
+                </div>
+
+                {/* Rows */}
+                <div className="divide-y divide-[hsl(220,16%,94%)]">
+                  {filteredPosts.map((post, i) => {
+                    const status = STATUS_STYLES[post.status];
+                    const roleColor = ROLE_COLORS[post.role] || 'bg-slate-50 text-slate-600 border-slate-200';
+                    const isMenuOpen = actionMenuOpen === post.id;
+
+                    return (
+                      <motion.div
+                        key={post.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.03 }}
+                        className="group hover:bg-[hsl(220,20%,99%)] transition-colors"
+                      >
+                        {/* Desktop row */}
+                        <div className="hidden md:grid md:grid-cols-[1fr_130px_110px_140px_80px] gap-4 px-5 py-4 items-center">
+                          {/* Post info */}
+                          <div className="min-w-0">
+                            <Link
+                              to={`/experience/${post.id}`}
+                              className="block group/link"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)] shrink-0">
+                                  {post.company[0]}
+                                </div>
+                                <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover/link:text-[hsl(221,91%,60%)] transition-colors truncate">
+                                  {post.company} · {post.role}
+                                </h3>
+                              </div>
+                              <p className="text-xs text-[hsl(222,12%,50%)] truncate pl-9">
+                                {post.round} · {post.questions} questions
+                              </p>
+                            </Link>
+                          </div>
+
+                          {/* Status */}
+                          <div>
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${status.bg} ${status.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                              {post.status}
+                            </span>
+                          </div>
+
+                          {/* Date */}
+                          <div className="text-xs text-[hsl(222,12%,50%)]">
+                            {post.date}
+                          </div>
+
+                          {/* Engagement */}
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center gap-1 text-xs text-[hsl(222,12%,50%)]">
+                              <ThumbsUp className="w-3 h-3" />
+                              {post.likes}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs text-[hsl(222,12%,50%)]">
+                              <MessageSquare className="w-3 h-3" />
+                              {post.comments}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs text-[hsl(222,12%,50%)]">
+                              <Eye className="w-3 h-3" />
+                              {post.views >= 1000 ? `${(post.views / 1000).toFixed(1)}k` : post.views}
+                            </span>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="relative flex justify-end">
+                            <button
+                              onClick={() => setActionMenuOpen(isMenuOpen ? null : post.id)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(222,12%,55%)] hover:bg-[hsl(220,20%,96%)] hover:text-[hsl(222,22%,15%)] transition-colors"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+
+                            <AnimatePresence>
+                              {isMenuOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={closeActionMenu} />
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                                    transition={{ duration: 0.12 }}
+                                    className="absolute top-full right-0 mt-1 w-44 bg-white rounded-xl border border-[hsl(220,16%,90%)] shadow-xl shadow-slate-900/[0.06] z-50 p-1 origin-top-right"
+                                  >
+                                    <Link
+                                      to={`/experience/${post.id}`}
+                                      onClick={closeActionMenu}
+                                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[hsl(222,12%,35%)] hover:bg-[hsl(220,20%,98%)] rounded-lg transition-colors"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 opacity-50" />
+                                      View
+                                    </Link>
+                                    <Link
+                                      to="/add-experience"
+                                      onClick={closeActionMenu}
+                                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[hsl(222,12%,35%)] hover:bg-[hsl(220,20%,98%)] rounded-lg transition-colors"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 opacity-50" />
+                                      Edit
+                                    </Link>
+                                    <div className="h-px bg-[hsl(220,16%,94%)] my-1" />
+                                    <button
+                                      onClick={() => { setDeleteTarget(post); closeActionMenu(); }}
+                                      className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50/60 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 opacity-60" />
+                                      Delete
+                                    </button>
+                                  </motion.div>
+                                </>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+
+                        {/* Mobile card */}
+                        <div className="md:hidden p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <Link to={`/experience/${post.id}`} className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-6 h-6 rounded-md bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
+                                  {post.company[0]}
+                                </div>
+                                <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
+                                  {post.company} · {post.role}
+                                </h3>
+                              </div>
+                              <p className="text-xs text-[hsl(222,12%,50%)] pl-8 truncate">
+                                {post.round} · {post.questions} questions
+                              </p>
+                            </Link>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${status.bg} ${status.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                              {post.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between mt-3 pl-8">
+                            <div className="flex items-center gap-3 text-[11px] text-[hsl(222,12%,55%)]">
+                              <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" />{post.likes}</span>
+                              <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{post.comments}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{post.date}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Link to={`/experience/${post.id}`}>
+                                <button className="w-7 h-7 rounded-md flex items-center justify-center text-[hsl(222,12%,55%)] hover:bg-[hsl(220,20%,96%)]">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              </Link>
+                              <Link to="/add-experience">
+                                <button className="w-7 h-7 rounded-md flex items-center justify-center text-[hsl(222,12%,55%)] hover:bg-[hsl(220,20%,96%)]">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              </Link>
+                              <button
+                                onClick={() => setDeleteTarget(post)}
+                                className="w-7 h-7 rounded-md flex items-center justify-center text-red-400 hover:bg-red-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Comments Tab ─── */}
+        {activeTab === 'comments' && (
+          <div>
+            {filteredComments.length === 0 ? (
+              <EmptyState
+                title="No comments yet"
+                description="Join the conversation on interview experiences shared by the community."
+                ctaLabel="Browse Interview Insights"
+                ctaHref="/interview-insights"
+              />
+            ) : (
+              <div className="space-y-3">
+                {filteredComments.map((comment, i) => (
+                  <motion.div
+                    key={comment.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 hover:border-[hsl(221,91%,60%)]/20 transition-all"
+                  >
+                    {/* Post reference */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-5 h-5 rounded-md bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-[8px] font-bold text-[hsl(222,22%,15%)]">
+                        {comment.postCompany[0]}
+                      </div>
+                      <span className="text-xs text-[hsl(222,12%,50%)]">
+                        Commented on
+                      </span>
+                      <span className="text-xs font-medium text-[hsl(222,22%,15%)] truncate">{comment.postTitle}</span>
+                    </div>
+
+                    {/* Referenced question */}
+                    {comment.referencedQuestion && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-[hsl(221,91%,60%)]/6 rounded-lg border border-[hsl(221,91%,60%)]/10 mb-3 max-w-md">
+                        <span className="text-[10px] font-bold text-[hsl(221,91%,60%)]">#</span>
+                        <span className="text-[11px] text-[hsl(222,12%,40%)] truncate">{comment.referencedQuestion}</span>
+                      </div>
+                    )}
+
+                    {/* Comment text */}
+                    <p className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-3">
+                      {comment.content}
+                    </p>
+
+                    {/* Meta */}
+                    <div className="flex items-center gap-4 text-[11px] text-[hsl(222,12%,55%)]">
+                      <span className="flex items-center gap-1">
+                        <ThumbsUp className="w-3 h-3" />
+                        {comment.likes}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {comment.date}
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Saved Tab ── */}
+        {activeTab === 'saved' && (
+          <div>
+            {filteredSaved.length === 0 ? (
+              <EmptyState
+                title="No saved posts yet"
+                description="Save interview experiences from the community to reference them later during your prep."
+                ctaLabel="Browse Interview Insights"
+                ctaHref="/interview-insights"
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredSaved.map((saved, i) => {
+                  const roleColor = ROLE_COLORS[saved.role] || 'bg-slate-50 text-slate-600 border-slate-200';
+                  return (
+                    <motion.div
+                      key={saved.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                    >
+                      <Link
+                        to={`/experience/${saved.id}`}
+                        className="block bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 hover:border-[hsl(221,91%,60%)]/20 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all group"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-7 h-7 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,90%)] flex items-center justify-center text-xs font-bold text-[hsl(222,22%,15%)]">
+                            {saved.company[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] group-hover:text-[hsl(221,91%,60%)] transition-colors truncate">
+                              {saved.company} · {saved.role}
+                            </h4>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[hsl(222,12%,50%)] mb-3 pl-9">
+                          {saved.round} · {saved.questions} questions · by {saved.author}
+                        </p>
+                        <div className="flex items-center gap-3 pl-9 text-[11px] text-[hsl(222,12%,55%)]">
+                          <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" />{saved.likes}</span>
+                          <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{saved.comments}</span>
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{saved.date}</span>
+                        </div>
+                      </Link>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Delete Confirmation Dialog ─── */}
+        <AnimatePresence>
+          {deleteTarget && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            >
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                onClick={() => setDeleteTarget(null)}
+              />
+
+              {/* Dialog */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="relative bg-white rounded-2xl border border-[hsl(220,16%,90%)] shadow-2xl shadow-slate-900/20 w-full max-w-md p-6 z-10"
+              >
+                {/* Warning icon */}
+                <div className="w-12 h-12 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-6 h-6 text-red-500" />
+                </div>
+
+                <h3 className="text-lg font-semibold text-[hsl(222,22%,15%)] text-center mb-2">
+                  Delete this experience?
+                </h3>
+                <p className="text-sm text-[hsl(222,12%,50%)] text-center leading-relaxed mb-2">
+                  This will permanently remove your interview experience for:
+                </p>
+                <div className="bg-[hsl(220,20%,98%)] rounded-xl border border-[hsl(220,16%,92%)] p-3 mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-white border border-[hsl(220,16%,90%)] flex items-center justify-center text-[10px] font-bold text-[hsl(222,22%,15%)]">
+                      {deleteTarget.company[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[hsl(222,22%,15%)] truncate">
+                        {deleteTarget.company} · {deleteTarget.role}
+                      </p>
+                      <p className="text-[11px] text-[hsl(222,12%,50%)]">{deleteTarget.round}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[hsl(222,12%,55%)] text-center mb-5 leading-relaxed">
+                  All associated questions, AI hints, and community comments on this post will also be deleted. This action cannot be undone.
+                </p>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteTarget(null)}
+                    className="flex-1 rounded-xl h-10 text-sm border-[hsl(220,16%,90%)]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleDelete}
+                    className="flex-1 rounded-xl h-10 text-sm bg-red-600 hover:bg-red-700 text-white border-0 shadow-md shadow-red-500/20"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete permanently
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      </WidePageContainer>
+    </DashboardLayout>
+  );
+}
+
+// ─── Empty State Component ─────────────────────────────
+function EmptyState({
+  title,
+  description,
+  ctaLabel,
+  ctaHref,
+}: {
+  title: string;
+  description: string;
+  ctaLabel: string;
+  ctaHref: string;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-12 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] flex items-center justify-center mx-auto mb-5">
+        <FileText className="w-7 h-7 text-[hsl(222,12%,70%)]" />
+      </div>
+      <h3 className="text-lg font-semibold text-[hsl(222,22%,15%)] mb-2">
+        {title}
+      </h3>
+      <p className="text-sm text-[hsl(222,12%,50%)] max-w-sm mx-auto leading-relaxed mb-6">
+        {description}
+      </p>
+      <Link to={ctaHref}>
+        <Button className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl h-10 text-sm gap-2 shadow-md shadow-[hsl(221,91%,60%)]/20 px-6">
+          <Plus className="w-4 h-4" />
+          {ctaLabel}
+        </Button>
+      </Link>
+    </div>
+  );
+}
+
+// ─── Status Filter Dropdown ────────────────────────────
+function StatusFilterDropdown({
+  value,
+  onChange,
+}: {
+  value: 'All' | 'Published' | 'Under Review' | 'Draft';
+  onChange: (value: 'All' | 'Published' | 'Under Review' | 'Draft') => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative shrink-0">
+      {/* Trigger */}
+      <button
+        onClick={() => setIsOpen(o => !o)}
+        className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border text-sm transition-all select-none ${
+          isOpen
+            ? 'border-border bg-muted text-foreground'
+            : 'border-border bg-card text-foreground hover:bg-muted/50'
+        }`}
+      >
+        <span style={{ fontWeight: 400 }}>{value === 'All' ? 'Status' : value}</span>
+        <ChevronDown
+          className="w-3.5 h-3.5 text-muted-foreground transition-transform duration-150"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        />
+      </button>
+
+      {/* Overlay + Panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: 4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.97 }}
+              transition={{ duration: 0.12 }}
+              className="absolute right-0 top-full mt-1.5 w-48 bg-card rounded-xl border border-border shadow-lg shadow-black/[0.06] z-50 py-1.5 overflow-hidden origin-top-right"
+            >
+              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => { onChange(s); setIsOpen(false); }}
+                  className={`flex items-center justify-between w-full px-4 py-2.5 text-sm transition-colors ${
+                    value === s
+                      ? 'text-primary bg-primary/5'
+                      : 'text-foreground hover:bg-muted'
+                  }`}
+                  style={{ fontWeight: value === s ? 500 : 400 }}
+                >
+                  {s === 'All' ? 'All Statuses' : s}
+                  {value === s && (
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                  )}
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

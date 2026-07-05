@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { T } from '@/lib/design-tokens';
-import { listMyBookings } from '@/services/MentorService';
+import { listMyBookings, cancelBooking, rescheduleBooking, getMentor, getMentorSlots } from '@/services/MentorService';
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Plan = 'free' | 'starter' | 'premium';
@@ -224,8 +226,9 @@ function StatCardSkeleton() {
 function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
   const isPremium = plan === 'premium';
   const colCount = isPremium ? 4 : 2;
-  const learningSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
-  const sessionsSub = isPremium ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
+  // Mentorship is available to all members, so it's reflected in these stats regardless of plan.
+  const learningSub = 'Mock Interview + Mentorship Sessions';
+  const sessionsSub = 'Mock Interview + Mentorship Sessions';
 
   return (
     <div
@@ -274,26 +277,12 @@ type Series = {
   summaryB: { label: string; value: string };
   legend: string;
 };
-// TODO: swap for real timeseries endpoint when available.
-const MOCK_SERIES: Record<ChartTab, Series> = {
-  applications: {
-    data: [3,4,3,3,4,3,4,3,3,4,3,4,3,3,4,3,3,4,3,4,3,3,4,3,4,7,5,4,3,4],
-    summaryA: { label: 'Total Applications', value: '107' },
-    summaryB: { label: 'Daily Average', value: '3.6' },
-    legend: 'Applications submitted',
-  },
-  learning: {
-    data: [42,45,40,48,44,46,43,50,42,38,46,44,48,52,46,44,50,46,44,48,42,46,50,84,52,46,44,48,46,44],
-    summaryA: { label: 'Total Learning Time', value: '21h 9m' },
-    summaryB: { label: 'Avg per Session', value: '42m' },
-    legend: 'Learning time per day (min)',
-  },
-  sessions: {
-    data: [1,2,1,2,2,1,2,1,2,2,1,2,2,1,3,2,1,2,2,1,2,2,1,2,3,2,1,2,1,2],
-    summaryA: { label: 'Total Sessions', value: '52' },
-    summaryB: { label: 'Avg per Day', value: '1.7' },
-    legend: 'Sessions per day',
-  },
+// Labels per tab used for the empty-state series. There is no timeseries endpoint
+// yet, so when the API returns no daily data we render the empty state — never mock.
+const TAB_LABELS: Record<ChartTab, { a: string; b: string; legend: string }> = {
+  applications: { a: 'Total Applications', b: 'Daily Average', legend: 'Applications submitted' },
+  learning: { a: 'Total Learning Time', b: 'Daily Average', legend: 'Learning time per day (min)' },
+  sessions: { a: 'Total Sessions', b: 'Avg per Day', legend: 'Sessions per day' },
 };
 
 function formatValue(tab: ChartTab, v: number): string {
@@ -384,7 +373,16 @@ function TrendChart({
         legend: 'Sessions per day',
       };
     }
-    return MOCK_SERIES[effectiveTab];
+    // No real daily data for this tab — return an empty series so the chart
+    // renders its empty state instead of fabricated values.
+    const lbl = TAB_LABELS[effectiveTab];
+    return {
+      data: [],
+      dates: [],
+      summaryA: { label: lbl.a, value: '—' },
+      summaryB: { label: lbl.b, value: '—' },
+      legend: lbl.legend,
+    };
   }, [effectiveTab, learningDaily, sessionsDaily, rangeDays]);
 
   const hasData = series.data.length > 0;
@@ -720,6 +718,7 @@ type Booking = {
   id: string;
   mentorId: string;
   mentorName: string;
+  mentorRealName?: string; // mentor's real name; always present, used as a fallback
   mentorAvatarUrl?: string;
   topicTitle: string;
   durationMinutes: number;
@@ -730,6 +729,10 @@ type Booking = {
   meetingLink?: string;
   mentorAvgRating?: number;
   studentNote?: string;
+  mentorNote?: string | null;
+  canCancel?: boolean;
+  canReschedule?: boolean;
+  rescheduleUsed?: boolean;
 };
 
 function getInitials(name?: string): string {
@@ -803,37 +806,40 @@ function MentorshipCardSkeleton() {
   );
 }
 
-function MentorshipCard({ plan }: { plan: Plan }) {
+function MentorshipCard() {
   const navigate = useNavigate();
-  const userPlan = useUserPlan();
-  const isFree = plan === 'free';
-  const planLoading = userPlan.isLoading;
+  // Mentorship is open to all members (Free and Premium alike).
   const [loading, setLoading] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  // Which booking action modal is open, if any.
+  const [modal, setModal] = useState<{ type: 'cancel' | 'reschedule'; booking: Booking } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await listMyBookings({ page: 0, size: 20 });
+      const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+      // mentorName may be blank; mentorRealName is guaranteed non-null — fall back to it.
+      const normalized = (Array.isArray(content) ? content : []).map(b => ({
+        ...b,
+        mentorName: b.mentorName || b.mentorRealName || 'Mentor',
+      }));
+      setBookings(normalized);
+    } catch {
+      setBookings([]);
+    }
+  }, []);
 
   useEffect(() => {
-    if (planLoading) return;        // Wait until the real plan is known
-    if (isFree) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
     let alive = true;
+    setLoading(true);
     (async () => {
-      try {
-        const res = await listMyBookings({ page: 0, size: 20 });
-        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        if (alive) setBookings(Array.isArray(content) ? content : []);
-      } catch {
-        if (alive) setBookings([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
+      await load();
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
-  }, [isFree, planLoading]);
+  }, [load]);
 
-  if (planLoading || loading) return <MentorshipCardSkeleton />;
+  if (loading) return <MentorshipCardSkeleton />;
 
   // Upcoming = CONFIRMED, soonest first
   const upcoming = bookings
@@ -851,46 +857,7 @@ function MentorshipCard({ plan }: { plan: Plan }) {
     <Panel style={{ position: 'relative' }}>
       <PanelHead title="Mentorship" linkLabel="Browse mentors" onLink={() => navigate('/marketplace')} />
 
-      {isFree && (
-        <div style={{
-          position: 'absolute', inset: '56px 16px 16px 16px',
-          zIndex: 2,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8,
-          textAlign: 'center', padding: '24px 20px',
-          background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)',
-          borderRadius: 10,
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: T.bgSecondary, color: T.blue600,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 4,
-          }}>
-            <IconLockLarge />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.textPrimary }}>Mentorship is a member benefit</div>
-          <div style={{ fontSize: 12, color: T.textSecondary, lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>
-            Book 1:1 sessions with senior mentors and track every session in one place.
-          </div>
-          <button
-            onClick={() => navigate('/pricing')}
-            style={{
-              padding: '9px 16px', borderRadius: 8, border: 0,
-              background: T.blue500, color: '#fff',
-              fontSize: 13, fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'background 160ms',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = T.blue600)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = T.blue500)}
-          >
-            Upgrade to membership
-          </button>
-        </div>
-      )}
-
-      <div style={{ filter: isFree ? 'blur(6px)' : 'none', pointerEvents: isFree ? 'none' : 'auto', userSelect: isFree ? 'none' : 'auto', opacity: isFree ? 0.55 : 1 }}>
+      <div>
         {/* Upcoming session */}
         {nextSession ? (
           <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, background: '#fff' }}>
@@ -922,6 +889,12 @@ function MentorshipCard({ plan }: { plan: Plan }) {
                 <div style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary }}>{nextSession.topicTitle}</div>
               </div>
             )}
+            {nextSession.mentorNote && (
+              <div style={{ background: T.bgSecondary, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: T.textSecondary, marginBottom: 2 }}>Mentor's note — how to prepare</div>
+                <div style={{ fontSize: 12, color: T.textPrimary, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{nextSession.mentorNote}</div>
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.textSecondary, marginBottom: 10 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.blue500 }} />
               {timeUntil(nextSession.startTime)}
@@ -947,6 +920,46 @@ function MentorshipCard({ plan }: { plan: Plan }) {
             >
               {nextSession.meetingLink ? 'Join Session' : 'Awaiting meeting link'}
             </button>
+
+            {/* Manage booking — reschedule / cancel */}
+            {(nextSession.canReschedule !== false || nextSession.canCancel !== false) && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {nextSession.canReschedule !== false && (
+                  <button
+                    onClick={() => setModal({ type: 'reschedule', booking: nextSession })}
+                    title={nextSession.rescheduleUsed ? 'You have already rescheduled this session once' : undefined}
+                    disabled={nextSession.rescheduleUsed === true}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8,
+                      border: `1px solid ${T.border}`, background: '#fff',
+                      color: nextSession.rescheduleUsed ? T.textMuted : T.textPrimary,
+                      fontSize: 13, fontWeight: 500,
+                      cursor: nextSession.rescheduleUsed ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', transition: 'background 120ms',
+                    }}
+                    onMouseEnter={(e) => { if (!nextSession.rescheduleUsed) e.currentTarget.style.background = T.bgSecondary; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    Reschedule
+                  </button>
+                )}
+                {nextSession.canCancel !== false && (
+                  <button
+                    onClick={() => setModal({ type: 'cancel', booking: nextSession })}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8,
+                      border: '1px solid #fecaca', background: '#fff', color: '#dc2626',
+                      fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                      fontFamily: 'inherit', transition: 'background 120ms',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{
@@ -1000,7 +1013,333 @@ function MentorshipCard({ plan }: { plan: Plan }) {
           )}
         </div>
       </div>
+
+      {modal?.type === 'cancel' && (
+        <CancelBookingModal
+          booking={modal.booking}
+          onClose={() => setModal(null)}
+          onDone={async () => { setModal(null); await load(); }}
+        />
+      )}
+      {modal?.type === 'reschedule' && (
+        <RescheduleBookingModal
+          booking={modal.booking}
+          onClose={() => setModal(null)}
+          onDone={async () => { setModal(null); await load(); }}
+        />
+      )}
     </Panel>
+  );
+}
+
+// ─── Booking action modals (cancel / reschedule) ─────────────────────────────
+
+function errMessage(err: unknown): string | undefined {
+  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+}
+
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div style={{
+        background: '#fff', border: `1px solid ${T.border}`, borderRadius: 16,
+        width: '100%', maxWidth: 440, maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${T.border}`,
+        }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: T.textPrimary, margin: 0 }}>{title}</h2>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, lineHeight: 0 }}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div style={{ padding: 20, overflowY: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function CancelBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ refunded: boolean; refundAmountCents: number } | null>(null);
+
+  // Refund policy: full refund only if cancelled > 48h before the session start.
+  const hoursUntil = (new Date(booking.startTime).getTime() - Date.now()) / 3_600_000;
+  const refundEligible = hoursUntil > 48;
+
+  async function handleConfirm() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await cancelBooking(booking.id) as { data?: { data?: { refunded?: boolean; refundAmountCents?: number } } };
+      const data = res?.data?.data ?? {};
+      setResult({ refunded: !!data.refunded, refundAmountCents: data.refundAmountCents ?? 0 });
+    } catch (err) {
+      setError(errMessage(err) || 'Could not cancel this session. Please try again.');
+      setSubmitting(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <ModalShell title="Session cancelled" onClose={onDone}>
+        <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 16px' }}>
+          Your session with {booking.mentorName} has been cancelled.
+          {result.refunded && result.refundAmountCents > 0
+            ? ` A refund of $${(result.refundAmountCents / 100).toFixed(2)} has been issued.`
+            : ' No refund was issued for this cancellation.'}
+        </p>
+        <button
+          onClick={onDone}
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="Cancel session" onClose={onClose}>
+      <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 14px' }}>
+        Cancel your {booking.durationMinutes} min session with <strong>{booking.mentorName}</strong> on {formatBookingDateTime(booking.startTime)}?
+      </p>
+
+      {/* Refund policy notice */}
+      <div style={{
+        display: 'flex', gap: 10, padding: 12, borderRadius: 10, marginBottom: 16,
+        background: refundEligible ? '#f0fdf4' : '#fef2f2',
+        border: `1px solid ${refundEligible ? '#bbf7d0' : '#fecaca'}`,
+      }}>
+        <span style={{ fontSize: 15, lineHeight: 1.2 }}>{refundEligible ? '✓' : '⚠'}</span>
+        <div style={{ fontSize: 12, lineHeight: 1.55, color: refundEligible ? '#166534' : '#b91c1c' }}>
+          {refundEligible ? (
+            <>This session is more than <strong>48 hours</strong> away, so you'll receive a <strong>full refund</strong>.</>
+          ) : (
+            <><strong>No refund:</strong> cancellations within <strong>48 hours</strong> of the session start time are non-refundable.</>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{error}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: '#fff', color: T.textPrimary, fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Keep session
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1, fontFamily: 'inherit',
+          }}
+        >
+          {submitting ? 'Cancelling…' : 'Confirm cancellation'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+type Slot = { startTime: string; endTime: string };
+
+function RescheduleBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const [loadingSlots, setLoadingSlots] = useState(true);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+
+  // The booking carries mentorId + durationMinutes but not topicId, which the
+  // slots endpoint needs — resolve it from the mentor's topic list.
+  useEffect(() => {
+    let alive = true;
+    setLoadingSlots(true);
+    (async () => {
+      try {
+        const mres = await getMentor(booking.mentorId) as { data?: { data?: { topics?: Array<{ id: string; title: string; active: boolean }> } } };
+        const topics = mres?.data?.data?.topics ?? [];
+        const topic =
+          topics.find(t => t.title === booking.topicTitle) ??
+          topics.find(t => t.active) ??
+          topics[0];
+        if (!topic) { if (alive) { setSlots([]); setLoadingSlots(false); } return; }
+        const sres = await getMentorSlots(booking.mentorId, topic.id, booking.durationMinutes) as { data?: { data?: Slot[] } };
+        const data = sres?.data?.data ?? [];
+        const list: Slot[] = Array.isArray(data) ? data : [];
+        // Don't offer the current slot back as a "new" time.
+        if (alive) setSlots(list.filter(s => s.startTime !== booking.startTime));
+      } catch {
+        if (alive) setSlots([]);
+      } finally {
+        if (alive) setLoadingSlots(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [booking.mentorId, booking.durationMinutes, booking.topicTitle, booking.startTime]);
+
+  // Group slots by calendar day for display.
+  const days = useMemo(() => {
+    const map = new Map<string, Slot[]>();
+    [...slots]
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .forEach(s => {
+        const key = formatBookingShortDate(s.startTime);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(s);
+      });
+    return Array.from(map.entries());
+  }, [slots]);
+
+  async function handleConfirm() {
+    if (!selected) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await rescheduleBooking(booking.id, selected);
+      setConfirmed(true);
+    } catch (err) {
+      setError(errMessage(err) || 'Could not reschedule to that time. Please pick another slot.');
+      setSubmitting(false);
+    }
+  }
+
+  if (confirmed) {
+    return (
+      <ModalShell title="Session rescheduled" onClose={onDone}>
+        <p style={{ fontSize: 13, color: T.textPrimary, lineHeight: 1.6, margin: '0 0 16px' }}>
+          Your session with {booking.mentorName} is now set for <strong>{formatBookingDateTime(selected!)}</strong>.
+        </p>
+        <button
+          onClick={onDone}
+          style={{
+            width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Done
+        </button>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="Reschedule session" onClose={onClose}>
+      <p style={{ fontSize: 12.5, color: T.textSecondary, lineHeight: 1.6, margin: '0 0 6px' }}>
+        Currently {formatBookingDateTime(booking.startTime)} with {booking.mentorName}.
+      </p>
+      <div style={{ fontSize: 11.5, color: T.textMuted, marginBottom: 14 }}>
+        You can reschedule a session once. Pick a new available time below.
+      </div>
+
+      {loadingSlots ? (
+        <div style={{ fontSize: 13, color: T.textSecondary, padding: '20px 0', textAlign: 'center' }}>
+          Loading available times…
+        </div>
+      ) : days.length === 0 ? (
+        <div style={{ fontSize: 13, color: T.textSecondary, padding: '20px 0', textAlign: 'center' }}>
+          No available times right now. Please try again later.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 320, overflowY: 'auto', marginBottom: 16 }}>
+          {days.map(([dayLabel, daySlots]) => (
+            <div key={dayLabel}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: 8 }}>{dayLabel}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {daySlots.map(s => {
+                  const active = selected === s.startTime;
+                  const label = new Date(s.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                  return (
+                    <button
+                      key={s.startTime}
+                      onClick={() => setSelected(s.startTime)}
+                      style={{
+                        padding: '8px 4px', borderRadius: 8, fontSize: 12.5, fontWeight: 500,
+                        border: `1px solid ${active ? T.blue500 : T.border}`,
+                        background: active ? T.blue500 : '#fff',
+                        color: active ? '#fff' : T.textPrimary,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{error}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: `1px solid ${T.border}`,
+            background: '#fff', color: T.textPrimary, fontSize: 13, fontWeight: 500,
+            cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={!selected || submitting}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none',
+            background: T.blue500, color: '#fff', fontSize: 13, fontWeight: 500,
+            cursor: (!selected || submitting) ? 'not-allowed' : 'pointer',
+            opacity: (!selected || submitting) ? 0.6 : 1, fontFamily: 'inherit',
+          }}
+        >
+          {submitting ? 'Rescheduling…' : 'Confirm new time'}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -1081,13 +1420,6 @@ function statusTagStyle(color: string, bg: string): CSSProperties {
 
 // ─── Interview Practice Insights (radar) ─────────────────────────────────────
 type Dim = { label: string; value: number };
-// TODO: swap for real radar endpoint when available.
-const MOCK_DIMS: Dim[] = [
-  { label: 'Domain Knowledge', value: 82 },
-  { label: 'Technical Skills', value: 76 },
-  { label: 'Behavioral Skills', value: 65 },
-  { label: 'Background & Experience', value: 78 },
-];
 
 function qualitative(v: number): string {
   if (v >= 80) return 'Strong';
@@ -1251,18 +1583,15 @@ function InsightsCard({
   if (isLoading) return <InsightsCardSkeleton />;
 
   const hasInsights = insights != null;
-  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores) && insights!.categoryScores.length > 0
+  const dims: Dim[] = hasInsights && Array.isArray(insights!.categoryScores)
     ? insights!.categoryScores.map((c) => ({
         label: c.category,
         value: Math.round(Number(c.averageScore) || 0),
       }))
-    : hasInsights
-      ? []
-      : MOCK_DIMS;
+    : [];
 
-  const hasData = hasInsights
-    ? dims.length > 0
-    : dims.some((d) => d.value > 0);
+  // No insights from the API → render the empty state, never mock data.
+  const hasData = dims.length > 0;
 
   if (!hasData) {
     return (
@@ -1689,7 +2018,7 @@ export function DashboardHome({
           alignItems: 'start',
         }}
       >
-        <MentorshipCard plan={plan} />
+        <MentorshipCard />
         <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
         <CommunityCard />
       </div>
@@ -1700,6 +2029,11 @@ export function DashboardHome({
 // ─── Page wrapper ────────────────────────────────────────────────────────────
 export function DashboardHomePage() {
   const { user, isLoading } = useAuth();
+
+  // dashboard_viewed —— 进入 member dashboard，离开时记录 duration_seconds（admin 不计）
+  useDwellTracking(EVENTS.DASHBOARD_VIEWED, undefined, {
+    enabled: !!user && user.role !== 'ADMIN',
+  });
 
   // Admins don't use the candidate dashboard — send them to the admin console.
   if (!isLoading && user?.role === 'ADMIN') {

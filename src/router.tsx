@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Outlet, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -7,13 +7,13 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
 import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
-import JobBoardPage from './pages/newDesign/home/job-board'
+// Jobs feature temporarily hidden for this release — restore when re-launching.
+// import JobBoardPage from './pages/newDesign/home/job-board'
 // Auth / onboarding pages
 import { AuthPage } from './pages/newDesign/auth';
 import ForgotPassword from './pages/ForgetPassword';
 import { RefRedirect } from './pages/ref-redirect';
 import { SignupFlowPage } from './pages/newDesign/signup-flow';
-import { OnboardingPage } from './pages/newDesign/onboarding';
 
 // Dashboard / post-login pages
 import { DashboardPage } from './pages/newDesign/dashboard';
@@ -21,23 +21,24 @@ import { DashboardHomePage } from './pages/newDesign/dashboard-home';
 import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
 import { AIMockPage } from './pages/newDesign/ai-mock';
 import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
-import { HistoryPage } from './pages/newDesign/history';
-import { ReferEarnPage } from './pages/newDesign/refer-earn';
-import { SettingsPage } from './pages/newDesign/settings';
-import { BillingPage } from './pages/newDesign/billing';
+import { TrainingHistoryPage as HistoryPage } from './pages/newDesign/training-history-design';
+import { ReferEarnPage } from './pages/newDesign/refer-earn-design';
+import { SettingsPage } from './pages/newDesign/settings-design';
 import { EvaluationPage } from './pages/newDesign/evaluation-page';
 import { AddExperiencePage } from './pages/newDesign/add-experience';
-import { MessageCenterPage } from './pages/newDesign/message-center';
 import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
 import { SessionConfirmPage } from './components/newDesign/session-confirm';
 import GoogleCallback from './pages/GoogleCallback';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
-import { MyContributionsPage } from './pages/newDesign/my-contributions';
-import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice';
+import { MyContributionsPage } from './pages/newDesign/my-contributions-design';
+import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice-design';
+import { QuickMockPage } from './pages/newDesign/quick-mock-page';
+import { CoachingPage } from './pages/newDesign/coaching-page';
 import { HomePage } from './pages/newDesign/home/home';
-import { InterviewInsightsPage } from './pages/newDesign/interview-insights';
+import { InterviewInsightsPage } from './pages/newDesign/interview-insights-design';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
+import { CompanyDetailPage } from './pages/newDesign/company-detail';
 import { ContactPage } from './pages/newDesign/contact';
 import AdminConsole from './components/admin/console/AdminConsole';
 import AdminRedeemCodes from './pages/AdminRedeemCodes';
@@ -53,6 +54,7 @@ import { GoalPage } from './pages/newDesign/goal-page';
 import { GoalUploadPage } from './pages/newDesign/goal-upload-page';
 import { Navbar } from './components/newDesign/home/navbar';
 import { Footer } from './components/newDesign/home/footer';
+import { useSessionTracking } from './hooks/useSessionTracking';
 import { OnboardingProcessPage } from './pages/newDesign/onboarding-process';
 import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-overview';
 import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
@@ -62,12 +64,23 @@ import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketp
 import { MentorDetailsPage } from './components/newDesign/mentor-details';
 import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
 
+// Mentor dashboard (dual-role candidate/mentor accounts)
+import { MentorDashboardPage } from './pages/mentor/mentor-dashboard';
+import { SelectDashboardPage } from './pages/mentor/select-dashboard';
+
+// Retention: 在 providers 内部挂载，用于上报 session_end（需要读取 useAuth）
+function SessionTracker() {
+  useSessionTracking();
+  return null;
+}
+
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
     <AuthProvider>
       <UserPlanProvider>
         <RecommendedJobsProvider>
+          <SessionTracker />
           <Outlet />
           <CookieBanner />
         </RecommendedJobsProvider>
@@ -112,28 +125,33 @@ export const router = createBrowserRouter([
       { path: '/pgs/ref/:slug', element: <RefRedirect /> },
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
-      { path: '/onboarding', element: <OnboardingPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
       { path: '/personalized-practice', element: <PersonalizedPracticePage /> },
+      { path: '/quick-mock', element: <QuickMockPage /> },
+      { path: '/coaching', element: <CoachingPage /> },
       { path: '/session-confirm', element: <SessionConfirmPage /> },
       { path: '/ai-mock', element: <AIMockPage /> },
       { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
       { path: '/dashboard', element: <DashboardHomePage /> },
       { path: '/profile', element: <DashboardPage /> },
-      { path: '/applications', element: <DashboardPage /> },
+      // Jobs feature temporarily hidden for this release — restore when re-launching.
+      // { path: '/applications', element: <DashboardPage /> },
       { path: '/dashboard/contributions', element: <DashboardPage /> },
       { path: '/contributions', element: <MyContributionsPage /> },
-      { path: '/job-board', element: <JobBoardPage /> },
+      // Jobs feature temporarily hidden for this release — restore when re-launching.
+      // { path: '/job-board', element: <JobBoardPage /> },
       { path: '/refer', element: <ReferEarnPage /> },
       { path: '/history', element: <HistoryPage /> },
       { path: '/settings', element: <SettingsPage /> },
-      { path: '/billing', element: <BillingPage /> },
+      // /billing is deprecated — billing now lives under Settings. Redirect old
+      // links/bookmarks to the canonical location.
+      { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
       { path: '/payment-success', element: <PaymentSuccess /> },
       { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
-      { path: '/messages', element: <MessageCenterPage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
+      { path: '/interview-insights/:companyId', element: <CompanyDetailPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},
       { path: '/help',element: <HelpCenterPage />},
@@ -201,6 +219,16 @@ export const router = createBrowserRouter([
         {
           path: '/guest-dashboard',
           element: <GuestDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/select-dashboard',
+          element: <SelectDashboardPage />,
+          errorElement: <ErrorBoundary />,
+        },
+        {
+          path: '/mentor-dashboard',
+          element: <MentorDashboardPage />,
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },

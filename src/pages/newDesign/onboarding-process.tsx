@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePostHog } from 'posthog-js/react';
+import { markOnboardingComplete } from '@/utils/analytics';
 import {
   Check,
   ArrowRight,
@@ -882,6 +884,7 @@ function StepCommandCenter({ profile }: { profile: UserProfile }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function OnboardingProcessPage() {
+  const posthog = usePostHog();
   const [currentStep, setCurrentStep] = useState(1);
 
   const [profile, setProfile] = useState<UserProfile>({
@@ -892,6 +895,18 @@ export function OnboardingProcessPage() {
     timeline: '',
     biggestChallenge: [],
   });
+
+  // onboarding_completed —— 到达最后一步（command center）
+  useEffect(() => {
+    if (currentStep === 5) {
+      markOnboardingComplete(posthog, 'onboarding_process', {
+        career_stage: profile.careerStage,
+        primary_goal: profile.primaryGoal,
+        target_roles_count: profile.targetRoles.length,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   const updateProfile = (partial: Partial<UserProfile>) => {
     setProfile((prev) => ({ ...prev, ...partial }));

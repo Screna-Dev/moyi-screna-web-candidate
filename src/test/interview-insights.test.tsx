@@ -20,6 +20,8 @@ vi.mock('@/services/CommunityService', () => ({
   getReplies: vi.fn(),
   createReply: vi.fn(),
   deleteReply: vi.fn(),
+  getPostOptions: vi.fn(() => Promise.resolve({ data: { data: {} } })),
+  getCommunityCompanies: vi.fn(() => Promise.resolve({ data: { data: [] } })),
 }));
 
 // ─── AuthContext Mock ─────────────────────────────────────
@@ -59,9 +61,7 @@ vi.mock('@/hooks/useUserPlan', () => ({
     isLoading: false,
     error: null,
     isPremium: false,
-    isElite: false,
     isFree: true,
-    isPro: false,
     canAccessJobs: false,
     canAccessPremiumReport: false,
     canPushProfile: false,

@@ -3,8 +3,8 @@ import { Calendar, Clock, ChevronDown, ChevronRight, SlidersHorizontal, X, Check
 import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { getMentors } from '../../services/MentorService';
-import { useUserPlan } from '@/hooks/useUserPlan';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasMentorRole } from '../mentor/dashboard-mode';
 import { ApplyMentorModal } from './apply-mentor-modal';
 
 // ─── API Types ─────────────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[10.5px] text-slate-400 leading-none">From</p>
-            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${mentor.priceFrom / 100}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${(mentor.priceFrom / 100).toFixed(2)}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
@@ -271,13 +271,11 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export function MentorMarketplaceListPage() {
-  // Mentorship is included on Starter + Premium; visitors and Free users see
-  // the locked / blurred view. canAccessMentorship is false while plan is
-  // loading, so we avoid flashing the member view before the data arrives.
-  const { canAccessMentorship } = useUserPlan();
-  const { user } = useAuth();
-  const isMember = canAccessMentorship;
-  const isAlreadyMentor = user?.role?.toUpperCase() === 'MENTOR';
+  // Mentorship is open to ALL logged-in members (Free included): everyone can
+  // browse and book. Only signed-out visitors see the locked / blurred view.
+  const { user, isAuthenticated } = useAuth();
+  const isMember = isAuthenticated;
+  const isAlreadyMentor = hasMentorRole(user);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSort, setOpenSort] = useState(false);
@@ -346,7 +344,7 @@ export function MentorMarketplaceListPage() {
                 Mentorship sessions are available to members. Booking is unlocked when you join.
               </p>
             </div>
-            <Link to="/pricing" className="shrink-0">
+            <Link to="/#pricing" className="shrink-0">
               <button className="flex items-center gap-1.5 text-[12.5px] font-medium text-[hsl(221,91%,60%)] hover:text-[hsl(221,91%,50%)] transition-colors whitespace-nowrap">
                 Explore plans
                 <ArrowRight className="w-3 h-3" />
@@ -512,7 +510,7 @@ export function MentorMarketplaceListPage() {
                   <button className="w-full py-4 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[15px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-all shadow-[0_4px_20px_rgba(67,118,248,0.25)] active:scale-[0.98]">
                     Upgrade to unlock
                   </button>
-                  <Link to="/pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
+                  <Link to="/#pricing" className="inline-block text-[14px] font-medium text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4">
                     See all plans
                   </Link>
                 </div>

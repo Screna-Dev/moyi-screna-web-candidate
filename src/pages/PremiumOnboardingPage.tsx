@@ -31,7 +31,7 @@ export default function PremiumOnboardingPage() {
       return;
     }
     if (!subscription || subscription.plan !== 'premium') {
-      navigate('/pricing');
+      navigate('/#pricing');
     }
   }, [user, subscription, isAuthLoading, isSubLoading, navigate]);
 
@@ -42,12 +42,12 @@ export default function PremiumOnboardingPage() {
   };
 
   const handleSkip = () => {
-    navigate('/billing');
+    navigate('/settings?tab=billing');
   };
 
   const handleDiscordClose = () => {
     setShowDiscordWelcome(false);
-    navigate('/billing');
+    navigate('/settings?tab=billing');
   };
 
   if (isLoading || !subscription || subscription.plan !== 'premium') {

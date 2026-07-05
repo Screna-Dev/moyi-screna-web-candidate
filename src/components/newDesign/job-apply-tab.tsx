@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import {
   CheckCircle2, ChevronDown, Clock,
   MapPin, Pencil, Plus, Search,
-  Sparkles,
   Briefcase, X, Lock, RefreshCw,
   SendHorizonal,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
@@ -13,12 +13,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
-import { Link } from 'react-router';
 import { ApplicationProfileContent } from './application-profile-tab';
 import { PremiumOnboardingWizard } from './premium-onboarding-wizard';
 import JobService from '@/services/JobServices';
 import { getOnboardingStatus, getProfilePreferences, saveProfilePreferences } from '@/services/ProfileServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 const ROLE_SUGGESTIONS = [
   // Engineering / data / other roles
@@ -108,6 +110,24 @@ const mapAppToApplied = (a: any): AppliedJob => {
   };
 };
 
+// jd_status from the apply backend: PENDING / IN_PROGRESS / FETCHED / GONE /
+// UNSUPPORTED / FAILED. Recommendations can arrive before the JD worker has
+// fetched the description, so the field may be absent → treat as PENDING.
+type JdStatus = 'PENDING' | 'IN_PROGRESS' | 'FETCHED' | 'GONE' | 'UNSUPPORTED' | 'FAILED';
+const normalizeJdStatus = (raw?: string): JdStatus => {
+  const s = (raw || '').toUpperCase().replace(/-/g, '_');
+  switch (s) {
+    case 'IN_PROGRESS':
+    case 'INPROGRESS': return 'IN_PROGRESS';
+    case 'FETCHED': return 'FETCHED';
+    case 'GONE': return 'GONE';
+    case 'UNSUPPORTED': return 'UNSUPPORTED';
+    case 'FAILED': return 'FAILED';
+    case 'PENDING':
+    default: return 'PENDING';
+  }
+};
+
 const mapRecToJob = (item: any): Job => {
   const company = item.company_name || 'Unknown';
   return {
@@ -124,10 +144,12 @@ const mapRecToJob = (item: any): Job => {
     years: '',
     salary: '',
     isPositiveMatch: false,
-    description: '',
+    description: item.jd_html ?? '',
     skills: [],
     positiveSkills: [],
     apply_url: item.apply_url || undefined,
+    jdHtml: item.jd_html ?? '',
+    jdStatus: item.jd_status,
   };
 };
 
@@ -150,6 +172,8 @@ type Job = {
   skills: string[];
   positiveSkills: string[];
   apply_url?: string;
+  jdHtml?: string;
+  jdStatus?: string;
 };
 
 function convertStatusToBadge(status: 'Queued' | 'In Progress' | 'Submitted' | 'Failed'): React.ReactNode {
@@ -172,6 +196,134 @@ function CompanyAvatar({ letter, color = 'bg-primary text-primary-foreground', s
     </div>
   );
 }
+// ─── Job Detail Panel ──────────────────────────────────────────────────────
+// Right-hand panel of the Matched two-column layout. Shows the selected job and
+// the description that the apply backend asynchronously fetches (jd_html),
+// keyed on jd_status:
+//   FETCHED                  → render jd_html (already server-sanitized)
+//   PENDING / IN_PROGRESS    → "Description loading…"
+//   GONE / UNSUPPORTED / FAILED → "Full description unavailable" (no link)
+function JobDetailPanel({
+  job, onDelegate, onReject, delegating,
+}: {
+  job: Job | null;
+  onDelegate: (job: Job) => void;
+  onReject: (job: Job) => void;
+  delegating: boolean;
+}) {
+  if (!job) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+        <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
+        <p className="text-sm text-muted-foreground">Select a job to see the details.</p>
+      </div>
+    );
+  }
+
+  const status = normalizeJdStatus(job.jdStatus);
+  const hasHtml = !!(job.jdHtml && job.jdHtml.trim());
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="p-6 border-b border-border shrink-0">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+              {job.logoLetter}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground mb-0.5 truncate">{job.title}</h2>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                <span className="font-medium text-foreground truncate">{job.company}</span>
+                {job.location && (
+                  <>
+                    <span>•</span>
+                    <span className="truncate">{job.location}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => onReject(job)}
+              disabled={delegating}
+              className="px-4 font-medium gap-1.5 text-muted-foreground hover:bg-transparent hover:text-muted-foreground hover:border-border disabled:cursor-not-allowed"
+              style={{ fontWeight: 500 }}
+            >
+              <X className="w-3.5 h-3.5" />
+              Not Interested
+            </Button>
+            <Button
+              onClick={() => onDelegate(job)}
+              disabled={delegating}
+              className="px-5 font-medium bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 disabled:cursor-not-allowed"
+              style={{ fontWeight: 500 }}
+            >
+              {delegating ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Delegating…
+                </>
+              ) : (
+                <>
+                  <SendHorizonal className="w-3.5 h-3.5" />
+                  Delegate
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {(job.location || job.timeAgo || job.matchScore > 0) && (
+          <div className="flex items-center flex-wrap gap-3 text-xs">
+            {job.location && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <MapPin className="w-3.5 h-3.5" />
+                <span className="text-foreground">{job.location}</span>
+              </div>
+            )}
+            {job.timeAgo && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-foreground">{job.timeAgo}</span>
+              </div>
+            )}
+            {job.matchScore > 0 && (
+              <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                {job.matchScore}% Match
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Body — About the role / JD */}
+      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        <h4 className="text-[11px] font-semibold text-foreground mb-3 uppercase tracking-wider">About the role</h4>
+        {status === 'FETCHED' && hasHtml ? (
+          <div
+            className="text-sm text-foreground leading-relaxed [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_h4]:font-semibold [&_h4]:mt-3 [&_h4]:mb-1.5 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_a]:text-primary [&_a]:underline [&_table]:w-full [&_table]:text-xs [&_table]:my-3 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
+            dangerouslySetInnerHTML={{ __html: job.jdHtml as string }}
+          />
+        ) : status === 'PENDING' || status === 'IN_PROGRESS' ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+            <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+            Description loading…
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-12 px-4">
+            <AlertCircle className="w-8 h-8 text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">Full description unavailable.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AppliedTab(
   {
   jobs}: { jobs: AppliedJob[] }) {
@@ -267,11 +419,13 @@ function DelegatedTab({ items }: { items: DelegatedJob[] }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────
 export function JobApplyTab() {
-  // Plan gate — Jobs is Premium-only. Pro (starter) and Free users see an
-  // upgrade screen and never hit the onboarding flow.
-  const { isElite, isLoading: isPlanLoading, planData } = useUserPlan();
+  // Jobs is open to all members (including Free) — everyone can browse matched
+  // jobs and complete onboarding. Only job *delegation* is Premium-gated, which
+  // the backend enforces (see handleDelegateClick → 402/403 → upgrade modal).
+  const { canAccessJobs, isLoading: isPlanLoading } = useUserPlan();
+  const posthog = usePostHog();
+  const limitApproachedFiredRef = useRef(false);
 
   // Onboarding gate — premium users who haven't finished resume / preferences
   // / consent see a blocking screen that opens the wizard at the right step.
@@ -302,9 +456,9 @@ export function JobApplyTab() {
   };
 
   useEffect(() => {
-    if (isPlanLoading || !isElite) return;
+    if (isPlanLoading || !canAccessJobs) return;
     fetchOnboardingStatus();
-  }, [isPlanLoading, isElite]);
+  }, [isPlanLoading, canAccessJobs]);
 
   const wizardInitialStep: 1 | 2 | 3 = !onboardingFlags.resume_uploaded
     ? 1
@@ -383,6 +537,21 @@ export function JobApplyTab() {
   const [monthlyLimit, setMonthlyLimit] = useState(0);
   const [profileTargetRoles, setProfileTargetRoles] = useState<string[]>([]);
   const [profilePreferences, setProfilePreferences] = useState<any>(null);
+
+  // application_limit_approached —— 当月申请数达到月度上限 90% 时上报一次
+  useEffect(() => {
+    if (monthlyLimit > 0 && appliedCount >= monthlyLimit * 0.9) {
+      if (!limitApproachedFiredRef.current) {
+        limitApproachedFiredRef.current = true;
+        safeCapture(posthog, EVENTS.APPLICATION_LIMIT_APPROACHED, {
+          application_count: appliedCount,
+          monthly_limit: monthlyLimit,
+        });
+      }
+    } else if (monthlyLimit > 0 && appliedCount < monthlyLimit * 0.9) {
+      limitApproachedFiredRef.current = false;
+    }
+  }, [appliedCount, monthlyLimit, posthog]);
   const appsInitRef = useRef(false);
   const profileRolesInitRef = useRef(false);
 
@@ -497,6 +666,11 @@ export function JobApplyTab() {
 
   const [delegatingIds, setDelegatingIds] = useState<Set<string>>(new Set());
 
+  // Matched two-column layout — id of the job shown in the right detail panel.
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const selectedJob =
+    recommendedJobs.find((j) => j.id === selectedJobId) ?? recommendedJobs[0] ?? null;
+
   const handleDelegateClick = async (job: Job) => {
     if (!job?.id) return;
     const recId = job.id;
@@ -510,6 +684,10 @@ export function JobApplyTab() {
     });
     try {
       await JobService.acceptRecommendation(recId);
+      // job_application_delegated —— 用户确认委托代投某职位
+      safeCapture(posthog, EVENTS.JOB_APPLICATION_DELEGATED, {
+        job_id: recId,
+      });
       setRecommendedJobs(prev => prev.filter(j => j.id !== recId));
       await fetchApplications();
       fetchApplicationsCount();
@@ -550,38 +728,6 @@ export function JobApplyTab() {
       <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px] text-sm text-muted-foreground">
         <RefreshCw className="w-4 h-4 animate-spin mr-2" />
         Loading your Jobs workspace…
-      </div>
-    );
-  }
-
-  if (!isElite) {
-    const planLabel =
-      planData.currentPlan === 'Pro'
-        ? 'Starter'
-        : planData.currentPlan === 'Free'
-          ? 'Free'
-          : planData.currentPlan;
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-220px)] min-h-[600px]">
-        <div className="max-w-md w-full text-center px-6">
-          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="w-6 h-6 text-amber-600" />
-          </div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">
-            Jobs is a Premium feature
-          </h2>
-          <p className="text-sm text-slate-600 leading-relaxed mb-5">
-            Managed Apply &mdash; the workspace that submits applications to
-            matched roles on your behalf &mdash; is included with Screna
-            Premium. Your current plan is{' '}
-            <span className="font-medium text-slate-900">{planLabel}</span>.
-          </p>
-          <Link to="/pricing">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              View Premium plans
-            </Button>
-          </Link>
-        </div>
       </div>
     );
   }
@@ -773,97 +919,91 @@ export function JobApplyTab() {
               </div>
             </div>
 
-            {/* Single Column List */}
-            <div
-              ref={recsScrollRef}
-              onScroll={handleRecsScroll}
-              className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto pr-2 custom-scrollbar"
-            >
-              {recommendedJobs.length === 0 && recsLoading && (
-                <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-                  Loading recommendations…
-                </div>
-              )}
-              {recommendedJobs.length === 0 && !recsLoading && (
-                <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                  <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">No matched jobs yet. Check back soon.</p>
-                </div>
-              )}
-              {recommendedJobs.map((job) => (
+            {/* Two Column Layout */}
+            {recommendedJobs.length === 0 && recsLoading && (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                Loading recommendations…
+              </div>
+            )}
+            {recommendedJobs.length === 0 && !recsLoading && (
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                <Briefcase className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground">No matched jobs yet. Check back soon.</p>
+              </div>
+            )}
+            {recommendedJobs.length > 0 && (
+              <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
+                {/* Left: selectable job list */}
                 <div
-                  key={job.id}
-                  className="relative group p-4 rounded-xl border border-border bg-card hover:border-border/80 hover:shadow-sm transition-all flex items-center gap-4"
+                  ref={recsScrollRef}
+                  onScroll={handleRecsScroll}
+                  className="w-[32%] shrink-0 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar"
                 >
-                  <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
-                    {job.logoLetter}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
-                    <p className="text-xs text-muted-foreground truncate">{job.company}</p>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                      {job.location && (
-                        <span className="flex items-center gap-1 truncate">
-                          <MapPin className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{job.location}</span>
-                        </span>
-                      )}
-                      {job.timeAgo && (
-                        <span className="whitespace-nowrap">{job.timeAgo}</span>
-                      )}
-                      {job.matchScore > 0 && (
-                        <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
-                          {job.matchScore}% Match
-                        </Badge>
-                      )}
+                  {recommendedJobs.map((job) => {
+                    const isSelected = selectedJob?.id === job.id;
+                    return (
+                      <div
+                        key={job.id}
+                        onClick={() => setSelectedJobId(job.id)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-card border-primary/50 shadow-sm ring-1 ring-primary/20'
+                            : 'bg-card border-border hover:border-border/80 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 mb-2">
+                          <div className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-lg shrink-0 ${job.logoColor}`}>
+                            {job.logoLetter}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-foreground truncate">{job.title}</h3>
+                            <p className="text-xs text-muted-foreground truncate">{job.company}</p>
+                          </div>
+                          {(job.timeAgo || job.matchScore > 0) && (
+                            <div className="flex flex-col items-end shrink-0 gap-1">
+                              {job.timeAgo && (
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">{job.timeAgo}</span>
+                              )}
+                              {job.matchScore > 0 && (
+                                <Badge variant={job.matchScore >= 90 ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                                  {job.matchScore}% Match
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {job.location && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{job.location}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {recsLoading && (
+                    <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                      Loading more…
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleRejectRec(job.id)}
-                      disabled={delegatingIds.has(job.id)}
-                      className="px-4 font-medium gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:bg-transparent hover:text-muted-foreground hover:border-border disabled:cursor-not-allowed"
-                      style={{ fontWeight: 500 }}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Not Interested
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleDelegateClick(job)}
-                      disabled={delegatingIds.has(job.id)}
-                      className={`px-5 font-medium gap-1.5 transition-opacity border-primary/40 text-primary hover:bg-primary/10 hover:text-primary hover:border-primary/60 disabled:cursor-not-allowed ${
-                        delegatingIds.has(job.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                      }`}
-                      style={{ fontWeight: 500 }}
-                    >
-                      {delegatingIds.has(job.id) ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Delegating…
-                        </>
-                      ) : (
-                        <>
-                          <SendHorizonal className="w-3.5 h-3.5" />
-                          Delegate
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  )}
+                  {!recsHasMore && (
+                    <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                      You've reached the end.
+                    </div>
+                  )}
                 </div>
-              ))}
-              {recsLoading && recommendedJobs.length > 0 && (
-                <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-                  Loading more…
+
+                {/* Right: detail panel */}
+                <div className="flex-1 bg-card border border-border rounded-xl flex flex-col overflow-hidden">
+                  <JobDetailPanel
+                    job={selectedJob}
+                    delegating={selectedJob ? delegatingIds.has(selectedJob.id) : false}
+                    onDelegate={(job) => handleDelegateClick(job)}
+                    onReject={(job) => handleRejectRec(job.id)}
+                  />
                 </div>
-              )}
-              {!recsHasMore && recommendedJobs.length > 0 && (
-                <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-                  You've reached the end.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
 

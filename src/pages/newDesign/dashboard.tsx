@@ -2283,7 +2283,7 @@ function WelcomeHeader({ userData, isMember, creditBalance }: { userData: UserDa
             Member
           </div>
         ) : (
-          <Link to="/pricing">
+          <Link to="/#pricing">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-[12px] text-amber-700 font-semibold cursor-pointer hover:bg-amber-100 transition-colors">
               <Lock className="w-3 h-3" />
               Free Plan

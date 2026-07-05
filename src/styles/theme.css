@@ -32,6 +32,12 @@
 
   /* One radius token only (shadcn style) */
   --radius: 0.75rem;
+  /* Derived radii — referenced inline as var(--radius-sm) etc.
+     (in the source design these came from a Tailwind v4 @theme block). */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
   /* ============================================ */
   /* SEMANTIC SURFACES (optional, but recommended) */
@@ -82,6 +88,36 @@
   --space-8: 2rem;
 
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ============================================ */
+  /* Brand blue + neutral gray scales.            */
+  /* The mentor dashboard references these inline  */
+  /* as var(--color-blue-*) / var(--color-gray-*). */
+  /* (In the source design these came from a       */
+  /* Tailwind v4 @theme block; defined here for v3.)*/
+  /* ============================================ */
+  --color-blue-50:  #EFF4FF;
+  --color-blue-100: #DBE5FE;
+  --color-blue-200: #BFD1FD;
+  --color-blue-300: #93B0FB;
+  --color-blue-400: #6088F8;
+  --color-blue-500: #3C77F6;
+  --color-blue-600: #2563EB;
+  --color-blue-700: #1D4ED8;
+  --color-blue-800: #1E40AF;
+  --color-blue-900: #1E3A8A;
+  --color-blue-950: #172554;
+
+  --color-gray-50:  #f7f8fa;
+  --color-gray-100: #edeff2;
+  --color-gray-200: #d8dbe2;
+  --color-gray-300: #b9bfca;
+  --color-gray-400: #949cab;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
 }
 
 .dark {

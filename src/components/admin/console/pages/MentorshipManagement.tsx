@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy } from "lucide-react";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
+import { EVENTS } from "@/constants/analyticsEvents";
+import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
@@ -14,14 +17,15 @@ import {
   onboardMentor,
   updateMentorProfile,
   updateMentorStatus,
-  createMentorTopic,
-  updateMentorTopic,
+  setMentorIdentityVerification,
   listBookings,
   adminCancelBooking,
   adminRescheduleBooking,
   listDisputes,
   resolveDispute,
+  deleteReview,
 } from "../../../../services/mentorshipAdminService";
+import { updateBookingMentorNote } from "../../../../services/MentorService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,6 +43,12 @@ const ALL_EXPERTISE_TAGS = [
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
 
+// Upper bounds for mentor pricing so an arbitrary number can't be entered.
+const MAX_RATE_30 = 1000; // $/30 min
+const MAX_RATE_60 = 2000; // $/1 hr
+const clampRate = (value: number, max: number) =>
+  Math.min(Math.max(0, Math.round(Number(value) || 0)), max);
+
 type TabId = "mentors" | "sessions" | "reschedule" | "disputes" | "service-types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -52,12 +62,23 @@ type ServiceOffering = {
   expertiseTags: string[];
   description: string;
   notes: string;
+  mentorNote: string;
   topicId?: string;
   price30min?: number;
   price60min?: number;
 };
 
 type ApiStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+type ReviewStatus = "AWAITING_REVIEW" | "ADMIN_APPROVED" | "REJECTED" | "SUSPENDED";
+
+type Review = {
+  id: string;
+  author: string;
+  rating: number;
+  comment: string;
+  date: string;
+  sessionType: string;
+};
 
 type Mentor = {
   id: string;
@@ -71,12 +92,18 @@ type Mentor = {
   rate60: number;
   status: "Pending" | "Active" | "Suspend";
   apiStatus?: ApiStatus;
+  reviewStatus?: ReviewStatus;
   statusReason?: string;
   calConnected: boolean;
+  emailVerified: boolean;
+  linkedinUrl: string;
+  resumeUrl: string;
+  verified: boolean;
   sessions: number;
   revenue: number;
   unpaid: number;
   offerings: ServiceOffering[];
+  reviews: Review[];
 };
 
 // ─── API ↔ UI mappers ─────────────────────────────────────────────────────────
@@ -93,20 +120,26 @@ function mapApiMentor(api: any): Mentor {
   const activeTopics = apiTopics.filter((t) => t?.active);
   const price30s = activeTopics.map((t) => Number(t?.price30min) || 0).filter((n) => n > 0);
   const price60s = activeTopics.map((t) => Number(t?.price60min) || 0).filter((n) => n > 0);
-  const rate30 = price30s.length ? Math.min(...price30s) : 0;
-  const rate60 = price60s.length ? Math.min(...price60s) : 0;
+  // Topic prices are stored in cents — convert to dollars, keeping 2 decimals.
+  const rate30 = price30s.length ? Math.min(...price30s) / 100 : 0;
+  const rate60 = price60s.length ? Math.min(...price60s) / 100 : 0;
 
+  // Service offerings are persisted on the profile's expertiseTags, so an
+  // offering is "enabled" when its service-type label is present there.
+  const expertiseTags: string[] = Array.isArray(api?.expertiseTags) ? api.expertiseTags : [];
   const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
     const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
+    const enabled = expertiseTags.some((tag) => (tag || "").toLowerCase() === t.label.toLowerCase());
     return {
       typeId: t.id,
-      enabled: !!matched && !!matched.active,
+      enabled,
       rate: Number(matched?.price60min) || 0,
       pricingType: "per-hour",
       duration: 60,
       expertiseTags: [],
       description: matched?.description || "",
       notes: "",
+      mentorNote: matched?.mentorNote || "",
       topicId: matched?.id,
       price30min: Number(matched?.price30min) || 0,
       price60min: Number(matched?.price60min) || 0,
@@ -116,20 +149,35 @@ function mapApiMentor(api: any): Mentor {
   return {
     id: api?.id || "",
     name: api?.name || "",
-    email: api?.email || "",
+    email: api?.email || api?.workEmail || "",
     bio: api?.bio || "",
     timezone: api?.googleTimezone || "",
-    expertiseTags: Array.isArray(api?.expertiseTags) ? api.expertiseTags : [],
+    expertiseTags,
     rate30,
     rate60,
     status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
     apiStatus: (api?.status as ApiStatus) || "PENDING",
+    reviewStatus: ((api?.reviewState ?? api?.reviewStatus ?? "").toString().trim().toUpperCase() || undefined) as ReviewStatus | undefined,
     statusReason: api?.statusReason || "",
     calConnected: !!api?.calendarConnected,
+    emailVerified: !!(api?.emailVerified ?? api?.workEmail),
+    linkedinUrl: api?.linkedinUrl || "",
+    resumeUrl: api?.resumeUrl || api?.resumePath || api?.resume_url || "",
+    verified: !!api?.identityVerified,
     sessions: 0,
     revenue: 0,
     unpaid: 0,
     offerings,
+    reviews: Array.isArray(api?.reviews)
+      ? api.reviews.map((r: any, i: number) => ({
+          id: r?.id || String(i),
+          author: r?.studentName || r?.author || "Anonymous",
+          rating: Number(r?.overallRating ?? r?.rating) || 0,
+          comment: r?.comment || "",
+          date: r?.createdAt ? new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : (r?.date || ""),
+          sessionType: r?.topicTitle || r?.sessionType || "",
+        }))
+      : [],
   };
 }
 
@@ -145,6 +193,8 @@ type Session = {
   payment: number;
   refundEligible: boolean;
   within48h: boolean;
+  mentorNote?: string;
+  studentNote?: string;
 };
 
 function mapApiBooking(api: any): Session {
@@ -172,9 +222,11 @@ function mapApiBooking(api: any): Session {
     time: display,
     rawStart: api?.startTime,
     status: statusMap[apiStatus] || apiStatus || "—",
-    payment: Math.round(amount / 100),
+    payment: amount / 100,
     refundEligible: apiStatus === "PENDING" || apiStatus === "CONFIRMED",
     within48h,
+    mentorNote: api?.mentorNote ?? undefined,
+    studentNote: api?.studentNote ?? undefined,
   };
 }
 
@@ -203,7 +255,7 @@ function mapApiDispute(api: any): Dispute {
     mentor: api?.mentorName || "—",
     session: api?.bookingId || "—",
     reason: api?.description || api?.reason || "—",
-    amount: Math.round((Number(api?.amountCents) || 0) / 100),
+    amount: (Number(api?.amountCents) || 0) / 100,
     evidence: api?.reason || "—",
     status: statusMap[(api?.status || "").toUpperCase()] || "Open",
     created: created ? created.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—",
@@ -233,11 +285,6 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
       {name.slice(0, 2).toUpperCase()}
     </div>
   );
-}
-
-// Filled chip — used for service types
-function ServiceChip({ label }: { label: string }) {
-  return <span style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 600, background: C.blueBg, color: C.blue, border: `1px solid ${C.blueBorder}`, whiteSpace: "nowrap" as const }}>{label}</span>;
 }
 
 // Outline chip — used for expertise tags
@@ -335,6 +382,17 @@ function ServiceEditModal({
         />
       </div>
 
+      {/* Mentor note — shown to student after booking */}
+      <div style={row}>
+        <label style={labelStyle}>Note to students (sent after booking)</label>
+        <textarea
+          value={form.mentorNote}
+          onChange={(e) => setForm((f) => ({ ...f, mentorNote: e.target.value }))}
+          placeholder="How students should prepare, what to bring, links to read first..."
+          style={{ ...inputStyle, height: 68, padding: "8px 10px", resize: "none", lineHeight: 1.5 }}
+        />
+      </div>
+
       {/* Internal notes */}
       <div>
         <label style={labelStyle}>Internal notes (Ops only)</label>
@@ -349,7 +407,166 @@ function ServiceEditModal({
   );
 }
 
+// ─── Manage Reviews ───────────────────────────────────────────────────────────
+
+function StarRating({ value, size = 13 }: { value: number; size?: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <Star
+          key={s}
+          size={size}
+          style={{ color: s <= Math.round(value) ? "#D97706" : "hsl(220, 16%, 88%)", fill: s <= Math.round(value) ? "#D97706" : "hsl(220, 16%, 88%)" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const REVIEWS_PAGE_SIZE = 3;
+
+function ManageReviews({ reviews: initialReviews }: { reviews: Review[] }) {
+  const [reviews, setReviews] = useState<Review[]>(initialReviews ?? []);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setReviews(initialReviews ?? []); setPage(1); }, [initialReviews]);
+
+  const avgRating = reviews.length > 0
+    ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+    : null;
+
+  const totalPages = Math.max(1, Math.ceil(reviews.length / REVIEWS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageReviews = reviews.slice((safePage - 1) * REVIEWS_PAGE_SIZE, safePage * REVIEWS_PAGE_SIZE);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteReview(id);
+      setReviews((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        const newTotal = Math.max(1, Math.ceil(next.length / REVIEWS_PAGE_SIZE));
+        setPage((p) => Math.min(p, newTotal));
+        return next;
+      });
+      setConfirmDeleteId(null);
+      toast.success("Review removed");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to remove review");
+    }
+  };
+
+  return (
+    <div>
+      <DrawerDivider />
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Manage Reviews
+        </div>
+        {avgRating !== null && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <StarRating value={avgRating} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{avgRating.toFixed(1)}</span>
+            <span style={{ fontSize: 11, color: C.textMuted }}>({reviews.length})</span>
+          </div>
+        )}
+      </div>
+
+      {reviews.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.textMuted, padding: "10px 0" }}>No reviews yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {pageReviews.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                border: `1px solid ${confirmDeleteId === r.id ? "#FCA5A5" : C.border}`,
+                borderRadius: 8,
+                background: confirmDeleteId === r.id ? "#FEF2F2" : C.bgSubtle,
+                padding: "9px 11px",
+                transition: "background 120ms, border-color 120ms",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                    <StarRating value={r.rating} size={11} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>{r.author}</span>
+                    {r.date && <span style={{ fontSize: 10, color: C.textMuted }}>· {r.date}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.text, lineHeight: 1.5, wordBreak: "break-word" }}>{r.comment}</div>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {confirmDeleteId === r.id ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                      <span style={{ fontSize: 10, color: C.red, fontWeight: 600, whiteSpace: "nowrap" }}>Delete this review?</span>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          style={{ ...ghostBtn, height: 22, fontSize: 10, padding: "0 7px" }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDelete(r.id)}
+                          style={{ ...ghostBtn, height: 22, fontSize: 10, padding: "0 7px", color: C.red }}
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(r.id)}
+                      title="Delete review"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: C.textMuted, display: "flex", alignItems: "center", borderRadius: 5 }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            style={{ ...ghostBtn, height: 26, fontSize: 11, padding: "0 8px", opacity: safePage === 1 ? 0.4 : 1, cursor: safePage === 1 ? "not-allowed" : "pointer" }}
+          >
+            ← Prev
+          </button>
+          <span style={{ fontSize: 11, color: C.textMuted }}>
+            Page {safePage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            style={{ ...ghostBtn, height: 26, fontSize: 11, padding: "0 8px", opacity: safePage === totalPages ? 0.4 : 1, cursor: safePage === totalPages ? "not-allowed" : "pointer" }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Service Offerings section (inside Drawer) ────────────────────────────────
+
+const serviceTagStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 5,
+  height: 28, padding: "0 11px",
+  background: "#f3f4f7", border: "1px solid #e1e4ea",
+  borderRadius: 9999, fontSize: 12, fontWeight: 500,
+  color: "#1e232f", whiteSpace: "nowrap" as const,
+  fontFamily: "'Inter', sans-serif",
+};
 
 function ServiceOfferingsSection({
   offerings,
@@ -358,97 +575,232 @@ function ServiceOfferingsSection({
   offerings: ServiceOffering[];
   onChange: (updated: ServiceOffering[]) => void;
 }) {
-  const [editingOffering, setEditingOffering] = useState<ServiceOffering | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
 
-  const updateOffering = (updated: ServiceOffering) => {
-    onChange(offerings.map((o) => o.typeId === updated.typeId ? updated : o));
+  const enabledTypes = ALL_SERVICE_TYPES.filter((t) => offerings.find((o) => o.typeId === t.id)?.enabled);
+  const disabledTypes = ALL_SERVICE_TYPES.filter((t) => !offerings.find((o) => o.typeId === t.id)?.enabled);
+
+  const addCustom = () => {
+    const val = customInput.trim();
+    if (val && !customTags.includes(val)) setCustomTags((prev) => [...prev, val]);
+    setCustomInput("");
   };
 
-  const toggleEnabled = (typeId: string) => {
-    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: !o.enabled } : o));
-    const o = offerings.find((o) => o.typeId === typeId)!;
-    toast.success(`${ALL_SERVICE_TYPES.find((t) => t.id === typeId)?.label} ${o.enabled ? "disabled" : "enabled"}`);
+  const remove = (typeId: string) => {
+    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: false } : o));
+  };
+
+  const add = (typeId: string) => {
+    onChange(offerings.map((o) => o.typeId === typeId ? { ...o, enabled: true } : o));
   };
 
   return (
-    <>
-      {editingOffering && (
-        <ServiceEditModal
-          offering={editingOffering}
-          mentorId=""
-          onSave={updateOffering}
-          onClose={() => setEditingOffering(null)}
-        />
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Service Offerings
+        </div>
+        <button
+          onClick={() => setEditing((v) => !v)}
+          title={editing ? "Done" : "Edit services"}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: editing ? C.blue : C.textMuted, display: "flex", alignItems: "center", borderRadius: 5 }}
+        >
+          {editing ? <Check size={13} /> : <Pencil size={13} />}
+        </button>
+      </div>
+
+      {/* Tag strip — view mode */}
+      {!editing && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {enabledTypes.length === 0 && customTags.length === 0
+            ? <span style={{ fontSize: 12, color: C.textMuted }}>No services enabled</span>
+            : <>
+                {enabledTypes.map((t) => <span key={t.id} style={serviceTagStyle}>{t.label}</span>)}
+                {customTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
+              </>}
+        </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {ALL_SERVICE_TYPES.map((stype) => {
-          const offering = offerings.find((o) => o.typeId === stype.id)!;
-          const enabled = offering.enabled;
-          return (
-            <div
-              key={stype.id}
-              style={{
-                border: `1px solid ${enabled ? C.blueBorder : C.border}`,
-                borderRadius: 8,
-                background: enabled ? C.blueBg : C.bgSubtle,
-                overflow: "hidden",
-              }}
-            >
-              {/* Card header */}
-              <div style={{ padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottomWidth: enabled ? 1 : 0, borderBottomStyle: "solid", borderBottomColor: enabled ? C.border : "transparent" }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: enabled ? C.blue : C.text }}>{stype.label}</div>
-                  {enabled && (
-                    null
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Toggle checked={enabled} onChange={() => toggleEnabled(stype.id)} />
+      {/* Edit mode */}
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Enabled tags with X */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Enabled</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {enabledTypes.length === 0 && customTags.length === 0
+                ? <span style={{ fontSize: 11, color: C.textMuted }}>None</span>
+                : <>
+                    {enabledTypes.map((t) => (
+                      <span key={t.id} style={{ ...serviceTagStyle, paddingRight: 7 }}>
+                        {t.label}
+                        <button onClick={() => remove(t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                    {customTags.map((t) => (
+                      <span key={t} style={{ ...serviceTagStyle, paddingRight: 7 }}>
+                        {t}
+                        <button onClick={() => setCustomTags((prev) => prev.filter((c) => c !== t))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", color: "#6b7280" }} title="Remove">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </>}
+            </div>
+          </div>
+
+          {/* Disabled — click to add */}
+          {disabledTypes.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Add service</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {disabledTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => add(t.id)}
+                    style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
+                  >
+                    <Plus size={10} style={{ color: C.textMuted }} /> {t.label}
+                  </button>
+                ))}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, padding: "0 8px 0 10px", background: "white", border: `1px dashed ${C.border}`, borderRadius: 9999 }}>
+                  <input
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
+                    placeholder="Custom…"
+                    style={{ border: "none", outline: "none", background: "transparent", fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, width: 80 }}
+                  />
+                  <button
+                    onClick={addCustom}
+                    disabled={!customInput.trim()}
+                    style={{ background: "none", border: "none", cursor: customInput.trim() ? "pointer" : "default", padding: 0, display: "flex", alignItems: "center", color: customInput.trim() ? C.blue : C.textMuted }}
+                  >
+                    <Plus size={12} />
+                  </button>
                 </div>
               </div>
-
-              {/* Expanded details when enabled */}
-              {enabled && (
-                <div style={{ padding: "8px 12px" }}>
-                  {/* Expertise tags */}
-                  {offering.expertiseTags.length > 0 && (
-                    null
-                  )}
-                  {/* Description */}
-                  {offering.description && (
-                    <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 7 }}>{offering.description}</div>
-                  )}
-                  {/* Notes */}
-                  {offering.notes && (
-                    <div style={{ fontSize: 11, color: C.amber, background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 5, padding: "4px 8px", marginBottom: 7 }}>
-                      Internal: {offering.notes}
-                    </div>
-                  )}
-                  {/* Edit */}
-                  <button
-                    onClick={() => setEditingOffering(offering)}
-                    style={{ ...ghostBtn, height: 26, fontSize: 11, color: C.blue }}
-                  >
-                    <Pencil size={10} /> Edit service
-                  </button>
-                </div>
-              )}
-
-              {/* Collapsed — show Enable prompt */}
-              {!enabled && (
-                <div style={{ padding: "7px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: C.textMuted }}>Not offered by this mentor</span>
-                  <button onClick={() => { setEditingOffering(offering); }} style={{ ...ghostBtn, height: 24, fontSize: 11, color: C.blue }}>
-                    <Settings size={10} /> Configure
-                  </button>
-                </div>
-              )}
             </div>
-          );
-        })}
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Verification Section ─────────────────────────────────────────────────────
+
+function VerificationSection({
+  mentor,
+  onConfirm,
+}: {
+  mentor: Mentor;
+  onConfirm: () => void;
+}) {
+  const bothDone = mentor.emailVerified && !!mentor.linkedinUrl;
+  const canConfirm = bothDone && !mentor.verified;
+
+  const rowStyle: React.CSSProperties = {
+    display: "flex", alignItems: "flex-start", gap: 12,
+    padding: "10px 12px", borderRadius: 6,
+  };
+  const iconWrap: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: 4, background: "#f3f4f7",
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  };
+  const checkIcon = <Check size={13} style={{ color: "#248f74" }} />;
+
+  return (
+    <div style={{ marginTop: 0 }}>
+      <DrawerDivider />
+
+      {/* Title */}
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+        Identity Verification
       </div>
-    </>
+
+      {/* Verified banner */}
+      {mentor.verified && (
+        <div style={{ background: "#e8fdf7", border: "1px solid #8bf4d9", borderRadius: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#b9f8e8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <ShieldCheck size={18} style={{ color: "#1f7a63" }} />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#1f473d" }}>Identity Verified</span>
+              <span style={{ background: "#dffcf4", border: "1px solid #8bf4d9", borderRadius: 9999, padding: "1px 9px", fontSize: 11, fontWeight: 600, color: "#248f74" }}>Verified</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#367d6b" }}>All submitted documents have been reviewed and approved.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Checklist rows */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={rowStyle}>
+          <div style={iconWrap}><Mail size={15} style={{ color: "#5a6172" }} /></div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#1e232f" }}>Work Email</span>
+              {mentor.emailVerified && checkIcon}
+            </div>
+            <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.email || "—"}</div>
+          </div>
+        </div>
+
+        <div style={rowStyle}>
+          <div style={iconWrap}><Link2 size={15} style={{ color: "#5a6172" }} /></div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#1e232f" }}>LinkedIn Profile</span>
+              {mentor.linkedinUrl && checkIcon}
+            </div>
+            <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.linkedinUrl || <span style={{ color: C.textMuted, fontStyle: "italic" }}>Not submitted</span>}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Privacy note */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "10px 12px", marginBottom: 12 }}>
+        <Lock size={13} style={{ color: "#5a6172", marginTop: 1, flexShrink: 0 }} />
+        <p style={{ fontSize: 12, color: "#5a6172", margin: 0, lineHeight: 1.5 }}>
+          Documents are used only for internal review and are <strong style={{ color: "#1e232f" }}>never shown publicly</strong>.
+        </p>
+      </div>
+
+      {/* Action buttons */}
+      {!mentor.verified && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => {
+              if (canConfirm) { onConfirm(); toast.success("Verification confirmed"); }
+            }}
+            disabled={!canConfirm}
+            title={!canConfirm ? "Both email and LinkedIn must be completed first" : undefined}
+            style={{
+              ...primaryBtn, flex: 1, justifyContent: "center",
+              opacity: canConfirm ? 1 : 0.45,
+              cursor: canConfirm ? "pointer" : "not-allowed",
+              background: "#1f7a63", borderColor: "#1f7a63",
+            }}
+          >
+            <ShieldCheck size={13} /> Verification Confirmed
+          </button>
+          <button
+            onClick={() => toast.success(`Reminder sent to ${mentor.email}`)}
+            style={{ ...secondaryBtn, flexShrink: 0 }}
+            title="Send reminder email"
+          >
+            <Mail size={13} /> Remind
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -462,7 +814,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
     offerings: ALL_SERVICE_TYPES.map(t => ({
       typeId: t.id,
       enabled: t.id === "mock-interview" || t.id === "resume-review",
-      rate: 100, pricingType: "per-hour", duration: 60, expertiseTags: [], description: "", notes: ""
+      rate: 100, pricingType: "per-hour", duration: 60, expertiseTags: [], description: "", notes: "", mentorNote: ""
     }))
   });
 
@@ -480,8 +832,9 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           return {
             title: label,
             description: o.description || "",
-            price30min: Math.max(0, Math.round(Number(form.rate30) || 0)),
-            price60min: Math.max(0, Math.round(Number(form.rate60) || 0)),
+            mentorNote: o.mentorNote || "",
+            price30min: Math.max(0, Math.round((Number(form.rate30) || 0) * 100)),
+            price60min: Math.max(0, Math.round((Number(form.rate60) || 0) * 100)),
             bothPricesSet: true,
           };
         });
@@ -620,11 +973,11 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <label style={labelStyle}>Rate ($/30 min)</label>
-              <input type="number" style={inputStyle} value={form.rate30} onChange={e => setForm({...form, rate30: Number(e.target.value)})} />
+              <input type="number" min={0} max={MAX_RATE_30} style={inputStyle} value={form.rate30} onChange={e => setForm({...form, rate30: clampRate(Number(e.target.value), MAX_RATE_30)})} />
             </div>
             <div>
               <label style={labelStyle}>Rate ($/1 hr)</label>
-              <input type="number" style={inputStyle} value={form.rate60} onChange={e => setForm({...form, rate60: Number(e.target.value)})} />
+              <input type="number" min={0} max={MAX_RATE_60} style={inputStyle} value={form.rate60} onChange={e => setForm({...form, rate60: clampRate(Number(e.target.value), MAX_RATE_60)})} />
             </div>
           </div>
           <div>
@@ -730,51 +1083,21 @@ function MentorDirectory() {
     return true;
   });
 
-  const syncOfferingToTopic = async (mentorId: string, prev: ServiceOffering, next: ServiceOffering) => {
-    const serviceLabel = ALL_SERVICE_TYPES.find((t) => t.id === next.typeId)?.label || next.typeId;
-    const payload = {
-      title: serviceLabel,
-      description: next.description || "",
-      price30min: Math.max(0, Math.round(Number(next.price30min) || Number(next.rate) || 0)),
-      price60min: Math.max(0, Math.round(Number(next.price60min) || Number(next.rate) || 0)),
-      active: next.enabled,
-      pricesConsistent: true,
-      bothPricesSet: true,
-    };
-    try {
-      if (next.topicId) {
-        await updateMentorTopic(mentorId, next.topicId, payload);
-      } else if (next.enabled) {
-        const res = await createMentorTopic(mentorId, payload);
-        const newTopicId = res?.data?.data?.id;
-        if (newTopicId) {
-          next.topicId = newTopicId;
-        }
-      }
-    } catch (err: any) {
-      console.error("Failed to sync topic", err);
-      toast.error(err?.response?.data?.message || "Failed to update service");
-      throw err;
-    }
-  };
-
+  // Service offerings are persisted as the mentor's expertiseTags (profile),
+  // not as bookable topics. Enabled offerings map to their service-type labels.
   const updateOfferings = async (mentorId: string, offerings: ServiceOffering[]) => {
     const current = mentorList.find((m) => m.id === mentorId);
     if (!current) return;
     setMentorList((prev) => prev.map((m) => m.id === mentorId ? { ...m, offerings } : m));
     setSelected((prev) => prev?.id === mentorId ? { ...prev, offerings } : prev);
-    for (const next of offerings) {
-      const prevOffering = current.offerings.find((o) => o.typeId === next.typeId);
-      if (!prevOffering) continue;
-      const changed =
-        prevOffering.enabled !== next.enabled ||
-        prevOffering.description !== next.description ||
-        prevOffering.rate !== next.rate ||
-        prevOffering.price30min !== next.price30min ||
-        prevOffering.price60min !== next.price60min;
-      if (changed) {
-        try { await syncOfferingToTopic(mentorId, prevOffering, next); } catch { /* toast already shown */ }
-      }
+    const expertiseTags = offerings
+      .filter((o) => o.enabled)
+      .map((o) => ALL_SERVICE_TYPES.find((t) => t.id === o.typeId)?.label || o.typeId);
+    try {
+      await updateMentorProfile(mentorId, { expertiseTags });
+    } catch (err: any) {
+      console.error("Failed to update service offerings", err);
+      toast.error(err?.response?.data?.message || "Failed to update service offerings");
     }
   };
 
@@ -798,10 +1121,34 @@ function MentorDirectory() {
 
   const approveMentor = async (m: Mentor) => {
     try {
-      await updateMentorStatus(m.id, { status: "APPROVED" });
-      toast.success(`${m.name} approved successfully`);
+      const res = await updateMentorStatus(m.id, { status: "APPROVED" });
+      const updated = res?.data?.data;
+      const resultStatus = (updated?.status as ApiStatus) || undefined;
+      // Approving only sets the admin-approved flag + grants the MENTOR role.
+      // The mentor is fully APPROVED only once Google Calendar is connected,
+      // office hours are configured, and an active topic exists — otherwise the
+      // backend keeps the profile PENDING and explains the gap in statusReason.
+      if (resultStatus === "APPROVED") {
+        toast.success(`${m.name} approved — profile is now active`);
+      } else {
+        toast.info(
+          updated?.statusReason ||
+            `${m.name} admin-approved — waiting on mentor setup (calendar, office hours, active topic) before going live`
+        );
+      }
+      // The admin review decision is now ADMIN_APPROVED. The operational status
+      // can stay PENDING (waiting on calendar/office-hours/topic), so we can't
+      // rely on loadMentors deriving the review state from status — stamp the
+      // known reviewStatus onto local state so the Approve/Deny buttons clear.
+      const newReview: ReviewStatus = (updated?.reviewStatus as ReviewStatus);
       await loadMentors();
-      if (selected?.id === m.id) setSelected({ ...m, status: "Active", apiStatus: "APPROVED" });
+      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, reviewStatus: newReview } : x));
+      if (selected?.id === m.id) {
+        setSelected((prev) => {
+          const base = updated ? mapApiMentor(updated) : prev;
+          return base ? { ...base, reviewStatus: newReview } : prev;
+        });
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to approve mentor");
     }
@@ -812,6 +1159,7 @@ function MentorDirectory() {
       await updateMentorStatus(m.id, { status: "REJECTED", reason });
       toast.success(`${m.name} denied`);
       await loadMentors();
+      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, reviewStatus: "REJECTED" } : x));
       setSelected(null);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to deny mentor");
@@ -876,26 +1224,13 @@ function MentorDirectory() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                 <tr>
-                  {["Mentor", "Services", "Expertise", "Rate", "Status", "Calendar", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
+                  {["Mentor", "Rate", "Status", "Calendar", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m) => {
-                  const SHORT_SERVICE_LABELS: Record<string, string> = {
-                    "mock-interview": "Mock Interview",
-                    "resume-review": "Resume Review",
-                    "career-strategy": "Career Strategy",
-                    "offer-negotiation": "Offer Negotiation",
-                  };
-                  const enabledServices = m.offerings.filter((o) => o.enabled).map((o) => SHORT_SERVICE_LABELS[o.typeId] || o.typeId);
-                  const displayedServices = enabledServices.slice(0, 2);
-                  const remainingServices = enabledServices.slice(2);
-                  
-                  const displayedExpertise = m.expertiseTags.slice(0, 2);
-                  const remainingExpertise = m.expertiseTags.slice(2);
-
                   return (
                     <tr
                       key={m.id}
@@ -910,57 +1245,11 @@ function MentorDirectory() {
                           <span style={{ fontWeight: 600, fontSize: 12 }}>{m.name}</span>
                         </div>
                       </td>
-                      <td style={TD}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                          {displayedServices.length > 0
-                            ? (
-                                <>
-                                  {displayedServices.map((s) => <ServiceChip key={s} label={s} />)}
-                                  {remainingServices.length > 0 && (
-                                    <div
-                                      title={remainingServices.join(", ")}
-                                      style={{
-                                        display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px",
-                                        borderRadius: 4, background: C.blueBg, color: C.blue,
-                                        fontSize: 11, fontWeight: 500, cursor: "help"
-                                      }}
-                                    >
-                                      +{remainingServices.length}
-                                    </div>
-                                  )}
-                                </>
-                              )
-                            : <span style={{ fontSize: 12, color: C.textSub }}>—</span>}
-                        </div>
-                      </td>
-                      <td style={TD}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "4px 0" }}>
-                          {displayedExpertise.length > 0
-                            ? (
-                                <>
-                                  {displayedExpertise.map((t) => <ExpertiseChip key={t} label={t} />)}
-                                  {remainingExpertise.length > 0 && (
-                                    <div
-                                      title={remainingExpertise.join(", ")}
-                                      style={{
-                                        display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px",
-                                        borderRadius: 9999, border: `1px solid ${C.border}`, background: C.bgSubtle, color: C.textSub,
-                                        fontSize: 11, fontWeight: 500, cursor: "help"
-                                      }}
-                                    >
-                                      +{remainingExpertise.length}
-                                    </div>
-                                  )}
-                                </>
-                              )
-                            : <span style={{ fontSize: 12, color: C.textSub }}>—</span>}
-                        </div>
-                      </td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ fontSize: 12 }}>${m.rate30}/30 min</div>
-                        {m.rate60 && (
+                        <div style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</div>
+                        {m.rate60 > 0 && (
                           <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-                            ${m.rate60}/1 hr
+                            ${m.rate60.toFixed(2)}/1 hr
                           </div>
                         )}
                       </td>
@@ -975,7 +1264,7 @@ function MentorDirectory() {
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", color: (m.unpaid || 0) > 0 ? C.blue : C.textSub }}>${(m.unpaid || 0).toLocaleString()}</td>
                       <td style={TD}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          {m.status === "Pending" ? (
+                          {m.reviewStatus === "AWAITING_REVIEW" ? (
                             <>
                               <button
                                 onClick={(e) => {
@@ -1029,7 +1318,7 @@ function MentorDirectory() {
                 }
               }}>Save changes</button>
             </>
-          ) : selected?.status === "Pending" ? (
+          ) : selected?.reviewStatus === "AWAITING_REVIEW" ? (
             <>
               <button
                 onClick={(e) => {
@@ -1072,26 +1361,28 @@ function MentorDirectory() {
                   <span style={badge(selected.status === "Active" ? "green" : selected.status === "Suspend" ? "red" : selected.status === "Pending" ? "amber" : "gray")}>{selected.status}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: C.textMuted }}>
-                  {selected.email && (
+                  {selected.email ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <span>Email: {selected.email}</span>
-                      <button 
+                      <button
                         onClick={() => {
                           navigator.clipboard.writeText(selected.email!);
                           toast.success("Email copied");
-                        }} 
+                        }}
                         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: C.textMuted, display: "flex" }}
                         title="Copy email"
                       >
                         <Copy size={12} />
                       </button>
                     </div>
+                  ) : (
+                    <span style={{ fontStyle: "italic" }}>No email on file</span>
                   )}
                 </div>
               </div>
             </div>
 
-            {selected.status === "Pending" ? (
+            {selected.reviewStatus === "AWAITING_REVIEW" ? (
               <div style={{ padding: "16px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 8, marginBottom: 20 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
                   <AlertTriangle size={18} style={{ color: C.amber, flexShrink: 0, marginTop: 2 }} />
@@ -1100,49 +1391,50 @@ function MentorDirectory() {
                     <div style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>
                       This mentor has applied to join the platform. Please review their profile and service offerings before approving.
                     </div>
+                    {selected.statusReason && (
+                      <div style={{ fontSize: 11, color: C.amber, lineHeight: 1.5, marginTop: 6, fontWeight: 600 }}>
+                        Still pending: {selected.statusReason}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <DrawerDivider />
-                <DrawerField label="Rate (30 min)" value={`$${selected.rate30 || 0}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${selected.rate60 || 0}`} />
-                
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, marginTop: 12 }}>Proposed Services</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
-                  {selected.offerings.filter(o => o.enabled).length > 0 ? (
-                    selected.offerings.filter(o => o.enabled).map((o) => (
-                      <ServiceChip key={o.typeId} label={ALL_SERVICE_TYPES.find(t => t.id === o.typeId)?.label || o.typeId} />
-                    ))
-                  ) : (
-                    <span style={{ fontSize: 12, color: C.textSub }}>—</span>
-                  )}
-                </div>
-
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Proposed Expertise</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {selected.expertiseTags.length > 0 ? (
-                    selected.expertiseTags.map((t) => <ExpertiseChip key={t} label={t} />)
-                  ) : (
-                    <span style={{ fontSize: 12, color: C.textSub }}>—</span>
-                  )}
-                </div>
+                <DrawerField label="Mentor Full Name" value={selected.name || <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>} />
+                <DrawerField label="Work Email" value={selected.email || <span style={{ color: C.textSub, fontStyle: "italic" }}>No email on file</span>} />
+                <DrawerField
+                  label="LinkedIn URL"
+                  value={selected.linkedinUrl ? (
+                    <a
+                      href={selected.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: C.blue, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none", wordBreak: "break-all" }}
+                    >
+                      <Link2 size={12} style={{ flexShrink: 0 }} />{selected.linkedinUrl}
+                    </a>
+                  ) : <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>}
+                />
+                <DrawerField
+                  label="Resume"
+                  value={selected.resumeUrl ? (
+                    <a
+                      href={selected.resumeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: C.blue, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}
+                    >
+                      <ExternalLink size={12} style={{ flexShrink: 0 }} />Download resume
+                    </a>
+                  ) : <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>}
+                />
               </div>
             ) : (
               <>
-                <DrawerField label="Rate (30 min)" value={`$${selected.rate30 || 0}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${selected.rate60 || 0}`} />
+                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
+                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
                 <DrawerField label="Unpaid Balance" value={`$${(selected.unpaid || 0).toLocaleString()}`} />
                 <DrawerField label="Sessions delivered"  value={String(selected.sessions || 0)} />
                 <DrawerField label="Total revenue"       value={`$${(selected.revenue || 0).toLocaleString()}`} />
-
-                <DrawerDivider />
-
-                {/* Expertise tags */}
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Expertise</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {selected.expertiseTags.map((t) => <ExpertiseChip key={t} label={t} />)}
-                  </div>
-                </div>
 
                 <DrawerDivider />
 
@@ -1155,14 +1447,34 @@ function MentorDirectory() {
                   </div>
                 </div>
 
+                {/* Verification */}
+                <VerificationSection
+                  mentor={selected}
+                  onConfirm={async () => {
+                    // Optimistically flip the badge, then persist via the admin API.
+                    setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: true } : m));
+                    setSelected({ ...selected, verified: true });
+                    try {
+                      await setMentorIdentityVerification(selected.id, { identityVerified: true });
+                    } catch (err: any) {
+                      // Roll back the optimistic update if the request fails.
+                      setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: false } : m));
+                      setSelected((prev) => prev && prev.id === selected.id ? { ...prev, verified: false } : prev);
+                      toast.error(err?.response?.data?.message || "Failed to set identity verification");
+                    }
+                  }}
+                />
+
                 <DrawerDivider />
 
                 {/* Service Offerings */}
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Service Offerings</div>
                 <ServiceOfferingsSection
                   offerings={selected.offerings}
                   onChange={(updated) => updateOfferings(selected.id, updated)}
                 />
+
+                {/* Manage Reviews */}
+                <ManageReviews reviews={selected.reviews} />
               </>
             )}
           </>
@@ -1188,11 +1500,11 @@ function MentorDirectory() {
             <div style={{ display: "flex", gap: 10 }}>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/30 min)</label>
-                  <input type="number" style={inputStyle} value={editForm.rate30} onChange={(e) => setEditForm({...editForm, rate30: Number(e.target.value)})} />
+                  <input type="number" min={0} max={MAX_RATE_30} style={inputStyle} value={editForm.rate30} onChange={(e) => setEditForm({...editForm, rate30: clampRate(Number(e.target.value), MAX_RATE_30)})} />
                </div>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/1 hr)</label>
-                  <input type="number" style={inputStyle} value={editForm.rate60} onChange={(e) => setEditForm({...editForm, rate60: Number(e.target.value)})} />
+                  <input type="number" min={0} max={MAX_RATE_60} style={inputStyle} value={editForm.rate60} onChange={(e) => setEditForm({...editForm, rate60: clampRate(Number(e.target.value), MAX_RATE_60)})} />
                </div>
             </div>
 
@@ -1307,11 +1619,34 @@ function MentorDirectory() {
 // ─── Sessions ──────────────────────────────────────────────────────────────────
 
 function SessionsTab() {
-  const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", mentor: "all" });
+  const posthog = usePostHog();
+  const [filters, setFilters]   = useState<Record<string, string>>({ status: "all", when: "all", mentor: "all" });
   const [search, setSearch]     = useState("");
   const [selected, setSelected] = useState<Session | null>(null);
   const [sessionList, setSessionList] = useState<Session[]>([]);
   const [, setLoading] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Session | null>(null);
+  const [rescheduleValue, setRescheduleValue] = useState("");
+  const [rescheduling, setRescheduling] = useState(false);
+
+  useEffect(() => { setNoteDraft(selected?.mentorNote || ""); }, [selected]);
+
+  const saveMentorNote = async () => {
+    if (!selected) return;
+    setSavingNote(true);
+    try {
+      await updateBookingMentorNote(selected.id, noteDraft);
+      toast.success("Mentor note updated");
+      setSessionList((prev) => prev.map((s) => s.id === selected.id ? { ...s, mentorNote: noteDraft } : s));
+      setSelected((s) => s ? { ...s, mentorNote: noteDraft } : s);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update note");
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   const loadBookings = useCallback(async () => {
     setLoading(true);
@@ -1325,6 +1660,8 @@ function SessionsTab() {
       const params: Record<string, any> = { page: 0, size: 100 };
       const apiStatus = statusMap[filters.status];
       if (apiStatus) params.status = apiStatus;
+      if (filters.when === "past") params.past = true;
+      else if (filters.when === "upcoming") params.past = false;
       const res = await listBookings(params);
       const content = res?.data?.data?.content || [];
       setSessionList(content.map(mapApiBooking));
@@ -1334,7 +1671,7 @@ function SessionsTab() {
     } finally {
       setLoading(false);
     }
-  }, [filters.status]);
+  }, [filters.status, filters.when]);
 
   useEffect(() => { loadBookings(); }, [loadBookings]);
 
@@ -1355,15 +1692,33 @@ function SessionsTab() {
     }
   };
 
-  const rescheduleSession = async (s: Session) => {
-    const input = window.prompt("New start time (ISO 8601, e.g. 2026-06-01T15:00:00Z):", s.rawStart || "");
-    if (!input) return;
+  const openReschedule = (s: Session) => {
+    setRescheduleTarget(s);
+    setRescheduleValue(isoToLocalInput(s.rawStart));
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleValue) return;
+    const parsed = new Date(rescheduleValue);
+    if (isNaN(parsed.getTime())) {
+      toast.error("Please choose a valid date and time");
+      return;
+    }
+    setRescheduling(true);
     try {
-      await adminRescheduleBooking(s.id, input);
+      await adminRescheduleBooking(rescheduleTarget.id, parsed.toISOString());
+      // session_rescheduled —— 当前仅 admin/ops 侧改期入口存在（用户侧 UI 尚未实现）
+      safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, {
+        booking_id: rescheduleTarget.id,
+        initiated_by: 'admin',
+      });
       toast.success("Session rescheduled");
+      setRescheduleTarget(null);
       await loadBookings();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to reschedule");
+    } finally {
+      setRescheduling(false);
     }
   };
 
@@ -1372,6 +1727,7 @@ function SessionsTab() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <FilterBar
           filters={[
+            { key: "when", label: "When", options: [{ value: "all", label: "All" }, { value: "upcoming", label: "Upcoming" }, { value: "past", label: "Past" }] },
             { key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "upcoming", label: "Upcoming" }, { value: "completed", label: "Completed" }, { value: "cancelled", label: "Cancelled" }] },
             { key: "refund", label: "Refund eligible", options: [{ value: "all", label: "All" }, { value: "eligible", label: "Eligible" }] },
           ]}
@@ -1398,7 +1754,7 @@ function SessionsTab() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
               <tr>
-                {["Session ID", "Student", "Mentor", "Service", "Time", "Status", "Payment", "Refund", "Actions"].map((h) => (
+                {["Session ID", "Student", "Mentor", "Time", "Status", "Payment", "Refund", "Actions"].map((h) => (
                   <th key={h} style={TH}>{h}</th>
                 ))}
               </tr>
@@ -1415,7 +1771,6 @@ function SessionsTab() {
                   <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: C.blue }}>{s.id}</td>
                   <td style={TD}>{s.student}</td>
                   <td style={TD}>{s.mentor}</td>
-                  <td style={TD}><ServiceChip label={s.serviceType} /></td>
                   <td style={TD}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                       {s.within48h && <span style={badge("amber")}>48h</span>}
@@ -1423,11 +1778,11 @@ function SessionsTab() {
                     </div>
                   </td>
                   <td style={TD}><span style={badge(sessionStatusVariant(s.status))}>{s.status}</span></td>
-                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>{s.payment > 0 ? `$${s.payment}` : "—"}</td>
+                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>{s.payment > 0 ? `$${s.payment.toFixed(2)}` : "—"}</td>
                   <td style={TD}><span style={badge(s.refundEligible ? "amber" : "gray")}>{s.refundEligible ? "Eligible" : "No"}</span></td>
                   <td style={TD}>
                     <div style={{ display: "flex", gap: 5 }}>
-                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); rescheduleSession(s); }}>Reschedule</button>
+                      <button style={ghostBtn} onClick={(e) => { e.stopPropagation(); openReschedule(s); }}>Reschedule</button>
                       {s.status !== "Cancelled" && (
                         <button style={{ ...ghostBtn, color: C.red }} onClick={(e) => { e.stopPropagation(); if (window.confirm(`Cancel session ${s.id}? This will issue a refund if applicable.`)) cancelSession(s.id); }}>Cancel</button>
                       )}
@@ -1447,7 +1802,7 @@ function SessionsTab() {
         width={300}
         footer={
           <>
-            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => selected && rescheduleSession(selected)}>Reschedule</button>
+            <button style={{ ...primaryBtn, flex: 1, justifyContent: "center" }} onClick={() => selected && openReschedule(selected)}>Reschedule</button>
             {selected?.status !== "Cancelled" && (
               <button style={{ ...secondaryBtn, flex: 1, justifyContent: "center", color: C.red, borderColor: C.redBorder }} onClick={() => selected && window.confirm(`Cancel session ${selected.id}?`) && cancelSession(selected.id)}>Cancel session</button>
             )}
@@ -1460,10 +1815,29 @@ function SessionsTab() {
             <DrawerField label="Mentor"      value={selected.mentor} />
             <DrawerField label="Service"     value={selected.serviceType} />
             <DrawerField label="Scheduled"   value={selected.time} />
-            <DrawerField label="Payment"     value={selected.payment > 0 ? `$${selected.payment}` : "—"} />
+            <DrawerField label="Payment"     value={selected.payment > 0 ? `$${selected.payment.toFixed(2)}` : "—"} />
             <DrawerDivider />
             <DrawerField label="Status"  value={<span style={badge(sessionStatusVariant(selected.status))}>{selected.status}</span>} />
             <DrawerField label="Refund"  value={<span style={badge(selected.refundEligible ? "amber" : "gray")}>{selected.refundEligible ? "Eligible" : "Not eligible"}</span>} />
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, marginBottom: 6 }}>Mentor note (prep advice sent to student)</div>
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="How to prepare, what to bring, links to read…"
+                style={{ width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, color: C.text, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+              />
+              <button
+                onClick={saveMentorNote}
+                disabled={savingNote || noteDraft === (selected.mentorNote || "")}
+                style={{ ...secondaryBtn, height: 28, marginTop: 6, opacity: (savingNote || noteDraft === (selected.mentorNote || "")) ? 0.5 : 1, cursor: (savingNote || noteDraft === (selected.mentorNote || "")) ? "not-allowed" : "pointer" }}
+              >
+                {savingNote ? "Saving…" : "Save note"}
+              </button>
+            </div>
+            {selected.studentNote && <DrawerField label="Student note" value={selected.studentNote} />}
             {selected.within48h && (
               <div style={{ padding: "8px 10px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7, fontSize: 11, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
                 <AlertTriangle size={12} /> Request is within 48-hour window
@@ -1472,8 +1846,58 @@ function SessionsTab() {
           </>
         )}
       </Drawer>
+
+      <Modal
+        open={!!rescheduleTarget}
+        onClose={() => setRescheduleTarget(null)}
+        title="Reschedule session"
+        width={420}
+        footer={
+          <>
+            <button style={secondaryBtn} onClick={() => setRescheduleTarget(null)}>Cancel</button>
+            <button
+              style={{ ...primaryBtn, opacity: (!rescheduleValue || rescheduling) ? 0.5 : 1, cursor: (!rescheduleValue || rescheduling) ? "not-allowed" : "pointer" }}
+              disabled={!rescheduleValue || rescheduling}
+              onClick={submitReschedule}
+            >
+              {rescheduling ? "Saving…" : "Confirm new time"}
+            </button>
+          </>
+        }
+      >
+        {rescheduleTarget && (
+          <>
+            <div style={{ marginBottom: 14, fontSize: 12, color: C.textSub }}>
+              <div><strong style={{ color: C.text }}>{rescheduleTarget.student}</strong> with <strong style={{ color: C.text }}>{rescheduleTarget.mentor}</strong></div>
+              <div style={{ marginTop: 2 }}>Current time: {rescheduleTarget.time}</div>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, display: "block" }}>
+              New date &amp; time
+            </label>
+            <input
+              type="datetime-local"
+              value={rescheduleValue}
+              onChange={(e) => setRescheduleValue(e.target.value)}
+              style={{ width: "100%", height: 34, padding: "0 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 13, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", boxSizing: "border-box" }}
+            />
+            <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>
+              Uses your local timezone. The student and mentor will be notified of the new time.
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
+}
+
+// Converts an ISO 8601 timestamp into a value usable by <input type="datetime-local">
+// (local-time "YYYY-MM-DDTHH:mm"), returning "" for missing/invalid input.
+function isoToLocalInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
 }
 
 // ─── Reschedule ────────────────────────────────────────────────────────────────
@@ -1665,7 +2089,7 @@ function DisputesTab() {
                   <td style={TD}>{d.mentor}</td>
                   <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{d.session}</td>
                   <td style={{ ...TD, maxWidth: 200 }}><span style={{ fontSize: 12, color: C.textMuted, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden" }}>{d.reason}</span></td>
-                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>${d.amount}</td>
+                  <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>${d.amount.toFixed(2)}</td>
                   <td style={TD}><span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.blue }}><ExternalLink size={11} />{d.evidence}</span></td>
                   <td style={TD}><span style={badge(disputeVariant(d.status))}>{d.status}</span></td>
                   <td style={{ ...TD, color: C.textMuted }}>{d.created}</td>
@@ -1703,7 +2127,7 @@ function DisputesTab() {
               <p style={{ fontSize: 12, color: C.text, margin: 0, lineHeight: 1.55 }}>{selected.reason}</p>
             </div>
             <DrawerField label="Dispute ID" value={selected.id} mono />
-            <DrawerField label="Amount"     value={`$${selected.amount}`} />
+            <DrawerField label="Amount"     value={`$${selected.amount.toFixed(2)}`} />
             <DrawerField label="Session"    value={selected.session} mono />
             <DrawerField label="Evidence"   value={selected.evidence} />
             <DrawerField label="Created"    value={selected.created} />

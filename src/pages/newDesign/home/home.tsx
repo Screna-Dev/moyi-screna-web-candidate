@@ -1,58 +1,156 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { Loader2 } from 'lucide-react';
-import { Navbar } from '@/components/newDesign/home/navbar';
-import { Footer } from '@/components/newDesign/home/footer';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { Link, useNavigate, useLocation } from 'react-router';
+import { Menu, X, Loader2, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
+import { BuyCreditsModal } from '@/components/newDesign/BuyCreditsModal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
+import { getPersonalInfo } from '@/services/ProfileServices';
+import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
-import { useSubscription, type Tier } from '@/hooks/useSubscription';
+import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
+import imgFeatureA from '@/imports/featurea-png.png';
+import imgWorkflowDiagram from '@/imports/Group_18.png';
+import imgTeacup from '@/imports/App/landing-teacup.png';
+import imgJobOffer from '@/imports/App/landing-job-offer.png';
+import imgMicrophone from '@/imports/App/landing-microphone.png';
+import imgNotebook from '@/imports/App/landing-notebook.png';
+import imgFeatureB from '@/imports/featureb.png';
+import imgFeatureC from '@/imports/featurec.png';
+import imgDashboard from '@/imports/image-2.png';
+// AI-generated testimonial portraits (people who don't exist — commercial-safe)
+import avMaya from '@/imports/avatars/maya-chen.jpg';
+import avDaniel from '@/imports/avatars/daniel-park.jpg';
+import avAisha from '@/imports/avatars/aisha-raman.jpg';
+import avKevin from '@/imports/avatars/kevin-liu.jpg';
+import avSofia from '@/imports/avatars/sofia-martinez.jpg';
+import avJordan from '@/imports/avatars/jordan-blake.jpg';
+import avPriya from '@/imports/avatars/priya-shah.jpg';
+import avEthan from '@/imports/avatars/ethan-wu.jpg';
 
-// ── SVG helpers ───────────────────────────────────────────────────────────────
-const CheckFull = () => (
-  <span
-    className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full bg-[hsl(221,91%,60%)] text-white"
-    style={{ boxShadow: '0 3px 10px -3px rgba(46,91,255,0.45)' }}
-  >
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-  </span>
-);
-const CheckMuted = () => (
-  <span className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full border border-slate-200 text-slate-400">
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-  </span>
-);
-const XMark = () => (
-  <span className="inline-flex items-center justify-center w-[26px] h-[26px] text-[#c8ccd3]">
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-  </span>
-);
-const Note = ({ text }: { text: string }) => (
-  <span className="text-[12px] font-[500] text-slate-400 tracking-[-0.005em] leading-[1.3] px-1 text-center">{text}</span>
-);
-const ArrowRight = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 8h10M9 4l4 4-4 4"/>
-  </svg>
-);
+// ─── Types ──────────────────────────────────────────────────────────────────
+type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
 
-// ── Credit price calculator ───────────────────────────────────────────────────
-function creditPrice(q: number): number {
-  const p100 = 0.1499, p1000 = 0.12;
-  const theory = p100 - (p100 - p1000) * Math.log10(q / 100);
-  const total = q * theory;
-  const step = 0.5;
-  const rounded = Math.ceil(total / step) * step - 0.01;
-  return Math.max(rounded, 19.99);
+// Landing-page subscription tier. FREE is UI-only; the paid tiers map to the
+// backend enum (BASIC | ADVANCED | FLAGSHIP), billed MONTHLY for now.
+type PlanTier = 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP';
+
+interface Plan {
+  name: string;
+  tier: PlanTier;
+  price: string;
+  tagline: string;
+  features: string[];
+  cta: string;
+  highlighted: boolean;
+  badge?: string;
 }
 
-// ── Company logo list for hero + social proof ─────────────────────────────────
+// ─── Data ────────────────────────────────────────────────────────────────────
+const TABS: Tab[] = ['AI Mock', 'Mentorship', 'InterviewPrep Note'];
+
+const FAQ_ITEMS = [
+  {
+    q: "What if it doesn't work out — can I get a refund?",
+    a: "We offer a 3-day money-back guarantee on all paid plans. If Screna isn't right for you, reach out and we'll refund you in full — no questions asked.",
+  },
+  {
+    q: "I haven't started applying yet. Is it too early?",
+    a: "Not at all. Starting early means more reps, better stories, and less pressure when the real interviews arrive. Screna helps you build a solid prep foundation before the stakes are high.",
+  },
+  {
+    q: 'How much time do I need to put in each week?',
+    a: 'Most users improve with 3–5 focused hours per week. Start with InterviewPrep Notes to understand what to expect, use AI Mock for targeted practice, then bring your toughest answers or strategy questions to a mentor.',
+  },
+  {
+    q: 'How is Screna different from other job search prep platforms?',
+    a: 'Screna is built for the full preparation journey, not just one interview tool. You can understand what companies actually ask, practice with AI around your resume or target role, and get mentor guidance when you need human judgment. Interview prep is our strongest layer, but the system is designed to help you prepare for the job search as a whole.',
+  },
+  {
+    q: "Not sure where to start? You're not alone.",
+    a: 'Email us at operations@screna.ai. A real person on the Screna team will help you figure out what to focus on next. We reply within one business day during working hours.\nMon–Fri, 9:00 AM–5:00 PM ET',
+  },
+];
+
+const PLANS: Plan[] = [
+  {
+    name: 'Free',
+    tier: 'FREE',
+    price: 'Free',
+    tagline: 'Start at no cost',
+    features: [
+      'Buy extra credits',
+      'Limited access to InterviewPrep Note',
+      'Book 1-on-1 mentorship sessions with industry experts',
+    ],
+    cta: 'Start for free',
+    highlighted: false,
+  },
+  {
+    name: 'Basic',
+    tier: 'BASIC',
+    price: '$7.99/mo',
+    tagline: 'Build your foundation',
+    features: [
+      '100 free credits / month',
+      'Limited access to InterviewPrep Note',
+      'Book 1-on-1 mentorship sessions with industry experts',
+    ],
+    cta: 'Get Basic',
+    highlighted: false,
+  },
+  {
+    name: 'Advanced',
+    tier: 'ADVANCED',
+    price: '$29.99/mo',
+    tagline: 'For serious prep',
+    features: [
+      '300 free credits / month',
+      'All access to InterviewPrep Note',
+      'Book 1-on-1 mentorship sessions with industry experts',
+    ],
+    cta: 'Start Advanced',
+    highlighted: true,
+    badge: 'Most Popular',
+  },
+  {
+    name: 'Flagship',
+    tier: 'FLAGSHIP',
+    price: '$79.99/mo',
+    tagline: 'For accelerated timelines',
+    features: [
+      'Unlimited credits',
+      'All access to InterviewPrep Note',
+      'Book 1-on-1 mentorship sessions with industry experts',
+    ],
+    cta: 'Get Flagship',
+    highlighted: false,
+  },
+];
+
+const MARQUEE_ROW1 = [
+  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
+  { name: 'Daniel Park', role: 'Software Engineer', company: 'Final round at Stripe', quote: 'Quick Mock let me practice when I only had 20 minutes. The feedback made the next answer immediately stronger.', initials: 'DP', avatarBg: '#FFF0ED', initialsColor: '#C94025', img: avDaniel },
+  { name: 'Aisha Raman', role: 'Data Analyst', company: 'Offer at Airbnb', quote: 'My mentor helped me turn scattered stories into answers that actually landed.', initials: 'AR', avatarBg: '#EDFFF1', initialsColor: '#1A7F33', img: avAisha },
+  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
+  { name: 'Sofia Martinez', role: 'PMM', company: 'Offer at Figma', quote: 'The notes showed me what candidates actually faced, and the AI Mock helped me rehearse with real context.', initials: 'SM', avatarBg: '#F4EEFF', initialsColor: '#7B3FE4', img: avSofia },
+];
+
+const MARQUEE_ROW2 = [
+  { name: 'Jordan Blake', role: 'Backend Engineer', company: 'Offer at Meta', quote: 'The best part was how flexible the practice felt. I could paste a job description or just jump into a quick session.', initials: 'JB', avatarBg: '#E8F3FF', initialsColor: '#1868D4', img: avJordan },
+  { name: 'Priya Shah', role: 'Strategy', company: 'Interview loop at Uber', quote: 'Mentorship gave me the strategy I was missing. AI Mock gave me the reps.', initials: 'PS', avatarBg: '#FFF0F5', initialsColor: '#C0245A', img: avPriya },
+  { name: 'Ethan Wu', role: 'Designer', company: 'Offer at Dropbox', quote: 'It felt like practicing with signal, not practicing in the dark.', initials: 'EW', avatarBg: '#EDFFFC', initialsColor: '#0E8A79', img: avEthan },
+  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
+  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
+];
+
+// ─── Hero logo marquee (old-design scrolling company logos) ───────────────────
 interface LogoEntry {
   name: string;
-  src: string;   // URL — CDN or /public path
-  h?: number;    // display height in px
+  src: string;
+  h?: number;
 }
 
-// Hero marquee — tech companies (local seeklogo files in /public/logos/companies/)
 const HERO_LOGOS: LogoEntry[] = [
   { name: 'Apple',     src: '/logos/companies/apple.svg',     h: 32 },
   { name: 'Microsoft', src: '/logos/companies/microsoft.png', h: 28 },
@@ -66,23 +164,6 @@ const HERO_LOGOS: LogoEntry[] = [
   { name: 'Nvidia',    src: '/logos/companies/nvidia.svg',    h: 26 },
 ];
 
-// Social proof marquee — universities (local seeklogo files + clearbit for NYU/Columbia)
-const cb = (domain: string) => `https://logo.clearbit.com/${domain}?size=200`;
-
-const UNIVERSITY_LOGOS: LogoEntry[] = [
-  { name: 'Stanford',        src: '/logos/universities/stanford.png', h: 36 },
-  { name: 'UC Berkeley',     src: '/logos/universities/ucb.png',      h: 36 },
-  { name: 'Carnegie Mellon', src: '/logos/universities/cmu.svg',      h: 36 },
-  { name: 'MIT',             src: '/logos/universities/mit.png',      h: 36 },
-  { name: 'U of Michigan',   src: '/logos/universities/umich.svg',    h: 36 },
-  { name: 'NYU',             src: '/logos/universities/nyu.png',      h: 36 },
-  { name: 'Cornell',         src: '/logos/universities/cornell.svg',  h: 36 },
-  { name: 'Columbia',        src: '/logos/universities/columbia.png', h: 36 },
-  { name: 'UW',              src: '/logos/universities/uw.png',       h: 36 },
-  { name: 'UIUC',            src: '/logos/universities/uiuc.png',     h: 36 },
-];
-
-// ── Infinite horizontal logo marquee ─────────────────────────────────────────
 // Each slot is 200px → exactly 5 visible at a time
 const SLOT_W = 200;
 
@@ -135,1845 +216,1810 @@ function LogoMarquee({ logos, speed = 30 }: { logos: LogoEntry[]; speed?: number
   );
 }
 
-// ── Hero tracker mockup ───────────────────────────────────────────────────────
-function HeroTracker() {
-  const navItems = ['Dashboard','Mock interviews','Interview insights','Mentors','Applications','Resume'];
-  const stages = [
-    { n: '01', l: 'Understand', s: 'done' },
-    { n: '02', l: 'Practice',   s: 'active' },
-    { n: '03', l: 'Get support',s: 'todo' },
-    { n: '04', l: 'Apply',      s: 'todo' },
-    { n: '05', l: 'Offer',      s: 'todo' },
-  ];
-  const tasks = [
-    { l: 'System design · 3 mocks',         p: 100 },
-    { l: 'Behavioral · STAR tightening',     p: 66  },
-    { l: 'Coding · 2 hard DP problems',      p: 50  },
-    { l: 'Read 3 Meta E5 experiences',       p: 100 },
-    { l: '1-on-1 with coach',                p: 0   },
-  ];
+// ─── Feature Tab Cards ───────────────────────────────────────────────────────
+
+function AiMockCard() {
   return (
-    <div style={{ borderRadius: 20, background: '#fff', border: '1px solid #E8E8EA', boxShadow: '0 2px 4px rgba(10,10,10,0.03),0 30px 60px -20px rgba(30,60,120,0.18),0 80px 120px -40px rgba(30,60,120,0.12)', overflow: 'hidden' }}>
-      {/* App chrome */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px', borderBottom: '1px solid #F0F0F2', background: '#FBFBFC' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {['#EEE','#EEE','#EEE'].map((c, i) => <span key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: c, display: 'inline-block' }} />)}
-        </div>
-        <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: '#fff', border: '1px solid #EEE', borderRadius: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#8a8f9a' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#bfc4cc', display: 'inline-block' }} />
-          app.screna.ai / career
-        </div>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#5b5f6a' }}>
-          <span>Priya Shah</span>
-          <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#E7EFFB,#C9D8EF)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#2B7AEF' }}>PS</span>
-        </div>
-      </div>
-      {/* Body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: 480 }}>
-        {/* Sidebar */}
-        <aside style={{ borderRight: '1px solid #F0F0F2', padding: '22px 18px', background: '#FBFBFC' }}>
-          <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 10 }}>Workspace</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {navItems.map((l, i) => (
-              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, fontSize: 13, color: i === 0 ? '#2E5BFF' : '#5b5f6a', background: i === 0 ? '#F0F3FF' : 'transparent', fontWeight: i === 0 ? 600 : 450 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: i === 0 ? '#2E5BFF' : '#cfd3da', display: 'inline-block' }} />{l}
-              </div>
-            ))}
-          </div>
-          <div style={{ height: 1, background: '#F0F0F2', margin: '22px -18px 22px' }} />
-          <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 10 }}>Your journey</div>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 14, color: '#0A0A0A', lineHeight: 1.3 }}>Staff backend · Meta, Stripe, Airbnb</div>
-          <div style={{ fontSize: 11, color: '#8a8f9a', marginTop: 4 }}>Target start · June 2026</div>
-        </aside>
-        {/* Main */}
-        <div style={{ padding: '28px 32px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2E5BFF', marginBottom: 8, fontWeight: 600 }}>Your career path</div>
-              <h3 style={{ fontFamily: "'Playfair Display',serif", fontWeight: 400, fontSize: 28, letterSpacing: '-0.02em', margin: 0, color: '#0A0A0A', lineHeight: 1.15 }}>
-                You're in <em style={{ color: '#2E5BFF' }}>Practice</em>.
-                <span style={{ color: '#8a8f9a', fontSize: 14, fontFamily: "'Inter',sans-serif", fontStyle: 'normal', marginLeft: 8 }}>Week 3 of 7</span>
-              </h3>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 11, color: '#8a8f9a' }}>Progress</span>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#2E5BFF', fontWeight: 600 }}>42%</span>
-            </div>
-          </div>
-          {/* Progress rail */}
-          <div style={{ marginTop: 28 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-              {stages.map(st => (
-                <div key={st.n}>
-                  <div style={{ height: 4, borderRadius: 2, background: st.s === 'done' ? '#2E5BFF' : st.s === 'active' ? 'linear-gradient(to right,#2E5BFF 55%,#E8E8EA 55%)' : '#E8E8EA' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: st.s === 'done' ? '#2E5BFF' : '#fff', border: `1px solid ${st.s === 'done' ? '#2E5BFF' : st.s === 'active' ? '#2E5BFF' : '#E8E8EA'}`, color: st.s === 'done' ? '#fff' : '#2E5BFF', fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {st.s === 'done' ? '✓' : st.n}
-                    </span>
-                    <div style={{ fontSize: 12, color: '#0A0A0A', fontWeight: 500 }}>{st.l}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Two cards row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14, marginTop: 36 }}>
-            {/* This week */}
-            <div style={{ border: '1px solid #F0F0F2', borderRadius: 14, padding: '18px 20px', background: '#fff' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#0A0A0A' }}>This week</div>
-                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: '#8a8f9a' }}>3 of 5</div>
-              </div>
-              {tasks.map(row => (
-                <div key={row.l} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: '1px solid #F6F6F8' }}>
-                  <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, background: row.p === 100 ? '#22B07D' : '#fff', border: `1px solid ${row.p === 100 ? '#22B07D' : '#D7D9DE'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8 }}>
-                    {row.p === 100 ? '✓' : ''}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: row.p === 100 ? '#8a8f9a' : '#0A0A0A', textDecoration: row.p === 100 ? 'line-through' : 'none' }}>{row.l}</div>
-                    <div style={{ height: 3, background: '#F3F3F5', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${row.p}%`, background: row.p === 100 ? '#22B07D' : '#2E5BFF' }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Next up */}
-            <div style={{ border: '1px solid #E4EAFC', borderRadius: 14, padding: '18px 20px', background: 'linear-gradient(160deg,#F0F3FF 0%,#FFFFFF 60%)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#0A0A0A' }}>Next up</div>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />Live
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: '#8a8f9a', marginBottom: 16 }}>In 12 minutes · with Aditi D.</div>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, lineHeight: 1.15, letterSpacing: '-0.01em', color: '#0A0A0A', marginBottom: 20 }}>Staff backend system design</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, padding: '8px 12px', background: '#2E5BFF', color: '#fff', fontSize: 12, fontWeight: 500, borderRadius: 999, textAlign: 'center', boxShadow: '0 6px 16px -4px rgba(46,91,255,0.4)' }}>Join mock</div>
-                <div style={{ padding: '8px 12px', background: '#fff', color: '#0A0A0A', fontSize: 12, fontWeight: 500, borderRadius: 999, textAlign: 'center', border: '1px solid #E8E8EA' }}>Reschedule</div>
-              </div>
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(10,10,10,0.06)', display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ display: 'flex' }}>
-                  {['#C9D8EF','#EFD5C6','#CFE3D8'].map((c, i) => (
-                    <span key={i} style={{ width: 24, height: 24, borderRadius: '50%', background: c, border: '2px solid #fff', marginLeft: i === 0 ? 0 : -8, display: 'inline-block' }} />
-                  ))}
-                </div>
-                <div style={{ fontSize: 11, color: '#5b5f6a', lineHeight: 1.4 }}>3 mentors available<br/>in your target role today</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Pillar shot mockups ───────────────────────────────────────────────────────
-function ShotAI() {
-  return (
-    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
-      <div style={{ position: 'relative', height: 110, background: 'linear-gradient(135deg,#1a2d4a,#0e1a2e)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ position: 'absolute', top: 10, left: 10, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.22)', color: '#FCA5A5', fontSize: 10, fontWeight: 500, padding: '3px 8px', borderRadius: 999 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />Recording
-        </span>
-        <span style={{ position: 'absolute', top: 12, right: 10, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.1)', padding: '3px 8px', borderRadius: 6 }}>05:20</span>
-        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#C9D8EF,#2B7AEF)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600, fontSize: 15, boxShadow: '0 0 0 4px rgba(255,255,255,0.08)' }}>AD</div>
-      </div>
-      <div style={{ padding: '12px 14px' }}>
-        <div style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#8a8f9a', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width="11" height="11" fill="none" stroke="#2B7AEF" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z" strokeLinejoin="round"/></svg>
-          Live coaching
-        </div>
-        <div style={{ background: '#F0F7EE', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#2A7A47', marginBottom: 2 }}>Strong framing</div>
-          <div style={{ fontSize: 10.5, color: '#3c3e42', lineHeight: 1.4 }}>You asked the right scoping questions in the first 30 seconds.</div>
-        </div>
-        <div style={{ background: '#FDF5E8', borderRadius: 8, padding: '8px 10px' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#A06912', marginBottom: 2 }}>Try a trade-off</div>
-          <div style={{ fontSize: 10.5, color: '#3c3e42', lineHeight: 1.4 }}>Name one concrete trade-off before diving into the design.</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ShotCommunity() {
-  const rows = [
-    { n: 'Priya S.',  r: 'Staff SWE', c: 'Stripe', t: '2d', o: 'offer',  init: 'PS', bg: '#C9D8EF' },
-    { n: 'Ravi M.',   r: 'Staff SWE', c: 'Meta',   t: '3d', o: 'offer',  init: 'RM', bg: '#EFD5C6' },
-    { n: 'Jordan K.', r: 'Senior PM', c: 'Airbnb', t: '4d', o: 'reject', init: 'JK', bg: '#CFE3D8' },
-    { n: 'Alicia N.', r: 'SWE L4',   c: 'Google', t: '5d', o: 'offer',  init: 'AN', bg: '#E0D4EF' },
-  ];
-  return (
-    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)' }}>
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid #F0F0F2', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 500 }}>Fresh experiences</div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />Live
-        </span>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: '#8a8f9a' }}>this week · 847</span>
-      </div>
-      {rows.map((row, i) => (
-        <div key={row.init} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < 3 ? '1px solid #F6F6F8' : 'none' }}>
-          <span style={{ width: 28, height: 28, borderRadius: '50%', background: row.bg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#0A0A0A', flexShrink: 0 }}>{row.init}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: '#0A0A0A' }}>{row.n} · <span style={{ color: '#5b5f6a', fontWeight: 450 }}>{row.r}</span></div>
-            <div style={{ fontSize: 10.5, color: '#8a8f9a' }}>{row.c} · {row.t} ago · 4 rounds</div>
-          </div>
-          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999, ...(row.o === 'offer' ? { background: 'rgba(34,176,125,0.12)', color: '#17794F' } : { background: '#F5F0F0', color: '#8a8f9a' }) }}>{row.o}</span>
-        </div>
-      ))}
-      <div style={{ padding: '10px 14px', background: '#FBFBFC', borderTop: '1px solid #F0F0F2', borderRadius: '0 0 12px 12px' }}>
-        <div style={{ fontSize: 10, color: '#8a8f9a', marginBottom: 4, letterSpacing: '.06em', textTransform: 'uppercase' }}>Top question this week</div>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12.5, lineHeight: 1.35, color: '#0A0A0A', fontStyle: 'italic' }}>"Design a rate limiter for a global API at 10M QPS."</div>
-      </div>
-    </div>
-  );
-}
-
-function ShotMentor() {
-  const tags = ['System design','Backend','E5/E6 loops','Offer negotiation'];
-  return (
-    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
-      <div style={{ height: 56, background: 'linear-gradient(120deg,#E7EFFB,#D7E3F7)' }} />
-      <div style={{ padding: '0 16px 16px', marginTop: -26 }}>
-        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,#EFD5C6,#E6B998)', border: '3px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#6b3a1c', marginBottom: 10 }}>AD</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, color: '#0A0A0A', letterSpacing: '-0.01em', lineHeight: 1.1 }}>Aditi D.</div>
-          <div style={{ fontSize: 10, color: '#2A7A47', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2A7A47', display: 'inline-block' }} />Available
-          </div>
-        </div>
-        <div style={{ fontSize: 11.5, color: '#5b5f6a', marginTop: 4 }}>Staff Engineer · Stripe · ex-Meta</div>
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0' }}>
-          {tags.map(t => (
-            <span key={t} style={{ fontSize: 9.5, color: '#5b5f6a', padding: '3px 7px', border: '1px solid #E8E8EA', borderRadius: 999 }}>{t}</span>
-          ))}
-        </div>
-        <div style={{ fontSize: 11, color: '#5b5f6a', lineHeight: 1.45, padding: '10px 12px', background: '#FBFBFC', borderRadius: 8, marginBottom: 12, fontStyle: 'italic', fontFamily: "'Playfair Display',serif" }}>"Helped 40+ engineers land staff roles at FAANG + unicorns."</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, color: '#0A0A0A' }}>$80<span style={{ fontSize: 10.5, color: '#8a8f9a', fontFamily: "'Inter',sans-serif" }}> · 45 min</span></div>
-          <div style={{ padding: '7px 12px', background: '#2E5BFF', color: '#fff', fontSize: 11.5, fontWeight: 500, borderRadius: 999, boxShadow: '0 6px 16px -4px rgba(46,91,255,0.45)' }}>Book session</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ShotSupport() {
-  return (
-    <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: '1px solid #E8E8EA', borderRadius: 12, boxShadow: '0 20px 40px -12px rgba(10,10,10,0.12)', overflow: 'hidden' }}>
-      <div style={{ padding: '11px 13px', borderBottom: '1px solid #F0F0F2', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#0A0A0A' }}>Career support</div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 600, color: '#22B07D', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22B07D', display: 'inline-block' }} />24/7
-        </span>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: '#8a8f9a' }}>Members only</span>
-      </div>
-      <div style={{ padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 9, background: '#FBFBFC' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#7C3AED', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>✦</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED' }}>AI Coach</span>
-          </div>
-          <div style={{ background: '#F5F3FF', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#1f1a2e' }}>Based on your L5 offer from Google, push back on: sign-on bonus (20–30% flex) and RSU cliff timing.</div>
-        </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#16A34A', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>S</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#16A34A' }}>Sarah · Screna team</span>
-          </div>
-          <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#14321b' }}>Saw you're prepping the Meta system design loop — here are our top 3 picks for E5.</div>
-        </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span style={{ width: 17, height: 17, borderRadius: '50%', background: '#7C3AED', color: '#fff', fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>✦</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#7C3AED' }}>AI Coach</span>
-          </div>
-          <div style={{ background: '#F5F3FF', borderRadius: 10, padding: '8px 10px', fontSize: 11, lineHeight: 1.4, color: '#1f1a2e' }}>Your next mock is Thursday. Want 3 practice questions on last session's weak areas?</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Stats item with count-up animation ────────────────────────────────────────
-function StatItem({ num, suf, label }: { num: number; suf: string; label: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const animated = useRef(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !animated.current) {
-          animated.current = true;
-          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            el.textContent = String(num);
-            observer.disconnect();
-            return;
-          }
-          const DURATION = 1600;
-          const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-          const start = performance.now();
-          const tick = (now: number) => {
-            const t = Math.min(1, (now - start) / DURATION);
-            el.textContent = String(Math.round(num * easeOut(t)));
-            if (t < 1) requestAnimationFrame(tick);
-            else el.textContent = String(num);
-          };
-          requestAnimationFrame(tick);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.4 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [num]);
-
-  return (
-    <div className="flex flex-col items-center text-center gap-2.5 px-5">
-      <div style={{ fontFamily: "'Playfair Display', serif" }} className="flex items-baseline leading-none tracking-[-0.03em]">
-        <span ref={ref} className="text-[52px] font-[400] text-slate-900">0</span>
-        <span className="text-[36px] font-[400] text-[hsl(221,91%,60%)] ml-0.5">{suf}</span>
-      </div>
-      <p className="text-[13px] text-slate-500 leading-snug max-w-[24ch]">{label}</p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HERO
-// ─────────────────────────────────────────────────────────────────────────────
-function Hero() {
-  return (
-    <section className="relative pt-36 pb-24" style={{ background: 'radial-gradient(ellipse 1000px 500px at 50% -5%, #F0F3FF, transparent 65%), linear-gradient(180deg, #F7F9FF 0%, #FFFFFF 70%)' }}>
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full" style={{ background: 'radial-gradient(ellipse at center, rgba(46,91,255,0.13), transparent 60%)', animation: 'pulse 7s ease-in-out infinite' }} />
-      </div>
-
-      <div className="relative max-w-5xl mx-auto px-6 text-center">
-        <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-7">
-          <span className="w-6 h-px bg-[#2E5BFF]" />
-          AI · COMMUNITY · CAREER SUPPORT
-        </p>
-        <h1 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,7vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-9 max-w-[22ch] mx-auto">
-          Unlock career opportunities{' '}
-          <em className="italic text-[#4a4d57] font-[400]">10X closer</em>{' '}
-          with Industry Insiders.
-        </h1>
-        <ul className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 max-w-[1100px] mx-auto mb-10 px-2" aria-label="Why members choose Screna">
-          {[
-            'Full-time career managers own your pipeline',
-            'Vetted recruiter networks surface hidden roles',
-            'Industry coaches share insider intel',
-          ].map((feature) => (
-            <li key={feature} className="inline-flex items-center gap-2 text-[clamp(12px,0.95vw,14px)] font-[500] text-[#4a4d57] leading-[1.3] tracking-[-0.005em] whitespace-normal sm:whitespace-nowrap">
-              <span
-                aria-hidden="true"
-                className="inline-flex items-center justify-center flex-shrink-0 w-[18px] h-[18px] rounded-full text-[#2E5BFF]"
-                style={{ border: '1.5px solid #2E5BFF', background: 'rgba(255,255,255,0.5)' }}
-              >
-                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-              </span>
-              {feature}
-            </li>
-          ))}
-        </ul>
-        <div className="flex items-center justify-center gap-4 mb-16 flex-wrap">
-          <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-5 rounded-full bg-[#2E5BFF] text-white text-[14px] font-[500] tracking-[-0.005em] hover:bg-[#1E48E6] hover:-translate-y-0.5 transition-all duration-200" style={{ boxShadow: '0 6px 18px -4px rgba(46,91,255,0.35)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-white" style={{ animation: 'breathe 1.8s ease-in-out infinite' }}></span>
-            Start free
-          </Link>
-          <a href="#pillars" className="inline-flex items-center gap-2 h-[44px] px-2 text-[#0A0A0A] text-[14px] font-[500] tracking-[-0.005em] hover:text-[#2E5BFF] transition-colors duration-200 group">
-            See how it works
-            <span className="group-hover:translate-x-1 transition-transform duration-200">
-              <ArrowRight />
-            </span>
-          </a>
-        </div>
-        <style>{`
-          @keyframes breathe {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50%      { opacity: 0.45; transform: scale(0.8); }
-          }
-        `}</style>
-
-        {/* Hero visual: career progress tracker mockup */}
-        <div className="relative max-w-4xl mx-auto">
-          {/* Floating chips */}
-          <div className="absolute -top-4 left-6 z-10 flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] font-medium text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12), 0 20px 60px -20px rgba(46,91,255,0.2)' }}>
-            <span className="w-2 h-2 rounded-full bg-emerald-500" style={{ boxShadow: '0 0 0 4px rgba(34,176,125,0.15)' }}></span>
-            Priya S. just landed at Stripe
-          </div>
-          <div className="absolute top-1/3 -right-2 z-10 flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12)' }}>
-            <span className="w-6 h-6 rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#2E5BFF,#1231B8)' }}>AD</span>
-            Aditi's session · in 12 min
-          </div>
-          <div className="absolute -bottom-4 left-8 z-10 flex items-center gap-1.5 bg-white rounded-2xl px-3 py-2 shadow-lg border border-slate-100/80 text-[12.5px] text-slate-700" style={{ boxShadow: '0 10px 30px -10px rgba(10,10,10,0.12)' }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[hsl(221,91%,60%)] font-semibold">+6 this week</span>
-            <span className="text-slate-400 text-[11px]">mocks done</span>
-          </div>
-          {/* Scale tracker to fit container on all screen sizes */}
-          <style>{`
-            .tracker-outer { overflow: hidden; border-radius: 20px; height: 600px; }
-            .tracker-inner { transform-origin: top left; }
-            @media (max-width: 1024px) {
-              .tracker-outer { height: 468px; }
-              .tracker-inner { transform: scale(0.78); width: calc(100% / 0.78); }
-            }
-            @media (max-width: 640px) {
-              .tracker-outer { height: 300px; }
-              .tracker-inner { transform: scale(0.5); width: calc(100% / 0.5); }
-            }
-          `}</style>
-          <div className="tracker-outer">
-            <div className="tracker-inner">
-              <HeroTracker />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Company logos marquee */}
-      <div className="relative mt-20">
-        <p style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center">
-          Members have landed roles at
-        </p>
-        <LogoMarquee logos={HERO_LOGOS} />
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATS BAR
-// ─────────────────────────────────────────────────────────────────────────────
-function StatsBar() {
-  const stats = [
-    { num: 300, suf: '+', label: 'Startups hiring right now' },
-    { num: 500, suf: '+', label: 'Recruiter connections' },
-    { num: 7000, suf: '+', label: 'Contract roles' },
-  ];
-  return (
-    <section className="bg-white py-16" style={{ borderTop: '1px solid #F0F0F2', borderBottom: '1px solid #F0F0F2' }}>
-      <div className="max-w-5xl mx-auto px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3" style={{ maxWidth: 980, margin: '0 auto' }}>
-          {stats.map((s, i) => (
-            <div key={s.label} className="relative">
-              {i > 0 && (
-                <span
-                  className="absolute left-0 top-1/2 -translate-y-1/2 hidden sm:block"
-                  style={{ width: 1, height: 64, background: '#E8E8EA' }}
-                />
-              )}
-              <StatItem {...s} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PILLARS
-// ─────────────────────────────────────────────────────────────────────────────
-const PILLARS = [
-  {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z"/>
-        <path d="M19 4l.7 2 2 .7-2 .7L19 9.5l-.7-2-2-.7 2-.7z"/>
-      </svg>
-    ),
-    title: 'AI that tells you the why',
-    desc: "Practice for your exact target role. Get feedback that explains what worked, what didn't, and what to focus on next — based on your resume and the jobs you're chasing.",
-    link: '/personalized-practice',
-    linkLabel: 'Start practicing',
-    shot: <ShotAI />,
-  },
-  {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5"/>
-        <circle cx="17" cy="7.5" r="2.5"/><path d="M15.5 13c3 .4 5.5 2.6 5.5 5.5"/>
-      </svg>
-    ),
-    title: 'Real experiences, not just ratings',
-    desc: 'Read structured debriefs from people who just went through the process. See what was asked, how many rounds, and what got them the offer — searchable by company, role, and level.',
-    link: '/interview-insights',
-    linkLabel: 'Browse insights',
-    shot: <ShotCommunity />,
-  },
-  {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 12V5.5a1.5 1.5 0 013 0V11M11 10V4.5a1.5 1.5 0 013 0V11M14 10.5V6.5a1.5 1.5 0 013 0V13"/>
-        <path d="M17 13v1c0 3.9-3.1 7-7 7-2.6 0-4.9-1.4-6.1-3.5L2 13.5c-.4-.7.1-1.7.9-1.7.3 0 .6.2.8.4L5 14V8a1.5 1.5 0 013 0v5"/>
-      </svg>
-    ),
-    title: 'A mentor who grows with your search',
-    desc: "Work with a vetted mentor on a structured topic — resume, system design, offer negotiation. Come back as you progress. Build an ongoing relationship that changes what's possible.",
-    link: '/marketplace',
-    linkLabel: 'Find a mentor',
-    shot: <ShotMentor />,
-  },
-  {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-      </svg>
-    ),
-    title: "Support that doesn't clock out",
-    desc: "Get answers anytime from our AI career coach. Members also get direct access to our team — prep advice, curated resources, the best tools for every stage, and negotiation guidance after you land the offer.",
-    link: '/auth',
-    linkLabel: 'Get started',
-    shot: <ShotSupport />,
-  },
-];
-
-function Pillars() {
-  return (
-    <section id="pillars" className="py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            The Screna system
-          </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[28ch] mx-auto">
-            Everything you need to run a smarter job search
-            <br />
-            — <em className="italic font-[400] text-[#4a4d57]">in one place.</em>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-[960px] mx-auto">
-          {PILLARS.map(({ icon, title, desc, shot }) => (
-            <article key={title} className="group relative bg-white border border-[#E8E8EA] rounded-[20px] overflow-hidden hover:border-[#D9E1FF] hover:-translate-y-1.5 transition-all duration-300 flex flex-col" style={{ boxShadow: '0 1px 3px rgba(10,10,10,0.04)' }}>
-              <div className="px-8 pt-8 pb-7 flex-1">
-                <div className="w-10 h-10 rounded-[10px] border border-[#E8E8EA] text-[#0A0A0A] group-hover:bg-[#2E5BFF] group-hover:text-white group-hover:border-[#2E5BFF] flex items-center justify-center mb-5 transition-all duration-300">
-                  {icon}
-                </div>
-                <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[26px] font-[400] text-[#0A0A0A] mb-3.5 leading-[1.15] tracking-[-0.02em]">{title}</h3>
-                <p className="text-[14.5px] text-[#4a4d57] leading-[1.65]">{desc}</p>
-              </div>
-              {/* Mockup shot area */}
-              <div className="border-t border-[#E8E8EA] bg-[#F7F7F7] group-hover:bg-[#F7F9FF] transition-colors duration-300 flex justify-center items-end px-6 pt-6 overflow-hidden" style={{ minHeight: 220 }}>
-                {shot}
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPARISON TABLE
-// ─────────────────────────────────────────────────────────────────────────────
-type Cell = 'yes' | 'muted' | 'no' | string;
-
-interface CmpRow {
-  name: string;
-  desc: string;
-  screna: Cell;
-  scale: Cell;
-  exponent: Cell;
-  simplify: Cell;
-  wonsulting: Cell;
-}
-
-interface CmpGroup {
-  label: string;
-  rows: CmpRow[];
-}
-
-const CMP_DATA: CmpGroup[] = [
-  {
-    label: 'Application support',
-    rows: [
-      { name: 'Applies to jobs for you', desc: 'Submits role-matched applications on your behalf.', screna: 'yes', scale: 'muted', exponent: 'no', simplify: 'Form autofill only', wonsulting: 'no' },
-      { name: 'Application tracking', desc: 'Dashboard of every submission, status, and follow-up.', screna: 'yes', scale: 'muted', exponent: 'no', simplify: 'muted', wonsulting: 'no' },
-      { name: 'Referrals through network', desc: 'Warm intros from members inside target companies.', screna: 'yes', scale: 'no', exponent: 'no', simplify: 'no', wonsulting: 'Varies' },
-    ],
-  },
-  {
-    label: 'Interview preparation',
-    rows: [
-      { name: 'AI mock interviews', desc: 'Role-specific practice with instant feedback.', screna: 'yes', scale: 'no', exponent: 'muted', simplify: 'no', wonsulting: 'no' },
-      { name: 'Real interview debriefs', desc: 'Questions and loops from recent candidates, by company.', screna: 'yes', scale: 'no', exponent: 'Course content', simplify: 'no', wonsulting: 'no' },
-      { name: 'Mentor-led mock loops', desc: '1:1 sessions with practitioners who hire for the role.', screna: 'yes', scale: 'no', exponent: 'muted', simplify: 'no', wonsulting: 'Add-on only' },
-    ],
-  },
-  {
-    label: 'Ongoing support',
-    rows: [
-      { name: 'Dedicated career advisor', desc: 'A human point of contact throughout the search.', screna: 'yes', scale: 'no', exponent: 'no', simplify: 'no', wonsulting: 'One-time package' },
-      { name: '24/7 AI career coach', desc: 'Always-on guidance for prep, outreach, and decisions.', screna: 'yes', scale: 'no', exponent: 'no', simplify: 'no', wonsulting: 'no' },
-      { name: 'Offer negotiation support', desc: 'Coaching on comp, sign-on, RSUs, and counter strategy.', screna: 'yes', scale: 'no', exponent: 'Limited', simplify: 'no', wonsulting: 'Add-on only' },
-    ],
-  },
-];
-
-function renderCell(val: Cell) {
-  if (val === 'yes') return <CheckFull />;
-  if (val === 'muted') return <CheckMuted />;
-  if (val === 'no') return <XMark />;
-  return <Note text={val} />;
-}
-
-function ComparisonTable() {
-  const competitors = ['Scale Jobs', 'Exponent', 'Simplify', 'Wonsulting'];
-
-  return (
-    <section className="py-24" style={{ background: '#F7F7F7' }}>
-      <div className="max-w-6xl mx-auto px-6">
-        {/* Section head — centered with eyebrow dash */}
-        <div className="text-center mb-16">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            Compare job search platforms
-          </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4">
-            How Screna compares to{' '}
-            <em className="italic font-[400] text-[#4a4d57]">alternatives.</em>
-          </h2>
-          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
-            See how Screna combines AI, community signals, and human support into one career command center.
-          </p>
-        </div>
-
-        {/* Unified grid table */}
-        <div className="max-w-[1100px] mx-auto overflow-x-auto">
+    <div className="rounded-2xl overflow-hidden" style={{ background: '#2E5CFF' }}>
+      <div
+        className="flex items-center gap-2 px-5 h-[44px]"
+        style={{ background: '#2447E0' }}
+      >
+        {[0, 1, 2].map((i) => (
           <div
-            className="bg-white border border-slate-200 rounded-[20px] overflow-hidden min-w-[840px]"
-            style={{ boxShadow: '0 1px 2px rgba(10,10,10,0.03), 0 20px 50px -24px rgba(10,10,10,0.08)' }}
-          >
-            {/* Header row */}
-            <div
-              className="grid items-stretch border-b border-slate-200"
-              style={{
-                gridTemplateColumns: 'minmax(240px, 3fr) repeat(5, minmax(120px, 1fr))',
-                background: '#FAFBFD',
-              }}
-            >
-              <div />
+            key={i}
+            className="rounded-full"
+            style={{ width: 10, height: 10, background: 'rgba(255,255,255,0.45)' }}
+          />
+        ))}
+        <span
+          className="ml-2 text-[12px] font-medium"
+          style={{ color: 'rgba(255,255,255,0.9)', fontFamily: "'Inter', sans-serif" }}
+        >
+          AI Interview Session
+        </span>
+      </div>
+      <div className="p-6 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 space-y-2">
+            {[
+              { w: '80%', op: 0.28 },
+              { w: '60%', op: 0.15 },
+              { w: '90%', op: 0.28 },
+              { w: '55%', op: 0.15 },
+              { w: '78%', op: 0.28 },
+              { w: '58%', op: 0.15 },
+              { w: '62%', op: 0.28 },
+              { w: '38%', op: 0.15 },
+            ].map((l, i) => (
               <div
-                className="relative px-3.5 py-4 flex items-center justify-center text-center"
-                style={{ background: '#DCE7FF' }}
-              >
-                <span className="absolute left-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
-                <span className="absolute right-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
-                <span
-                  style={{ fontFamily: "'Playfair Display', serif", color: 'hsl(221,91%,42%)' }}
-                  className="text-[22px] font-[500] tracking-[-0.02em] leading-tight"
-                >
-                  Screna
-                </span>
-              </div>
-              {competitors.map((c) => (
-                <div key={c} className="px-3.5 py-4 flex items-center justify-center text-center">
-                  <span className="text-[14px] font-[600] text-slate-600 tracking-[-0.005em]">{c}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Body — groups & rows */}
-            {CMP_DATA.map((group) => (
-              <div key={group.label}>
-                {/* Group label spans all columns */}
-                <div
-                  className="px-6 py-2.5 border-t border-slate-200 border-b border-slate-100"
-                  style={{ background: '#F4F5F8' }}
-                >
-                  <span className="text-[11px] font-[600] tracking-[0.14em] uppercase text-slate-500">
-                    {group.label}
-                  </span>
-                </div>
-                {/* Feature rows */}
-                {group.rows.map((row) => (
-                  <div
-                    key={row.name}
-                    className="grid items-stretch border-t border-slate-100 first:border-t-0"
-                    style={{ gridTemplateColumns: 'minmax(240px, 3fr) repeat(5, minmax(120px, 1fr))' }}
-                  >
-                    <div className="px-6 py-3 flex flex-col justify-center min-h-[64px]">
-                      <p className="text-[14.5px] font-[600] text-[#0A0A0A] leading-snug tracking-[-0.005em]">
-                        {row.name}
-                      </p>
-                      <p className="text-[12.5px] text-slate-400 mt-0.5 leading-[1.4]">{row.desc}</p>
-                    </div>
-                    {/* Highlighted Screna cell */}
-                    <div
-                      className="relative px-3.5 flex items-center justify-center min-h-[64px]"
-                      style={{ background: '#EAF1FF' }}
-                    >
-                      <span className="absolute left-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
-                      <span className="absolute right-0 top-0 bottom-0 w-px bg-[#A8C0F0] opacity-60" />
-                      {renderCell(row.screna)}
-                    </div>
-                    {(['scale', 'exponent', 'simplify', 'wonsulting'] as const).map((key) => (
-                      <div
-                        key={key}
-                        className="px-3.5 flex items-center justify-center min-h-[64px]"
-                      >
-                        {renderCell(row[key])}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                key={i}
+                className="rounded-[4px]"
+                style={{
+                  height: 9,
+                  width: l.w,
+                  background: `rgba(255,255,255,${l.op})`,
+                }}
+              />
             ))}
+          </div>
+          <div className="flex-shrink-0 flex flex-col items-center justify-center rounded-full"
+            style={{
+              width: 88,
+              height: 88,
+              background: 'rgba(255,255,255,0.15)',
+            }}
+          >
+            <span
+              className="text-[32px] font-medium leading-none text-white"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              92
+            </span>
+            <span
+              className="text-[10px]"
+              style={{ color: 'rgba(255,255,255,0.65)', fontFamily: "'Inter', sans-serif" }}
+            >
+              /100
+            </span>
           </div>
         </div>
       </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// JOURNEY
-// ─────────────────────────────────────────────────────────────────────────────
-const STAGES = [
-  { num: '01', name: 'Understand', desc: 'Know where to start. We analyze your resume, suggest the right titles, and match you to roles that fit your profile and goals.' },
-  { num: '02', name: 'Mock with AI', desc: 'Start training the moment interviews arrive. Practice instantly, get fast feedback, and improve through structured evaluation.' },
-  { num: '03', name: 'Get help from mentors', desc: 'Choose the right mentor for the right moment. Book flexible sessions on any topic and gain insider guidance on companies and roles.' },
-  { num: '04', name: 'Apply smartly', desc: 'Access curated opportunities plus 500+ startups, 300+ recruiter connections, and 7,000+ contract roles, with human assistants along the way.' },
-  { num: '05', name: 'Offer & Grow', desc: 'Interviews often begin in 2–3 months. With consistent training, many reach their target role in 6–8 months, then continue with negotiation and career growth.' },
-];
-
-function Journey() {
-  return (
-    <section className="py-24" style={{ background: 'linear-gradient(180deg, #FAFBFF 0%, #F7F9FF 100%)' }}>
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-16">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            Your full job search
-          </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-4 max-w-[22ch] mx-auto">
-            From first application to first offer{' '}
-            <em className="italic font-[400] text-[#4a4d57]">— stage by stage.</em>
-          </h2>
-          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
-            Screna guides you from figuring out where you stand to celebrating your offer. Unlock more support as you go.
-          </p>
-        </div>
-
-        {/* Desktop: 5-column grid with dashed line */}
-        <div className="hidden lg:block relative mt-10">
-          <div className="absolute left-[10%] right-[10%]" style={{ top: 28, height: 1, background: 'repeating-linear-gradient(to right, rgba(46,91,255,0.45) 0 6px, transparent 6px 12px)' }} />
-          <div className="grid grid-cols-5 gap-5">
-            {STAGES.map(({ num, name, desc }) => (
-              <div key={num} className="text-center px-2 group">
-                <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[48px] font-[400] leading-none text-[hsl(221,91%,60%)] tracking-[-0.03em] mb-4 relative z-10 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:text-[hsl(221,91%,48%)]">
-                  {num}
-                </div>
-                <h4 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[22px] font-[400] text-slate-900 mb-2 tracking-[-0.015em]">{name}</h4>
-                <p className="text-[14px] text-slate-500 leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Mobile: single column with vertical line */}
-        <div className="lg:hidden relative pl-10">
-          <div className="absolute left-[18px] top-0 bottom-0" style={{ width: 1, background: 'repeating-linear-gradient(to bottom, rgba(46,91,255,0.45) 0 6px, transparent 6px 12px)' }} />
-          <div className="space-y-8">
-            {STAGES.map(({ num, name, desc }) => (
-              <div key={num} className="grid grid-cols-[36px_1fr] gap-5 items-start">
-                <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[400] leading-none text-[hsl(221,91%,60%)] tracking-[-0.03em]">
-                  {num}
-                </div>
-                <div className="pt-1">
-                  <h4 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[20px] font-[400] text-slate-900 mb-1.5 tracking-[-0.01em]">{name}</h4>
-                  <p className="text-[14px] text-slate-500 leading-relaxed">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PRICING
-// ─────────────────────────────────────────────────────────────────────────────
-type BillingCycle = 'monthly' | 'quarterly';
-
-const PRICES: Record<BillingCycle, { price: string; note: string }> = {
-  monthly:   { price: '$219', note: 'Billed $219 / month · cancel anytime' },
-  quarterly: { price: '$199', note: 'Billed $597 / quarter · cancel anytime' },
-};
-
-const LIMITED_INCLUDED = [
-  'AI mock interview (credits required)',
-  'Limited Interview Insights',
-];
-
-type FeatureItem = { text: string; ok: boolean };
-type TierFeatureGroup = { title: string; items: FeatureItem[] };
-
-// Limited Access — all disabled groups (matches Claude design)
-const LIMITED_GROUPS: TierFeatureGroup[] = [
-  {
-    title: 'Job search support',
-    items: [
-      { text: 'Dedicated 1:1 job search human assistants', ok: false },
-      { text: 'We find jobs and apply for you (200 applications/month)', ok: false },
-      { text: 'Daily application progress updates', ok: false },
-      { text: 'Updated & Personalized job recommendation list', ok: false },
-      { text: 'Interview Insights — full access', ok: false },
-      { text: 'Weekly members-only live sessions', ok: false },
-      { text: '2 annual networking events', ok: false },
-      { text: 'Pre-interview warm-up reminders', ok: false },
-    ],
-  },
-  {
-    title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: false }],
-  },
-  {
-    title: 'Mentor access',
-    items: [
-      { text: 'Mentor Marketplace', ok: false },
-      { text: 'Mock interview, resume review, salary negotiation', ok: false },
-      { text: 'Mentor reviews & ratings', ok: false },
-    ],
-  },
-];
-
-// Full Access (Premium) — all checks (matches Claude design)
-const FULL_GROUPS: TierFeatureGroup[] = [
-  {
-    title: 'Job search support',
-    items: [
-      { text: 'Dedicated 1:1 job search human assistants', ok: true },
-      { text: 'We find jobs and apply for you (200 applications/month)', ok: true },
-      { text: 'Daily application progress updates', ok: true },
-      { text: 'Updated & Personalized job recommendation list', ok: true },
-      { text: 'Interview Insights — full access', ok: true },
-      { text: 'Weekly members-only live sessions', ok: true },
-      { text: '2 annual networking events', ok: true },
-      { text: 'Pre-interview warm-up reminders', ok: true },
-    ],
-  },
-  {
-    title: 'Outreach & visibility',
-    items: [{ text: 'We reach out to recruiters and request referrals for you', ok: true }],
-  },
-  {
-    title: 'Mentor access',
-    items: [
-      { text: 'Full Mentor Marketplace', ok: true },
-      { text: 'Mock interview, resume review, salary negotiation', ok: true },
-      { text: 'Mentor reviews & ratings', ok: true },
-    ],
-  },
-];
-
-function TierCheck({ ok }: { ok: boolean }) {
-  return ok ? (
-    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-[#3B6FE8] text-white shrink-0 mt-px">
-      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-    </span>
-  ) : (
-    <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#A0A0A0] shrink-0 mt-px">
-      <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-    </span>
-  );
-}
-
-function TierFeatureGroups({ groups }: { groups: TierFeatureGroup[] }) {
-  return (
-    <div className="flex flex-col">
-      {groups.map((g) => (
-        <section key={g.title} className="border-t border-[#E5E5E5] pt-4 pb-1">
-          <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0] mb-3">{g.title}</p>
-          <ul className="flex flex-col gap-[9px]">
-            {g.items.map((item) => (
-              <li
-                key={item.text}
-                className={`flex items-start gap-2.5 text-[13.5px] leading-[1.5] ${
-                  item.ok ? 'text-[#2A2A2A]' : 'text-[#A0A0A0]'
-                }`}
-              >
-                <TierCheck ok={item.ok} />
-                <span>{item.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
     </div>
   );
 }
 
-function Pricing() {
+function MentorshipCard() {
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: '#2E5CFF' }}>
+      <div
+        className="flex items-center gap-2 px-5 h-[44px]"
+        style={{ background: '#2447E0' }}
+      >
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="rounded-full"
+            style={{ width: 10, height: 10, background: 'rgba(255,255,255,0.45)' }}
+          />
+        ))}
+        <span
+          className="ml-2 text-[12px] font-medium"
+          style={{ color: 'rgba(255,255,255,0.9)', fontFamily: "'Inter', sans-serif" }}
+        >
+          Mentor Match
+        </span>
+      </div>
+      <div className="p-5 space-y-3">
+        <div
+          className="rounded-[14px] p-4 flex items-center gap-3"
+          style={{ background: '#FFF7F2', border: '1px solid #F2D0C1' }}
+        >
+          <div
+            className="rounded-[26px] flex-shrink-0"
+            style={{ width: 52, height: 52, background: '#FFB6A6' }}
+          />
+          <div className="flex-1 min-w-0">
+            <p
+              className="font-semibold text-[18px]"
+              style={{ color: '#1F2328', fontFamily: "'Inter', sans-serif" }}
+            >
+              Lena Chen
+            </p>
+            <p
+              className="text-[13px]"
+              style={{ color: '#6F6F6F', fontFamily: "'Inter', sans-serif" }}
+            >
+              Ex-Google PM • behavioral + strategy
+            </p>
+          </div>
+          <div
+            className="rounded-full px-3 py-1 flex-shrink-0"
+            style={{ background: '#1F2328' }}
+          >
+            <span
+              className="text-[13px] font-semibold text-white"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              94% fit
+            </span>
+          </div>
+        </div>
+        {[
+          { label: 'Answer review', detail: 'Tighten stories for impact, scope, and ownership.' },
+          { label: 'Mock debrief', detail: 'Replay weak moments and turn feedback into next steps.' },
+          { label: 'Prep plan', detail: 'A focused weekly plan for your target interview loop.' },
+        ].map((row, i) => (
+          <div
+            key={i}
+            className="rounded-xl px-4 flex items-center gap-4"
+            style={{
+              height: 52,
+              background: '#FFFFFF',
+              border: '1px solid #ECE7DF',
+            }}
+          >
+            <span
+              className="text-[14px] font-semibold w-28 flex-shrink-0"
+              style={{ color: '#1F2328', fontFamily: "'Inter', sans-serif" }}
+            >
+              {row.label}
+            </span>
+            <span
+              className="text-[13px]"
+              style={{ color: '#5E5E5E', fontFamily: "'Inter', sans-serif" }}
+            >
+              {row.detail}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Marquee testimonial card ─────────────────────────────────────────────────
+
+function MarqueeCard({
+  name, role, company, quote, initials, avatarBg, initialsColor, img,
+}: {
+  name: string; role: string; company: string; quote: string;
+  initials: string; avatarBg: string; initialsColor: string; img?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  return (
+    <div
+      className="flex-shrink-0 flex flex-col"
+      style={{
+        width: 304,
+        minHeight: 204,
+        padding: '24px 26px',
+        background: '#FFFFFF',
+        borderRadius: 16,
+        border: `1px solid ${hovered ? '#2E5BFF' : '#E8E8EA'}`,
+        boxShadow: hovered
+          ? '0 6px 24px rgba(46,91,255,0.10)'
+          : '0 2px 10px rgba(46,91,255,0.04)',
+        transition: 'border-color 180ms ease-out, box-shadow 180ms ease-out',
+        cursor: 'default',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Avatar + meta */}
+      <div className="flex items-center gap-3 mb-4">
+        {img && !imgFailed ? (
+          <img
+            src={img}
+            alt={name}
+            className="rounded-full flex-shrink-0 object-cover"
+            style={{ width: 36, height: 36 }}
+            loading="lazy"
+            draggable={false}
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div
+            className="rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ width: 36, height: 36, background: avatarBg }}
+          >
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: initialsColor, fontFamily: "'Inter', sans-serif" }}
+            >
+              {initials}
+            </span>
+          </div>
+        )}
+        <div>
+          <p
+            className="text-[13px] font-semibold leading-[18px]"
+            style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif" }}
+          >
+            {name}
+          </p>
+          <p
+            className="text-[11px] leading-[16px]"
+            style={{ color: '#8A8F9A', fontFamily: "'Inter', sans-serif" }}
+          >
+            {role} · {company}
+          </p>
+        </div>
+      </div>
+      {/* Quote */}
+      <p
+        className="text-[13px] leading-[20px] flex-1"
+        style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
+      >
+        "{quote}"
+      </p>
+    </div>
+  );
+}
+
+// ─── How It Works — two-column layout ─────────────────────────────────────────
+
+function HowItWorksSection() {
+  return (
+    <div className="bg-white size-full flex items-center justify-center">
+      <div className="w-full max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col lg:flex-row gap-10 lg:gap-12 xl:gap-16 items-center py-20 lg:py-0">
+
+        {/* ── Left text column ── */}
+        <div className="w-full lg:w-[400px] xl:w-[440px] flex-shrink-0">
+          <p
+            data-reveal data-delay="0"
+            className="text-[11px] tracking-[2.5px] mb-5 not-italic"
+            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
+          >
+            PROCESS
+          </p>
+          <h2
+            data-reveal data-delay="80"
+            className="font-normal tracking-[-0.8px] mb-5"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: 'clamp(34px, 3.2vw, 52px)',
+              lineHeight: '1.15',
+              color: '#0A0A0A',
+            }}
+          >
+            How Screna Works
+          </h2>
+          <p
+            data-reveal data-delay="160"
+            className="text-[17px] leading-relaxed mb-10"
+            style={{ color: '#2A2A2A', fontFamily: "'Inter', sans-serif", maxWidth: 400 }}
+          >
+            Choose direction, practice with context, and improve with the right next step.
+          </p>
+
+          <div className="flex flex-col gap-4 mb-10">
+            {[
+              { num: '01', label: 'Choose' },
+              { num: '02', label: 'Practice' },
+              { num: '03', label: 'Improve' },
+            ].map((s, i) => (
+              <div key={s.label} data-reveal data-delay={240 + i * 80} className="flex items-center gap-3">
+                <span className="text-[11px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8A8F9A', letterSpacing: '0.06em' }}>
+                  {s.num}
+                </span>
+                <div className="h-px w-4 flex-shrink-0" style={{ background: '#E8E8EA' }} />
+                <span className="text-[14px]" style={{ fontFamily: "'Inter', sans-serif", color: '#4A4D57' }}>
+                  {s.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div data-reveal data-delay="480" className="rounded-[1px]" style={{ width: 120, height: 2, background: '#2E5BFF' }} />
+        </div>
+
+        {/* ── Right diagram column ── */}
+        <div data-reveal data-delay="200" className="flex-1 min-w-0 hidden lg:flex items-center justify-start">
+          <img
+            src={imgWorkflowDiagram}
+            alt="How Screna Works diagram"
+            style={{ width: '100%', maxWidth: 800, height: 'auto', display: 'block' }}
+          />
+        </div>
+
+        {/* Mobile: stacked card list */}
+        <div className="lg:hidden w-full flex flex-col gap-3 mt-2">
+          {[
+            { num: '01', title: 'InterviewPrep Note', desc: 'Browse real interview signal to know what to expect.' },
+            { num: '02', title: 'Resume context', desc: 'Personalize questions to your actual background.' },
+            { num: '03', title: 'Quick Mock', desc: 'Start fast with a low-friction practice mode.' },
+            { num: '04', title: 'Target job / JD', desc: 'Paste a JD or choose a recommended target role.' },
+            { num: '05', title: 'AI Mock session', desc: 'Tailored questions, adjustable focus, built around your goal.' },
+            { num: '06', title: 'Feedback + next reps', desc: 'Improve, retry, or move into mentor review.' },
+            { num: '07', title: 'Mentorship', desc: 'Optional human guidance for strategy and confidence.' },
+          ].map(card => (
+            <div key={card.num} className="rounded-2xl p-4 flex items-start gap-3" style={{ background: 'white', border: '1px solid #2E5BFF' }}>
+              <span className="text-[10px] font-semibold flex-shrink-0 mt-0.5" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#1231B8' }}>{card.num}</span>
+              <div>
+                <p className="text-[14px] font-semibold leading-tight" style={{ fontFamily: "'Inter', sans-serif", color: '#0A0A0A' }}>{card.title}</p>
+                <p className="text-[12px] leading-relaxed mt-1" style={{ fontFamily: "'Inter', sans-serif", color: '#4A4D57' }}>{card.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Home Page ───────────────────────────────────────────────────────────
+export function HomePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { subscription, subscribe, changeTier, isActing: isSubscribing } = useSubscription();
+  const location = useLocation();
+  const { user, logout } = useAuth();
+  const { planData, isLoading: isPlanLoading } = useUserPlan();
+  const { toast } = useToast();
 
-  const [cycle, setCycle] = useState<BillingCycle>('quarterly');
-  const { price, note } = PRICES[cycle];
+  const [activeTab, setActiveTab] = useState<Tab>('AI Mock');
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const avatarRef = useRef<HTMLDivElement>(null);
+  const [loadingTier, setLoadingTier] = useState<PlanTier | null>(null);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [pillStyle, setPillStyle] = useState({ left: 4, width: 196 });
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
 
-  const [loadingTier, setLoadingTier] = useState<Tier | null>(null);
+  const goAuth = () => navigate('/auth');
 
-  const isActiveMember = subscription !== null && subscription.status !== 'canceled';
+  // Pay-as-you-go top-up. Signed-out visitors go to auth first (can't pay without
+  // an account); signed-in users open the Buy-credits modal and check out via Stripe.
+  const handleAddCredits = () => {
+    if (!user) { goAuth(); return; }
+    setShowBuyCredits(true);
+  };
 
-  const handleSubscribe = async (plan: Tier) => {
+  const handleBuyCredits = async (n: number) => {
+    try {
+      const res = await PaymentService.purchaseCustomPack(n);
+      const url = res?.data?.data?.url ?? res?.data?.url;
+      if (url) { window.location.href = url; return; }
+      toast({ title: 'Credits added', description: `${n} credits added to your balance.` });
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Unable to start checkout. Please try again.';
+      toast({ title: 'Checkout failed', description: message, variant: 'destructive' });
+    } finally {
+      setShowBuyCredits(false);
+    }
+  };
+
+  // Initials for the logged-in avatar
+  const nameParts = (user?.name || '').trim().split(' ');
+  const avatarInitials =
+    nameParts[0] && nameParts.length > 1
+      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+      : nameParts[0]
+      ? nameParts[0][0].toUpperCase()
+      : 'U';
+
+  // Fetch the profile avatar so the icon matches the personal center header.
+  useEffect(() => {
+    if (!user) return;
+    getPersonalInfo()
+      .then((res: { data: { data?: { avatarUrl?: string } } }) => {
+        const url = (res.data?.data ?? res.data)?.avatarUrl;
+        if (url) setAvatarUrl(url);
+      })
+      .catch(() => {});
+  }, [user]);
+
+  // Close the avatar dropdown when clicking outside of it.
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setAvatarOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSignOut = () => {
+    setAvatarOpen(false);
+    logout();
+    navigate('/');
+  };
+
+  // Pricing CTA. New subscribers → POST /payments/subscriptions (Stripe Checkout).
+  // Existing subscribers manage plan changes in Settings → Billing, so send them
+  // there rather than changing tier from the landing page.
+  // Billing cycle is MONTHLY-only for now.
+  const handleSelectPlan = async (plan: Plan) => {
     if (!user) {
       navigate('/auth');
       return;
     }
-    if (isActiveMember) {
-      navigate('/billing');
+    if (plan.tier === 'FREE') {
+      navigate('/dashboard');
       return;
     }
-    setLoadingTier(plan);
+    setLoadingTier(plan.tier);
     try {
-      if (subscription && subscription.status === 'canceled') {
-        const ok = await changeTier(plan);
-        if (!ok) return;
-        navigate('/premium-onboarding');
-      } else {
-        const url = await subscribe(plan, cycle);
-        if (url) {
-          window.location.href = url;
-        } else {
-          navigate('/premium-onboarding');
-        }
+      // If the user already has a subscription, they change plans in Settings.
+      let hasSubscription = false;
+      try {
+        const subRes = await PaymentService.getSubscription();
+        const sub = subRes?.data?.data ?? subRes?.data;
+        hasSubscription = !!(sub && (sub.tier || sub.plan || sub.status || sub.memberPlan));
+      } catch {
+        // 404 / no record → treat as a new subscriber.
+        hasSubscription = false;
       }
+
+      if (hasSubscription) {
+        navigate('/settings?tab=billing');
+        return;
+      }
+
+      const res = await PaymentService.createSubscription(plan.tier, 'MONTHLY');
+      const url = res?.data?.data?.url ?? res?.data?.url;
+      if (url) {
+        window.location.href = url;
+      } else {
+        // No Checkout URL (e.g. saved payment method) — subscription created directly.
+        toast({ title: 'Subscription started', description: `You're now on ${plan.name}.` });
+        navigate('/settings?tab=billing');
+      }
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Something went wrong. Please try again.';
+      console.error('subscription error:', err);
+      toast({ title: 'Unable to start plan', description: message, variant: 'destructive' });
     } finally {
       setLoadingTier(null);
     }
   };
 
-  const premiumLabel = isActiveMember
-    ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
-    : 'Start Premium';
-  const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
+  // ── Frosted-glass nav on scroll ──────────────────────────────────────────
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 16);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
-  return (
-    <section id="pricing" className="py-24" style={{ background: '#F7F7F7' }}>
-      <div className="mx-auto px-8" style={{ maxWidth: 1160 }}>
-        {/* Section head */}
-        <div className="text-center mb-12">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            Pricing
-          </p>
-          <h2
-            style={{ fontFamily: "'Playfair Display', serif" }}
-            className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4"
-          >
-            Plans for every stage of your{' '}
-            <em className="italic font-[400] text-[#4a4d57]">job search.</em>
-          </h2>
-          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
-            Start with self-serve AI practice, or upgrade to guided career support with mentorship and managed job search help.
-          </p>
-        </div>
+  // ── Scroll reveal observer ────────────────────────────────────────────────
+  useEffect(() => {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const el = entry.target as HTMLElement;
+            const delay = prefersReduced ? 0 : parseInt(el.dataset.delay ?? '0', 10);
+            setTimeout(() => el.classList.add('sr-visible'), delay);
+            observer.unobserve(el);
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -48px 0px' }
+    );
+    document.querySelectorAll('[data-reveal]').forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
-        {/* Billing toggle */}
-        <div className="flex justify-center mb-9">
-          <div className="inline-flex items-stretch bg-[#F3F4F6] rounded-full p-1 gap-0">
-            {(['monthly', 'quarterly'] as BillingCycle[]).map((c) => (
-              <button
-                key={c}
-                onClick={() => setCycle(c)}
-                className={`flex items-center gap-2 px-[18px] py-2 rounded-full text-[13px] font-[500] transition-all duration-200 ${
-                  cycle === c ? 'bg-white text-[#0A0A0A] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#6B6B6B] hover:text-[#0A0A0A]'
-                }`}
-              >
-                {c.charAt(0).toUpperCase() + c.slice(1)}
-                {c === 'quarterly' && (
-                  <span className="text-[10px] font-[700] tracking-[0.04em] bg-[#3B6FE8] text-white px-[7px] py-[2px] rounded-full leading-[1.2]">Save 9%</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+  // ── Scroll to hash target (e.g. /#pricing, /#faq) ─────────────────────────
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.slice(1);
+    // Defer so the section (and any reveal animations) have mounted first.
+    const t = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [location.hash]);
 
-        {/* Tier cards — Free + Premium */}
-        <div className="grid grid-cols-1 min-[820px]:grid-cols-2 gap-6 items-stretch max-w-[820px] mx-auto">
-          {/* ── Limited Access ─────────────────────── */}
-          <div className="bg-white border border-[#E5E5E5] rounded-2xl p-7 flex flex-col transition-all duration-300 hover:border-[#D0D7E5] hover:shadow-[0_12px_40px_-22px_rgba(10,10,10,0.10)]" style={{ padding: '28px 24px' }}>
-            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Free Plan</p>
-            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Limited Access</h3>
-            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
-              Practice on your own schedule. No subscription required — buy credits when you need them.
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">$0</span>
-              <span className="text-[15px] text-[#6B6B6B] font-[500]">no recurring charge</span>
-            </div>
-            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">Pay only for the credits you use</p>
-
-            <Link to="/auth" className="flex items-center justify-center w-full py-3 px-[18px] rounded-full border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] text-[14px] font-[600] hover:border-[#0A0A0A] transition-colors duration-200 mb-6">
-              Get started free
-            </Link>
-
-            <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0] pt-4 border-t border-[#E5E5E5] mb-2 mt-2">
-              What's included
-            </p>
-            <ul className="flex flex-col gap-[9px] mb-1">
-              {LIMITED_INCLUDED.map((text) => (
-                <li key={text} className="flex items-start gap-2.5 text-[13px] leading-[1.5] text-[#0A0A0A]">
-                  <TierCheck ok />
-                  <span>{text}</span>
-                </li>
-              ))}
-            </ul>
-
-            <TierFeatureGroups groups={LIMITED_GROUPS} />
-
-            <div className="mt-auto pt-5">
-              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
-                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Credits</p>
-                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">Pay-as-you-go</p>
-                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">Buy a pack when you need it</p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Full Access — Recommended ───────────── */}
-          <div
-            className="relative rounded-2xl flex flex-col overflow-visible transition-all duration-300 bg-white"
-            style={{ padding: '28px 24px', border: '2px solid #3B6FE8', boxShadow: '0 18px 50px -28px rgba(59,111,232,0.35)' }}
-          >
-            <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#3B6FE8] text-white text-[11px] font-[700] px-4 py-1 rounded-full tracking-[0.08em] uppercase whitespace-nowrap" style={{ boxShadow: '0 6px 18px -6px rgba(59,111,232,0.45)' }}>
-              Recommended
-            </span>
-            <p className="text-[11px] font-[700] tracking-[0.08em] uppercase text-[#3B6FE8] mb-3">Premium Membership</p>
-            <h3 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[36px] font-[700] text-[#0A0A0A] leading-[1.1] tracking-[-0.02em] mb-2.5">Full Access</h3>
-            <p className="text-[13px] text-[#6B6B6B] mb-5 max-w-[32ch] leading-[1.55]">
-              The complete job search platform. Every feature, every service, one subscription.
-            </p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[42px] font-[700] text-[#0A0A0A] leading-none tracking-[-0.02em]">{price}</span>
-              <span className="text-[15px] text-[#6B6B6B] font-[500]">/ month</span>
-            </div>
-            <p className="text-[12px] text-[#6B6B6B] mt-2 mb-[22px]">{note}</p>
-
-            <div className="relative mb-6">
-              <button
-                onClick={() => handleSubscribe('premium')}
-                disabled={premiumDisabled}
-                className="flex items-center justify-center w-full py-3 px-[18px] rounded-full bg-[#3B6FE8] text-white text-[14px] font-[600] text-center hover:bg-[#2E5BFF] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ border: '1.5px solid #3B6FE8' }}
-              >
-                {loadingTier === 'premium' ? <Loader2 className="w-4 h-4 animate-spin" /> : premiumLabel}
-              </button>
-            </div>
-
-            <p className="text-[13px] font-[500] text-[#3B6FE8] mb-1.5">Everything in Limited Access, plus:</p>
-
-            <TierFeatureGroups groups={FULL_GROUPS} />
-
-            <div className="mt-auto pt-5">
-              <div className="bg-[#F7F7F7] rounded-[10px] px-4 py-3.5 flex flex-col gap-1">
-                <p className="text-[10px] font-[700] tracking-[0.09em] uppercase text-[#A0A0A0]">Included each month</p>
-                <p className="text-[18px] font-[700] text-[#0A0A0A] tracking-[-0.01em]">500 credits / mo</p>
-                <p className="text-[11px] text-[#6B6B6B] leading-[1.45]">1 credit = $0.28 = 1 min of AI mock interview (Audio mode)</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FREE VS PREMIUM (UPGRADE COMPARE)
-// ─────────────────────────────────────────────────────────────────────────────
-const UPGRADE_STAGES: {
-  step: string;
-  name: string;
-  badge: string;
-  badgeNum?: string;
-  free: string[];
-  premium: { text: string; bold?: string[] }[];
-}[] = [
-  {
-    step: 'Stage 01',
-    name: 'Resume & Job Search',
-    badge: 'More exposure',
-    badgeNum: '+73%',
-    free: [
-      'Search and apply manually on your own',
-      'Limited to public channels: LinkedIn, Indeed, company sites',
-      'No active follow-up after you submit',
-    ],
-    premium: [
-      { text: 'Guided application support with a real advisor', bold: ['real advisor'] },
-      { text: '10+ direct application channels', bold: ['10+ direct application channels'] },
-      { text: '500+ recruiter connections & 300+ startup openings', bold: ['500+ recruiter connections', '300+ startup openings'] },
-      { text: 'Mentor referral pathways into target companies' },
-    ],
-  },
-  {
-    step: 'Stage 02',
-    name: 'Interview Prep',
-    badge: 'First-round pass',
-    badgeNum: '+32%',
-    free: [
-      'Generic practice tools with no clear improvement path',
-      'Hard to know what to fix next',
-      'Feedback is fragmented across tools',
-    ],
-    premium: [
-      { text: 'AI voice mock 7 days × 24 hrs' },
-      { text: 'Sessions tuned to your resume and target role' },
-      { text: 'Large bank of real interview questions', bold: ['real interview questions'] },
-      { text: 'Detailed report with weaknesses + next steps', bold: ['weaknesses + next steps'] },
-      { text: 'Far lower cost than traditional mentor mocks' },
-    ],
-  },
-  {
-    step: 'Stage 03',
-    name: 'Final-Round Support',
-    badge: 'Offer rate',
-    badgeNum: '+25%',
-    free: [
-      'Cold LinkedIn outreach with low response rates',
-      'Limited insider guidance going in',
-      'Final performance depends heavily on luck',
-    ],
-    premium: [
-      { text: 'Direct access to a working mentor network', bold: ['working mentor network'] },
-      { text: 'Transparent pricing & traceable service' },
-      { text: 'Mentors review your full AI training history', bold: ['AI training history'] },
-      { text: '1:1 targeted prep before final rounds' },
-      { text: 'Firsthand, company-specific experience reuse' },
-    ],
-  },
-  {
-    step: 'Stage 04',
-    name: 'Offer & Beyond',
-    badge: 'Long-term support',
-    free: [
-      'Limited salary & onboarding information',
-      'Information asymmetry during negotiation',
-      'Little support after the offer lands',
-    ],
-    premium: [
-      { text: 'Internal community from people in the same role' },
-      { text: 'Stronger salary data behind your negotiation' },
-      { text: 'Continued access to the high-quality network' },
-      { text: 'Career talks & long-term growth beyond the first offer', bold: ['Career talks & long-term growth beyond the first offer'] },
-    ],
-  },
-];
-
-function renderBoldText(text: string, bold?: string[]) {
-  if (!bold || bold.length === 0) return text;
-  let parts: (string | { b: string })[] = [text];
-  bold.forEach((b) => {
-    const next: (string | { b: string })[] = [];
-    parts.forEach((part) => {
-      if (typeof part !== 'string') { next.push(part); return; }
-      const idx = part.indexOf(b);
-      if (idx === -1) { next.push(part); return; }
-      if (idx > 0) next.push(part.slice(0, idx));
-      next.push({ b });
-      const rest = part.slice(idx + b.length);
-      if (rest) next.push(rest);
-    });
-    parts = next;
-  });
-  return parts.map((p, i) =>
-    typeof p === 'string' ? <span key={i}>{p}</span> : <strong key={i} className="font-[500] text-[#0A0A0A]">{p.b}</strong>
-  );
-}
-
-function FreeVsPremium() {
-  return (
-    <section className="py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            Free vs Premium
-          </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] mb-4 max-w-[22ch] mx-auto">
-            What changes when you{' '}
-            <em className="italic font-[400] text-[#4a4d57]">upgrade.</em>
-          </h2>
-          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
-            Premium changes how you move through the job search, not just what tools you can access.
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#E8E8EA] rounded-[20px] overflow-hidden" style={{ boxShadow: '0 24px 60px -36px rgba(10,10,10,0.08)' }}>
-          {/* Header row */}
-          <div className="hidden md:grid border-b border-[#E8E8EA]" style={{ gridTemplateColumns: 'minmax(220px,1fr) 1.2fr 1.2fr', background: '#FAFBFD' }}>
-            <div className="px-7 py-5 self-center text-[10.5px] tracking-[0.14em] uppercase text-slate-500" style={{ fontFamily: "'JetBrains Mono', monospace" }}>By stage</div>
-            <div className="px-7 py-[18px] flex items-center gap-3 border-l border-[#E8E8EA]" style={{ fontFamily: "'Playfair Display', serif" }}>
-              <span className="text-[22px] font-[500] tracking-[-0.01em] text-[#0A0A0A]">Free</span>
-            </div>
-            <div className="px-7 py-[18px] flex items-center gap-3 border-l border-[#E8E8EA]" style={{ fontFamily: "'Playfair Display', serif", background: 'linear-gradient(180deg, #DCE7FF 0%, #EAF1FF 100%)' }}>
-              <span className="text-[22px] font-[500] tracking-[-0.01em]" style={{ color: 'hsl(221,91%,42%)' }}>Premium</span>
-              <span className="text-[10px] font-[700] tracking-[0.1em] uppercase px-2.5 py-1 rounded-full text-white" style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}>Recommended</span>
-            </div>
-          </div>
-
-          {/* Stage rows */}
-          {UPGRADE_STAGES.map((stage, idx) => (
-            <div key={stage.step} className={`grid md:grid-cols-[minmax(220px,1fr)_1.2fr_1.2fr] ${idx > 0 ? 'border-t border-[#F0F0F2]' : ''}`}>
-              {/* Stage label */}
-              <div className="px-7 py-8 md:border-r-0">
-                <div className="text-[11px] font-[500] tracking-[0.12em] uppercase text-slate-500 mb-2.5" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{stage.step}</div>
-                <h3 className="text-[clamp(22px,2.2vw,28px)] font-[400] leading-[1.15] tracking-[-0.015em] text-[#0A0A0A] mb-3.5" style={{ fontFamily: "'Playfair Display', serif" }}>{stage.name}</h3>
-                <span className="inline-flex items-center gap-1.5 text-[11.5px] font-[600] tracking-[0.01em] px-2.5 py-1 rounded-full whitespace-nowrap" style={{ background: '#EAF1FF', color: 'hsl(221,91%,38%)', border: '1px solid #C9D7F7' }}>
-                  <span className="w-[5px] h-[5px] rounded-full bg-[#2E5BFF]" />
-                  {stage.badge}
-                  {stage.badgeNum && <span className="ml-0.5 font-[700] tabular-nums">{stage.badgeNum}</span>}
-                </span>
-              </div>
-              {/* Free column */}
-              <div className="px-7 py-8 border-t md:border-t-0 md:border-l border-[#F0F0F2]">
-                <div className="md:hidden text-[10.5px] tracking-[0.14em] uppercase text-slate-500 mb-3.5" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Free</div>
-                <ul className="flex flex-col gap-3">
-                  {stage.free.map((item) => (
-                    <li key={item} className="flex items-start gap-2.5 text-[14px] leading-[1.55] text-slate-500">
-                      <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full border border-[#E8E8EA] text-slate-400 mt-0.5">
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-                      </span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              {/* Premium column */}
-              <div className="relative px-7 py-8 border-t md:border-t-0 md:border-l border-[#F0F0F2]" style={{ background: '#EAF1FF' }}>
-                <span className="hidden md:block absolute top-0 left-0 bottom-0 w-[3px]" style={{ background: '#2E5BFF', opacity: 0.7 }} />
-                <span className="md:hidden block h-[3px] w-full absolute top-0 left-0" style={{ background: '#2E5BFF', opacity: 0.7 }} />
-                <div className="md:hidden text-[10.5px] tracking-[0.14em] uppercase mb-3.5" style={{ fontFamily: "'JetBrains Mono', monospace", color: 'hsl(221,91%,38%)' }}>Premium</div>
-                <ul className="flex flex-col gap-3">
-                  {stage.premium.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-[14px] leading-[1.55] font-[500] text-[#0A0A0A]">
-                      <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#2E5BFF] text-white mt-0.5">
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3 3L13 4.5"/></svg>
-                      </span>
-                      <span>{renderBoldText(item.text, item.bold)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CREDIT PACKS
-// ─────────────────────────────────────────────────────────────────────────────
-function CreditPacks() {
-  const ACCENT = 'hsl(221,91%,60%)';
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [credits, setCredits] = useState(300);
-  const [loadingPack, setLoadingPack] = useState<'trial' | 'standard' | 'custom' | null>(null);
-  const customTotal = creditPrice(credits);
-  const customUnit = customTotal / credits;
-  const fillPct = ((credits - 150) / (1000 - 150)) * 100;
-
-  const buyPack = async (
-    kind: 'trial' | 'standard' | 'custom',
-    fn: () => Promise<{ data?: { data?: { url?: string } } }>,
-  ) => {
-    if (!user) {
-      navigate('/auth');
-      return;
+  useEffect(() => {
+    const idx = TABS.indexOf(activeTab);
+    const el = tabRefs.current[idx];
+    const parent = el?.parentElement;
+    if (el && parent) {
+      const parentRect = parent.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      setPillStyle({
+        left: elRect.left - parentRect.left,
+        width: elRect.width,
+      });
     }
-    setLoadingPack(kind);
-    try {
-      const response = await fn();
-      const url = response?.data?.data?.url;
-      if (url) window.location.href = url;
-    } catch (err) {
-      console.error('Payment error:', err);
-    } finally {
-      setLoadingPack(null);
-    }
+  }, [activeTab]);
+
+  const featureContent = {
+    'AI Mock': {
+      num: '01',
+      title: 'AI Mock Interview',
+      desc: 'Turn your target role and interview notes into focused mock sessions. Choose the question type, difficulty, and length, then get feedback that helps you improve faster.',
+      card: <AiMockCard />,
+    },
+    Mentorship: {
+      num: '02',
+      title: 'Mentorship',
+      desc: 'Get unstuck with someone who has been there. Book time with mentors who can review your answers, sharpen your strategy, and help you understand what strong candidates do differently.',
+      card: <MentorshipCard />,
+    },
+    'InterviewPrep Note': {
+      num: '03',
+      title: 'InterviewPrep Note',
+      desc: 'Browse real interview notes from candidates who have been there, filtered by company, role, and round. See what gets asked, what matters, and where to focus your prep.',
+      card: (
+        <img
+          src={imgFeatureB}
+          alt="InterviewPrep Note"
+          className="w-full h-auto object-contain"
+          style={{ display: 'block', maxWidth: '100%' }}
+        />
+      ),
+    },
   };
 
-  const handleBuyTrial    = () => buyPack('trial',    () => PaymentService.purchaseStarterPack());
-  const handleBuyStandard = () => buyPack('standard', () => PaymentService.purchaseGrowthPack());
-  const handleBuyCustom   = () => buyPack('custom',   () => PaymentService.purchaseCustomPack(credits));
+  const feature = featureContent[activeTab];
 
   return (
-    <section id="credits" className="py-24" style={{ background: '#F7F7F7' }}>
-      <div className="max-w-5xl mx-auto px-6">
-        {/* Centered section head — eyebrow + Playfair title + sub */}
-        <div className="text-center mb-12">
-          <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-            <span className="w-6 h-px bg-[#2E5BFF]" />
-            Credit packs
-          </p>
-          <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(36px,4.6vw,56px)] font-[400] leading-[1.02] tracking-[-0.02em] text-[#0A0A0A] max-w-[22ch] mx-auto mb-4">
-            Pay only for what you use.{' '}
-            <em className="italic font-[400] text-[#4a4d57]">Refund after the mock.</em>
-          </h2>
-          <p className="text-[17px] text-[#4a4d57] leading-[1.55] max-w-[54ch] mx-auto">
-            Flexible, controllable, low-commitment — perfect for "just a few sessions." Or build a custom pack for bigger volume.
-          </p>
-        </div>
+    <div
+      className="min-h-screen bg-white"
+      style={{ fontFamily: "'Inter', sans-serif" }}
+    >
+      {/* ─── Buy credits modal (pay-as-you-go) ─── */}
+      <AnimatePresence>
+        {showBuyCredits && (
+          <BuyCreditsModal onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />
+        )}
+      </AnimatePresence>
 
-        {/* Pricing-block head — 2-column step / kicker / title / subhead */}
-        <div className="grid grid-cols-1 min-[820px]:grid-cols-[1fr_1.2fr] gap-12 items-start mb-7">
-          <div className="flex items-start gap-4">
-            <span
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              className="inline-flex items-center text-[13px] font-[500] tracking-[0.08em] text-[#4a4d57] bg-[#F7F7F7] border border-[#E8E8EA] rounded-full px-3 py-1.5 shrink-0"
-            >
-              02
-            </span>
-            <div>
-              <div className="text-[11px] font-[600] tracking-[0.14em] uppercase text-[#4a4d57] mb-1">
-                Credit packs
-              </div>
-              <div
-                style={{ fontFamily: "'Playfair Display', serif" }}
-                className="text-[clamp(22px,2.5vw,28px)] font-[500] leading-[1.15] tracking-[-0.02em] text-[#0A0A0A]"
-              >
-                Pay-as-you-go
-              </div>
-            </div>
-          </div>
-          <p className="text-[14.5px] text-[#4a4d57] leading-[1.55] max-w-[44ch]">
-            For occasional practice or one-off mocks. Don't love the session? We'll refund the credits.
-          </p>
-        </div>
-
-        {/* Two preset packs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-          {[
-            { kind: 'trial' as const,    name: 'Trial',    credits: 50,  price: '$9.99',  per: '$0.20',   rate: '≈ 50 min of AI practice — try it once',                    handler: handleBuyTrial },
-            { kind: 'standard' as const, name: 'Standard', credits: 100, price: '$14.99', per: '$0.1499', rate: '≈ 100 min of AI practice — a couple of full mocks', handler: handleBuyStandard },
-          ].map((p) => (
-            <article key={p.name} className="h-full bg-white border border-[#E5E5E5] rounded-[18px] px-7 pt-7 pb-6 flex flex-col gap-1.5 hover:-translate-y-1 hover:border-[#D9E1FF] hover:shadow-[0_24px_60px_-28px_rgba(46,91,255,0.22)] transition-all">
-              <p className="text-[11px] font-mono tracking-[0.12em] uppercase text-[#6B6B6B] mb-1.5">{p.name}</p>
-              <div className="flex items-baseline gap-2">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[48px] font-[600] leading-none tracking-[-0.02em] text-[#0A0A0A]">
-                  {p.credits}
-                </span>
-                <span className="text-[14px] text-[#6B6B6B] font-[500]">credits</span>
-              </div>
-              <div className="flex items-baseline gap-2 mt-0.5">
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[26px] font-[600] text-[#0A0A0A]">
-                  {p.price}
-                </span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[12px] text-[#A0A0A0] tracking-[0.04em]">
-                  {p.per} / credit
-                </span>
-              </div>
-              <p className="text-[12.5px] text-[#A0A0A0] mt-1">{p.rate}</p>
-              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-mono tracking-[0.04em] mt-3" style={{ color: ACCENT }}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: ACCENT }} />
-                Refund after the mock
-              </span>
-              <button
-                onClick={p.handler}
-                disabled={loadingPack === p.kind}
-                className="mt-4 flex items-center justify-center w-full rounded-full py-3 px-4 text-[14px] font-[500] border-[1.5px] border-[#D0D0D0] text-[#0A0A0A] hover:border-[#0A0A0A] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loadingPack === p.kind ? <Loader2 className="w-4 h-4 animate-spin" /> : `Buy ${p.credits} credits`}
-              </button>
-            </article>
-          ))}
-        </div>
-
-        {/* Customize slider card */}
-        <div
-          className="rounded-[22px] p-8 md:px-9 mb-6"
-          style={{
-            background: 'linear-gradient(172deg, #fbfcff 0%, #F7F9FF 100%)',
-            border: '1px solid #D9E1FF',
-            boxShadow: '0 24px 60px -32px rgba(46,91,255,0.30)',
-          }}
-        >
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-5">
-            <div>
-              <span
-                className="inline-block text-[10.5px] font-mono tracking-[0.12em] uppercase px-2 py-1 rounded-full"
-                style={{ color: ACCENT, background: 'rgba(255,255,255,0.7)' }}
-              >
-                Customize
-              </span>
-              <div style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(22px,2.4vw,28px)] font-[600] text-[#0A0A0A] leading-tight mt-2">
-                Need more than 100? Build your own pack.
-              </div>
-              <p className="text-[14px] text-[#6B6B6B] max-w-[38ch] mt-1.5">
-                Slide to choose any amount from 150 to 1,000 credits, in steps of 50. The more you buy, the lower the per-credit price.
-              </p>
-            </div>
-            <div className="text-right min-w-[180px]">
-              <div>
-                <span style={{ fontFamily: "'Playfair Display', serif" }} className="text-[56px] font-[600] leading-none tracking-[-0.02em] text-[#0A0A0A]">
-                  {credits.toLocaleString()}
-                </span>
-                <span className="text-[14px] text-[#6B6B6B] ml-1.5 font-[500]">credits</span>
-              </div>
-              <div style={{ fontFamily: "'Playfair Display', serif", color: ACCENT }} className="text-[22px] font-[600] mt-1.5">
-                ${customTotal.toFixed(2)}
-              </div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[11.5px] text-[#A0A0A0] tracking-[0.04em] mt-0.5">
-                ${customUnit.toFixed(4)} / credit
-              </div>
-            </div>
-          </div>
-
-          {/* Slider */}
-          <div className="relative pt-2 pb-8">
-            <input
-              type="range"
-              min={150}
-              max={1000}
-              step={50}
-              value={credits}
-              onChange={(e) => setCredits(Number(e.target.value))}
-              aria-label="Credits amount"
-              className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[22px] [&::-webkit-slider-thumb]:h-[22px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[hsl(221,91%,60%)] [&::-webkit-slider-thumb]:shadow-[0_4px_10px_rgba(46,91,255,0.3)] [&::-webkit-slider-thumb]:cursor-grab"
-              style={{
-                background: `linear-gradient(to right, ${ACCENT} 0%, ${ACCENT} ${fillPct}%, rgba(0,0,0,0.08) ${fillPct}%, rgba(0,0,0,0.08) 100%)`,
-              }}
+      {/* ─── Nav ─── */}
+      <nav
+        className="fixed left-0 right-0 z-50"
+        style={{
+          top: 'var(--topbar-h, 0px)',
+          height: 72,
+          backgroundColor: scrolled ? 'rgba(255,255,255,0.82)' : '#ffffff',
+          backdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
+          WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
+          borderBottom: scrolled
+            ? '1px solid rgba(0,0,0,0.07)'
+            : '1px solid #E8E8EA',
+          boxShadow: scrolled
+            ? '0 1px 12px rgba(0,0,0,0.04)'
+            : 'none',
+          transition: 'background-color 220ms ease-out, backdrop-filter 220ms ease-out, -webkit-backdrop-filter 220ms ease-out, border-color 220ms ease-out, box-shadow 220ms ease-out',
+        }}
+      >
+        <div className="relative max-w-[1440px] mx-auto px-6 lg:px-10 h-full flex items-center justify-between">
+          {/* Logo */}
+          <Link to="/" className="flex-shrink-0 flex items-center">
+            <img
+              src={imgLogo}
+              alt="Screna"
+              className="h-6 w-auto object-contain"
             />
-            <div style={{ fontFamily: "'JetBrains Mono', monospace" }} className="absolute inset-x-0 bottom-0 flex justify-between text-[10.5px] text-[#A0A0A0] tracking-[0.04em] pointer-events-none">
-              <span>150</span>
-              <span>300</span>
-              <span>500</span>
-              <span>750</span>
-              <span>1,000</span>
-            </div>
+          </Link>
+
+          {/* Desktop nav links */}
+          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+            {['Features', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+              <a
+                key={link}
+                href={`#${link.toLowerCase()}`}
+                className="text-[14px] transition-colors duration-150"
+                style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
+                onMouseEnter={(e) =>
+                  ((e.target as HTMLElement).style.color = '#2E5BFF')
+                }
+                onMouseLeave={(e) =>
+                  ((e.target as HTMLElement).style.color = '#4A4D57')
+                }
+              >
+                {link}
+              </a>
+            ))}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex gap-5 flex-wrap text-[12.5px] text-[#6B6B6B]">
-              {['Credits never expire', 'Refund after the mock', 'Use across AI & mentor sessions'].map((n) => (
-                <span key={n} className="inline-flex items-center gap-1.5">
-                  <span className="w-[5px] h-[5px] rounded-full" style={{ background: ACCENT }} />
-                  {n}
-                </span>
-              ))}
-            </div>
+          {/* CTA */}
+          <div className="flex items-center gap-3">
+            {user ? (
+              <div className="relative hidden md:block" ref={avatarRef}>
+                <button
+                  onClick={() => setAvatarOpen((v) => !v)}
+                  aria-label="Account menu"
+                  title={user.name || 'My Account'}
+                  className="inline-flex w-9 h-9 rounded-full overflow-hidden items-center justify-center font-semibold text-[13px] text-white transition-all duration-150 hover:opacity-90 active:scale-95 bg-[#2E5BFF] border border-[#2E5BFF]"
+                >
+                  {avatarUrl || user.avatar ? (
+                    <img src={avatarUrl || user.avatar} alt={avatarInitials} className="w-full h-full object-cover" />
+                  ) : (
+                    avatarInitials
+                  )}
+                </button>
+                {avatarOpen && (
+                  <div
+                    className="absolute top-full right-0 mt-3 w-56 bg-white/95 backdrop-blur-2xl rounded-2xl border border-[#F0F0F2] overflow-hidden z-50 p-1.5 origin-top-right"
+                    style={{ boxShadow: '0 16px 48px -12px rgba(10,10,10,0.12)' }}
+                  >
+                    <div className="px-3 py-2.5 border-b border-[#F0F0F2] mb-1">
+                      <p className="text-sm font-semibold text-[#0A0A0A] truncate">
+                        {user.name || 'My Account'}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Coins className="w-3 h-3 text-[#2E5BFF]" />
+                        <span className="text-xs text-[#8a8f9a]">
+                          {isPlanLoading
+                            ? 'Loading…'
+                            : `${planData.permanentCreditBalance} credit${planData.permanentCreditBalance !== 1 ? 's' : ''} remaining`}
+                        </span>
+                      </div>
+                    </div>
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors"
+                    >
+                      <LayoutDashboard className="w-4 h-4 opacity-50" />
+                      Personal Center
+                    </Link>
+                    <Link
+                      to="/settings"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-sm text-[#4a4d57] hover:text-[#0A0A0A] hover:bg-[#F7F7F7] rounded-lg transition-colors"
+                    >
+                      <Settings className="w-4 h-4 opacity-50" />
+                      Settings
+                    </Link>
+                    <div className="border-t border-[#F0F0F2] mt-1 pt-1">
+                      <button
+                        onClick={handleSignOut}
+                        className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50/60 rounded-lg transition-colors"
+                      >
+                        <LogOut className="w-4 h-4 opacity-60" />
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={goAuth}
+                  className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
+                  style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif", background: 'transparent' }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#0A0A0A')}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={goAuth}
+                  className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
+                  style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#2E5BFF')}
+                >
+                  Sign up
+                </button>
+              </>
+            )}
             <button
-              onClick={handleBuyCustom}
-              disabled={loadingPack === 'custom'}
-              className="rounded-full px-6 py-3 text-[14px] font-[600] text-white transition-colors inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{ background: ACCENT }}
+              className="md:hidden p-2 rounded-lg"
+              style={{ color: '#0A0A0A' }}
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
             >
-              {loadingPack === 'custom' ? <Loader2 className="w-4 h-4 animate-spin" /> : `Buy ${credits.toLocaleString()} credits · $${customTotal.toFixed(2)}`}
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Credits per minute card */}
-        <div className="bg-white border border-[#E5E5E5] rounded-2xl px-8 py-7">
-          <div>
-            <h3 className="text-[18px] font-[600] text-[#0A0A0A] tracking-[-0.005em] m-0">
-              Credits per minute
-            </h3>
-            <p className="text-[14px] text-[#6B6B6B] leading-[1.5] mt-1">
-              Different modes use credits at different rates.
-            </p>
-          </div>
-          <hr className="border-0 border-t border-[#E5E5E5] mt-5" />
-
-          {[
-            { mode: 'Voice mode', rate: '1 credit/min',    badge: '1×',
-              svg: (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/>
-                  <line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
-                </svg>
-              ),
-            },
-            { mode: 'Video mode', rate: '1.5 credits/min', badge: '1.5×',
-              svg: (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10.5l5-3v9l-5-3z"/>
-                </svg>
-              ),
-            },
-          ].map(({ mode, rate, badge, svg }) => (
-            <div key={mode} className="flex items-center py-5 border-b border-[#E5E5E5]">
-              <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: '#EEF0FF', color: '#5B6AD0' }}>
-                {svg}
-              </span>
-              <span className="text-[15px] font-[500] text-[#0A0A0A] ml-3.5">{mode}</span>
-              <span className="ml-auto flex items-center gap-2.5">
-                <span className="text-[14px] text-[#6B6B6B]">{rate}</span>
-                <span className="text-[12px] font-[600] px-2.5 py-0.5 rounded-full leading-[1.4]" style={{ background: '#EEF0FF', color: '#5B6AD0' }}>
-                  {badge}
-                </span>
-              </span>
-            </div>
-          ))}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 pt-4">
-            {[
-              'A 20-min Voice session uses 20 credits.',
-              'A 30-min Video session uses 45 credits.',
-            ].map((ex) => (
-              <div key={ex} className="flex items-start gap-2 text-[13px] text-[#6B6B6B] leading-[1.5]">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#5B6AD0' }}>
-                  <circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/>
-                </svg>
-                <span>
-                  <b className="font-[600] text-[#6B6B6B]">Example:</b> {ex}
-                </span>
-              </div>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div
+            className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
+            style={{ borderColor: '#E8E8EA' }}
+          >
+            {['Features', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+              <a
+                key={link}
+                href={`#${link.toLowerCase()}`}
+                className="text-[15px]"
+                style={{ color: '#4A4D57' }}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link}
+              </a>
             ))}
-          </div>
-
-          <div className="rounded-[10px] px-4 py-3 mt-4 flex items-start gap-2.5" style={{ background: '#F0FBF4' }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#1A9E5C' }}>
-              <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><polyline points="21 3 21 8 16 8"/>
-              <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><polyline points="3 21 3 16 8 16"/>
-            </svg>
-            <span className="text-[13px] leading-[1.5]" style={{ color: '#1A9E5C' }}>
-              Only pay what you use. If you end a session early, unused credits are automatically refunded.
-            </span>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CALLBACK CTA
-// ─────────────────────────────────────────────────────────────────────────────
-function CallbackCTA() {
-  const [sent, setSent] = useState(false);
-  const [phone, setPhone] = useState('');
-
-  return (
-    <section className="py-16 bg-white">
-      <div className="max-w-4xl mx-auto px-6">
-        <div
-          className="relative rounded-3xl overflow-hidden grid grid-cols-1 md:grid-cols-[1fr_auto] gap-10 p-10 md:p-12"
-          style={{
-            background: 'linear-gradient(135deg, #2E5BFF 0%, #1231B8 100%)',
-            boxShadow: '0 1px 0 rgba(255,255,255,0.5) inset, 0 24px 60px -28px rgba(18,49,184,0.55)',
-          }}
-        >
-          {/* Decorative radial highlight */}
-          <div className="pointer-events-none absolute" style={{ inset: '-40% -20% auto auto', width: '60%', paddingTop: '60%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)' }} />
-
-          <div className="relative z-10">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-[600] tracking-[0.1em] uppercase text-white/85 bg-white/15 border border-white/20 px-3 py-1.5 rounded-full mb-5">
-              Free consultation
-            </span>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[500] text-white leading-[1.15] tracking-[-0.01em] mb-3 text-wrap-pretty">
-              Want us to call you?
-            </h2>
-            <p className="text-[15.5px] text-white/75 mb-7 max-w-[48ch] leading-[1.55]">
-              Leave your number and a Screna advisor will reach out within one business day. No sales pressure — just a quick chat about your goals.
-            </p>
-            {sent ? (
-              <p className="text-[14px] font-[500] text-white bg-white/15 px-4 py-3 rounded-xl inline-block">
-                Thanks — we'll call you within one business day.
-              </p>
+            {user ? (
+              <>
+                <Link
+                  to="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-[15px]"
+                  style={{ color: '#4A4D57' }}
+                >
+                  Personal Center
+                </Link>
+                <Link
+                  to="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-[15px]"
+                  style={{ color: '#4A4D57' }}
+                >
+                  Settings
+                </Link>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); handleSignOut(); }}
+                  className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium w-full"
+                  style={{ color: '#EF4444', background: 'transparent', border: '1px solid #FCA5A5' }}
+                >
+                  Sign Out
+                </button>
+              </>
             ) : (
-              <form onSubmit={(e) => { e.preventDefault(); setSent(true); }}>
-                <div className="flex items-stretch bg-white rounded-full overflow-hidden max-w-[520px]" style={{ boxShadow: '0 8px 24px -12px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.6) inset' }}>
-                  <span className="flex items-center gap-1.5 px-4 text-[13px] text-slate-500 shrink-0 border-r border-[#E8E8EA]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 opacity-60">
-                      <path d="M22 16.92V21a1 1 0 0 1-1.09 1 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 3.21 4.09 1 1 0 0 1 4.2 3h4.09a1 1 0 0 1 1 .75 12 12 0 0 0 .66 2.65 1 1 0 0 1-.23 1l-1.73 1.73a16 16 0 0 0 6 6l1.73-1.73a1 1 0 0 1 1-.23 12 12 0 0 0 2.65.66 1 1 0 0 1 .75 1z"/>
-                    </svg>
-                    +1
-                  </span>
-                  <input
-                    type="tel"
-                    placeholder="Enter your phone number"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                    className="flex-1 min-w-0 h-14 bg-transparent text-[14px] text-[#0A0A0A] placeholder-[#9aa0ad] outline-none px-3"
-                  />
-                  <button type="submit" className="shrink-0 m-1.5 px-5 rounded-full bg-[#0A0A0A] text-white text-[13px] font-[500] hover:bg-[#1a1a1a] transition-colors" style={{ boxShadow: '0 6px 14px -4px rgba(0,0,0,0.22)' }}>
-                    Call me back
-                  </button>
-                </div>
-                <p className="text-[12.5px] text-white/70 mt-3 flex items-center gap-1.5">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
-                    <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/>
-                  </svg>
-                  Your number is 100% private and will never be shared.
-                </p>
-              </form>
+              <>
+                <button
+                  onClick={goAuth}
+                  className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium w-full"
+                  style={{ color: '#4A4D57', background: 'transparent' }}
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={goAuth}
+                  className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
+                  style={{ background: '#2E5BFF' }}
+                >
+                  Sign up
+                </button>
+              </>
             )}
           </div>
+        )}
+      </nav>
 
-          <div className="hidden md:flex flex-col items-center justify-center gap-4 shrink-0 relative z-10">
-            <div className="relative flex items-center justify-center w-[180px] h-[180px]">
-              <div className="absolute w-[220px] h-[220px] rounded-full border border-white/60 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '0s' }} />
-              <div className="absolute w-[280px] h-[280px] rounded-full border border-white/40 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '0.6s' }} />
-              <div className="absolute w-[340px] h-[340px] rounded-full border border-white/25 animate-ping" style={{ animationDuration: '2.6s', animationDelay: '1.2s' }} />
-              <div className="relative z-10 w-[180px] h-[180px] rounded-full overflow-hidden border-4 border-white/30 shadow-xl bg-gradient-to-b from-[#EEF2FF] to-[#DCE4FF] flex items-end justify-center">
-                <img
-                  src="/landing/cta-agent.png"
-                  alt="Screna advisor"
-                  className="w-[106%] max-h-[112%] object-cover"
-                  style={{ transform: 'translateY(4%)' }}
-                />
-              </div>
+      {/* ─── Hero ─── */}
+      <section
+        className="snap-s flex flex-col relative overflow-x-hidden"
+        style={{
+          paddingTop: 'calc(72px + var(--topbar-h, 0px))',
+          minHeight: '100svh',
+          backgroundColor: '#ffffff',
+          backgroundImage: 'radial-gradient(circle at 12px 12px, rgba(46,91,255,0.13) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
+      >
+        {/* White gradient overlay */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            zIndex: 1,
+            background: 'linear-gradient(to bottom, #ffffff 0%, #ffffff 42%, rgba(255,255,255,0.6) 58%, rgba(255,255,255,0) 72%)',
+          }}
+        />
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 pt-16 lg:pt-20 pb-10 flex flex-col items-center relative" style={{ zIndex: 2 }}>
+
+          {/* ── Decorative dot clusters ── */}
+          <div
+            className="absolute pointer-events-none hidden lg:block"
+            style={{
+              left: 0,
+              top: 24,
+              width: 220,
+              height: 320,
+              backgroundImage: 'radial-gradient(circle, rgba(46,91,255,0.13) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              WebkitMaskImage:
+                'linear-gradient(to right, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
+              maskImage:
+                'linear-gradient(to right, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
+              WebkitMaskComposite: 'destination-in',
+              maskComposite: 'intersect' as any,
+            }}
+          />
+          <div
+            className="absolute pointer-events-none hidden lg:block"
+            style={{
+              right: 0,
+              top: 24,
+              width: 220,
+              height: 320,
+              backgroundImage: 'radial-gradient(circle, rgba(46,91,255,0.13) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              WebkitMaskImage:
+                'linear-gradient(to left, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
+              maskImage:
+                'linear-gradient(to left, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
+              WebkitMaskComposite: 'destination-in',
+              maskComposite: 'intersect' as any,
+            }}
+          />
+
+          {/* ── Decorative objects ── */}
+          <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2 + 16px)', top: 44, zIndex: 1 }}>
+            <img src={imgTeacup} alt="" style={{ width: 118, height: 94, objectFit: 'contain', transform: 'rotate(22.29deg)', display: 'block' }} />
+          </div>
+          <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2)', top: -50, zIndex: 1 }}>
+            <img src={imgNotebook} alt="" style={{ width: 487, height: 325, objectFit: 'contain', transform: 'translateX(22%) rotate(-31.73deg)', transformOrigin: 'top right', display: 'block' }} />
+          </div>
+          <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2)', top: 270, zIndex: 1 }}>
+            <img src={imgJobOffer} alt="" style={{ width: 412, height: 275, objectFit: 'contain', transform: 'translateX(-56%) rotate(-11.89deg)', display: 'block' }} />
+          </div>
+          <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2 + 20px)', top: 440, zIndex: 1 }}>
+            <img src={imgMicrophone} alt="" style={{ width: 214, height: 143, objectFit: 'contain', transform: 'rotate(-37.94deg)', display: 'block' }} />
+          </div>
+
+          {/* Pill badge */}
+          <div
+            data-reveal data-delay="0"
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[12px] mb-8"
+            style={{
+              background: '#F0F3FF',
+              color: '#2E5BFF',
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            ✶&nbsp;&nbsp;Your career prep partner
+          </div>
+
+          {/* Headline */}
+          <h1
+            data-reveal data-delay="100"
+            className="text-center font-medium tracking-[-0.5px] sm:tracking-[-1.5px] leading-tight mb-7 max-w-[1100px] px-1"
+            style={{
+              fontSize: 'clamp(30px, 5vw, 60px)',
+              color: '#0A0A0A',
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            {/* Break to two lines only on wide screens; wrap naturally below xl
+                so the long first line never overflows narrow viewports. */}
+            Turning practice and mentorship{' '}
+            <br className="hidden xl:block" />
+            into your next offer.
+          </h1>
+
+          {/* Sub text */}
+          <div
+            data-reveal data-delay="200"
+            className="text-center text-[14px] font-medium leading-relaxed mb-10 max-w-[660px]"
+            style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif", letterSpacing: '-0.01em' }}
+          >
+            <p>AI mock interviews tailored to your target role, anytime you need them.</p>
+            <p>A mentor who's walked your exact path, not a generalist coach.</p>
+            <p>Real interview questions from real candidates at your target companies.</p>
+          </div>
+
+          {/* CTA + page-wide styles */}
+          <style>{`
+            @keyframes dotPulse {
+              0%, 100% { opacity: 1; transform: scale(1); }
+              50% { opacity: 0.35; transform: scale(0.6); }
+            }
+            .hero-dot { animation: dotPulse 1.8s ease-in-out infinite; }
+            .hero-cta:hover { background: #1E48E6 !important; box-shadow: 0 10px 32px rgba(46,91,255,0.55) !important; transform: translateY(-1px); }
+            .hero-cta:active { transform: scale(0.97) translateY(0); }
+
+            /* ── Scroll reveal ───────────────────────────────────────────── */
+            [data-reveal] {
+              opacity: 0;
+              transform: translateY(20px);
+              transition: opacity 550ms cubic-bezier(0.16,1,0.3,1),
+                          transform 550ms cubic-bezier(0.16,1,0.3,1);
+              will-change: opacity, transform;
+            }
+            [data-reveal].sr-visible {
+              opacity: 1;
+              transform: translateY(0);
+            }
+            @media (max-width: 768px) {
+              [data-reveal] { transform: translateY(12px); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              [data-reveal] {
+                transform: none !important;
+                transition: opacity 200ms linear !important;
+              }
+              nav {
+                transition: none !important;
+              }
+            }
+
+            /* ── Testimonial marquee ─────────────────────────────────────── */
+            @keyframes mLeft  { from { transform: translateX(0); }    to { transform: translateX(-50%); } }
+            @keyframes mRight { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+            .mr-row { overflow: hidden; }
+            .mr-row:hover .mr-track,
+            .mr-row:focus-within .mr-track { animation-play-state: paused; }
+            .mr-track { display: flex; align-items: stretch; gap: 20px; width: max-content; }
+            .mr-l  { animation: mLeft  42s linear infinite; }
+            .mr-r  { animation: mRight 56s linear infinite; }
+            .mr-fade {
+              -webkit-mask-image: linear-gradient(to right, transparent 0%, black 9%, black 91%, transparent 100%);
+              mask-image: linear-gradient(to right, transparent 0%, black 9%, black 91%, transparent 100%);
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .mr-l, .mr-r { animation: none !important; }
+            }
+            @media (max-width: 767px) {
+              .mr-l, .mr-r { animation: none !important; }
+            }
+
+            /* ── Scroll snap ─────────────────────────────────────────────── */
+            html {
+              scroll-snap-type: y proximity;
+              scroll-padding-top: calc(72px + var(--topbar-h, 0px));
+            }
+            .snap-s {
+              scroll-snap-align: start;
+              scroll-snap-stop: normal;
+            }
+            @media (max-width: 767px) {
+              html { scroll-snap-type: none; }
+              .snap-s { scroll-snap-align: none; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              html { scroll-snap-type: none !important; }
+              .snap-s { scroll-snap-align: none !important; }
+            }
+          `}</style>
+          <button
+            data-reveal data-delay="300"
+            onClick={goAuth}
+            className="hero-cta inline-flex items-center gap-2.5 h-12 px-7 rounded-full text-[15px] font-semibold text-white transition-all duration-200 mb-10"
+            style={{
+              background: '#2E5BFF',
+              boxShadow: '0 8px 24px rgba(46,91,255,0.40)',
+            }}
+          >
+            <span
+              className="hero-dot rounded-full flex-shrink-0"
+              style={{ width: 7, height: 7, background: '#FFFFFF' }}
+            />
+            Start Free
+          </button>
+
+          {/* Dashboard screenshot */}
+          <img
+            data-reveal data-delay="420"
+            src={imgDashboard}
+            alt="Screna dashboard"
+            className="h-auto"
+            style={{ display: 'block', width: '88%', margin: '0 auto' }}
+          />
+
+          {/* Logo bar — scrolling company logos (old-design marquee) */}
+          <div
+            data-reveal data-delay="540"
+            className="w-full mt-12"
+            style={{ borderTop: '1px solid #E8E8EA', paddingTop: 28 }}
+          >
+            <p
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center"
+            >
+              Members have landed roles at
+            </p>
+            <LogoMarquee logos={HERO_LOGOS} />
+          </div>
+        </div>
+      </section>
+
+      {/* ─── The Screna System ─── */}
+      <section
+        id="features"
+        className="snap-s"
+        style={{ background: '#FBFBFB', height: 'max(900px, 100svh)', overflow: 'hidden' }}
+      >
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 h-full relative">
+          <p
+            data-reveal data-delay="0"
+            className="text-center text-[11px] tracking-[2.5px] absolute left-0 right-0"
+            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif", top: 72 }}
+          >
+            THE SCRENA SYSTEM
+          </p>
+
+          <h2
+            data-reveal data-delay="100"
+            className="text-center font-normal tracking-[-0.8px] absolute left-0 right-0"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: 'clamp(36px, 4.5vw, 54px)',
+              lineHeight: '68px',
+              color: '#0A0A0A',
+              top: 96,
+            }}
+          >
+            How it works
+          </h2>
+
+          {/* Tab switcher */}
+          <div data-reveal data-delay="200" className="absolute left-0 right-0 flex justify-center" style={{ top: 191 }}>
+            <div
+              className="relative flex items-center p-1 rounded-[26px]"
+              style={{ background: '#EDEDED' }}
+            >
+              <div
+                className="absolute top-1 rounded-[22px] transition-all duration-200 ease-out pointer-events-none"
+                style={{
+                  left: pillStyle.left,
+                  width: pillStyle.width,
+                  height: 44,
+                  background: '#0A0A0A',
+                }}
+              />
+              {TABS.map((tab, idx) => (
+                <button
+                  key={tab}
+                  ref={(el) => { tabRefs.current[idx] = el; }}
+                  onClick={() => setActiveTab(tab)}
+                  className="relative z-10 px-3 sm:px-5 rounded-[22px] text-[13px] sm:text-[15px] font-medium whitespace-nowrap transition-colors duration-200"
+                  style={{
+                    height: 44,
+                    minWidth: 0,
+                    color: activeTab === tab ? '#FBFBFB' : '#767676',
+                    fontFamily: "'Inter', sans-serif",
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
-            <div className="flex flex-col gap-2 mt-2">
-              {['1:1 advisor', 'No obligation', '~15 min'].map((chip) => (
-                <span key={chip} className="bg-white/15 border border-white/20 text-white text-[11px] font-[500] px-3 py-1.5 rounded-full text-center">
-                  {chip}
-                </span>
+          </div>
+
+          {/* Feature content */}
+          <div
+            className="absolute left-6 right-6 lg:left-10 lg:right-10 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center"
+            style={{ top: 320, bottom: 60 }}
+          >
+            <div data-reveal data-delay="320">
+              <p
+                className="text-[12px] mb-2"
+                style={{ color: '#999', fontFamily: "'Inter', sans-serif" }}
+              >
+                {feature.num}
+              </p>
+              <h3
+                className="font-normal mb-5"
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 'clamp(32px, 3.5vw, 44px)',
+                  color: '#0A0A0A',
+                }}
+              >
+                {feature.title}
+              </h3>
+              <p
+                className="text-[17px] leading-relaxed"
+                style={{ color: '#595959', fontFamily: "'Inter', sans-serif", maxWidth: 480 }}
+              >
+                {feature.desc}
+              </p>
+            </div>
+            <div data-reveal data-delay="440" className="w-full flex items-center justify-center">
+              {activeTab === 'AI Mock' ? (
+                <img
+                  src={imgFeatureA}
+                  alt="AI Mock feature"
+                  className="w-full h-auto object-contain"
+                  style={{ display: 'block', maxWidth: '100%' }}
+                />
+              ) : activeTab === 'InterviewPrep Note' ? (
+                <img
+                  src={imgFeatureB}
+                  alt="InterviewPrep Note feature"
+                  className="w-full h-auto object-contain"
+                  style={{ display: 'block', maxWidth: '100%' }}
+                />
+              ) : activeTab === 'Mentorship' ? (
+                <img
+                  src={imgFeatureC}
+                  alt="Mentorship feature"
+                  className="w-full h-auto object-contain"
+                  style={{ display: 'block', maxWidth: '100%' }}
+                />
+              ) : (
+                feature.card
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── How It Works ─── */}
+      <section id="how-it-works" className="snap-s bg-white relative overflow-hidden" style={{ height: 'max(980px, 100svh)' }}>
+        <HowItWorksSection />
+      </section>
+
+      {/* ─── Testimonials marquee ─── */}
+      <section
+        id="testimonials"
+        className="snap-s bg-white flex flex-col justify-center overflow-hidden"
+        style={{ minHeight: '100svh', paddingTop: 56, paddingBottom: 80 }}
+      >
+        <div className="text-center mb-10 px-6">
+          <p
+            data-reveal data-delay="0"
+            className="text-[11px] tracking-[2.5px] mb-5"
+            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
+          >
+            REAL CANDIDATE MOMENTS
+          </p>
+          <h2
+            data-reveal data-delay="100"
+            className="font-normal tracking-[-0.8px] mb-7 mx-auto"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: 'clamp(32px, 4vw, 52px)',
+              lineHeight: '1.2',
+              color: '#0A0A0A',
+              maxWidth: 620,
+            }}
+          >
+            Proof that better prep changes the room.
+          </h2>
+        </div>
+
+        {/* Marquee rows */}
+        <div data-reveal data-delay="300" className="mr-fade flex flex-col gap-5">
+          <div className="mr-row">
+            <div className="mr-track mr-l pl-5">
+              {[...MARQUEE_ROW1, ...MARQUEE_ROW1].map((c, i) => (
+                <MarqueeCard key={i} {...c} />
+              ))}
+            </div>
+          </div>
+          <div className="mr-row">
+            <div className="mr-track mr-r pl-5">
+              {[...MARQUEE_ROW2, ...MARQUEE_ROW2].map((c, i) => (
+                <MarqueeCard key={i} {...c} />
               ))}
             </div>
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SOCIAL PROOF + TESTIMONIALS
-// ─────────────────────────────────────────────────────────────────────────────
-const TESTIMONIALS = [
-  {
-    quote: "The coding round wasn't the hard part. It was the behavioral — three PMs in a row asking about scope. Screna's mocks got me ready for that.",
-    name: 'Priya S.',
-    role: 'Senior SWE · Stripe',
-    initials: 'PS',
-    bg: 'from-[#E7EFFB] to-[#C9D8EF]',
-  },
-  {
-    quote: "I'd read every system-design guide out there. What moved the needle was hearing someone actually describe the Meta E5 loop two days before mine.",
-    name: 'Ravi M.',
-    role: 'Staff SWE · Meta',
-    initials: 'RM',
-    bg: 'from-[#F7E7DE] to-[#EFD5C6]',
-  },
-  {
-    quote: "My mentor walked me through an offer negotiation I was about to leave $18k on the table for. The membership paid for itself in a single call.",
-    name: 'Jordan K.',
-    role: 'Senior PM · Airbnb',
-    initials: 'JK',
-    bg: 'from-[#E4F0E9] to-[#CFE3D8]',
-  },
-];
+        {/* Mobile fallback */}
+        <style>{`
+          @media (max-width: 767px) {
+            .mr-mobile-scroll { display: flex; overflow-x: auto; gap: 16px; padding: 0 24px; scrollbar-width: none; }
+            .mr-mobile-scroll::-webkit-scrollbar { display: none; }
+            .mr-row { display: none; }
+            .mr-mobile { display: block !important; }
+          }
+          @media (min-width: 768px) {
+            .mr-mobile { display: none !important; }
+          }
+        `}</style>
+        <div className="mr-mobile hidden flex-col gap-5 mt-4">
+          <div className="mr-mobile-scroll">
+            {MARQUEE_ROW1.map((c, i) => <MarqueeCard key={i} {...c} />)}
+          </div>
+          <div className="mr-mobile-scroll">
+            {MARQUEE_ROW2.map((c, i) => <MarqueeCard key={i} {...c} />)}
+          </div>
+        </div>
+      </section>
 
-function SocialProof() {
-  return (
-    <section className="py-24" style={{ background: '#F7F7F7' }}>
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="mb-16">
-          <p className="text-[12px] font-[600] uppercase tracking-[0.12em] text-[#8a8f9a] mb-6 text-center">
-            Trusted by job hunters who landed roles at
+      {/* ─── Pricing ─── */}
+      <section
+        id="pricing"
+        className="snap-s py-24 lg:py-28 flex flex-col justify-center"
+        style={{ background: '#D0E0F8', minHeight: '100svh' }}
+      >
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
+          <p
+            data-reveal data-delay="0"
+            className="text-center text-[11px] tracking-[2.5px] mb-6"
+            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
+          >
+            PRICING
           </p>
-          <LogoMarquee logos={UNIVERSITY_LOGOS} speed={22} />
+          <div
+            data-reveal data-delay="100"
+            className="text-center font-normal tracking-[-0.8px] mb-14"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: 'clamp(36px, 4.5vw, 52px)',
+              lineHeight: '64px',
+              color: '#0A0A0A',
+            }}
+          >
+            <p>Start free.</p>
+            <p>Grow at your pace.</p>
+          </div>
+
+          {/* Pricing cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+            {PLANS.map((plan, i) => (
+              <PricingCard
+                key={i}
+                plan={plan}
+                revealDelay={i * 90}
+                loading={loadingTier === plan.tier}
+                onSelect={() => handleSelectPlan(plan)}
+              />
+            ))}
+          </div>
+
+          {/* Credits add-on */}
+          <CreditsAddOn revealDelay={400} onAddCredits={handleAddCredits} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {TESTIMONIALS.map(({ quote, name, role, initials, bg }) => (
-            <article
-              key={name}
-              className="relative bg-white rounded-[20px] border border-[#E8E8EA] p-8 flex flex-col hover:border-[#D9E1FF] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-20px_rgba(46,91,255,0.15)] transition-all duration-300"
-            >
-              <span
-                aria-hidden
-                style={{ fontFamily: "'Playfair Display', serif" }}
-                className="absolute top-3 right-5 italic text-[80px] leading-none text-[#2E5BFF] pointer-events-none"
-              >&ldquo;</span>
-              <p style={{ fontFamily: "'Playfair Display', serif" }} className="text-[20px] font-[400] text-[#0A0A0A] leading-[1.4] tracking-[-0.01em] mb-7 flex-1 relative z-10">
-                &ldquo;{quote}&rdquo;
+      </section>
+
+      {/* ─── FAQ ─── */}
+      <section id="faq" className="snap-s py-24 lg:py-28 bg-white flex flex-col justify-center" style={{ minHeight: '100svh' }}>
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20">
+            <div data-reveal data-delay="0">
+              <p
+                className="text-[12px] font-semibold tracking-[1.68px] uppercase mb-5"
+                style={{ color: '#3C77F6', fontFamily: "'Inter', sans-serif" }}
+              >
+                FAQ
               </p>
-              <div className="flex items-center gap-3 pt-5 border-t border-[#E8E8EA]">
-                <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${bg} flex items-center justify-center text-[13px] font-[600] text-[#3a4252]`}>
-                  {initials}
-                </div>
-                <div>
-                  <p className="text-[14px] font-[500] text-[#0A0A0A] leading-tight">{name}</p>
-                  <p className="text-[13px] text-[#4a4d57] mt-0.5">{role}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FAQ
-// ─────────────────────────────────────────────────────────────────────────────
-const FAQ_ITEMS = [
-  {
-    q: 'Is $219/month worth it?',
-    a: "It's not cheap — because this isn't a software subscription, it's a human-powered service. Membership includes 200+ manually reviewed, targeted applications per month, 48-hour resume feedback, AI Mock + real Mentor dual-track practice, a status tracking dashboard, and Discord community access. If each polished application takes you 30–60 minutes on your own, that's typically 40+ hours saved in a single month.",
-  },
-  {
-    q: "What if it doesn't work out — can I get a refund?",
-    a: 'Full refund within 3 days. After that, you can cancel at the end of your current billing period — no refund, but your service continues until it ends.',
-  },
-  {
-    q: "I haven't started applying yet. Is it too early?",
-    a: "It's never too early to prepare. Start with AI Mock and Interview Insights to get a baseline. When you need guidance, book a session with one of our mentors. When you're ready to apply, our ops team will step in to help you apply efficiently and improve your chances of landing interviews.",
-  },
-  {
-    q: "Who's actually submitting my applications — humans or bots?",
-    a: "Humans reviewing, AI assisting. Our ops team checks every application: whether the company sponsors your visa type, whether the JD actually matches your level (we won't send an entry-level candidate to a senior role), and whether the position is still open (filtering out ghost jobs). You can track every application in your Dashboard — no black box.",
-  },
-  {
-    q: "I'm an international student who needs sponsorship. Can you handle that?",
-    a: "That's our core use case. The application process automatically filters out companies that don't sponsor, and matches roles to your visa status — OPT, STEM OPT, CPT, or cap-exempt.",
-  },
-  {
-    q: "What if my resume isn't ready?",
-    a: "Resume editing is a separate paid add-on — not required, but available. Just note: we can't start submitting applications until you have a finalized resume.",
-  },
-  {
-    q: 'How much time do I need to put in each week?',
-    a: 'We recommend 5–8 hours: 2–3 hours for Mock practice, 1–2 hours for Dashboard check-ins and OA responses, 1 hour for Mentor sessions as needed, and community and Insights on your own schedule. We take the applying, tracking, and research off your plate — the interview prep part is still yours to own.',
-  },
-];
-
-function FAQ() {
-  const [open, setOpen] = useState<number | null>(null);
-
-  return (
-    <section id="faq" className="py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-12 lg:gap-24 items-start">
-          <div>
-            <p className="inline-flex items-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase text-[#2E5BFF] mb-5">
-              <span className="w-6 h-px bg-[#2E5BFF]" />
-              FAQ
-            </p>
-            <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(32px,4vw,48px)] font-[400] text-[#0A0A0A] leading-[1.05] tracking-[-0.02em] max-w-[12ch]">
-              Questions people ask before signing up.
-            </h2>
-          </div>
-          <div className="flex flex-col">
-            {FAQ_ITEMS.map(({ q, a }, i) => {
-              const isOpen = open === i;
-              return (
-                <div key={q} className="border-t border-[#E8E8EA] last:border-b py-6">
-                  <button
-                    onClick={() => setOpen(isOpen ? null : i)}
-                    className="flex items-center justify-between w-full text-left gap-6 group"
-                  >
-                    <span className={`text-[18px] font-[500] transition-colors leading-[1.4] ${isOpen ? 'text-[#2E5BFF]' : 'text-[#0A0A0A] group-hover:text-[#2E5BFF]'}`}>
-                      {q}
-                    </span>
-                    <span className="relative w-6 h-6 shrink-0">
-                      <span className="absolute left-0 right-0 top-1/2 h-px bg-[#0A0A0A]" />
-                      <span
-                        className="absolute top-0 bottom-0 left-1/2 w-px bg-[#0A0A0A] origin-center transition-transform duration-200"
-                        style={{ transform: isOpen ? 'translateX(-50%) scaleY(0)' : 'translateX(-50%) scaleY(1)' }}
-                      />
-                    </span>
-                  </button>
-                  <div
-                    className="overflow-hidden transition-all duration-300"
-                    style={{ maxHeight: isOpen ? 600 : 0, marginTop: isOpen ? 16 : 0 }}
-                  >
-                    <p className="text-[16px] text-[#4a4d57] leading-[1.6] max-w-[58ch]">{a}</p>
-                  </div>
-                </div>
-              );
-            })}
+              <h2
+                className="font-normal tracking-[-0.8px] leading-[64px]"
+                style={{
+                  fontFamily: "'Playfair Display', serif",
+                  fontSize: 'clamp(36px, 4vw, 52px)',
+                  color: '#0A0A0A',
+                }}
+              >
+                Common Questions
+              </h2>
+            </div>
+            <div>
+              {FAQ_ITEMS.map((item, i) => (
+                <FaqRow
+                  key={i}
+                  item={item}
+                  open={openFaq === i}
+                  onToggle={() => setOpenFaq(openFaq === i ? null : i)}
+                  revealDelay={i * 90}
+                />
+              ))}
+              <div style={{ height: 1, background: '#E1E4EA' }} />
+            </div>
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
+      </section>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FINAL CTA
-// ─────────────────────────────────────────────────────────────────────────────
-function FinalCTA() {
-  return (
-    <section
-      className="relative overflow-hidden text-white text-center"
-      style={{
-        padding: 'clamp(112px, 14vw, 180px) 0',
-        background: 'radial-gradient(ellipse 800px 500px at 50% 120%, rgba(255,255,255,0.22), transparent 60%), radial-gradient(ellipse 600px 400px at 20% 10%, rgba(255,255,255,0.14), transparent 60%), linear-gradient(160deg, #1231B8 0%, #2E5BFF 50%, #4A7BFF 100%)',
-      }}
-    >
-      {/* Dot grid overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none"
+      {/* ─── Final CTA ─── */}
+      <section
+        className="py-24 lg:py-32 overflow-hidden relative"
         style={{
-          backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.4) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
-          opacity: 0.08,
+          background:
+            'linear-gradient(172.342deg, rgb(18,49,184) 8.49%, rgb(46,91,255) 50%, rgb(74,123,255) 91.51%)',
         }}
-      />
-      <div className="relative max-w-3xl mx-auto px-6">
-        <p className="inline-flex items-center justify-center gap-2.5 text-[12px] font-[600] tracking-[0.14em] uppercase mb-5" style={{ color: 'rgba(255,255,255,0.85)' }}>
-          <span className="w-6 h-px" style={{ background: 'rgba(255,255,255,0.6)' }} />
-          Get started
-        </p>
-        <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-[clamp(44px,6.5vw,84px)] font-[500] leading-[1.02] tracking-[-0.02em] text-white max-w-[18ch] mx-auto mb-6">
-          Ready to run a smarter{' '}
-          <em className="italic font-[400]" style={{ color: 'rgba(255,255,255,0.72)' }}>job search?</em>
-        </h2>
-        <p className="text-[18px] mb-11 max-w-[44ch] mx-auto leading-[1.55]" style={{ color: 'rgba(255,255,255,0.82)' }}>Start free in under 2 minutes.</p>
-        <div className="inline-flex items-center justify-center gap-4 flex-wrap">
-          <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-5 rounded-full bg-white text-[#0A0A0A] text-[14px] font-[500] tracking-[-0.005em] hover:-translate-y-0.5 transition-all duration-200" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.22)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2E5BFF]" style={{ animation: 'breathe 1.8s ease-in-out infinite' }}></span>
+      >
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 text-center relative">
+          <div data-reveal data-delay="0" className="flex items-center justify-center gap-3 mb-8">
+            <div style={{ width: 24, height: 1, background: 'rgba(255,255,255,0.6)' }} />
+            <span
+              className="text-[12px] font-semibold tracking-[1.68px] uppercase"
+              style={{ color: 'rgba(255,255,255,0.85)', fontFamily: "'Inter', sans-serif" }}
+            >
+              Get started
+            </span>
+            <div style={{ width: 24, height: 1, background: 'rgba(255,255,255,0.6)' }} />
+          </div>
+          <h2
+            data-reveal data-delay="100"
+            className="font-medium tracking-[-1.68px] leading-tight mb-4 mx-auto"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: 'clamp(32px, 5vw, 48px)',
+              color: '#FFFFFF',
+              maxWidth: 907,
+            }}
+          >
+            Your next role is already within reach.
+          </h2>
+          <p
+            data-reveal data-delay="200"
+            className="text-[18px] mb-10"
+            style={{
+              color: 'rgba(255,255,255,0.8)',
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            Start free in under 2 minutes.
+          </p>
+          <button
+            data-reveal data-delay="300"
+            onClick={goAuth}
+            className="inline-flex items-center gap-2 h-12 px-8 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95"
+            style={{
+              background: '#FFFFFF',
+              color: '#1231B8',
+              fontFamily: "'Inter', sans-serif",
+            }}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLElement).style.background = '#F0F3FF')
+            }
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLElement).style.background = '#FFFFFF')
+            }
+          >
+            <div
+              className="rounded-full"
+              style={{ width: 6, height: 6, background: '#2E5BFF' }}
+            />
             Start free
-          </Link>
-          <div className="relative inline-flex">
-            <Link to="/auth" className="inline-flex items-center gap-2 h-[44px] px-2 text-[14px] font-[500] tracking-[-0.005em] hover:-translate-y-0.5 transition-all duration-200" style={{ color: 'rgba(255,255,255,0.92)' }}>
-              Book a consult
-              <ArrowRight />
-            </Link>
+          </button>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer style={{ background: '#F9FAFB' }}>
+        <div className="max-w-[1280px] mx-auto px-6 py-20">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12">
+            {/* Brand column */}
+            <div>
+              <Link to="/" className="inline-block mb-4">
+                <img src={imgLogo} alt="Screna" className="h-6 w-auto object-contain" />
+              </Link>
+              <p
+                className="text-[15px] mb-6"
+                style={{ color: '#62748E', fontFamily: "'Inter', sans-serif" }}
+              >
+                Empowering careers through AI and human judgment.
+              </p>
+              <div className="flex gap-3">
+                <SocialIcon aria-label="X" href="https://x.com/screnaai_">
+                  <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
+                    <path
+                      d="M16.5 3C16.5 3 15.975 4.575 15 5.55C16.2 13.05 7.95 18.525 1.5 14.25C3.15 14.325 4.8 13.8 6 12.75C2.25 11.625 0.375 7.2 2.25 3.75C3.9 5.7 6.45 6.825 9 6.75C8.325 3.6 12 1.8 14.25 3.9C15.075 3.9 16.5 3 16.5 3Z"
+                      stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                    />
+                  </svg>
+                </SocialIcon>
+                <SocialIcon aria-label="LinkedIn" href="https://www.linkedin.com/company/screnaai/">
+                  <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
+                    <path d="M12 6C13.1935 6 14.3381 6.47411 15.182 7.31802C16.0259 8.16193 16.5 9.30653 16.5 10.5V15.75H13.5V10.5C13.5 10.1022 13.342 9.72064 13.0607 9.43934C12.7794 9.15804 12.3978 9 12 9C11.6022 9 11.2206 9.15804 10.9393 9.43934C10.658 9.72064 10.5 10.1022 10.5 10.5V15.75H7.5V10.5C7.5 9.30653 7.97411 8.16193 8.81802 7.31802C9.66193 6.47411 10.8065 6 12 6Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M4.5 6.75H1.5V15.75H4.5V6.75Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3 4.5C3.82843 4.5 4.5 3.82843 4.5 3C4.5 2.17157 3.82843 1.5 3 1.5C2.17157 1.5 1.5 2.17157 1.5 3C1.5 3.82843 2.17157 4.5 3 4.5Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </SocialIcon>
+                <SocialIcon aria-label="Email" href="mailto:operations@screna.ai">
+                  <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
+                    <path d="M15 3H3C2.17157 3 1.5 3.67157 1.5 4.5V13.5C1.5 14.3284 2.17157 15 3 15H15C15.8284 15 16.5 14.3284 16.5 13.5V4.5C16.5 3.67157 15.8284 3 15 3Z" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M16.5 5.25L9.7725 9.525C9.54095 9.67007 9.27324 9.74701 9 9.74701C8.72676 9.74701 8.45905 9.67007 8.2275 9.525L1.5 5.25" stroke="#90A1B9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </SocialIcon>
+                <SocialIcon aria-label="Discord" href="https://discord.gg/7FqHDtea5X">
+                  <svg viewBox="0 0 18 18" fill="none" width="18" height="18">
+                    <path d="M13.545 3.894A12.894 12.894 0 0 0 10.599 3a.048.048 0 0 0-.051.025c-.13.232-.275.535-.376.773a11.892 11.892 0 0 0-3.546 0 7.805 7.805 0 0 0-.382-.773.05.05 0 0 0-.051-.025 12.862 12.862 0 0 0-2.946.894.045.045 0 0 0-.021.018C1.648 6.757 1.131 9.55 1.38 12.308a.054.054 0 0 0 .02.036 12.953 12.953 0 0 0 3.9 1.97.05.05 0 0 0 .055-.018c.3-.41.567-.843.796-1.298a.05.05 0 0 0-.027-.069 8.527 8.527 0 0 1-1.217-.58.05.05 0 0 1-.005-.083c.082-.061.163-.125.241-.19a.048.048 0 0 1 .05-.007c2.552 1.165 5.315 1.165 7.837 0a.048.048 0 0 1 .051.006c.078.065.16.13.242.191a.05.05 0 0 1-.004.083 7.99 7.99 0 0 1-1.218.579.05.05 0 0 0-.026.07c.233.455.5.887.795 1.297a.05.05 0 0 0 .055.019 12.918 12.918 0 0 0 3.907-1.97.051.051 0 0 0 .02-.035c.295-3.046-.494-5.816-2.09-8.396a.04.04 0 0 0-.02-.018ZM6.51 10.67c-.765 0-1.394-.702-1.394-1.563 0-.862.617-1.563 1.394-1.563.783 0 1.406.707 1.394 1.563 0 .861-.617 1.563-1.394 1.563Zm5.155 0c-.764 0-1.394-.702-1.394-1.563 0-.862.617-1.563 1.394-1.563.784 0 1.407.707 1.394 1.563 0 .861-.61 1.563-1.394 1.563Z" fill="#90A1B9" />
+                  </svg>
+                </SocialIcon>
+              </div>
+            </div>
+
+            {/* Resources */}
+            <div>
+              <p
+                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
+                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
+              >
+                Resources
+              </p>
+              {[
+                { label: 'Blog', to: '#' },
+                { label: 'FAQ', to: '/faq' },
+                { label: 'Help Center', to: '/help' },
+                { label: 'Contact', to: '/contact' },
+              ].map((item) => (
+                <FooterLink key={item.label} {...item} />
+              ))}
+            </div>
+
+            {/* Community */}
+            <div>
+              <p
+                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
+                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
+              >
+                Community
+              </p>
+              <a
+                href="https://discord.gg/7FqHDtea5X"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-[14px] leading-[20px] mb-3 transition-colors duration-150"
+                style={{ color: '#656D81', fontFamily: "'Inter', sans-serif" }}
+                onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#2E5BFF')}
+                onMouseLeave={(e) => ((e.target as HTMLElement).style.color = '#656D81')}
+              >
+                Join our Discord
+              </a>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <p
+                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
+                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
+              >
+                Legal
+              </p>
+              {[
+                { label: 'Terms of Service', to: '/terms' },
+                { label: 'Privacy Policy', to: '/privacy' },
+                { label: 'Cookies', to: '/cookies' },
+              ].map((item) => (
+                <FooterLink key={item.label} {...item} />
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div
+            className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-8 gap-3"
+            style={{ borderTop: '1px solid #F8FAFC' }}
+          >
+            <p
+              className="text-[14px]"
+              style={{ color: '#90A1B9', fontFamily: "'Inter', sans-serif" }}
+            >
+              © 2026 Screna AI. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6">
+              {['System Status', 'Security'].map((item) => (
+                <a
+                  key={item}
+                  href="#"
+                  className="text-[14px] transition-colors duration-150"
+                  style={{ color: '#90A1B9', fontFamily: "'Inter', sans-serif" }}
+                  onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#2E5BFF')}
+                  onMouseLeave={(e) => ((e.target as HTMLElement).style.color = '#90A1B9')}
+                >
+                  {item}
+                </a>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </footer>
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HOME PAGE
-// ─────────────────────────────────────────────────────────────────────────────
-export function HomePage() {
+// ─── Helper components ────────────────────────────────────────────────────────
+
+function FooterLink({ label, to }: { label: string; to: string }) {
+  const className = 'block text-[14px] leading-[20px] mb-3 transition-colors duration-150';
+  const style = { color: '#656D81', fontFamily: "'Inter', sans-serif" } as const;
+  const onMouseEnter = (e: React.MouseEvent<HTMLElement>) => ((e.target as HTMLElement).style.color = '#2E5BFF');
+  const onMouseLeave = (e: React.MouseEvent<HTMLElement>) => ((e.target as HTMLElement).style.color = '#656D81');
+
+  if (to.startsWith('/')) {
+    return (
+      <Link to={to} className={className} style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+        {label}
+      </Link>
+    );
+  }
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar transparent />
-      <main>
-        <Hero />
-        <StatsBar />
-        <Pillars />
-        <ComparisonTable />
-        <Journey />
-        <Pricing />
-        <FreeVsPremium />
-        <CreditPacks />
-        <CallbackCTA />
-        <SocialProof />
-        <FAQ />
-        <FinalCTA />
-      </main>
-      <Footer />
+    <a href={to} className={className} style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      {label}
+    </a>
+  );
+}
+
+function SocialIcon({ children, 'aria-label': label, href }: { children: ReactNode; 'aria-label': string; href?: string }) {
+  const [hovered, setHovered] = useState(false);
+  const style = {
+    width: 40,
+    height: 40,
+    border: '0.667px solid #F1F5F9',
+    background: hovered ? '#F7F9FF' : 'transparent',
+    opacity: hovered ? 1 : 0.85,
+  } as const;
+  const className = 'flex items-center justify-center rounded-2xl transition-all duration-150';
+
+  // Render an anchor when a destination is provided so the icon is actually clickable.
+  // mailto: links stay in-page; external links open in a new tab.
+  if (href) {
+    const isExternal = /^https?:/.test(href);
+    return (
+      <a
+        aria-label={label}
+        href={href}
+        className={className}
+        style={style}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      aria-label={label}
+      className={className}
+      style={style}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PricingCard({
+  plan,
+  revealDelay = 0,
+  loading = false,
+  onSelect,
+}: {
+  plan: Plan;
+  revealDelay?: number;
+  loading?: boolean;
+  onSelect: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      data-reveal
+      data-delay={revealDelay}
+      className="relative rounded-[18px] p-7 flex flex-col transition-all duration-200"
+      style={{
+        background: plan.highlighted ? '#F7F9FF' : '#FFFFFF',
+        border: plan.highlighted ? '2px solid #2E5BFF' : '1px solid #2E5BFF',
+        boxShadow: hovered
+          ? plan.highlighted
+            ? '0 20px 48px rgba(46,91,255,0.18)'
+            : '0 12px 28px rgba(46,91,255,0.10)'
+          : plan.highlighted
+          ? '0 18px 42px rgba(46,91,255,0.14)'
+          : '0 10px 24px rgba(46,91,255,0.04)',
+        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
+        minHeight: 408,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {plan.badge && (
+        <div
+          className="absolute -top-3 right-6 px-3 py-1 rounded-full text-[10px] font-medium text-white"
+          style={{ background: '#2E5BFF' }}
+        >
+          {plan.badge}
+        </div>
+      )}
+      <p
+        className="text-[15px] font-semibold mb-2"
+        style={{
+          color: plan.highlighted ? '#2E5BFF' : '#0A0A0A',
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        {plan.name}
+      </p>
+      <p
+        className="text-[30px] tracking-[-0.5px] mb-1"
+        style={{
+          color: plan.highlighted ? '#2E5BFF' : '#0A0A0A',
+          fontFamily: "'IBM Plex Mono', monospace",
+        }}
+      >
+        {plan.price}
+      </p>
+      <p
+        className="text-[12px] mb-6"
+        style={{
+          color: plan.highlighted ? '#2E5BFF' : '#4A4D57',
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        {plan.tagline}
+      </p>
+      <div className="flex-1 space-y-2 mb-8">
+        {plan.features.map((f, i) => (
+          <p
+            key={i}
+            className="text-[12px] leading-[18px]"
+            style={{
+              color: plan.highlighted ? '#2E5BFF' : '#4A4D57',
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            ✓&nbsp;&nbsp;{f}
+          </p>
+        ))}
+      </div>
+      <button
+        onClick={onSelect}
+        disabled={loading}
+        className="w-full h-[38px] rounded-[7px] text-[13px] font-medium transition-all duration-150 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
+        style={{
+          background: plan.highlighted ? '#2E5BFF' : '#FFFFFF',
+          color: plan.highlighted ? '#FFFFFF' : '#1231B8',
+          border: '1px solid #2E5BFF',
+          fontFamily: "'Inter', sans-serif",
+        }}
+        onMouseEnter={(e) => {
+          if (plan.highlighted) {
+            (e.currentTarget as HTMLElement).style.background = '#1E48E6';
+          } else {
+            (e.currentTarget as HTMLElement).style.background = '#F0F3FF';
+          }
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.background = plan.highlighted ? '#2E5BFF' : '#FFFFFF';
+        }}
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : plan.cta}
+      </button>
+    </div>
+  );
+}
+
+function CreditsAddOn({ revealDelay = 0, onAddCredits }: { revealDelay?: number; onAddCredits: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      data-reveal
+      data-delay={revealDelay}
+      className="rounded-2xl px-6 py-4 flex flex-wrap items-center gap-4 transition-all duration-200"
+      style={{
+        background: '#FFFFFF',
+        border: '1px solid #2E5BFF',
+        boxShadow: hovered
+          ? '0 12px 28px rgba(46,91,255,0.10)'
+          : '0 12px 28px rgba(46,91,255,0.05)',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        className="self-stretch"
+        style={{ width: 3, background: '#2E5BFF', borderRadius: 2, minHeight: 28 }}
+      />
+      <div className="flex-shrink-0">
+        <p
+          className="text-[11px] font-semibold"
+          style={{
+            color: '#1231B8',
+            fontFamily: "'IBM Plex Mono', monospace",
+            letterSpacing: '0.08em',
+          }}
+        >
+          PAY AS YOU GO
+        </p>
+        <p
+          className="text-[15px] font-semibold"
+          style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif" }}
+        >
+          Need a few extra practice reps?
+        </p>
+      </div>
+      <p
+        className="text-[14px] flex-1 min-w-[200px]"
+        style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
+      >
+        Buy credits anytime without upgrading your plan.
+      </p>
+      <div className="flex items-center gap-3 ml-auto">
+        <div
+          className="inline-flex items-center justify-center h-10 px-5 rounded-full text-[14px] font-semibold"
+          style={{
+            background: '#F7F9FF',
+            border: '1px solid #2E5BFF',
+            color: '#1231B8',
+            fontFamily: "'IBM Plex Mono', monospace",
+          }}
+        >
+          $0.10 / credit
+        </div>
+        <button
+          onClick={onAddCredits}
+          className="inline-flex items-center justify-center h-10 px-5 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95"
+          style={{
+            background: '#FFFFFF',
+            border: '1px solid #2E5BFF',
+            color: '#1231B8',
+            fontFamily: "'Inter', sans-serif",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#F0F3FF')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#FFFFFF')}
+        >
+          Add credits
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FaqRow({
+  item,
+  open,
+  onToggle,
+  revealDelay = 0,
+}: {
+  item: { q: string; a: string };
+  open: boolean;
+  onToggle: () => void;
+  revealDelay?: number;
+}) {
+  const answerRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    if (answerRef.current) {
+      setHeight(open ? answerRef.current.scrollHeight : 0);
+    }
+  }, [open]);
+
+  return (
+    <div data-reveal data-delay={revealDelay} style={{ borderTop: '0.667px solid #E1E4EA' }}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between text-left py-6 gap-4"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+      >
+        <span
+          className="text-[18px] font-medium leading-[23.4px]"
+          style={{ color: '#1E232F', fontFamily: "'Inter', sans-serif" }}
+        >
+          {item.q}
+        </span>
+        <div className="relative flex-shrink-0" style={{ width: 24, height: 24 }}>
+          <div
+            className="absolute"
+            style={{
+              top: 12,
+              left: 0,
+              width: 24,
+              height: 1,
+              background: '#5A6172',
+            }}
+          />
+          <div
+            className="absolute transition-all duration-200"
+            style={{
+              top: 0,
+              left: 12,
+              width: 1,
+              height: 24,
+              background: '#5A6172',
+              transform: open ? 'scaleY(0)' : 'scaleY(1)',
+              transformOrigin: 'center',
+            }}
+          />
+        </div>
+      </button>
+      <div
+        className="overflow-hidden ease-out"
+        style={{ transition: 'height 250ms ease-out', height }}
+      >
+        <div ref={answerRef} className="pb-6">
+          <p
+            className="text-[15px] leading-[24px] whitespace-pre-line"
+            style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
+          >
+            {item.a}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'react-router';
-import { User, Shield, CreditCard, Mail, Lock, CheckCircle2, Eye, EyeOff, KeyRound, Send, Loader2 } from 'lucide-react';
+import { User, Shield, CreditCard, Lock, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { DashboardLayout } from '../../components/newDesign/dashboard-layout';
 import { Input } from '../../components/newDesign/ui/input';
 import { Label } from '../../components/newDesign/ui/label';
@@ -12,7 +12,7 @@ import { BillingTab } from './billing';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'profile',       label: 'Account',       icon: User       },
+  { id: 'profile',       label: 'Profile',       icon: User       },
   { id: 'security',      label: 'Security',      icon: Shield     },
   // { id: 'notifications', label: 'Notifications', icon: Bell       },
   { id: 'billing',       label: 'Billing',       icon: CreditCard },
@@ -60,90 +60,6 @@ function DarkBtn({ type = 'button', disabled, onClick, children }: {
     >
       {children}
     </button>
-  );
-}
-
-// ─── Set Password Modal (Google-only users) ───────────────────────────────────
-
-function SetPasswordModal({ email, onClose }: { email: string; onClose: () => void }) {
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const handleSend = () => {
-    setSending(true);
-    setTimeout(() => { setSending(false); setSent(true); }, 800);
-  };
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
-        transition={{ duration: 0.16 }}
-        className="bg-card w-[400px] rounded-xl shadow-2xl p-8 flex flex-col items-center text-center"
-        onClick={e => e.stopPropagation()}
-      >
-        {sent ? (
-          <>
-            <div className="w-16 h-16 rounded-full bg-green-50 border border-green-100 flex items-center justify-center mb-5">
-              <CheckCircle2 className="w-7 h-7 text-green-500" />
-            </div>
-            <h2 className="text-foreground mb-2">Check your inbox</h2>
-            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-              We sent a secure link to{' '}
-              <span className="text-foreground font-medium">{email}</span>.
-              The link expires in 24 hours.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              Done
-            </button>
-            <p className="text-xs text-muted-foreground mt-4">You can still log in with Google at any time.</p>
-          </>
-        ) : (
-          <>
-            <div className="relative mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <KeyRound className="w-7 h-7 text-primary" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card border-2 border-card shadow-sm flex items-center justify-center">
-                <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center">
-                  <Mail className="w-2.5 h-2.5 text-primary" />
-                </div>
-              </div>
-            </div>
-            <h2 className="text-foreground mb-2">Set a password for your account</h2>
-            <p className="text-sm text-muted-foreground mb-7 leading-relaxed">
-              We'll send a secure link to{' '}
-              <span className="text-foreground font-medium">{email}</span>.
-              Click the link to create a password for email login.
-            </p>
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-            >
-              {sending ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin" />Sending…</>
-              ) : (
-                <><Send className="w-3.5 h-3.5" />Send me the link</>
-              )}
-            </button>
-            <button onClick={onClose} className="mt-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Cancel
-            </button>
-            <p className="text-xs text-muted-foreground mt-5">You can still log in with Google at any time.</p>
-          </>
-        )}
-      </motion.div>
-    </motion.div>
   );
 }
 
@@ -350,7 +266,7 @@ function ProfileTab() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="text-foreground">Account Information</h2>
+          <h2 className="text-foreground">Profile Information</h2>
           <p className="text-sm text-muted-foreground mt-0.5">Update your account's profile information and email address.</p>
         </div>
         {avatarUrl ? (
@@ -390,7 +306,6 @@ function ProfileTab() {
               </button>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">A verification link will be sent to your new email address.</p>
 
           <AnimatePresence>
             {emailFlow === 'open' && (
@@ -404,6 +319,7 @@ function ProfileTab() {
                   <div className="space-y-1.5">
                     <Label htmlFor="newEmailAddr">New email address</Label>
                     <Input id="newEmailAddr" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="you@newdomain.com" />
+                    <p className="text-xs text-muted-foreground">A verification link will be sent to your new email address.</p>
                   </div>
                   <div className="flex gap-2 pt-1">
                     <DarkBtn onClick={() => setEmailFlow('sent')}>Send verification email</DarkBtn>
@@ -496,34 +412,25 @@ function ProfileTab() {
 function SecurityTab() {
   const { user } = useAuth();
   const [showChangePwd, setShowChangePwd] = useState(false);
-  const [showSetPwd,    setShowSetPwd]    = useState(false);
-  const [hasPassword,   setHasPassword]   = useState(false);
 
-  const email = user?.email ?? '';
+  // Google accounts have no password credential and can't set one, so the
+  // password controls only apply to email/password accounts.
+  const hasPassword = !!user?.hasPassword;
 
   return (
     <>
       <AnimatePresence>
         {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
-        {showSetPwd    && <SetPasswordModal email={email} onClose={() => setShowSetPwd(false)} />}
       </AnimatePresence>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-6 pt-6 pb-5 border-b border-border flex items-start justify-between">
-          <div>
-            <h2 className="text-foreground">Security</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Manage your password and connected login methods.</p>
-          </div>
-          <button
-            onClick={() => setHasPassword(v => !v)}
-            className="shrink-0 ml-4 px-2.5 py-1 rounded-md border border-border text-xs text-muted-foreground hover:bg-secondary transition-colors"
-          >
-            Demo: {hasPassword ? 'Has password' : 'Google only'}
-          </button>
+        <div className="px-6 pt-6 pb-5 border-b border-border">
+          <h2 className="text-foreground">Security</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage your account password.</p>
         </div>
 
-        <div className="divide-y divide-border">
-          {/* Password row */}
+        {hasPassword ? (
+          /* Password row — only for email/password accounts */
           <div className="flex items-center justify-between px-6 py-5">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
@@ -531,49 +438,26 @@ function SecurityTab() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">Password</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {hasPassword ? 'Last changed 3 months ago' : 'Not set — Google login only'}
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Email &amp; password login enabled</p>
               </div>
             </div>
-            {hasPassword ? (
-              <button
-                onClick={() => setShowChangePwd(true)}
-                className="px-3.5 py-1.5 rounded-md border border-foreground/70 bg-card text-sm font-medium text-foreground hover:bg-secondary transition-colors"
-              >
-                Change password
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowSetPwd(true)}
-                className="px-3.5 py-1.5 rounded-md border border-primary/60 bg-primary/5 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-              >
-                Set a password
-              </button>
-            )}
-          </div>
-
-          {/* Google login row */}
-          <div className="flex items-center justify-between px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-secondary border border-border flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">Google login</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Connected · {email}</p>
-              </div>
-            </div>
-            <button className="px-3.5 py-1.5 rounded-md border border-destructive/60 bg-card text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors">
-              Disconnect
+            <button
+              onClick={() => setShowChangePwd(true)}
+              className="px-3.5 py-1.5 rounded-md border border-foreground/70 bg-card text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              Change password
             </button>
           </div>
-        </div>
+        ) : (
+          /* Google accounts: no password controls */
+          <div className="px-6 py-8 text-center">
+            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
+              <Lock className="w-4 h-4 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-foreground">You sign in with Google</p>
+            <p className="text-xs text-muted-foreground mt-1">Password settings aren't available for Google accounts.</p>
+          </div>
+        )}
       </div>
     </>
   );

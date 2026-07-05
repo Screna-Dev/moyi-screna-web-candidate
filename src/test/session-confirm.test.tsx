@@ -39,12 +39,12 @@ vi.mock('@/contexts/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('../../components/newDesign/home/navbar', () => ({
-  Navbar: () => <nav data-testid="navbar" />,
-}));
-
-vi.mock('../../components/newDesign/home/footer', () => ({
-  Footer: () => <footer data-testid="footer" />,
+// The page always renders inside DashboardLayout; stub it so tests exercise
+// only the session-confirm content, not the dashboard shell.
+vi.mock('@/components/newDesign/dashboard-layout', () => ({
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dashboard-layout">{children}</div>
+  ),
 }));
 
 // ─── Session Confirm Page Tests ──────────────────────────

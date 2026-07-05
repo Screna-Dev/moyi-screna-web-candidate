@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router';
-import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, Eye, MapPin, ExternalLink, CircleAlert, ChevronsUpDown, Coins } from 'lucide-react';
-import { Navbar } from '../../components/newDesign/home/navbar';
-import { Footer } from '../../components/newDesign/home/footer';
+import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, Eye, MapPin, ExternalLink, CircleAlert, ChevronsUpDown } from 'lucide-react';
+import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getPostAccessInfo, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import {
@@ -153,31 +154,22 @@ function getQuestionHintStatus(
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════
-type AccessReason =
-  | 'OWNER'
-  | 'SUBSCRIBED'
-  | 'ALREADY_UNLOCKED'
-  | 'NO_COST'
-  | 'PAYMENT_REQUIRED'
-  | 'INSUFFICIENT_CREDITS';
-
-const FREE_REASONS: AccessReason[] = ['OWNER', 'SUBSCRIBED', 'ALREADY_UNLOCKED', 'NO_COST'];
-
 export function ExperienceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
 
+  // note_read —— 打开某篇面经，离开时记录 duration_seconds
+  useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
+
   // ── Post data ──
   const [post, setPost] = useState<ExperiencePost | null>(null);
   const [postLoading, setPostLoading] = useState(true);
 
-  // ── Access / pricing gate ──
-  const [creditCost, setCreditCost] = useState<number>(0);
-  const [creditBalance, setCreditBalance] = useState<number>(0);
-  const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
-  const [showInsufficient, setShowInsufficient] = useState(false);
-  const [confirmingPurchase, setConfirmingPurchase] = useState(false);
+  // ── Plan-tier access gate ──
+  // Free/Basic users can only open the 2 newest posts per company; the 3rd+
+  // returns 403 INSUFFICIENT_PLAN_TIER, which we surface as an upgrade prompt.
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   // ── Comments ──
   const [comments, setComments] = useState<Comment[]>([]);
@@ -190,11 +182,6 @@ export function ExperienceDetailPage() {
   const [repliesLoadingSet, setRepliesLoadingSet] = useState<Set<string>>(new Set());
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<
-    | { type: 'comment'; commentId: string }
-    | { type: 'reply'; replyId: string; commentId: string }
-    | null
-  >(null);
 
   // ── Like / Save state ──
   const [liked, setLiked] = useState(false);
@@ -242,58 +229,21 @@ export function ExperienceDetailPage() {
         setAllExpanded(true);
       }
     } catch (err: any) {
-      if (err?.response?.data?.errorCode === 'INSUFFICIENT_CREDITS') {
-        toast.error('Not enough credits to view this post.');
-        setShowInsufficient(true);
+      const code = err?.response?.data?.errorCode ?? err?.response?.data?.code;
+      if (err?.response?.status === 403 && code === 'INSUFFICIENT_PLAN_TIER') {
+        // Free/Basic users hit the plan gate on the 3rd+ post for a company.
+        setShowUpgradePrompt(true);
+      } else {
+        console.error('[experience-detail] getPost failed for', id, err?.response?.status, err?.response?.data ?? err);
       }
     } finally {
       setPostLoading(false);
     }
   }, [id]);
 
-  const checkAccessAndFetch = useCallback(async () => {
+  const fetchComments = useCallback(async () => {
     if (!id) return;
-    setPostLoading(true);
-    try {
-      const res = await getPostAccessInfo(id);
-      const data = res.data?.data ?? res.data;
-      const reason: AccessReason = data?.reason;
-      setCreditCost(data?.creditCost ?? 0);
-      setCreditBalance(data?.creditBalance ?? 0);
-
-      if (FREE_REASONS.includes(reason)) {
-        await fetchPost();
-        return;
-      }
-      if (reason === 'PAYMENT_REQUIRED') {
-        setShowPaymentPrompt(true);
-        setPostLoading(false);
-        return;
-      }
-      if (reason === 'INSUFFICIENT_CREDITS') {
-        setShowInsufficient(true);
-        setPostLoading(false);
-        return;
-      }
-      setPostLoading(false);
-    } catch {
-      setPostLoading(false);
-    }
-  }, [id, fetchPost]);
-
-  const handleConfirmPurchase = useCallback(async () => {
-    setConfirmingPurchase(true);
-    try {
-      await fetchPost();
-      setShowPaymentPrompt(false);
-    } finally {
-      setConfirmingPurchase(false);
-    }
-  }, [fetchPost]);
-
-  const fetchComments = useCallback(async (silent = false) => {
-    if (!id) return;
-    if (!silent) setCommentsLoading(true);
+    setCommentsLoading(true);
     try {
       const res = await getComments(id, { page: 0 });
       const data = res.data?.data ?? res.data;
@@ -301,14 +251,14 @@ export function ExperienceDetailPage() {
     } catch {
       // silent
     } finally {
-      if (!silent) setCommentsLoading(false);
+      setCommentsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
-    checkAccessAndFetch();
+    fetchPost();
     fetchComments();
-  }, [checkAccessAndFetch, fetchComments]);
+  }, [fetchPost, fetchComments]);
 
   // Check if current user is author (you'll need to add authorId to your post data)
   const isAuthor = currentUser?.id === (post as any)?.authorId;
@@ -520,9 +470,7 @@ export function ExperienceDetailPage() {
     try {
       await createReply(commentId, { content: text });
       setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
-      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: (c.replyCount ?? 0) + 1 } : c));
       await fetchReplies(commentId, true);
-      fetchComments(true);
     } catch {
       // silent
     } finally {
@@ -535,8 +483,6 @@ export function ExperienceDetailPage() {
     try {
       await deleteReply(replyId);
       setReplies(prev => ({ ...prev, [commentId]: (prev[commentId] ?? []).filter(r => r.id !== replyId) }));
-      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: Math.max(0, (c.replyCount ?? 0) - 1) } : c));
-      fetchComments(true);
     } catch {
       // silent
     } finally {
@@ -544,159 +490,64 @@ export function ExperienceDetailPage() {
     }
   };
 
-  const isPendingDeleting = pendingDelete
-    ? (pendingDelete.type === 'comment'
-        ? deletingCommentId === pendingDelete.commentId
-        : deletingReplyId === pendingDelete.replyId)
-    : false;
-
-  const confirmPendingDelete = async () => {
-    if (!pendingDelete) return;
-    if (pendingDelete.type === 'comment') {
-      await handleDeleteComment(pendingDelete.commentId);
-    } else {
-      await handleDeleteReply(pendingDelete.replyId, pendingDelete.commentId);
-    }
-    setPendingDelete(null);
-  };
-
 
   const gateOverlays = (
-    <>
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open && !isPendingDeleting) setPendingDelete(null); }}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-                <CircleAlert className="w-5 h-5 text-red-600" />
-              </div>
-              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">
-                Delete this {pendingDelete?.type === 'reply' ? 'reply' : 'comment'}?
-              </AlertDialogTitle>
+    <AlertDialog open={showUpgradePrompt} onOpenChange={(open) => { if (!open) setShowUpgradePrompt(false); }}>
+      <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-full bg-[hsl(221,91%,60%)]/10 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-[hsl(221,91%,60%)]" />
             </div>
-            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
-              This action cannot be undone. Your {pendingDelete?.type === 'reply' ? 'reply' : 'comment'} will be permanently removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPendingDelete(null)}
-              disabled={isPendingDeleting}
-              className="rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmPendingDelete}
-              disabled={isPendingDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
-            >
-              {isPendingDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showPaymentPrompt} onOpenChange={(open) => { if (!open) setShowPaymentPrompt(false); }}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-full bg-[hsl(221,91%,60%)]/10 flex items-center justify-center">
-                <Coins className="w-5 h-5 text-[hsl(221,91%,60%)]" />
-              </div>
-              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">View this post?</AlertDialogTitle>
-            </div>
-            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
-              This post costs <span className="font-semibold text-[hsl(222,22%,15%)]">{creditCost} {creditCost === 1 ? 'credit' : 'credits'}</span>.
-              <br />
-              Your balance: <span className="font-semibold text-[hsl(222,22%,15%)]">{creditBalance} {creditBalance === 1 ? 'credit' : 'credits'}</span>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => { setShowPaymentPrompt(false); navigate('/interview-insights'); }}
-              disabled={confirmingPurchase}
-              className="rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirmPurchase}
-              disabled={confirmingPurchase}
-              className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
-            >
-              {confirmingPurchase ? <Loader2 className="w-4 h-4 animate-spin" /> : `Use ${creditCost} ${creditCost === 1 ? 'credit' : 'credits'}`}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showInsufficient} onOpenChange={(open) => { if (!open) setShowInsufficient(false); }}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
-                <CircleAlert className="w-5 h-5 text-amber-600" />
-              </div>
-              <AlertDialogTitle className="text-[hsl(222,22%,15%)]">Not enough credits</AlertDialogTitle>
-            </div>
-            <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
-              You need <span className="font-semibold text-[hsl(222,22%,15%)]">{creditCost}</span> credits to view this post,
-              but your balance is <span className="font-semibold text-[hsl(222,22%,15%)]">{creditBalance}</span>.
-              <br />
-              Buy more credits or upgrade your plan for unlimited access.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => { setShowInsufficient(false); navigate('/interview-insights'); }}
-              className="rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => navigate('/pricing')}
-              className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
-            >
-              Upgrade plan
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+            <AlertDialogTitle className="text-[hsl(222,22%,15%)]">Upgrade to view this post</AlertDialogTitle>
+          </div>
+          <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
+            Free and Basic plans can open the 2 most recent posts per company. Upgrade to
+            <span className="font-semibold text-[hsl(222,22%,15%)]"> Advanced</span> for unlimited access to every interview experience.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => { setShowUpgradePrompt(false); navigate('/interview-insights'); }}
+            className="rounded-xl"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => navigate('/#pricing')}
+            className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
+          >
+            Upgrade plan
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   if (postLoading) {
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <main className="pt-24 pb-20 bg-[#f9fafb]">
+      <DashboardLayout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 flex items-center justify-center py-32">
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)]" />
           </div>
-        </main>
-        <Footer />
+        </div>
         {gateOverlays}
-      </div>
+      </DashboardLayout>
     );
   }
 
   if (!post) {
-    const gated = showPaymentPrompt || showInsufficient;
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <main className="pt-24 pb-20 bg-[#f9fafb]">
+      <DashboardLayout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
-            {gated ? 'Confirm to view this post.' : 'Post not found.'}
+            {showUpgradePrompt ? 'Upgrade to Advanced to view this post.' : 'Post not found.'}
           </div>
-        </main>
-        <Footer />
+        </div>
         {gateOverlays}
-      </div>
+      </DashboardLayout>
     );
   }
 
@@ -708,10 +559,8 @@ export function ExperienceDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-
-      <main className="pt-24 pb-20 bg-[#f9fafb]">
+    <DashboardLayout fullBleed>
+      <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
           {/* ─── Breadcrumb ─── */}
@@ -1308,7 +1157,7 @@ export function ExperienceDetailPage() {
                               </button>
                               {isOwn && (
                                 <button
-                                  onClick={() => setPendingDelete({ type: 'comment', commentId: comment.id })}
+                                  onClick={() => handleDeleteComment(comment.id)}
                                   disabled={deletingCommentId === comment.id}
                                   className="flex items-center gap-1 text-xs hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                                 >
@@ -1360,7 +1209,7 @@ export function ExperienceDetailPage() {
                                               <div className="text-xs text-[hsl(222,12%,30%)] leading-relaxed"><Markdown className="text-xs text-[hsl(222,12%,30%)]">{reply.content}</Markdown></div>
                                               {isOwnReply && (
                                                 <button
-                                                  onClick={() => setPendingDelete({ type: 'reply', replyId: reply.id, commentId: comment.id })}
+                                                  onClick={() => handleDeleteReply(reply.id, comment.id)}
                                                   disabled={deletingReplyId === reply.id}
                                                   className="mt-1 flex items-center gap-1 text-[10px] text-[hsl(222,12%,55%)] hover:text-red-500 transition-colors opacity-0 group-hover/reply:opacity-100"
                                                 >
@@ -1483,10 +1332,8 @@ export function ExperienceDetailPage() {
 
           </div>
         </div>
-      </main>
-
-      <Footer />
+      </div>
       {gateOverlays}
-    </div>
+    </DashboardLayout>
   );
 }

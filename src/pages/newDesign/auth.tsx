@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/newDesign/ui/checkbox';
 import { motion } from 'motion/react';
 import { Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { resolvePostLoginPath } from '@/components/mentor/dashboard-mode';
 
 function RisoTexture({ className, rotation = 0 }: { className?: string; rotation?: number }) {
   return (
@@ -265,10 +266,12 @@ export function AuthPage() {
       if (user?.role === 'ADMIN' || user?.role === 'OPS') {
         navigate('/admin', { replace: true });
       } else {
-        navigate(returnTo || '/dashboard', { replace: true });
+        // Dual-role / mentor accounts route via resolvePostLoginPath (chooser
+        // or remembered dashboard); an explicit returnTo still takes priority.
+        navigate(returnTo || resolvePostLoginPath(user), { replace: true });
       }
     }
-  }, [isAuthenticated, authLoading, navigate, returnTo, user?.role]);
+  }, [isAuthenticated, authLoading, navigate, returnTo, user]);
 
   const validatePassword = (pwd: string) => {
     const errors: string[] = [];
@@ -345,10 +348,12 @@ export function AuthPage() {
       if (isLogin) {
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
-        if (loggedInUser?.role === 'CANDIDATE') {
-          navigate(returnTo || '/dashboard');
+        if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
+          navigate('/admin');
+        } else {
+          // Candidate, mentor, or dual-role → chooser / remembered dashboard.
+          navigate(returnTo || resolvePostLoginPath(loggedInUser));
         }
-        if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') navigate('/admin');
       } else {
         await signup(email, password, name, referralCode || undefined);
         setRegisteredEmail(email);

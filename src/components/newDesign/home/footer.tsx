@@ -33,13 +33,13 @@ const COMMUNITY_LINKS = [
 ];
 
 const SUPPORT_LINKS = [
-  { label: 'Pricing', href: '/pricing' },
+  { label: 'Pricing', href: '/#pricing' },
   { label: 'Help Center', href: '/help' },
   { label: 'Contact', href: '/contact' },
 ];
 
 const SOCIAL_LINKS = [
-  { icon: XIcon, label: 'X', href: 'https://x.com/ScrenaAI' },
+  { icon: XIcon, label: 'X', href: 'https://x.com/screnaai_?s=21' },
   { icon: Linkedin, label: 'LinkedIn', href: 'https://www.linkedin.com/company/screnaai/' },
   { icon: DiscordIcon, label: 'Discord', href: 'https://discord.gg/7FqHDtea5X' },
   { icon: Mail, label: 'Email', href: 'mailto:operations@screna.ai' },

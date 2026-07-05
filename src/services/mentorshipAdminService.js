@@ -28,6 +28,9 @@ export const setMentorOfficeHours = (mentorId, payload) =>
 export const refreshMentorAvailability = (mentorId) =>
   API.post(`${BASE}/mentors/${mentorId}/refresh-availability`);
 
+export const setMentorIdentityVerification = (mentorId, payload) =>
+  API.patch(`${BASE}/mentors/${mentorId}/identity-verification`, payload);
+
 export const getMentorCalendarStatus = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/calendar/status`);
 
@@ -49,6 +52,13 @@ export const deleteMentorTopic = (mentorId, topicId) =>
   API.delete(`${BASE}/mentors/${mentorId}/topics/${topicId}`);
 
 // ─── Payouts ────────────────────────────────────────────────────────────────
+
+// Per-mentor aggregation of PAYMENT ledger entries (paginated). Each row:
+//   { mentorId, mentorName, totalAmountCents, totalPayoutCents, recordCount }
+// params: { status?: 'PENDING' | 'PAID', from?, to? (ISO-8601), page?, size? }.
+// PENDING = eligible-to-settle set (matches markMentorPayoutsPaid); PAID = history.
+export const adminPayoutSummary = (params = {}) =>
+  API.get(`${BASE}/payouts`, { params });
 
 export const listMentorPayouts = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/payouts`);
@@ -91,3 +101,13 @@ export const resolveDispute = (disputeId, payload) =>
 
 export const deleteReview = (reviewId) =>
   API.delete(`${BASE}/reviews/${reviewId}`);
+
+// ─── Reports ────────────────────────────────────────────────────────────────
+
+// Exports an Excel (.xlsx) of CONFIRMED and COMPLETED sessions for the period.
+// period: 'DAY' | 'WEEK' | 'MONTH' | 'YEAR' (UTC). Returns a binary blob.
+export const exportSessionReport = (period) =>
+  API.get(`${BASE}/reports/sessions`, {
+    params: { period },
+    responseType: 'blob',
+  });

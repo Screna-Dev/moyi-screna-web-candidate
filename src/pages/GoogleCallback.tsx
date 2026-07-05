@@ -6,6 +6,22 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
 import PaymentService from '@/services/PaymentServices';
+import { resolvePostLoginPath } from '@/components/mentor/dashboard-mode';
+
+// Pull the roles claim out of a JWT without throwing. Lets us route dual-role
+// (candidate + mentor) Google sign-ins to the dashboard chooser.
+function rolesFromToken(token: string): { roles: string[]; role?: string } {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(decodeURIComponent(
+      atob(base64).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+    ));
+    const roles: string[] = Array.isArray(payload.roles) ? payload.roles : [];
+    return { roles, role: roles[0] };
+  } catch {
+    return { roles: [] };
+  }
+}
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams();
@@ -89,6 +105,10 @@ export default function GoogleCallback() {
           localStorage.setItem('refreshToken', refreshToken);
         }
 
+        // Record that this session authenticated via Google so the Security
+        // settings tab knows the account is Google-only until a password is set.
+        localStorage.setItem('screna_auth_provider', 'google');
+
         console.log('Tokens stored in localStorage');
 
         // Set user from token
@@ -132,7 +152,9 @@ export default function GoogleCallback() {
         if (isFirstLogin) {
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
-          navigate(returnTo || '/dashboard');
+          // Dual-role / mentor accounts land on the chooser or their remembered
+          // dashboard; an explicit returnTo still takes priority.
+          navigate(returnTo || resolvePostLoginPath(rolesFromToken(accessToken)));
         }
         
       } catch (err: any) {

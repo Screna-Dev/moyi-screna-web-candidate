@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UploadCloud, FileText, Check, Shield, Zap, AlertCircle, ChevronRight, ArrowRight, ArrowLeft, Sparkles, RefreshCw, Plus, Mic, Compass, UserCheck, HelpCircle, Share2, AlertTriangle, Building2, X, Search, Send, BarChart3, Target, Loader2, CheckCircle2 } from 'lucide-react';
 import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendations } from '@/services/ProfileServices';
 import { createTrainingPlan } from '@/services/InterviewServices';
+import { usePostHog } from 'posthog-js/react';
+import { markOnboardingComplete } from '@/utils/analytics';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -1296,7 +1298,7 @@ function Screen7YourHub({ data, onNext }: {
         onClick={onNext}
         className="w-full h-12 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.26)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.36)] hover:-translate-y-[1px] transition-all duration-200"
       >
-        Go to my dashboard
+        See my personalized practice
         <ArrowRight className="w-4 h-4" />
       </button>
     </div>
@@ -1641,6 +1643,7 @@ const variants = {
 };
 
 export function OnboardingUploadResumePage() {
+  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo') || '';
   const [step, setStep] = useState(2);
@@ -1719,7 +1722,15 @@ export function OnboardingUploadResumePage() {
       return;
     }
     if (step === 7) {
-      window.location.href = returnTo || '/dashboard';
+      // onboarding_completed —— resume 流程最后一步，进入平台
+      const roleLabels = data.targetRoles
+        .map(id => ALL_ROLES.find(r => r.id === id)?.label ?? id)
+        .filter(Boolean);
+      markOnboardingComplete(posthog, 'onboarding_resume', {
+        target_roles_count: roleLabels.length,
+        resume_uploaded: !!data.uploadedFile,
+      });
+      window.location.href = returnTo || '/personalized-practice';
       return;
     }
     goTo(Math.min(step + 1, 7));

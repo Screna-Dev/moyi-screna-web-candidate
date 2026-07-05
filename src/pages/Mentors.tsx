@@ -97,7 +97,7 @@ export default function Mentors() {
     const prices = enabledRates.map(r => r.priceUsd);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
-    return min === max ? `$${min}` : `$${min} - $${max}`;
+    return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
   };
 
   // Mock average rating (in real app, calculate from sessions)
@@ -462,7 +462,7 @@ export default function Mentors() {
                               return (
                                 <div key={sessionType.id} className="flex justify-between text-xs">
                                   <span className="text-muted-foreground">{sessionType.name}</span>
-                                  <span className="font-medium">${rate?.priceUsd}</span>
+                                  <span className="font-medium">${(rate?.priceUsd ?? 0).toFixed(2)}</span>
                                 </div>
                               );
                             })}
@@ -608,7 +608,7 @@ export default function Mentors() {
                                   <Separator orientation="vertical" className="h-4" />
                                   <div className="flex items-center gap-1">
                                     <DollarSign className="h-4 w-4 text-primary" />
-                                    <span className="font-semibold text-sm">${mentor.fee}/hr</span>
+                                    <span className="font-semibold text-sm">${mentor.fee.toFixed(2)}/hr</span>
                                   </div>
                                 </div>
 
@@ -661,7 +661,7 @@ export default function Mentors() {
                                               <p className="text-xs text-muted-foreground">Rating</p>
                                             </div>
                                             <div className="text-center">
-                                              <p className="font-bold">${mentor.fee}</p>
+                                              <p className="font-bold">${mentor.fee.toFixed(2)}</p>
                                               <p className="text-xs text-muted-foreground">per hour</p>
                                             </div>
                                             <div className="text-center">
