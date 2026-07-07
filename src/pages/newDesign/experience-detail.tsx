@@ -245,9 +245,17 @@ export function ExperienceDetailPage() {
     if (!id) return;
     setCommentsLoading(true);
     try {
-      const res = await getComments(id, { page: 0 });
-      const data = res.data?.data ?? res.data;
-      setComments(data?.content ?? []);
+      const all: Comment[] = [];
+      let page = 0;
+      let totalPages = 1;
+      do {
+        const res = await getComments(id, { page });
+        const data = res.data?.data ?? res.data;
+        all.push(...(data?.content ?? []));
+        totalPages = data?.pageMeta?.totalPages ?? 1;
+        page += 1;
+      } while (page < totalPages);
+      setComments(all);
     } catch {
       // silent
     } finally {
@@ -420,6 +428,7 @@ export function ExperienceDetailPage() {
       setReferencedQ(null);
       setCommentAnonymous(false);
       await fetchComments();
+      toast.info('Comment submitted — it will be visible to others once approved.');
     } catch {
       // silent
     } finally {
@@ -443,9 +452,17 @@ export function ExperienceDetailPage() {
     if (!force && replies[commentId]) return;
     setRepliesLoadingSet(prev => new Set(prev).add(commentId));
     try {
-      const res = await getReplies(commentId, { page: 0 });
-      const data = res.data?.data ?? res.data;
-      setReplies(prev => ({ ...prev, [commentId]: data?.content ?? [] }));
+      const all: Reply[] = [];
+      let page = 0;
+      let totalPages = 1;
+      do {
+        const res = await getReplies(commentId, { page });
+        const data = res.data?.data ?? res.data;
+        all.push(...(data?.content ?? []));
+        totalPages = data?.pageMeta?.totalPages ?? 1;
+        page += 1;
+      } while (page < totalPages);
+      setReplies(prev => ({ ...prev, [commentId]: all }));
     } catch {
       // silent
     } finally {
@@ -470,7 +487,9 @@ export function ExperienceDetailPage() {
     try {
       await createReply(commentId, { content: text });
       setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: (c.replyCount ?? 0) + 1 } : c));
       await fetchReplies(commentId, true);
+      toast.info('Reply submitted — it will be visible to others once approved.');
     } catch {
       // silent
     } finally {
@@ -483,6 +502,7 @@ export function ExperienceDetailPage() {
     try {
       await deleteReply(replyId);
       setReplies(prev => ({ ...prev, [commentId]: (prev[commentId] ?? []).filter(r => r.id !== replyId) }));
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: Math.max(0, (c.replyCount ?? 0) - 1) } : c));
     } catch {
       // silent
     } finally {

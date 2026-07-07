@@ -695,16 +695,26 @@ export function HomePage() {
   }, []);
 
   // ── Scroll reveal observer ────────────────────────────────────────────────
+  // Content fades/slides in each time its section enters the viewport. With the
+  // section snap above, this means every snap to a section replays its reveal —
+  // including when you scroll back up. Reduced-motion users get a one-shot reveal.
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timers = new WeakMap<Element, number>();
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
+          const el = entry.target as HTMLElement;
           if (entry.isIntersecting) {
-            const el = entry.target as HTMLElement;
             const delay = prefersReduced ? 0 : parseInt(el.dataset.delay ?? '0', 10);
-            setTimeout(() => el.classList.add('sr-visible'), delay);
-            observer.unobserve(el);
+            const id = window.setTimeout(() => el.classList.add('sr-visible'), delay);
+            timers.set(el, id);
+            if (prefersReduced) observer.unobserve(el);
+          } else if (!prefersReduced) {
+            // Cancel any pending reveal and reset so it re-animates next entry.
+            const pending = timers.get(el);
+            if (pending) { clearTimeout(pending); timers.delete(el); }
+            el.classList.remove('sr-visible');
           }
         });
       },
@@ -1156,22 +1166,30 @@ export function HomePage() {
               .mr-l, .mr-r { animation: none !important; }
             }
 
-            /* ── Scroll snap ─────────────────────────────────────────────── */
+            /* ── Scroll snap: settle on each section, stay smooth ────────── */
+            /* mandatory → every scroll settles on a section (section-by-section).
+               scroll-snap-stop:normal (NOT always) keeps the settle gentle — a
+               continuous scroll can glide rather than hard-locking on each one,
+               which is what felt abrupt before. The footer carries
+               scroll-snap-align:end so the very bottom is itself a snap target;
+               without it, mandatory would trap you above the CTA + footer. */
             html {
-              scroll-snap-type: y proximity;
+              scroll-snap-type: y mandatory;
               scroll-padding-top: calc(72px + var(--topbar-h, 0px));
+              scroll-behavior: smooth;
             }
             .snap-s {
               scroll-snap-align: start;
               scroll-snap-stop: normal;
             }
+            .snap-end { scroll-snap-align: end; }
             @media (max-width: 767px) {
               html { scroll-snap-type: none; }
-              .snap-s { scroll-snap-align: none; }
+              .snap-s, .snap-end { scroll-snap-align: none; }
             }
             @media (prefers-reduced-motion: reduce) {
-              html { scroll-snap-type: none !important; }
-              .snap-s { scroll-snap-align: none !important; }
+              html { scroll-snap-type: none !important; scroll-behavior: auto !important; }
+              .snap-s, .snap-end { scroll-snap-align: none !important; }
             }
           `}</style>
           <button
@@ -1501,7 +1519,7 @@ export function HomePage() {
 
       {/* ─── Final CTA ─── */}
       <section
-        className="py-24 lg:py-32 overflow-hidden relative"
+        className="snap-s py-24 lg:py-32 overflow-hidden relative"
         style={{
           background:
             'linear-gradient(172.342deg, rgb(18,49,184) 8.49%, rgb(46,91,255) 50%, rgb(74,123,255) 91.51%)',
@@ -1566,7 +1584,7 @@ export function HomePage() {
       </section>
 
       {/* ─── Footer ─── */}
-      <footer style={{ background: '#F9FAFB' }}>
+      <footer className="snap-end" style={{ background: '#F9FAFB' }}>
         <div className="max-w-[1280px] mx-auto px-6 py-20">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12">
             {/* Brand column */}
