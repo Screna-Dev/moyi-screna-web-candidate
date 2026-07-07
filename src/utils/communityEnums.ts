@@ -66,8 +66,13 @@ export const CATEGORY_TO_ENUM: Record<string, string> = {
 
 // Convert a label to its enum, falling back to an auto-derived UPPER_SNAKE
 // value for anything not in the map (e.g. free-text or newly added options).
-const toEnum = (map: Record<string, string>, v: string) =>
-  map[v] ?? v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+// If stripping non-ASCII characters would leave nothing (e.g. a Chinese or
+// pure-symbol custom tag), keep the original text rather than sending "".
+const toEnum = (map: Record<string, string>, v: string) => {
+  if (map[v]) return map[v];
+  const derived = v.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+  return derived || v.trim();
+};
 
 export const toRoleEnum = (v: string) => toEnum(ROLE_TO_ENUM, v);
 export const toRoundEnum = (v: string) => toEnum(ROUND_TO_ENUM, v);
