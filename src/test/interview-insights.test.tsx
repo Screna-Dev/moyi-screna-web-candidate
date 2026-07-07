@@ -414,7 +414,7 @@ describe('Interview Insights - Filters', () => {
 
     await waitFor(() => {
       expect(mockGetPosts).toHaveBeenCalledWith(
-        expect.objectContaining({ Level: 'Senior', page: 0 })
+        expect.objectContaining({ level: 'Senior', page: 0 })
       );
     });
   });

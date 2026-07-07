@@ -652,7 +652,7 @@ export function InterviewInsightsPage() {
       if (appliedFilters.Role?.[0]) params.role = appliedFilters.Role[0];
       if (appliedFilters.Company?.[0]) params.company = appliedFilters.Company[0];
       if (appliedFilters.Round?.[0]) params.round = appliedFilters.Round[0];
-      if (appliedFilters.Level?.[0]) params.Level = appliedFilters.Level[0];
+      if (appliedFilters.Level?.[0]) params.level = appliedFilters.Level[0];
       if (appliedFilters.Time?.[0]) params.time = TIME_TO_API[appliedFilters.Time[0]] || undefined;
 
       // Use public API for non-authenticated users, only fetch first page

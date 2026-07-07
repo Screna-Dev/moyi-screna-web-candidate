@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, ArrowRight, Building2, Briefcase, Shield, Check, Plus, Trash2, FileText, ChevronDown, X, Info, User, MapPin, Calendar, BarChart, Clock, Loader2, AlertCircle, Search } from 'lucide-react';
@@ -121,6 +121,37 @@ interface QuestionEntry {
   title: string;
   tags: string[];
   notes: string;
+}
+
+// ─── Draft persistence ─────────────────────────────────
+// Bumped when the persisted shape changes so stale drafts are ignored.
+const DRAFT_KEY = 'screna:add-experience:draft:v1';
+
+interface ExperienceDraft {
+  step: number;
+  company: string;
+  role: string;
+  level: string;
+  round: string;
+  date: string;
+  outcome: string;
+  location: string;
+  questions: QuestionEntry[];
+  overallSummary: string;
+  isAnonymous: boolean;
+  savedAt: number;
+}
+
+function readDraft(): ExperienceDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed as ExperienceDraft;
+  } catch {
+    /* corrupt draft — ignore */
+  }
+  return null;
 }
 
 // ─── Dropdown select component ─────────────────────────
@@ -803,17 +834,21 @@ export function AddExperiencePage() {
   const routeLocation = useLocation();
   // Return to wherever the user came from (e.g. a company page); default to the directory.
   const backTarget = (routeLocation.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/interview-insights';
-  const [step, setStep] = useState(0);
+
+  // Draft read once on mount — used to seed initial state below.
+  const initialDraft = useMemo(() => readDraft(), []);
+
+  const [step, setStep] = useState(initialDraft?.step ?? 0);
   const [published, setPublished] = useState(false);
 
   // Step 1: Basics
-  const [company, setCompany] = useState('');
-  const [role, setRole] = useState('');
-  const [level, setLevel] = useState('');
-  const [round, setRound] = useState('');
-  const [date, setDate] = useState('');
-  const [outcome, setOutcome] = useState('');
-  const [location, setLocation] = useState('');
+  const [company, setCompany] = useState(initialDraft?.company ?? '');
+  const [role, setRole] = useState(initialDraft?.role ?? '');
+  const [level, setLevel] = useState(initialDraft?.level ?? '');
+  const [round, setRound] = useState(initialDraft?.round ?? '');
+  const [date, setDate] = useState(initialDraft?.date ?? '');
+  const [outcome, setOutcome] = useState(initialDraft?.outcome ?? '');
+  const [location, setLocation] = useState(initialDraft?.location ?? '');
 
   // ─── Option lists: live from GET /community/posts/options, with the
   // hardcoded arrays as fallback if the request fails or returns empty. ───
@@ -861,17 +896,82 @@ export function AddExperiencePage() {
   }, []);
 
   // Step 2: Questions
-  const [questions, setQuestions] = useState<QuestionEntry[]>([
-    { id: '1', title: '', tags: [], notes: '' },
-  ]);
+  const [questions, setQuestions] = useState<QuestionEntry[]>(
+    initialDraft?.questions?.length
+      ? initialDraft.questions
+      : [{ id: '1', title: '', tags: [], notes: '' }],
+  );
 
   // Step 3: Summary & Privacy
-  const [overallSummary, setOverallSummary] = useState('');
-  const [isAnonymous, setIsAnonymous] = useState(true);
-  const [safetyChecked, setSafetyChecked] = useState(false);
+  const [overallSummary, setOverallSummary] = useState(initialDraft?.overallSummary ?? '');
+  const [isAnonymous, setIsAnonymous] = useState(initialDraft?.isAnonymous ?? true);
+  const [safetyChecked, setSafetyChecked] = useState(false); // always re-confirm before publishing
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+
+  // ─── Draft state ─────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>(initialDraft ? 'saved' : 'idle');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialDraft?.savedAt ?? null);
+  const [showRestoredBanner, setShowRestoredBanner] = useState(!!initialDraft);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  // Any meaningful content entered? Drives the save indicator and the Back guard.
+  const hasContent = !!(
+    company || role || level || round || date || outcome || location ||
+    overallSummary ||
+    questions.some(q => q.title.trim() || q.tags.length > 0 || q.notes.trim())
+  );
+
+  // ─── Persist draft to localStorage (debounced) ───────
+  useEffect(() => {
+    if (published) return; // don't rewrite a draft we're about to clear
+    if (!hasContent) {
+      localStorage.removeItem(DRAFT_KEY);
+      setSaveStatus('idle');
+      setLastSavedAt(null);
+      return;
+    }
+    setSaveStatus('saving');
+    const timer = setTimeout(() => {
+      const savedAt = Date.now();
+      const draft: ExperienceDraft = {
+        step, company, role, level, round, date, outcome, location,
+        questions, overallSummary, isAnonymous, savedAt,
+      };
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        setLastSavedAt(savedAt);
+        setSaveStatus('saved');
+      } catch {
+        setSaveStatus('idle'); // storage full / unavailable — fail quietly
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [published, hasContent, step, company, role, level, round, date, outcome, location, questions, overallSummary, isAnonymous]);
+
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setSaveStatus('idle');
+    setLastSavedAt(null);
+  };
+
+  // Wipe every field and the stored draft, then return to the first step.
+  const discardDraft = () => {
+    clearDraft();
+    setCompany(''); setRole(''); setLevel(''); setRound(''); setDate('');
+    setOutcome(''); setLocation(''); setOverallSummary(''); setIsAnonymous(true);
+    setQuestions([{ id: '1', title: '', tags: [], notes: '' }]);
+    setStep(0);
+    setShowErrors(false);
+    setShowRestoredBanner(false);
+  };
+
+  // Top-bar Back: guard the navigation when there's unsaved-looking work.
+  const handleBack = () => {
+    if (hasContent) setShowLeaveConfirm(true);
+    else navigate(backTarget);
+  };
 
   const addQuestion = () => {
     if (questions.length >= 10) return;
@@ -925,6 +1025,7 @@ export function AddExperiencePage() {
         summary: overallSummary,
         isAnonymous,
       });
+      clearDraft();
       setPublished(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -1002,7 +1103,7 @@ export function AddExperiencePage() {
       <div className="h-14 border-b border-[hsl(220,16%,92%)] bg-white/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-30 sticky top-0">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate(backTarget)}
+            onClick={handleBack}
             className="flex items-center gap-2 text-[hsl(222,12%,45%)] hover:text-[hsl(222,22%,15%)] transition-colors text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -1011,10 +1112,21 @@ export function AddExperiencePage() {
           <div className="h-5 w-px bg-[hsl(220,16%,90%)]" />
           <img src={logoImg} alt="Screna" className="h-6 w-auto" />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[hsl(222,12%,65%)]">Draft saved</span>
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-        </div>
+        {/* Save indicator — reflects the real localStorage draft state */}
+        {saveStatus === 'saving' ? (
+          <div className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Saving…</span>
+          </div>
+        ) : saveStatus === 'saved' ? (
+          <div className="flex items-center gap-2 text-xs text-[hsl(222,12%,55%)]">
+            <span>
+              Draft saved
+              {lastSavedAt ? ` · ${new Date(lastSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+            </span>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -1097,6 +1209,47 @@ export function AddExperiencePage() {
           </div>
 
           <div className="max-w-2xl mx-auto px-6 py-8">
+            {/* Draft restored notice */}
+            <AnimatePresence>
+              {showRestoredBanner && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2 }}
+                  className="mb-6 flex items-start gap-3 rounded-xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/5 px-4 py-3"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-[hsl(221,91%,60%)]/10 flex items-center justify-center shrink-0">
+                    <Clock className="w-3.5 h-3.5 text-[hsl(221,91%,60%)]" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[hsl(222,22%,15%)]">Draft restored</p>
+                    <p className="text-xs text-[hsl(222,12%,55%)] mt-0.5">
+                      We picked up where you left off
+                      {lastSavedAt ? ` (saved ${new Date(lastSavedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${new Date(lastSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})` : ''}.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={discardDraft}
+                      className="text-xs font-medium text-[hsl(222,12%,55%)] hover:text-red-500 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRestoredBanner(false)}
+                      className="text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] p-1 rounded-lg transition-colors"
+                      aria-label="Dismiss"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence mode="wait">
               {/* ─── Step 1: Basics ─── */}
               {step === 0 && (
@@ -1414,6 +1567,59 @@ export function AddExperiencePage() {
           </div>
         </div>
       </div>
+
+      {/* ─── Leave confirmation ─── */}
+      <AnimatePresence>
+        {showLeaveConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center px-6 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowLeaveConfirm(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-2xl border border-[hsl(220,16%,90%)] shadow-2xl p-6"
+            >
+              <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center mb-4">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-[hsl(222,22%,15%)] mb-1.5">Leave without publishing?</h3>
+              <p className="text-sm text-[hsl(222,12%,55%)] leading-relaxed mb-5">
+                Your progress is saved as a draft on this device — it’ll be waiting here when you come back, unless you discard it.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => { setShowLeaveConfirm(false); navigate(backTarget); }}
+                  className="w-full bg-[hsl(222,22%,15%)] hover:bg-[hsl(222,22%,20%)] text-white rounded-xl h-10 text-sm"
+                >
+                  Leave &amp; keep draft
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="w-full rounded-xl h-10 text-sm"
+                >
+                  Keep editing
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => { discardDraft(); setShowLeaveConfirm(false); navigate(backTarget); }}
+                  className="w-full text-xs font-medium text-[hsl(222,12%,55%)] hover:text-red-500 py-1.5 transition-colors"
+                >
+                  Discard draft &amp; leave
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
