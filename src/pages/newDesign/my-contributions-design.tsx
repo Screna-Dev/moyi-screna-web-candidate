@@ -65,6 +65,7 @@ interface Post {
 
 interface CommentItem {
   id: string | number;
+  postId?: string;
   postTitle: string;
   postCompany: string;
   content: string;
@@ -180,6 +181,7 @@ function mapCommentStatus(raw: unknown): CommentStatus {
 function mapApiComment(c: ApiComment): CommentItem {
   return {
     id: c.id,
+    postId: c.postId,
     postTitle: c.questionTitle ?? 'Comment on post',
     postCompany: '',
     content: c.content ?? '',
@@ -609,9 +611,9 @@ export function MyContributionsPage() {
               />
             ) : (
               <div className="space-y-3">
-                {filteredComments.map((comment, i) => (
+                {filteredComments.map((comment, i) => {
+                  const card = (
                   <motion.div
-                    key={comment.id}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
@@ -662,7 +664,15 @@ export function MyContributionsPage() {
                       </span>
                     </div>
                   </motion.div>
-                ))}
+                  );
+                  return comment.postId ? (
+                    <Link key={comment.id} to={`/experience/${comment.postId}`} className="block">
+                      {card}
+                    </Link>
+                  ) : (
+                    <div key={comment.id}>{card}</div>
+                  );
+                })}
               </div>
             )}
           </div>
