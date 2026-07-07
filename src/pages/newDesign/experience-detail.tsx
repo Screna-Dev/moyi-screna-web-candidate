@@ -36,6 +36,12 @@ const OUTCOME_STYLES: Record<string, { bg: string; text: string; dot: string }> 
   Pending: { bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500' },
 };
 
+// Company name → URL slug, matching the interview-insights directory links
+// (e.g. "Meta" → "meta") so the breadcrumb lands on the post's company page.
+function companySlug(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 // ─── Hint status types ─────────────────────────────────
 type HintStatus = 'ready' | 'generating' | 'failed' | 'none';
 
@@ -583,13 +589,13 @@ export function ExperienceDetailPage() {
       <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
-          {/* ─── Breadcrumb ─── */}
+          {/* ─── Breadcrumb — back to this post's company insights page ─── */}
           <Link
-            to="/interview-insights"
+            to={post.company ? `/interview-insights/${companySlug(post.company)}` : '/interview-insights'}
             className="inline-flex items-center text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] mb-6 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1.5" />
-            Interview Insights
+            {post.company ? `${post.company} Interview Insights` : 'Interview Insights'}
           </Link>
 
           <div className="flex flex-col lg:flex-row gap-8">

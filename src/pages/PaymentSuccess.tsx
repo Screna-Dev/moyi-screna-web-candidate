@@ -31,13 +31,13 @@ const PaymentSuccess = () => {
     });
   }, [isLoading, subscription?.plan, posthog]);
 
-  // Premium subscribers go through the post-payment onboarding wizard
+  // Advanced/Flagship subscribers go through the post-payment onboarding wizard
   // (resume → preferences → Managed Apply consent) at /premium-onboarding.
-  // Starter subscribers see the Discord welcome modal inline.
+  // Basic subscribers see the Discord welcome modal inline.
   const [onboardingTier, setOnboardingTier] = useState<Tier | null>(null);
   useEffect(() => {
     if (isLoading || !subscription?.plan) return;
-    if (subscription.plan === 'premium') {
+    if (subscription.plan === 'advanced' || subscription.plan === 'flagship') {
       navigate('/premium-onboarding', { replace: true });
       return;
     }
@@ -94,7 +94,7 @@ const PaymentSuccess = () => {
 
       <MembershipOnboardingModal
         open={onboardingTier !== null}
-        tier={onboardingTier ?? "starter"}
+        tier={onboardingTier ?? "basic"}
         onClose={handleOnboardingClose}
       />
     </div>

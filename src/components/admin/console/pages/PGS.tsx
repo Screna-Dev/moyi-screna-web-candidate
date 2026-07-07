@@ -11,7 +11,7 @@ import { adminService } from "@/services";
 type Level = "Lv0" | "Lv1" | "Lv2" | "Lv3";
 type PayoutMethod = "Wise" | "Alipay" | "PayPal";
 type PayStatus = "Renewed" | "First Month Paid" | "Refunded" | "Unpaid";
-type PlanType = "Premium Plan" | "Starter Plan";
+type PlanType = "Flagship Plan" | "Advanced Plan" | "Basic Plan" | "Free Plan";
 
 type ApiLevel = "LV0" | "LV1" | "LV2" | "LV3";
 type ApiPayoutMethod = "WISE" | "ALIPAY" | "PAYPAL";
@@ -32,8 +32,10 @@ const PAY_VARIANT: Record<PayStatus, { color: string, bg: string }> = {
 };
 
 const PLAN_VARIANT: Record<PlanType, { color: string, bg: string }> = {
-  "Premium Plan": { color: "#6D28D9", bg: "#F5F3FF" },
-  "Starter Plan": { color: "#1D4ED8", bg: "#EFF6FF" },
+  "Flagship Plan": { color: "#6D28D9", bg: "#F5F3FF" },
+  "Advanced Plan": { color: "#6D28D9", bg: "#F5F3FF" },
+  "Basic Plan":    { color: "#1D4ED8", bg: "#EFF6FF" },
+  "Free Plan":     { color: "#4B5563", bg: "#F3F4F6" },
 };
 
 interface PGSMember {
@@ -72,10 +74,11 @@ const toUiPayout = (p: ApiPayoutMethod | string | undefined): PayoutMethod =>
 const toApiPayout = (p: PayoutMethod): ApiPayoutMethod => p.toUpperCase() as ApiPayoutMethod;
 
 const normalizePlan = (p: string | null | undefined): PlanType => {
-  if (!p) return "Starter Plan";
-  const low = p.toLowerCase();
-  if (low.includes("premium") || low.includes("elite") || low.includes("pro")) return "Premium Plan";
-  return "Starter Plan";
+  const low = (p ?? "").toLowerCase();
+  if (low.includes("flagship")) return "Flagship Plan";
+  if (low.includes("advanced")) return "Advanced Plan";
+  if (low.includes("basic")) return "Basic Plan";
+  return "Free Plan";
 };
 
 const extractErr = (e: any, fallback: string) =>

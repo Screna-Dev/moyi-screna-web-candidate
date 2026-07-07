@@ -55,7 +55,7 @@ interface AdminActionsTabProps {
   onUserUpdated?: () => void;
 }
 
-type PlanType = 'Free' | 'Pro' | 'Elite';
+type PlanType = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
 
 export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
   const [newTag, setNewTag] = useState('');
@@ -476,8 +476,9 @@ export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Free">Free</SelectItem>
-                          <SelectItem value="Pro">Pro</SelectItem>
-                          <SelectItem value="Elite">Elite</SelectItem>
+                          <SelectItem value="Basic">Basic</SelectItem>
+                          <SelectItem value="Advanced">Advanced</SelectItem>
+                          <SelectItem value="Flagship">Flagship</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

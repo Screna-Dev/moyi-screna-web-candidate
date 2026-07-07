@@ -328,9 +328,9 @@ export function PricingPage() {
   };
 
   const premiumLabel = isActiveMember
-    ? (subscription!.plan === 'premium' ? 'Current plan' : 'Manage plan')
+    ? (subscription!.plan === 'advanced' ? 'Current plan' : 'Manage plan')
     : 'Start Premium';
-  const premiumDisabled = (isActiveMember && subscription!.plan === 'premium') || isSubscribing;
+  const premiumDisabled = (isActiveMember && subscription!.plan === 'advanced') || isSubscribing;
 
   // ─── Handlers (credit packs only — subscriptions not wired) ───
   const buyPack = async (
@@ -546,12 +546,12 @@ export function PricingPage() {
 
                   <div className="relative mb-6">
                     <button
-                      onClick={() => handleSubscribe('premium')}
+                      onClick={() => handleSubscribe('advanced')}
                       disabled={premiumDisabled}
                       className="flex items-center justify-center w-full rounded-full py-3 px-[18px] text-[14px] font-[600] text-white hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ background: PRICING_ACCENT, border: `1.5px solid ${PRICING_ACCENT}` }}
                     >
-                      {loadingTier === 'premium' ? (
+                      {loadingTier === 'advanced' ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         premiumLabel

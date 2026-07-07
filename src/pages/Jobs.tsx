@@ -30,7 +30,7 @@ export default function Jobs() {
     canAccessJobs,
     canPushProfile
   } = useUserPlan();
-  const { upgradeToElite, isChangingPlan } = useUpgradePrompt();
+  const { upgradeToAdvanced, isChangingPlan } = useUpgradePrompt();
   
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -261,7 +261,7 @@ export default function Jobs() {
   };
 
   const handleUpgrade = async () => {
-    await upgradeToElite();
+    await upgradeToAdvanced();
   };
 
   // Handle active title change
@@ -423,7 +423,7 @@ export default function Jobs() {
     );
   }
 
-  // Main content for Pro and Elite users
+  // Main content for premium (Advanced/Flagship) users
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-background p-6">
