@@ -554,7 +554,37 @@ function QuestionTitleInput({
 // ─── Month / Year Picker ───────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth(); // 0-indexed
 const YEARS = Array.from({ length: CURRENT_YEAR - 2009 }, (_, i) => CURRENT_YEAR - i);
+
+// A "Mon YYYY" pair is in the future relative to the current month.
+function isFutureMonth(monthIndex: number, year: number): boolean {
+  return year > CURRENT_YEAR || (year === CURRENT_YEAR && monthIndex > CURRENT_MONTH);
+}
+
+// Convert a "Jun 2025" display value into a UTC ISO string ("2025-06-01T00:00:00.000Z").
+// We build the date explicitly in UTC rather than `new Date("Jun 2025")`:
+//   • `new Date(str)` parses in the local timezone, so a west-of-UTC user can land
+//     on the last day of the *previous* month once converted with toISOString().
+//   • Safari returns `Invalid Date` for "Jun 2025", making toISOString() throw and
+//     silently blocking submission.
+function monthYearToISO(value: string): string | null {
+  const [monthAbbr, yearStr] = value.trim().split(/\s+/);
+  const monthIndex = MONTHS.indexOf(monthAbbr);
+  const year = Number(yearStr);
+  if (monthIndex === -1 || !Number.isFinite(year)) return null;
+  return new Date(Date.UTC(year, monthIndex, 1)).toISOString();
+}
+
+// Drop a "Mon YYYY" value that is malformed or in the future. Used when restoring
+// a persisted draft so a future date saved by an older build can't reappear or submit.
+function sanitizeMonthYear(value: string | undefined): string {
+  const [monthAbbr, yearStr] = (value ?? '').trim().split(/\s+/);
+  const monthIndex = MONTHS.indexOf(monthAbbr);
+  const year = Number(yearStr);
+  if (monthIndex === -1 || !Number.isFinite(year)) return '';
+  return isFutureMonth(monthIndex, year) ? '' : value!;
+}
 
 function MonthYearPicker({ value, onChange, hasError = false }: { value: string; onChange: (v: string) => void; hasError?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -584,6 +614,7 @@ function MonthYearPicker({ value, onChange, hasError = false }: { value: string;
 
   const confirm = (month: string, year: string) => {
     if (month && year) {
+      if (isFutureMonth(MONTHS.indexOf(month), Number(year))) return; // never accept a future month
       onChange(`${month} ${year}`);
       setOpen(false);
     }
@@ -615,7 +646,7 @@ function MonthYearPicker({ value, onChange, hasError = false }: { value: string;
           {value ? (
             <button
               type="button"
-              onClick={e => { e.stopPropagation(); onChange(''); }}
+              onClick={e => { e.stopPropagation(); onChange(''); setPendingMonth(''); setPendingYear(''); }}
               className="text-[hsl(222,12%,60%)] hover:text-[hsl(222,12%,40%)] transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -637,39 +668,56 @@ function MonthYearPicker({ value, onChange, hasError = false }: { value: string;
               {/* Month */}
               <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-2">Month</p>
               <div className="grid grid-cols-4 gap-1.5 mb-4">
-                {MONTHS.map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => { setPendingMonth(m); confirm(m, pendingYear); }}
-                    className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      pendingMonth === m
-                        ? 'bg-[hsl(221,91%,60%)] text-white'
-                        : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+                {MONTHS.map((m, mi) => {
+                  // Once a year is chosen, grey out that year's future months.
+                  // With no year yet, all months stay available.
+                  const disabled = !!pendingYear && isFutureMonth(mi, Number(pendingYear));
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => { setPendingMonth(m); confirm(m, pendingYear); }}
+                      className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        disabled
+                          ? 'bg-[hsl(220,20%,97%)] text-[hsl(222,12%,75%)] cursor-not-allowed'
+                          : pendingMonth === m
+                            ? 'bg-[hsl(221,91%,60%)] text-white'
+                            : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Year */}
               <p className="text-[10px] font-semibold text-[hsl(222,12%,55%)] uppercase tracking-wider mb-2">Year</p>
               <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
-                {YEARS.map(y => (
-                  <button
-                    key={y}
-                    type="button"
-                    onClick={() => { setPendingYear(String(y)); confirm(pendingMonth, String(y)); }}
-                    className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      pendingYear === String(y)
-                        ? 'bg-[hsl(221,91%,60%)] text-white'
-                        : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
+                {YEARS.map(y => {
+                  // Once a month is chosen, grey out years where that month is still
+                  // in the future (e.g. "Dec" disables the current year until Dec arrives).
+                  // With no month yet, all years stay available.
+                  const disabled = !!pendingMonth && isFutureMonth(MONTHS.indexOf(pendingMonth), y);
+                  return (
+                    <button
+                      key={y}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => { setPendingYear(String(y)); confirm(pendingMonth, String(y)); }}
+                      className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        disabled
+                          ? 'bg-[hsl(220,20%,97%)] text-[hsl(222,12%,75%)] cursor-not-allowed'
+                          : pendingYear === String(y)
+                            ? 'bg-[hsl(221,91%,60%)] text-white'
+                            : 'bg-[hsl(220,20%,97%)] text-[hsl(222,22%,15%)] hover:bg-[hsl(221,91%,60%)]/10 hover:text-[hsl(221,91%,60%)]'
+                      }`}
+                    >
+                      {y}
+                    </button>
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -846,7 +894,7 @@ export function AddExperiencePage() {
   const [role, setRole] = useState(initialDraft?.role ?? '');
   const [level, setLevel] = useState(initialDraft?.level ?? '');
   const [round, setRound] = useState(initialDraft?.round ?? '');
-  const [date, setDate] = useState(initialDraft?.date ?? '');
+  const [date, setDate] = useState(sanitizeMonthYear(initialDraft?.date));
   const [outcome, setOutcome] = useState(initialDraft?.outcome ?? '');
   const [location, setLocation] = useState(initialDraft?.location ?? '');
 
@@ -1018,7 +1066,7 @@ export function AddExperiencePage() {
         role: toRoleEnum(role),
         level,
         round: toRoundEnum(round),
-        date: date ? new Date(date).toISOString() : new Date().toISOString(),
+        date: monthYearToISO(date) ?? new Date().toISOString(),
         outcome,
         location,
         questions: questionItems,
