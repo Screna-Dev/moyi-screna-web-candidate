@@ -222,6 +222,10 @@ export function MyContributionsPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
+  // Server-side totals (may exceed the loaded page length)
+  const [postsTotal, setPostsTotal] = useState(0);
+  const [commentsTotal, setCommentsTotal] = useState(0);
+  const [savedTotal, setSavedTotal] = useState(0);
   const [postsLoading, setPostsLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [savedLoading, setSavedLoading] = useState(true);
@@ -237,6 +241,7 @@ export function MyContributionsPage() {
         if (cancelled) return;
         const content: ApiPost[] = res.data?.data?.content ?? [];
         setPosts(content.map(mapApiPost));
+        setPostsTotal(res.data?.data?.totalElements ?? content.length);
         setPostsError(null);
       } catch (e: unknown) {
         if (cancelled) return;
@@ -252,6 +257,7 @@ export function MyContributionsPage() {
         if (cancelled) return;
         const content: ApiComment[] = res.data?.data?.content ?? [];
         setComments(content.map(mapApiComment));
+        setCommentsTotal(res.data?.data?.totalElements ?? content.length);
         setCommentsError(null);
       } catch (e: unknown) {
         if (cancelled) return;
@@ -267,6 +273,7 @@ export function MyContributionsPage() {
         if (cancelled) return;
         const content: ApiPost[] = res.data?.data?.content ?? [];
         setSavedPosts(content.map(mapApiSavedPost));
+        setSavedTotal(res.data?.data?.totalElements ?? content.length);
         setSavedError(null);
       } catch (e: unknown) {
         if (cancelled) return;
@@ -283,9 +290,9 @@ export function MyContributionsPage() {
   }, []);
 
   const TABS: { key: TabKey; label: string; icon: React.ReactNode; count: number }[] = [
-    { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: posts.length },
-    { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: comments.length },
-    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: savedPosts.length },
+    { key: 'posts', label: 'Posts', icon: <FileText className="w-4 h-4" />, count: postsTotal },
+    { key: 'comments', label: 'Comments', icon: <MessageSquare className="w-4 h-4" />, count: commentsTotal },
+    { key: 'saved', label: 'Saved', icon: <Bookmark className="w-4 h-4" />, count: savedTotal },
   ];
 
   // Filtered posts
