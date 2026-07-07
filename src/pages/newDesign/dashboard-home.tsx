@@ -13,7 +13,9 @@ import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Plan = 'free' | 'starter' | 'premium';
+// 'premium' = Advanced/Flagship tiers (full dashboard); 'basic' and 'free' see
+// the reduced layout.
+type Plan = 'free' | 'basic' | 'premium';
 type ChartTab = 'applications' | 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
 
@@ -87,8 +89,8 @@ function Skeleton({
 }
 
 function planFromUserPlan(pt: PlanType): Plan {
-  if (pt === 'Elite') return 'premium';
-  if (pt === 'Pro') return 'starter';
+  if (pt === 'Advanced' || pt === 'Flagship') return 'premium';
+  if (pt === 'Basic') return 'basic';
   return 'free';
 }
 
@@ -340,7 +342,7 @@ function TrendChart({
   const [range, setRange] = useState<TimeRange>('30d');
   const [hover, setHover] = useState<{ x: number; y: number; i: number; v: number } | null>(null);
 
-  // Free/Starter: applications tab is locked
+  // Free/Basic: applications tab is locked
   const effectiveTab: ChartTab = !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
 
   const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;

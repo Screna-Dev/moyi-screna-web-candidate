@@ -11,8 +11,17 @@ import { EVENTS } from '@/constants/analyticsEvents';
 // 故暂用绝对阈值占位。拿到各 plan 的月度 credits 额度后应替换为按 20% 计算。
 const LOW_CREDITS_THRESHOLD = 5;
 
-// Plan types
-export type PlanType = 'Free' | 'Pro' | 'Elite';
+// Plan types — mirrors the backend tier enum (BASIC | ADVANCED | FLAGSHIP)
+// plus Free for users without an active subscription.
+export type PlanType = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
+
+// Rank used to decide upgrade vs. downgrade.
+export const PLAN_ORDER: Record<PlanType, number> = {
+  Free: 0,
+  Basic: 1,
+  Advanced: 2,
+  Flagship: 3,
+};
 
 // Plan usage data interface
 export interface PlanUsageData {
@@ -37,14 +46,14 @@ interface UserPlanContextValue {
   isLoading: boolean;
   error: string | null;
   
-  // Plan check helpers — the product has two plans: Free and Premium.
-  isPremium: boolean;      // Premium (the only paid tier)
+  // Plan check helpers — Free/Basic are low tier, Advanced/Flagship are premium.
+  isPremium: boolean;      // Advanced or Flagship
   isFree: boolean;         // Free only
-  
+
   // Feature access helpers
   canAccessJobs: boolean;           // Open to all members — browsing/matched jobs (job delegation stays Premium-gated server-side)
-  canAccessPremiumReport: boolean;  // Elite only - video replay, detailed feedback
-  canPushProfile: boolean;          // Pro and Elite
+  canAccessPremiumReport: boolean;  // Advanced/Flagship only - video replay, detailed feedback
+  canPushProfile: boolean;          // Advanced/Flagship only
   canAccessMentorship: boolean;     // Open to all members — browse + book mentors
   
   // Actions
@@ -98,16 +107,16 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const [isBuyingCredits, setIsBuyingCredits] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
-  // Map the new tier model → legacy PlanType.
-  // starter → Pro, premium → Elite, no row / canceled → Free.
-  const tierToLegacyPlan = (
+  // Map a raw backend tier string → PlanType. No row / canceled → Free.
+  const tierToPlan = (
     tier: string | null | undefined,
     status: string | null | undefined,
   ): PlanType => {
     if (!tier || status === 'canceled' || status === 'unpaid') return 'Free';
     const t = String(tier).toLowerCase();
-    if (t === 'premium') return 'Elite';
-    if (t === 'starter') return 'Pro';
+    if (t === 'flagship') return 'Flagship';
+    if (t === 'advanced') return 'Advanced';
+    if (t === 'basic') return 'Basic';
     return 'Free';
   };
 
@@ -140,16 +149,21 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
 
       if (subRes.status === 'fulfilled') {
         const body = (subRes.value?.data ?? null) as { data?: Record<string, unknown> } | null;
-        const data = body?.data;
+        // Response may be the wrapped { status, message, data } envelope or the
+        // subscription object directly — accept both (same as useSubscription).
+        const data = (body?.data ?? body) as Record<string, unknown> | null;
         if (data && typeof data === 'object') {
-          // Backend returns a combined "TIER_CYCLE" memberPlan field. Pull the
-          // tier out of it (we don't track cycle here for legacy compatibility).
-          const memberPlan = typeof data.memberPlan === 'string'
-            ? data.memberPlan.toLowerCase()
-            : '';
-          if (memberPlan.includes('premium')) tier = 'premium';
-          else if (memberPlan.includes('starter')) tier = 'starter';
-          else tier = (data.tier as string) ?? (data.plan as string) ?? null;
+          // Backend returns a combined "TIER_CYCLE" memberPlan field (e.g.
+          // "ADVANCED_MONTHLY"), but tolerate the tier arriving under `tier`
+          // or `plan`, plain or combined — match by substring across all.
+          const tierSource = [data.memberPlan, data.tier, data.plan]
+            .filter((v): v is string => typeof v === 'string')
+            .join(' ')
+            .toLowerCase();
+          if (tierSource.includes('flagship')) tier = 'flagship';
+          else if (tierSource.includes('advanced')) tier = 'advanced';
+          else if (tierSource.includes('basic')) tier = 'basic';
+          else tier = null;
 
           status = (data.status as string) ?? null;
           cancelAtPeriodEnd = Boolean(data.cancelAtPeriodEnd);
@@ -174,10 +188,10 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         }
       }
 
-      const legacyPlan = tierToLegacyPlan(tier, status?.toLowerCase());
+      const plan = tierToPlan(tier, status?.toLowerCase());
 
       setPlanData({
-        currentPlan: legacyPlan,
+        currentPlan: plan,
         subscriptionCancelPending: cancelAtPeriodEnd,
         planDowngradePending: hasPendingDowngrade,
         creditBalance: recurring + permanent,
@@ -186,7 +200,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         // Trials no longer exist in the new model.
         trialExpiresAt: null,
         isTrialActive: false,
-        effectivePlan: legacyPlan,
+        effectivePlan: plan,
         trialDaysRemaining: 0,
         recurringCreditBalance: recurring,
         permanentCreditBalance: permanent,
@@ -250,11 +264,11 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     prevBalanceRef.current = balance;
   }, [planData.creditBalance, planData.currentPlan, isAuthenticated, isLoading, hasFetched, posthog]);
 
-  // Change plan — bridges the legacy PlanType API onto the new subscription
-  // endpoints. Mapping:
-  //   Free  → cancelSubscription   (schedules cancel at period end)
-  //   Pro   → starter tier         (create or changeTier)
-  //   Elite → premium tier         (create or changeTier)
+  // Change plan:
+  //   Free                      → cancelSubscription (cancel at period end)
+  //   Basic/Advanced/Flagship   → changeTier for active subscribers
+  //                               (prorated up, scheduled down), otherwise
+  //                               createSubscription (Stripe Checkout).
   const changePlan = useCallback(async (
     planType: PlanType,
   ): Promise<{ success: boolean; url?: string | null; message?: string }> => {
@@ -271,14 +285,13 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         return { success: true, url: null };
       }
 
-      const targetTier = planType === 'Elite' ? 'premium' : 'starter';
+      const targetTier = planType.toLowerCase();
       const currentlyMember = planData.currentPlan !== 'Free';
 
       if (currentlyMember) {
         // Active subscriber → change tier (prorated up, scheduled down).
         await PaymentService.changeTier(targetTier);
-        const upgrading =
-          (planType === 'Elite' && planData.currentPlan === 'Pro');
+        const upgrading = PLAN_ORDER[planType] > PLAN_ORDER[planData.currentPlan];
         toast({
           title: upgrading ? 'Plan Updated!' : 'Downgrade Scheduled',
           description: upgrading
@@ -289,8 +302,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         return { success: true, url: null };
       }
 
-      // No active subscription → create one (quarterly default).
-      const res = await PaymentService.createSubscription(targetTier, 'quarterly');
+      // No active subscription → create one (billing is MONTHLY-only for now).
+      const res = await PaymentService.createSubscription(targetTier, 'monthly');
       const url = res.data?.data?.url;
       if (url) {
         return { success: true, url };
@@ -341,10 +354,10 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const effectiveIsLoading = isAuthLoading || isLoading;
   const currentPlan = planData.currentPlan;
   
-  // Only Free and Premium exist. The legacy tier→PlanType mapping still emits
-  // 'Elite' for the premium tier (and 'Pro' for any grandfathered starter sub),
-  // so treat both legacy paid labels as Premium.
-  const isPremium = currentPlan === 'Pro' || currentPlan === 'Elite';
+  // Premium means Advanced or Flagship. Basic is a paid plan but stays
+  // low-tier for feature gating — e.g. it only gets limited InterviewPrep
+  // Notes access, same as Free.
+  const isPremium = currentPlan === 'Advanced' || currentPlan === 'Flagship';
   const isFree = currentPlan === 'Free';
 
   // Feature access - return false while loading to prevent flash of wrong content.
@@ -403,60 +416,47 @@ export const useUserPlan = (): UserPlanContextValue => {
 // Helper hook for upgrade/downgrade prompts
 export const useUpgradePrompt = () => {
   const { changePlan, isChangingPlan, planData } = useUserPlan();
-  
-  const upgradeToElite = async (): Promise<boolean> => {
-    const result = await changePlan('Elite');
+
+  // Change to a paid plan, following the Stripe Checkout redirect when one
+  // is returned (new subscribers).
+  const upgradeTo = async (plan: PlanType): Promise<boolean> => {
+    const result = await changePlan(plan);
     if (result.success && result.url) {
       window.location.href = result.url;
     }
     return result.success;
   };
-  
-  const upgradeToPro = async (): Promise<boolean> => {
-    const result = await changePlan('Pro');
-    if (result.success && result.url) {
-      window.location.href = result.url;
-    }
-    return result.success;
-  };
-  
+
+  const upgradeToBasic = () => upgradeTo('Basic');
+  const upgradeToAdvanced = () => upgradeTo('Advanced');
+  const upgradeToFlagship = () => upgradeTo('Flagship');
+
   const downgradeToFree = async (): Promise<boolean> => {
     const result = await changePlan('Free');
     // No redirect needed for downgrades, just return success
     return result.success;
   };
-  
-  const downgradeToPro = async (): Promise<boolean> => {
-    const result = await changePlan('Pro');
-    // For Elite -> Pro downgrade, no redirect needed
-    return result.success;
-  };
-  
+
   const upgradeToNext = async (): Promise<boolean> => {
-    if (planData.currentPlan === 'Free') {
-      return await upgradeToPro();
-    } else if (planData.currentPlan === 'Pro') {
-      return await upgradeToElite();
-    }
+    if (planData.currentPlan === 'Free') return upgradeToBasic();
+    if (planData.currentPlan === 'Basic') return upgradeToAdvanced();
+    if (planData.currentPlan === 'Advanced') return upgradeToFlagship();
     return false;
   };
-  
+
   // Determine if selecting a plan is an upgrade or downgrade
-  const isUpgrade = (targetPlan: PlanType): boolean => {
-    const planOrder = { 'Free': 0, 'Pro': 1, 'Elite': 2 };
-    return planOrder[targetPlan] > planOrder[planData.currentPlan];
-  };
-  
-  const isDowngrade = (targetPlan: PlanType): boolean => {
-    const planOrder = { 'Free': 0, 'Pro': 1, 'Elite': 2 };
-    return planOrder[targetPlan] < planOrder[planData.currentPlan];
-  };
-  
+  const isUpgrade = (targetPlan: PlanType): boolean =>
+    PLAN_ORDER[targetPlan] > PLAN_ORDER[planData.currentPlan];
+
+  const isDowngrade = (targetPlan: PlanType): boolean =>
+    PLAN_ORDER[targetPlan] < PLAN_ORDER[planData.currentPlan];
+
   return {
-    upgradeToElite,
-    upgradeToPro,
+    upgradeTo,
+    upgradeToBasic,
+    upgradeToAdvanced,
+    upgradeToFlagship,
     downgradeToFree,
-    downgradeToPro,
     upgradeToNext,
     isUpgrade,
     isDowngrade,

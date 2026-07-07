@@ -22,18 +22,20 @@ export default function PremiumOnboardingPage() {
     refresh();
   }, [refresh]);
 
-  // Guard: require authenticated user with an active premium subscription.
-  // Free/starter users should not see this page.
+  // Guard: require authenticated user with an active premium-tier subscription
+  // (Advanced or Flagship). Free/Basic users should not see this page.
+  const isPremiumTier =
+    subscription?.plan === 'advanced' || subscription?.plan === 'flagship';
   useEffect(() => {
     if (isAuthLoading || isSubLoading) return;
     if (!user) {
       navigate('/auth');
       return;
     }
-    if (!subscription || subscription.plan !== 'premium') {
+    if (!isPremiumTier) {
       navigate('/#pricing');
     }
-  }, [user, subscription, isAuthLoading, isSubLoading, navigate]);
+  }, [user, isPremiumTier, isAuthLoading, isSubLoading, navigate]);
 
   const isLoading = isAuthLoading || isSubLoading;
 
@@ -50,7 +52,7 @@ export default function PremiumOnboardingPage() {
     navigate('/settings?tab=billing');
   };
 
-  if (isLoading || !subscription || subscription.plan !== 'premium') {
+  if (isLoading || !isPremiumTier) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -70,7 +72,7 @@ export default function PremiumOnboardingPage() {
       />
       <MembershipOnboardingModal
         open={showDiscordWelcome}
-        tier="premium"
+        tier={subscription.plan}
         onClose={handleDiscordClose}
       />
     </div>

@@ -27,8 +27,8 @@ const COPY: Record<Tier, {
   steps: string[];
   hoursNote: string;
 }> = {
-  starter: {
-    headline: 'Welcome to Screna Starter!',
+  basic: {
+    headline: 'Welcome to Screna Basic!',
     subhead: 'Your membership is active — all features are unlocked.',
     intro:
       'To get the most out of your membership, join our member community on Discord. This is where we share job postings, host events, and keep you in the loop on everything Screna.',
@@ -40,8 +40,21 @@ const COPY: Record<Tier, {
     hoursNote:
       "Our team is available Mon–Fri, 9:00 AM – 5:00 PM EST. If you join outside these hours, we'll reach out on the next business day.",
   },
-  premium: {
-    headline: 'Welcome to Screna Premium!',
+  advanced: {
+    headline: 'Welcome to Screna Advanced!',
+    subhead: 'Your membership is active — all features are unlocked.',
+    intro:
+      "Your dedicated onboarding happens on Discord. Once you're in, your client manager will set up a private channel for you and walk you through everything — including confirming your job search preferences so we can start applying on your behalf.",
+    steps: [
+      'Click the button below to join the Screna Discord',
+      'Head to #Membership-Introductions and post your Screna username and email',
+      'Your client manager will add you and create your private channel within business hours',
+    ],
+    hoursNote:
+      "Our team is available Mon–Fri, 9:00 AM – 5:00 PM EST. If you join outside these hours, we'll reach out on the next business day.",
+  },
+  flagship: {
+    headline: 'Welcome to Screna Flagship!',
     subhead: 'Your membership is active — all features are unlocked.',
     intro:
       "Your dedicated onboarding happens on Discord. Once you're in, your client manager will set up a private channel for you and walk you through everything — including confirming your job search preferences so we can start applying on your behalf.",

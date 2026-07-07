@@ -647,20 +647,32 @@ export function HomePage() {
       navigate('/dashboard');
       return;
     }
+    // Clicking the plan you're already on → manage it in Settings → Billing.
+    if (planData.currentPlan.toUpperCase() === plan.tier) {
+      navigate('/settings?tab=billing');
+      return;
+    }
     setLoadingTier(plan.tier);
     try {
-      // If the user already has a subscription, they change plans in Settings.
-      let hasSubscription = false;
+      // Only an ACTIVE subscription on a current tier routes to Settings for a
+      // prorated tier change. Canceled/unpaid rows and legacy tiers that no
+      // longer exist (premium/starter) proceed to Stripe Checkout like a new
+      // subscriber — otherwise they'd bounce between Settings (which shows
+      // them as Free) and this page, never able to pay.
+      let hasActiveSubscription = false;
       try {
         const subRes = await PaymentService.getSubscription();
         const sub = subRes?.data?.data ?? subRes?.data;
-        hasSubscription = !!(sub && (sub.tier || sub.plan || sub.status || sub.memberPlan));
+        const tierStr = String(sub?.memberPlan ?? sub?.tier ?? sub?.plan ?? '').toLowerCase();
+        const status = String(sub?.status ?? '').toLowerCase();
+        const onCurrentTier = ['basic', 'advanced', 'flagship'].some((t) => tierStr.includes(t));
+        hasActiveSubscription = onCurrentTier && status !== 'canceled' && status !== 'unpaid';
       } catch {
         // 404 / no record → treat as a new subscriber.
-        hasSubscription = false;
+        hasActiveSubscription = false;
       }
 
-      if (hasSubscription) {
+      if (hasActiveSubscription) {
         navigate('/settings?tab=billing');
         return;
       }
@@ -728,11 +740,22 @@ export function HomePage() {
   useEffect(() => {
     if (!location.hash) return;
     const id = location.hash.slice(1);
-    // Defer so the section (and any reveal animations) have mounted first.
-    const t = setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 120);
-    return () => clearTimeout(t);
+    // Poll until the section has mounted — on a cold load the page isn't laid
+    // out yet after a fixed delay, so a single deferred attempt can miss.
+    // Scroll must be 'instant' (not 'smooth'/'auto'): the page's
+    // `scroll-behavior: smooth` + `scroll-snap-type: y mandatory` combination
+    // cancels any smooth programmatic scroll before it reaches the target.
+    let tries = 0;
+    const timer = setInterval(() => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        clearInterval(timer);
+      } else if (++tries >= 20) {
+        clearInterval(timer);
+      }
+    }, 100);
+    return () => clearInterval(timer);
   }, [location.hash]);
 
   useEffect(() => {
@@ -1469,6 +1492,7 @@ export function HomePage() {
                 plan={plan}
                 revealDelay={i * 90}
                 loading={loadingTier === plan.tier}
+                isCurrent={!!user && !isPlanLoading && planData.currentPlan.toUpperCase() === plan.tier}
                 onSelect={() => handleSelectPlan(plan)}
               />
             ))}
@@ -1786,11 +1810,13 @@ function PricingCard({
   plan,
   revealDelay = 0,
   loading = false,
+  isCurrent = false,
   onSelect,
 }: {
   plan: Plan;
   revealDelay?: number;
   loading?: boolean;
+  isCurrent?: boolean;
   onSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -1885,7 +1911,7 @@ function PricingCard({
           (e.currentTarget as HTMLElement).style.background = plan.highlighted ? '#2E5BFF' : '#FFFFFF';
         }}
       >
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : plan.cta}
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isCurrent ? 'Current plan' : plan.cta}
       </button>
     </div>
   );

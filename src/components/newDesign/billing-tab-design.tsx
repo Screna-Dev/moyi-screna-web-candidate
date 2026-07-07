@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, CheckCircle2, Download, Info,
   Plus, X, Loader2, RotateCcw, ChevronDown, Gift,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSubscription } from '@/hooks/useSubscription';
 import { PaymentService } from '@/services';
 import { BuyCreditsModal } from './BuyCreditsModal';
 
@@ -24,36 +26,10 @@ interface Invoice {
   createdAt: string;
 }
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type PlanState  = 'free' | 'starter' | 'premium';
+type PlanState  = 'free' | 'basic' | 'advanced' | 'flagship';
 type CancelState = 'active' | 'refund_window' | 'post_window' | 'canceled';
 
 // ─── Benefit Data ──────────────────────────────────────────────────────────────
-const STARTER_L = [
-  'AI Interview Mocks (credits included)',
-  '1:1 Mentorship sessions',
-  'Resume review & feedback',
-  'Application tracking dashboard',
-];
-const STARTER_R = [
-  'Interview Insights Community',
-  'Mock interview debrief',
-  'Career goal planning',
-  'Session booking portal',
-];
-const PREMIUM_L = [
-  'Everything in Starter',
-  'Dedicated 1:1 job search advisor',
-  'Resume submission & recruiter outreach',
-  'Auto-apply to matched roles',
-  'Priority resume exposure',
-];
-const PREMIUM_R = [
-  'Salary negotiation coaching',
-  'Daily application updates',
-  'Weekly members-only sessions',
-  'Annual networking events (2/yr)',
-  '48-hr early event registration',
-];
 const FREE_L = [
   'AI Interview Mocks',
   'Mentor Marketplace access',
@@ -94,6 +70,7 @@ function MembershipBanner({
   nextBillingDate   = 'Jul 24, 2026',
   nextBillingAmount = '$29.99',
   userName          = 'Alex',
+  onUpgrade,
 }: {
   plan: PlanState;
   cancelAtPeriodEnd?: boolean;
@@ -101,6 +78,7 @@ function MembershipBanner({
   nextBillingDate?:   string;
   nextBillingAmount?: string;
   userName?:          string;
+  onUpgrade?:         () => void;
 }) {
   /* ── Free / Non-member ── */
   if (plan === 'free') {
@@ -122,31 +100,21 @@ function MembershipBanner({
           </div>
           <div className="flex items-center gap-4">
             <button
+              onClick={onUpgrade}
               className="px-5 py-2.5 rounded-xl font-medium hover:opacity-90 transition-opacity"
               style={{ background: '#fff', color: '#0f1f3d', fontSize: 14 }}
             >
               Upgrade to Member
             </button>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>From $99 / mo · Cancel anytime</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>From $7.99 / mo · Cancel anytime</span>
           </div>
         </div>
       </div>
     );
   }
 
-  /* ── Starter / Premium paid member ── */
-  const isStarter  = plan === 'starter';
-  const col1       = isStarter ? STARTER_L : PREMIUM_L;
-  const col2       = isStarter ? STARTER_R : PREMIUM_R;
-  const planLabel  = isStarter ? 'Starter' : 'Premium';
-  const gradient   = isStarter
-    ? 'linear-gradient(135deg, #2563eb 0%, #3b82f6 55%, #60a5fa 100%)'
-    : 'linear-gradient(135deg, #172554 0%, #1e3a8a 55%, #1d4ed8 100%)';
-  const amount     = nextBillingAmount;
-
-  return (
-    null
-  );
+  /* ── Paid member — banner intentionally removed for members ── */
+  return null;
 }
 
 // ─── Cancel Confirm Modal ───────────────────────────────────────────────────────
@@ -359,17 +327,35 @@ const SUBSCRIPTION_HISTORY = [
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
+  const { subscription } = useSubscription();
+  const navigate = useNavigate();
 
-  // Subscription is mock — real logic coming.
+  // Cancel/switch actions are still mock — real logic coming.
   const isActing = false;
-  const mockPlanName = 'Advanced';
-  const mockCycleLabel = 'Monthly';
-  const mockNextBillingDate = 'Jul 24, 2026';
-  const mockNextBillingAmount = '$29.99';
 
-  // ── Plan state (mock — driven only by the Demo State Toolbar) ──
-  const [planState,   setPlanState]   = useState<PlanState>('premium');
-  const [cancelState, setCancelState] = useState<CancelState>('active');
+  // ── Plan state (real) ──
+  // useSubscription normalizes unknown/legacy tiers (e.g. old PREMIUM/STARTER
+  // rows) to null, so anything that isn't Basic/Advanced/Flagship shows as Free.
+  const planState: PlanState =
+    subscription && subscription.status !== 'canceled' ? subscription.plan : 'free';
+  const cancelState: CancelState =
+    subscription?.status === 'canceled'
+      ? 'canceled'
+      : subscription?.cancelAtPeriodEnd
+        ? 'post_window'
+        : 'active';
+
+  const planName = planState === 'free'
+    ? 'Free'
+    : planState.charAt(0).toUpperCase() + planState.slice(1);
+  const cycleName = subscription
+    ? subscription.billingCycle.charAt(0).toUpperCase() + subscription.billingCycle.slice(1)
+    : 'Monthly';
+  const nextBillingDate = formatDate(subscription?.currentPeriodEnd);
+  const TIER_PRICE: Record<string, string> = { basic: '$7.99', advanced: '$29.99', flagship: '$79.99' };
+  const nextBillingAmount = subscription?.nextBillingAmount != null
+    ? formatAmountCents(subscription.nextBillingAmount, subscription.currency)
+    : TIER_PRICE[planState] ?? '—';
 
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
@@ -503,7 +489,7 @@ export function BillingTab() {
   return (
     <div className="space-y-6">
       {/* ── Modals ── */}
-      <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} accessEndsDate={mockNextBillingDate} />}</AnimatePresence>
+      <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} accessEndsDate={nextBillingDate} />}</AnimatePresence>
       <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
       <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
       {toastMsg && <PaymentToast message={toastMsg} onDone={() => setToastMsg(null)} />}
@@ -514,10 +500,11 @@ export function BillingTab() {
       <MembershipBanner
         plan={planState}
         cancelAtPeriodEnd={bannerCancelAtPeriod}
-        accessEndsDate={mockNextBillingDate}
-        nextBillingDate={mockNextBillingDate}
-        nextBillingAmount={mockNextBillingAmount}
+        accessEndsDate={nextBillingDate}
+        nextBillingDate={nextBillingDate}
+        nextBillingAmount={nextBillingAmount}
         userName={user?.name?.split(' ')[0] || 'Alex'}
+        onUpgrade={() => navigate('/#pricing')}
       />
 
       {/* ════════════════════════════════════════════════════
@@ -535,7 +522,7 @@ export function BillingTab() {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-foreground">
-                      {mockPlanName} plan · {mockNextBillingAmount}/mo · {mockCycleLabel}
+                      {planName} plan · {nextBillingAmount}/mo · {cycleName}
                     </span>
                     <StatusBadge status={isCanceled ? 'Canceled' : 'Active'} />
                   </div>
@@ -543,8 +530,8 @@ export function BillingTab() {
                     {isCanceled
                       ? 'Your subscription has been canceled.'
                       : cancelState === 'post_window'
-                        ? `Cancellation scheduled · Access continues until ${mockNextBillingDate}`
-                        : `Next billing: ${mockNextBillingDate} · ${mockNextBillingAmount}`}
+                        ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
+                        : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
                   </p>
                 </div>
                 {!isCanceled && (
@@ -722,7 +709,7 @@ export function BillingTab() {
                             <div className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 mb-3 border border-red-100">
                               <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                               <p className="text-xs text-muted-foreground leading-relaxed">
-                                Refund of <span className="text-foreground font-medium">{mockNextBillingAmount}</span> will be returned to your payment method within 5–10 business days upon approval.
+                                Refund of <span className="text-foreground font-medium">{nextBillingAmount}</span> will be returned to your payment method within 5–10 business days upon approval.
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -754,7 +741,7 @@ export function BillingTab() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground">
-                      The 3-day refund window has passed. Access continues until {mockNextBillingDate}.
+                      The 3-day refund window has passed. Access continues until {nextBillingDate}.
                     </p>
                   </div>
                   <button
@@ -770,7 +757,7 @@ export function BillingTab() {
               {cancelState === 'canceled' && (
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-medium text-foreground">Your access ends {mockNextBillingDate}</p>
+                    <p className="text-xs font-medium text-foreground">Your access ends {nextBillingDate}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       You can reactivate anytime before then.
                     </p>
@@ -829,15 +816,15 @@ export function BillingTab() {
           {/* Right — usage card */}
           <div className="rounded-xl bg-card border border-border p-5">
             <p className="text-xs font-medium text-foreground mb-4" style={{ fontFamily: 'var(--font-sans)' }}>This month's usage</p>
-            {planState === 'premium' || planState === 'starter' ? (
+            {isMember ? (
               <div className="flex flex-col gap-4">
                 <div>
                   <div className="flex justify-between mb-1.5">
                     <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>AI interviews</span>
-                    <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{Math.max(0, (credits.monthlyAllowance || (planState === 'premium' ? 500 : 150)) - credits.recurringCreditBalance)} / {credits.monthlyAllowance || (planState === 'premium' ? 500 : 150)}</span>
+                    <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{Math.max(0, (credits.monthlyAllowance || (planState === 'basic' ? 100 : 300)) - credits.recurringCreditBalance)} / {credits.monthlyAllowance || (planState === 'basic' ? 100 : 300)}</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-border overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${(() => { const allow = credits.monthlyAllowance || (planState === 'premium' ? 500 : 150); return Math.min(100, Math.max(0, Math.round(((allow - credits.recurringCreditBalance) / allow) * 100))); })()}%`, background: '#3b82f6' }} />
+                    <div className="h-full rounded-full" style={{ width: `${(() => { const allow = credits.monthlyAllowance || (planState === 'basic' ? 100 : 300); return Math.min(100, Math.max(0, Math.round(((allow - credits.recurringCreditBalance) / allow) * 100))); })()}%`, background: '#3b82f6' }} />
                   </div>
                 </div>
                 <div>

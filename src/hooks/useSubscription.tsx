@@ -3,7 +3,7 @@ import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
-export type Tier = 'starter' | 'premium';
+export type Tier = 'basic' | 'advanced' | 'flagship';
 export type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 export type SubscriptionStatus =
   | 'incomplete'   // created in Stripe, first payment not succeeded
@@ -69,14 +69,22 @@ const errMsg = (e: unknown, fallback: string): string => {
   return axiosErr?.response?.data?.message || axiosErr?.message || fallback;
 };
 
-// API may return enum values as UPPERCASE strings (e.g. "STARTER", "MONTHLY", "ACTIVE")
+// API may return enum values as UPPERCASE strings (e.g. "ADVANCED", "MONTHLY", "ACTIVE")
 // — normalize to our lowercase internal types.
 const toLower = <T extends string>(v: unknown): T | null =>
   typeof v === 'string' ? (v.toLowerCase() as T) : null;
 
+// Like toLower, but only accepts values from the allowed set. Anything else
+// (e.g. a legacy "PREMIUM"/"STARTER" row) returns null so the caller treats
+// the subscription as Free instead of surfacing a plan that no longer exists.
+const toKnown = <T extends string>(v: unknown, allowed: ReadonlySet<string>): T | null => {
+  const low = toLower<T>(v);
+  return low !== null && allowed.has(low) ? low : null;
+};
+
 interface RawSubscription {
   id?: string;
-  // Combined tier+cycle field returned by the backend, e.g. "STARTER_QUARTERLY".
+  // Combined tier+cycle field returned by the backend, e.g. "ADVANCED_MONTHLY".
   memberPlan?: string;
   // Optional split fields (kept for forward compatibility).
   tier?: string;
@@ -96,11 +104,11 @@ interface RawSubscription {
   currency?: string;
 }
 
-const TIER_VALUES: ReadonlySet<string> = new Set(['starter', 'premium']);
+const TIER_VALUES: ReadonlySet<string> = new Set(['basic', 'advanced', 'flagship']);
 const CYCLE_VALUES: ReadonlySet<string> = new Set(['monthly', 'quarterly', 'annual']);
 
-// Parse a combined "TIER_CYCLE" string (e.g. "STARTER_QUARTERLY") into parts.
-// Also tolerates split-only values like just "STARTER" or "MONTHLY".
+// Parse a combined "TIER_CYCLE" string (e.g. "ADVANCED_MONTHLY") into parts.
+// Also tolerates split-only values like just "ADVANCED" or "MONTHLY".
 const parseMemberPlan = (
   value: string | null | undefined,
 ): { tier: Tier | null; cycle: BillingCycle | null } => {
@@ -118,12 +126,16 @@ const parseMemberPlan = (
 const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | null => {
   if (!raw) return null;
 
-  // Parse the combined memberPlan first, then fall back to split fields.
+  // Parse the combined memberPlan first, then fall back to split fields —
+  // which may themselves hold a combined "TIER_CYCLE" value, so run them
+  // through the same parser. Unknown/legacy tiers (e.g. "PREMIUM", "STARTER")
+  // resolve to null → the whole subscription is treated as absent (Free).
   const fromCombined = parseMemberPlan(raw.memberPlan);
-  const plan: Tier | null =
-    fromCombined.tier ?? toLower<Tier>(raw.tier ?? raw.plan);
+  const rawTier = raw.tier ?? raw.plan;
+  const fromSplit = parseMemberPlan(typeof rawTier === 'string' ? rawTier : null);
+  const plan: Tier | null = fromCombined.tier ?? fromSplit.tier;
   const billingCycle: BillingCycle | null =
-    fromCombined.cycle ?? toLower<BillingCycle>(raw.billingCycle);
+    fromCombined.cycle ?? fromSplit.cycle ?? toKnown<BillingCycle>(raw.billingCycle, CYCLE_VALUES);
   const status = toLower<SubscriptionStatus>(raw.status);
 
   // Need at least tier + cycle + status to render a meaningful subscription.
@@ -131,9 +143,10 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
 
   // Pending downgrade — also a combined value per backend convention.
   const pending = parseMemberPlan(raw.downgradePendingPlan);
-  const pendingTierExplicit = toLower<Tier>(raw.downgradePendingTier);
-  const pendingCycleExplicit = toLower<BillingCycle>(
+  const pendingTierExplicit = toKnown<Tier>(raw.downgradePendingTier, TIER_VALUES);
+  const pendingCycleExplicit = toKnown<BillingCycle>(
     raw.downgradePendingCycle ?? raw.downgradePendingBillingCycle,
+    CYCLE_VALUES,
   );
 
   return {

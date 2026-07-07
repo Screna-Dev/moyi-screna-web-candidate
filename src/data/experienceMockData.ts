@@ -1,6 +1,6 @@
 // Community Interview Experience Mock Data
 
-export type UserTier = 'Free' | 'Pro' | 'Elite';
+export type UserTier = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
 
 export interface TierConfig {
   dailyUploadLimit: number;
@@ -10,8 +10,9 @@ export interface TierConfig {
 
 export const tierConfigs: Record<UserTier, TierConfig> = {
   Free: { dailyUploadLimit: 1, uploadRewardCredits: 5, answerShareReward: 10 },
-  Pro: { dailyUploadLimit: 3, uploadRewardCredits: 10, answerShareReward: 20 },
-  Elite: { dailyUploadLimit: 5, uploadRewardCredits: 15, answerShareReward: 30 },
+  Basic: { dailyUploadLimit: 3, uploadRewardCredits: 10, answerShareReward: 20 },
+  Advanced: { dailyUploadLimit: 5, uploadRewardCredits: 15, answerShareReward: 30 },
+  Flagship: { dailyUploadLimit: 10, uploadRewardCredits: 20, answerShareReward: 40 },
 };
 
 export const creditRules = {
@@ -30,7 +31,7 @@ export interface CurrentUser {
 
 export const currentUser: CurrentUser = {
   userId: 'u_1001',
-  tier: 'Pro',
+  tier: 'Advanced',
   creditBalance: 120,
   name: 'Alex Chen',
 };
@@ -170,7 +171,7 @@ export const answersForExperience: Record<string, Answer[]> = {
     {
       answerId: 'ans_3002',
       userId: 'u_2002',
-      userBadge: 'Elite User',
+      userBadge: 'Flagship User',
       qualityTags: ['AI-Verified', 'Strong Tradeoffs'],
       helpfulCount: 28,
       locked: true,

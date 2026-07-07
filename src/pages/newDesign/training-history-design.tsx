@@ -1270,7 +1270,7 @@ function MentorLockGate({ onUpgrade }: { onUpgrade: () => void }) {
 
           {/* Description */}
           <p className="text-muted-foreground mb-4 text-left w-full" style={{ fontSize: '13px', lineHeight: '20px' }}>
-            Upgrade to <span className="font-medium text-foreground">Starter</span> or <span className="font-medium text-foreground">Premium</span> to unlock 1:1 mentorship, session history, and coaching feedback.
+            Upgrade to <span className="font-medium text-foreground">Advanced</span> or <span className="font-medium text-foreground">Flagship</span> to unlock 1:1 mentorship, session history, and coaching feedback.
           </p>
 
           {/* Feature pills + CTA — single row */}

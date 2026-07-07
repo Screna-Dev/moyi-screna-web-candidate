@@ -141,7 +141,7 @@ export interface AdminUser {
   role: ('Candidate' | 'Mentor' | 'Admin')[];
   status: 'Active' | 'Inactive' | 'Banned' | 'Trial';
   plan: {
-    name: 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Custom';
+    name: 'Free' | 'Basic' | 'Advanced' | 'Flagship' | 'Custom';
     type: 'Monthly' | 'Yearly';
     renewalDate: string;
     status: 'Active' | 'Past due' | 'Canceled';
@@ -278,7 +278,7 @@ export const mockAdminUsers: AdminUser[] = [
     role: ['Candidate'],
     status: 'Active',
     plan: {
-      name: 'Pro',
+      name: 'Advanced',
       type: 'Monthly',
       renewalDate: '2024-02-15',
       status: 'Active',
@@ -382,7 +382,7 @@ export const mockAdminUsers: AdminUser[] = [
     role: ['Candidate', 'Mentor'],
     status: 'Active',
     plan: {
-      name: 'Enterprise',
+      name: 'Flagship',
       type: 'Yearly',
       renewalDate: '2024-11-01',
       status: 'Active',
@@ -480,7 +480,7 @@ export const mockAdminUsers: AdminUser[] = [
     role: ['Mentor'],
     status: 'Active',
     plan: {
-      name: 'Pro',
+      name: 'Advanced',
       type: 'Monthly',
       renewalDate: '2024-02-10',
       status: 'Active',

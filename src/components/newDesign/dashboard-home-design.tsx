@@ -7,7 +7,8 @@ import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-type Plan = 'free' | 'starter' | 'premium';
+// 'premium' = Advanced/Flagship tiers; 'basic' and 'free' see the reduced layout.
+type Plan = 'free' | 'basic' | 'premium';
 type ChartTab = 'learning' | 'sessions';
 type ChartRange = '7d' | '30d' | '3m';
 
@@ -43,8 +44,8 @@ function formatMinutesAsHm(mins: number): string {
 }
 
 function planFromUserPlan(pt: PlanType): Plan {
-  if (pt === 'Elite') return 'premium';
-  if (pt === 'Pro') return 'starter';
+  if (pt === 'Advanced' || pt === 'Flagship') return 'premium';
+  if (pt === 'Basic') return 'basic';
   return 'free';
 }
 
