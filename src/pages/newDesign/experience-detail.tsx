@@ -428,6 +428,7 @@ export function ExperienceDetailPage() {
       setReferencedQ(null);
       setCommentAnonymous(false);
       await fetchComments();
+      toast.info('Comment submitted — it will be visible to others once approved.');
     } catch {
       // silent
     } finally {
@@ -488,6 +489,7 @@ export function ExperienceDetailPage() {
       setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
       setComments(prev => prev.map(c => c.id === commentId ? { ...c, replyCount: (c.replyCount ?? 0) + 1 } : c));
       await fetchReplies(commentId, true);
+      toast.info('Reply submitted — it will be visible to others once approved.');
     } catch {
       // silent
     } finally {

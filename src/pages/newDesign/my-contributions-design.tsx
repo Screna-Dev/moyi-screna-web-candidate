@@ -37,6 +37,18 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
   Draft: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
 };
 
+// Comment moderation states are their own thing (Approved / Pending / Rejected).
+type CommentStatus = 'Published' | 'Under Review' | 'Rejected';
+
+const COMMENT_STATUS_STYLES: Record<CommentStatus, { bg: string; text: string; dot: string }> = {
+  Published: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  'Under Review': { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+  Rejected: { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
+};
+
+const POST_STATUS_OPTIONS = ['All', 'Published', 'Under Review', 'Draft'] as const;
+const COMMENT_STATUS_OPTIONS = ['All', 'Published', 'Under Review', 'Rejected'] as const;
+
 // ─── Types ──────────��─────────────────────────────────
 interface Post {
   id: string | number;
@@ -59,6 +71,7 @@ interface CommentItem {
   date: string;
   likes: number;
   referencedQuestion: string | null;
+  status: CommentStatus;
 }
 
 interface SavedPost {
@@ -156,6 +169,14 @@ function mapApiPost(p: ApiPost): Post {
   };
 }
 
+// Backend comment status: PENDING | APPROVED | REJECTED (etc.).
+function mapCommentStatus(raw: unknown): CommentStatus {
+  const s = String(raw ?? '').toUpperCase();
+  if (s === 'APPROVED' || s === 'PUBLISHED') return 'Published';
+  if (s === 'REJECTED' || s === 'DECLINED') return 'Rejected';
+  return 'Under Review'; // PENDING / IN_REVIEW / unknown → awaiting moderation
+}
+
 function mapApiComment(c: ApiComment): CommentItem {
   return {
     id: c.id,
@@ -165,6 +186,7 @@ function mapApiComment(c: ApiComment): CommentItem {
     date: formatRelative(c.createdAt),
     likes: 0,
     referencedQuestion: c.questionTitle ?? null,
+    status: mapCommentStatus(c.status),
   };
 }
 
@@ -194,6 +216,7 @@ export function MyContributionsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = useState<string | number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Published' | 'Under Review' | 'Draft'>('All');
+  const [commentStatusFilter, setCommentStatusFilter] = useState<'All' | CommentStatus>('All');
 
   // Live data from the backend
   const [posts, setPosts] = useState<Post[]>([]);
@@ -280,6 +303,7 @@ export function MyContributionsPage() {
   });
 
   const filteredComments = comments.filter(c => {
+    if (commentStatusFilter !== 'All' && c.status !== commentStatusFilter) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return c.content.toLowerCase().includes(q) || c.postTitle.toLowerCase().includes(q);
@@ -321,7 +345,7 @@ export function MyContributionsPage() {
           {TABS.map(tab => (
             <button
               key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setSearchQuery(''); setStatusFilter('All'); }}
+              onClick={() => { setActiveTab(tab.key); setSearchQuery(''); setStatusFilter('All'); setCommentStatusFilter('All'); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all duration-150 select-none ${
                 activeTab === tab.key
                   ? 'bg-muted text-foreground font-medium'
@@ -365,7 +389,10 @@ export function MyContributionsPage() {
           </div>
 
           {activeTab === 'posts' && (
-            <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} />
+            <StatusFilterDropdown value={statusFilter} onChange={setStatusFilter} options={POST_STATUS_OPTIONS} />
+          )}
+          {activeTab === 'comments' && (
+            <StatusFilterDropdown value={commentStatusFilter} onChange={setCommentStatusFilter} options={COMMENT_STATUS_OPTIONS} />
           )}
         </div>
 
@@ -592,6 +619,15 @@ export function MyContributionsPage() {
                         Commented on
                       </span>
                       <span className="text-xs font-medium text-[hsl(222,22%,15%)] truncate">{comment.postTitle}</span>
+                      {(() => {
+                        const s = COMMENT_STATUS_STYLES[comment.status];
+                        return (
+                          <span className={`ml-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap shrink-0 ${s.bg} ${s.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                            {comment.status}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     {/* Referenced question */}
@@ -789,12 +825,14 @@ function EmptyState({
 }
 
 // ─── Status Filter Dropdown ────────────────────────────
-function StatusFilterDropdown({
+function StatusFilterDropdown<T extends string>({
   value,
   onChange,
+  options,
 }: {
-  value: 'All' | 'Published' | 'Under Review' | 'Draft';
-  onChange: (value: 'All' | 'Published' | 'Under Review' | 'Draft') => void;
+  value: T;
+  onChange: (value: T) => void;
+  options: readonly T[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -828,7 +866,7 @@ function StatusFilterDropdown({
               transition={{ duration: 0.12 }}
               className="absolute right-0 top-full mt-1.5 w-48 bg-card rounded-xl border border-border shadow-lg shadow-black/[0.06] z-50 py-1.5 overflow-hidden origin-top-right"
             >
-              {(['All', 'Published', 'Under Review', 'Draft'] as const).map(s => (
+              {options.map(s => (
                 <button
                   key={s}
                   onClick={() => { onChange(s); setIsOpen(false); }}
