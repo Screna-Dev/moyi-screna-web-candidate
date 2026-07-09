@@ -45,8 +45,7 @@ const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Users, label: 'Coaching', path: '/coaching' },
   { icon: FileText, label: 'InterviewPrep Note', path: '/interview-insights' },
-  // Hidden per request — keep for later re-enable
-  // { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
+  { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
   { icon: Target, label: 'Personalized Practice', path: '/personalized-practice' },
 ];
 
