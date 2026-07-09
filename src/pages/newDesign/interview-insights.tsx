@@ -346,60 +346,6 @@ function InlineCompanyCard({ company }: { company: CompanyDir }) {
   );
 }
 
-function LargeCompanyCard({ company }: { company: CompanyDir }) {
-  return (
-    <Link
-      to={`/interview-insights/${company.id}`}
-      className="group relative flex h-full min-h-[300px] w-full flex-col rounded-2xl border border-[hsl(220,16%,90%)] bg-[#F9FAFB] p-6 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[hsl(221,91%,60%)] focus:ring-offset-2"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <CompanyLogo
-          company={company.name}
-          className="!w-[56px] !h-[56px] rounded-xl bg-white p-2 shadow-sm ring-1 ring-[hsl(220,16%,90%)]/60 text-lg font-bold text-[hsl(222,22%,15%)]"
-        />
-        <ArrowRight className="mt-2 size-5 shrink-0 text-[hsl(222,12%,70%)] transition-all duration-200 group-hover:translate-x-1 group-hover:text-[hsl(222,22%,15%)]" strokeWidth={2} />
-      </div>
-
-      <div className="mt-6 flex flex-col">
-        <h3 className="text-xl font-bold tracking-tight text-[hsl(222,22%,15%)]">
-          {company.name}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-          {company.category && (
-            <span className="rounded-full bg-[hsl(220,20%,96%)] px-2.5 py-0.5 text-[11px] font-medium text-[hsl(222,12%,40%)]">
-              {company.category}
-            </span>
-          )}
-          {company.updatedAgo && (
-            <span className="text-[12px] font-medium text-[hsl(222,12%,55%)]">
-              Updated {company.updatedAgo}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <p className="mt-4 flex-1 text-[14px] leading-relaxed text-[hsl(222,12%,45%)]">
-        {company.description}
-      </p>
-
-      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-[hsl(220,16%,90%)]/70 pt-5">
-        <div className="flex flex-col">
-          <span className="text-[12px] font-medium text-[hsl(222,12%,55%)]">Total notes</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-[hsl(222,22%,15%)]">
-            {company.totalNotes.toLocaleString()}
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap text-[12px] font-medium text-[hsl(222,12%,55%)]">Last 30 days</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-[hsl(222,22%,15%)]">
-            +{company.last30Days}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export function InterviewInsightsPage() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -1573,28 +1519,11 @@ export function InterviewInsightsPage() {
                   </div>
                 ) : displayedCompanies.length > 0 ? (
                   <div className="space-y-10">
-                    {activeCategory === 'All' ? (
-                      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                        {paginatedCompanies.map((company) => (
-                          <InlineCompanyCard key={company.id} company={company} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-5 lg:flex-row">
-                        {paginatedCompanies.length > 0 && (
-                          <div className="w-full lg:w-[40%] xl:w-1/3">
-                            <LargeCompanyCard company={paginatedCompanies[0]} />
-                          </div>
-                        )}
-                        {paginatedCompanies.length > 1 && (
-                          <div className="grid w-full gap-5 sm:grid-cols-2 lg:w-[60%] xl:w-2/3">
-                            {paginatedCompanies.slice(1).map((company) => (
-                              <InlineCompanyCard key={company.id} company={company} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                      {paginatedCompanies.map((company) => (
+                        <InlineCompanyCard key={company.id} company={company} />
+                      ))}
+                    </div>
                     {hasMoreCompanies && (
                       <div className="flex items-center justify-center border-t border-[hsl(220,16%,90%)]/60 pt-6">
                         <button

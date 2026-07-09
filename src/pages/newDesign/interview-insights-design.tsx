@@ -143,8 +143,8 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
             <h3 className="truncate text-[15px] font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
               {company.name}
             </h3>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+            <div className="mt-1.5 flex flex-col items-start gap-1">
+              <span className="max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
                 {company.category ?? "Company"}
               </span>
               <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
@@ -165,52 +165,6 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
         <div className="flex flex-col">
           <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Last 30 days</span>
           <span className="mt-1 text-[17px] font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            +{company.last30Days ?? 0}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function LargeCompanyCard({ company }: { company: CompanyData }) {
-  return (
-    <Link
-      to={`/interview-insights/${company.id}`}
-      className="group relative flex h-full min-h-[300px] w-full flex-col rounded-[16px] border border-border bg-surface-0 p-6 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-border/80 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:border-primary"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <CardLogo name={company.name} size="lg" />
-        <ArrowRight className="mt-2 size-5 shrink-0 text-muted-foreground/50 transition-all duration-200 group-hover:translate-x-1 group-hover:text-foreground" strokeWidth={2} />
-      </div>
-      <div className="mt-6 flex flex-col">
-        <h3 className="text-xl font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-          {company.name}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            {company.category ?? "Company"}
-          </span>
-          <span className="text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            Updated {company.updatedAgo}
-          </span>
-        </div>
-      </div>
-      {company.description && (
-        <p className="mt-4 flex-1 text-[14px] leading-relaxed text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-          {company.description}
-        </p>
-      )}
-      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border/60 pt-5">
-        <div className="flex flex-col">
-          <span className="text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Total notes</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            {company.totalNotes?.toLocaleString() ?? 0}
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Last 30 days</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
             +{company.last30Days ?? 0}
           </span>
         </div>
@@ -498,46 +452,19 @@ export function InterviewInsightsPage() {
               <LoadingCards count={9} />
             ) : displayedCompanies.length > 0 ? (
               <div className="space-y-10">
-                {activeCategory === "All" ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-                    {paginatedCompanies.map((company, i) => (
-                      <motion.div
-                        key={company.id}
-                        initial={{ opacity: 0, y: 16 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, margin: "-40px" }}
-                        transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
-                      >
-                        <InlineCompanyCard company={company} />
-                      </motion.div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-                    {paginatedCompanies.length > 0 && (
-                      <motion.div
-                        className="col-span-1 lg:col-span-1"
-                        initial={{ opacity: 0, y: 16 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, margin: "-40px" }}
-                        transition={{ duration: 0.35 }}
-                      >
-                        <LargeCompanyCard company={paginatedCompanies[0]} />
-                      </motion.div>
-                    )}
-                    {paginatedCompanies.slice(1).map((company, i) => (
-                      <motion.div
-                        key={company.id}
-                        initial={{ opacity: 0, y: 16 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true, margin: "-40px" }}
-                        transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
-                      >
-                        <InlineCompanyCard company={company} />
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+                  {paginatedCompanies.map((company, i) => (
+                    <motion.div
+                      key={company.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-40px" }}
+                      transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
+                    >
+                      <InlineCompanyCard company={company} />
+                    </motion.div>
+                  ))}
+                </div>
                 {/* Infinite-scroll sentinel — auto-loads the next page as it nears
                     the viewport; the spinner doubles as the loading animation. */}
                 {hasMoreCompanies && (
