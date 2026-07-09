@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { Link } from "react-router";
-import { ArrowRight, Clock } from "lucide-react";
+import { ArrowRight, Clock, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/newDesign/dashboard-layout";
 import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
@@ -142,8 +143,8 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
             <h3 className="truncate text-[15px] font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
               {company.name}
             </h3>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+            <div className="mt-1.5 flex flex-col items-start gap-1">
+              <span className="max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
                 {company.category ?? "Company"}
               </span>
               <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
@@ -164,52 +165,6 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
         <div className="flex flex-col">
           <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Last 30 days</span>
           <span className="mt-1 text-[17px] font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            +{company.last30Days ?? 0}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function LargeCompanyCard({ company }: { company: CompanyData }) {
-  return (
-    <Link
-      to={`/interview-insights/${company.id}`}
-      className="group relative flex h-full min-h-[300px] w-full flex-col rounded-[16px] border border-border bg-surface-0 p-6 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-border/80 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:border-primary"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <CardLogo name={company.name} size="lg" />
-        <ArrowRight className="mt-2 size-5 shrink-0 text-muted-foreground/50 transition-all duration-200 group-hover:translate-x-1 group-hover:text-foreground" strokeWidth={2} />
-      </div>
-      <div className="mt-6 flex flex-col">
-        <h3 className="text-xl font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-          {company.name}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            {company.category ?? "Company"}
-          </span>
-          <span className="text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            Updated {company.updatedAgo}
-          </span>
-        </div>
-      </div>
-      {company.description && (
-        <p className="mt-4 flex-1 text-[14px] leading-relaxed text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-          {company.description}
-        </p>
-      )}
-      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-border/60 pt-5">
-        <div className="flex flex-col">
-          <span className="text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Total notes</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            {company.totalNotes?.toLocaleString() ?? 0}
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Last 30 days</span>
-          <span className="mt-1 text-2xl font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
             +{company.last30Days ?? 0}
           </span>
         </div>
@@ -343,6 +298,33 @@ export function InterviewInsightsPage() {
     setCurrentPage(1);
   };
 
+  // Auto-scroll to the Featured Companies section whenever a company-type tile is
+  // selected, so it's obvious the list below changed to the picked category.
+  const companiesSectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (activeCategory !== "All") {
+      companiesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [activeCategory]);
+
+  // Infinite scroll: reveal the next page as the sentinel scrolls into view.
+  // Pagination is client-side (slicing an already-loaded list), so this just
+  // bumps the page count; new cards animate in on entry (see motion.div below).
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hasMoreCompanies) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setCurrentPage((p) => p + 1);
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreCompanies]);
+
   return (
     <DashboardLayout headerTitle="InterviewPrep Note" fullBleed>
     <WidePageContainer maxWidth="none">
@@ -447,7 +429,7 @@ export function InterviewInsightsPage() {
           </div> */}
 
           {/* Companies Grid */}
-          <section className="space-y-6">
+          <section ref={companiesSectionRef} className="scroll-mt-24 space-y-6">
             <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
               <div>
                 <h2 className="text-foreground" style={{ fontFamily: "var(--font-serif)", fontSize: "28px", fontWeight: 600, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
@@ -470,33 +452,27 @@ export function InterviewInsightsPage() {
               <LoadingCards count={9} />
             ) : displayedCompanies.length > 0 ? (
               <div className="space-y-10">
-                {activeCategory === "All" ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-                    {paginatedCompanies.map((company) => (
-                      <InlineCompanyCard key={company.id} company={company} />
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-                    {paginatedCompanies.length > 0 && (
-                      <div className="col-span-1 lg:col-span-1">
-                        <LargeCompanyCard company={paginatedCompanies[0]} />
-                      </div>
-                    )}
-                    {paginatedCompanies.slice(1).map((company) => (
-                      <InlineCompanyCard key={company.id} company={company} />
-                    ))}
-                  </div>
-                )}
-                {hasMoreCompanies && (
-                  <div className="flex items-center justify-center border-t border-border/60 pt-6">
-                    <button
-                      onClick={() => setCurrentPage(p => p + 1)}
-                      className="flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-transparent px-6 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                      style={{ fontFamily: "var(--font-sans)" }}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+                  {paginatedCompanies.map((company, i) => (
+                    <motion.div
+                      key={company.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-40px" }}
+                      transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
                     >
-                      Load More
-                    </button>
+                      <InlineCompanyCard company={company} />
+                    </motion.div>
+                  ))}
+                </div>
+                {/* Infinite-scroll sentinel — auto-loads the next page as it nears
+                    the viewport; the spinner doubles as the loading animation. */}
+                {hasMoreCompanies && (
+                  <div ref={loadMoreRef} className="flex items-center justify-center border-t border-border/60 pt-6">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+                      <Loader2 className="size-4 animate-spin text-primary" />
+                      Loading more companies…
+                    </div>
                   </div>
                 )}
               </div>

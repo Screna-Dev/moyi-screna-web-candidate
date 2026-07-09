@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Loader2, X, Check, ArrowRight, FileText, Upload } from 'lucide-react';
-import { applyMentor } from '../../services/MentorService';
+import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-react';
+import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
 import { getProfile, uploadResume } from '../../services/ProfileServices';
 import type { ProfileData } from '../../types/profile';
 
@@ -25,6 +25,12 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
   const [profileLoading, setProfileLoading] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
 
+  // An application already on file blocks re-submitting (the backend 400s with
+  // "a mentor profile already exists for this user"). We detect it up front so
+  // the user sees their status instead of a form that can only fail.
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [applicationStatus, setApplicationStatus] = useState<string | null>(null);
+
   // Resume: a stored resume is required before applying. We detect an existing
   // one from the profile and otherwise upload the selected file on submit.
   const [hasStoredResume, setHasStoredResume] = useState(false);
@@ -38,6 +44,8 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
     setSubmitted(false);
     setError('');
     setPrefilled(false);
+    setAlreadyApplied(false);
+    setApplicationStatus(null);
     setHasStoredResume(false);
     setResumeFile(null);
     setResumeUploading(false);
@@ -48,11 +56,25 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
     onClose();
   };
 
-  // Prefill identity fields and detect a stored resume when the modal opens.
+  // On open: detect an existing mentor application (to block re-submitting) and
+  // prefill identity fields from the profile. We wait for both before revealing
+  // the body so the form never flashes before we know the user already applied.
   useEffect(() => {
     if (!open) return;
     setProfileLoading(true);
-    getProfile()
+
+    const detectApplication = getMyMentorProfile()
+      .then((res: { data?: { data?: { status?: string }; status?: string } }) => {
+        const p = res.data?.data ?? res.data;
+        if (p?.status) {
+          setAlreadyApplied(true);
+          setApplicationStatus(p.status);
+        }
+      })
+      // No application on file (typically 404) — leave the form available.
+      .catch(() => {});
+
+    const prefill = getProfile()
       .then((res: {
         data: {
           data?: { structured_resume?: ProfileData; resume_path?: string };
@@ -73,9 +95,18 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
           setPrefilled(true);
         }
       })
-      .catch(() => {})
-      .finally(() => setProfileLoading(false));
+      .catch(() => {});
+
+    Promise.allSettled([detectApplication, prefill]).then(() => setProfileLoading(false));
   }, [open]);
+
+  // Copy for the "already applied" state, keyed on the server-side status.
+  const appliedCopy =
+    applicationStatus === 'APPROVED'
+      ? { title: "You're already a mentor", body: 'Your application was approved. Open the mentor dashboard to manage your profile, availability, and services.' }
+      : applicationStatus === 'REJECTED'
+      ? { title: 'Application not approved', body: "Your previous application wasn't approved. If you'd like it reconsidered, please reach out to our team." }
+      : { title: 'Application already submitted', body: "You've already applied to become a mentor. Your application is under review — we'll let you know once it's approved. No need to apply again." };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,8 +142,10 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
       setResumeUploading(false);
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       if (msg?.toLowerCase().includes('already')) {
-        // Application already exists — treat as success so the user isn't stuck.
-        setSubmitted(true);
+        // Application already exists (e.g. a concurrent submit, or the precall
+        // was skipped) — surface the real status instead of a misleading
+        // "submitted" success so the user knows to just wait for approval.
+        setAlreadyApplied(true);
       } else {
         setError(msg ?? 'Submission failed. Please try again.');
       }
@@ -136,9 +169,9 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
           <div>
             <h2 className="text-foreground text-[16px]" style={{ fontWeight: 600 }}>
-              {submitted ? 'Application Submitted' : 'Become a Mentor'}
+              {submitted ? 'Application Submitted' : alreadyApplied ? 'Mentor Application' : 'Become a Mentor'}
             </h2>
-            {!submitted && (
+            {!submitted && !alreadyApplied && (
               <p className="text-muted-foreground text-[12px] mt-0.5">
                 Tell us who you are — we'll set up the rest after approval.
               </p>
@@ -152,26 +185,24 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
           </button>
         </div>
 
-        {/* Profile pre-fill banner */}
-        {!submitted && (
+        {/* Profile pre-fill banner (only when the form is shown) */}
+        {!submitted && !alreadyApplied && !profileLoading && prefilled && (
           <div className="px-6 pt-3 shrink-0">
-            {profileLoading ? (
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Loading your profile…
-              </div>
-            ) : prefilled ? (
-              <div className="flex items-center gap-1.5 text-[12px] text-primary/80">
-                <Check className="w-3 h-3" />
-                Pre-filled from your profile — edit any field below.
-              </div>
-            ) : null}
+            <div className="flex items-center gap-1.5 text-[12px] text-primary/80">
+              <Check className="w-3 h-3" />
+              Pre-filled from your profile — edit any field below.
+            </div>
           </div>
         )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {submitted ? (
+          {profileLoading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-[13px]">Loading…</span>
+            </div>
+          ) : submitted ? (
             <div className="flex flex-col items-center text-center py-6 gap-4">
               <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
                 <Check className="w-7 h-7 text-primary" />
@@ -184,6 +215,22 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                   Your application is under review. Once our team approves it, you'll get the
                   Mentor role and can set up your profile, availability, services, and Google
                   Calendar from the mentor dashboard.
+                </p>
+              </div>
+            </div>
+          ) : alreadyApplied ? (
+            <div className="flex flex-col items-center text-center py-6 gap-4">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                {applicationStatus === 'APPROVED'
+                  ? <Check className="w-7 h-7 text-primary" />
+                  : <Clock className="w-7 h-7 text-primary" />}
+              </div>
+              <div>
+                <h3 className="text-foreground text-[16px] mb-2" style={{ fontWeight: 600 }}>
+                  {appliedCopy.title}
+                </h3>
+                <p className="text-muted-foreground text-[13.5px] leading-relaxed">
+                  {appliedCopy.body}
                 </p>
               </div>
             </div>
@@ -275,7 +322,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         {/* Footer */}
-        {submitted ? (
+        {profileLoading ? null : submitted || alreadyApplied ? (
           <div className="px-6 py-4 border-t border-border shrink-0">
             <button
               onClick={handleClose}

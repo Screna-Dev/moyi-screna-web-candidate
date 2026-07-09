@@ -20,6 +20,7 @@ import {
   listMentorTopics,
   updateMentorStatus,
   setMentorIdentityVerification,
+  getMentorResumeAsAdmin,
   listBookings,
   adminCancelBooking,
   adminRescheduleBooking,
@@ -92,7 +93,7 @@ type Mentor = {
   expertiseTags: string[];
   rate30: number;
   rate60: number;
-  status: "Pending" | "Active" | "Suspend";
+  status: "Pending" | "Active" | "Rejected" | "Suspend";
   apiStatus?: ApiStatus;
   reviewStatus?: ReviewStatus;
   statusReason?: string;
@@ -116,7 +117,7 @@ type Mentor = {
 const STATUS_API_TO_UI: Record<ApiStatus, Mentor["status"]> = {
   PENDING: "Pending",
   APPROVED: "Active",
-  REJECTED: "Suspend",
+  REJECTED: "Rejected",
   SUSPENDED: "Suspend",
 };
 
@@ -947,9 +948,10 @@ function MentorDirectory() {
     setLoading(true);
     try {
       const apiStatusFilter =
-        filters.status === "pending" ? "PENDING" :
-        filters.status === "active"  ? "APPROVED" :
-        filters.status === "suspend" ? "SUSPENDED" : undefined;
+        filters.status === "pending"  ? "PENDING" :
+        filters.status === "active"   ? "APPROVED" :
+        filters.status === "rejected" ? "REJECTED" :
+        filters.status === "suspend"  ? "SUSPENDED" : undefined;
       const params: Record<string, any> = { page: 0, size: 100 };
       if (apiStatusFilter) params.status = apiStatusFilter;
       const res = await listMentors(params);
@@ -979,6 +981,16 @@ function MentorDirectory() {
       const detail = res?.data?.data;
       if (detail) {
         const mapped = mapApiMentor(detail);
+        // The mentor detail no longer carries a resume URL directly — fetch a
+        // fresh presigned download URL from the admin resume endpoint. Failure
+        // is non-fatal; the drawer just falls back to "Not submitted".
+        try {
+          const resumeRes = await getMentorResumeAsAdmin(m.id);
+          const resumeUrl = resumeRes?.data?.data?.url || resumeRes?.data?.url || "";
+          if (resumeUrl) mapped.resumeUrl = resumeUrl;
+        } catch (resumeErr) {
+          console.error("Failed to load mentor resume", resumeErr);
+        }
         setSelected(mapped);
         setEditForm(mapped);
         setMentorList((prev) => prev.map((x) => x.id === mapped.id ? mapped : x));
@@ -1077,6 +1089,7 @@ function MentorDirectory() {
       const apiStatusFromUi: Record<Mentor["status"], ApiStatus> = {
         Pending: "PENDING",
         Active: "APPROVED",
+        Rejected: "REJECTED",
         Suspend: "SUSPENDED",
       };
       const targetApiStatus = apiStatusFromUi[form.status];
@@ -1119,7 +1132,7 @@ function MentorDirectory() {
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <FilterBar
-          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "suspend", label: "Suspend" }] }]}
+          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "rejected", label: "Rejected" }, { value: "suspend", label: "Suspend" }] }]}
           activeFilters={filters}
           onFilterChange={(k, v) => setFilters({ ...filters, [k]: v })}
           searchValue={search}
@@ -1168,7 +1181,7 @@ function MentorDirectory() {
                           </div>
                         )}
                       </td>
-                      <td style={TD}><span style={badge(m.status === "Active" ? "green" : m.status === "Suspend" ? "red" : m.status === "Pending" ? "amber" : "gray")}>{m.status}</span></td>
+                      <td style={TD}><span style={badge(m.status === "Active" ? "green" : m.status === "Rejected" ? "red" : m.status === "Suspend" ? "purple" : m.status === "Pending" ? "amber" : "gray")}>{m.status}</span></td>
                       <td style={TD}>
                         {m.calConnected
                           ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.green }}><Check size={12} /> Connected</span>
@@ -1273,7 +1286,7 @@ function MentorDirectory() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{selected.name}</div>
                 <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-                  <span style={badge(selected.status === "Active" ? "green" : selected.status === "Suspend" ? "red" : selected.status === "Pending" ? "amber" : "gray")}>{selected.status}</span>
+                  <span style={badge(selected.status === "Active" ? "green" : selected.status === "Rejected" ? "red" : selected.status === "Suspend" ? "purple" : selected.status === "Pending" ? "amber" : "gray")}>{selected.status}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, color: C.textMuted }}>
                   {selected.email ? (
@@ -1413,6 +1426,7 @@ function MentorDirectory() {
                  <select style={selectStyle} value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value as any})}>
                    <option value="Pending">Pending</option>
                    <option value="Active">Active</option>
+                   <option value="Rejected">Rejected</option>
                    <option value="Suspend">Suspend</option>
                  </select>
                </div>
