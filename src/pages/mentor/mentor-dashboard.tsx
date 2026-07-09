@@ -339,7 +339,7 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
     { label: 'Profile photo', done: profile ? !!profile.avatarUrl : true },
     { label: 'Bio added', done: profile ? !!profile.bio : true },
     { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
-    { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null || t.price60min != null) : true },
+    { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null && t.price60min != null) : true },
     { label: 'Verification submitted', done: profile ? profile.status !== 'PENDING' : true },
   ];
   const doneCount = profileCompletion.filter(p => p.done).length;
@@ -2188,7 +2188,9 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
     const p30 = dollarsToCents(price30);
     const p60 = dollarsToCents(price60);
     if (p30 === null || p60 === null) { setStatus(s => ({ ...s, error: 'Prices must be non-negative numbers.' })); return; }
-    if (p30 === undefined && p60 === undefined) { setStatus(s => ({ ...s, error: 'Set at least one price (30 min or 60 min).' })); return; }
+    // Pricing is required: both 30- and 60-minute prices must be set before a
+    // mentor profile can go live (each duration is independently bookable).
+    if (p30 === undefined || p60 === undefined) { setStatus(s => ({ ...s, error: 'Both 30- and 60-minute prices are required.' })); return; }
     // Only send fields the mentor actually entered; an omitted price is left
     // unchanged backend-side (a price, once set, cannot be cleared).
     const payload: { price30min?: number; price60min?: number } = {};
@@ -2208,7 +2210,8 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
       <div className="mb-4">
         <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Session</h3>
         <p className="text-sm text-muted-foreground">
-          Set your 30 / 60-minute session prices.
+          Set your 30- and 60-minute session prices. Both are required before your
+          profile can go live.
         </p>
       </div>
 
@@ -2216,7 +2219,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-muted-foreground">Price 30 min (USD)</label>
+            <label className="text-xs text-muted-foreground">Price 30 min (USD)<span className="text-destructive ml-0.5">*</span></label>
             <div className="mt-1 flex items-center gap-2">
               <span className="text-sm text-muted-foreground">$</span>
               <input
@@ -2229,7 +2232,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
             </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Price 60 min (USD)</label>
+            <label className="text-xs text-muted-foreground">Price 60 min (USD)<span className="text-destructive ml-0.5">*</span></label>
             <div className="mt-1 flex items-center gap-2">
               <span className="text-sm text-muted-foreground">$</span>
               <input

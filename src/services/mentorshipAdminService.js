@@ -34,6 +34,11 @@ export const setMentorIdentityVerification = (mentorId, payload) =>
 export const getMentorCalendarStatus = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/calendar/status`);
 
+// Admin-only: get presigned download URL for a specific mentor's resume.
+// Returns { url, expiresAt } (short-lived presigned URL), like payment-method.
+export const getMentorResumeAsAdmin = (mentorId) =>
+  API.get(`${BASE}/mentors/${mentorId}/resume`);
+
 // ─── Topics ─────────────────────────────────────────────────────────────────
 
 export const listMentorTopics = (mentorId) =>

@@ -20,6 +20,7 @@ import {
   listMentorTopics,
   updateMentorStatus,
   setMentorIdentityVerification,
+  getMentorResumeAsAdmin,
   listBookings,
   adminCancelBooking,
   adminRescheduleBooking,
@@ -979,6 +980,16 @@ function MentorDirectory() {
       const detail = res?.data?.data;
       if (detail) {
         const mapped = mapApiMentor(detail);
+        // The mentor detail no longer carries a resume URL directly — fetch a
+        // fresh presigned download URL from the admin resume endpoint. Failure
+        // is non-fatal; the drawer just falls back to "Not submitted".
+        try {
+          const resumeRes = await getMentorResumeAsAdmin(m.id);
+          const resumeUrl = resumeRes?.data?.data?.url || resumeRes?.data?.url || "";
+          if (resumeUrl) mapped.resumeUrl = resumeUrl;
+        } catch (resumeErr) {
+          console.error("Failed to load mentor resume", resumeErr);
+        }
         setSelected(mapped);
         setEditForm(mapped);
         setMentorList((prev) => prev.map((x) => x.id === mapped.id ? mapped : x));

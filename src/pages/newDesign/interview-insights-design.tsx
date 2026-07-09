@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { Link } from "react-router";
-import { ArrowRight, Clock } from "lucide-react";
+import { ArrowRight, Clock, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/newDesign/dashboard-layout";
 import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
@@ -343,6 +344,33 @@ export function InterviewInsightsPage() {
     setCurrentPage(1);
   };
 
+  // Auto-scroll to the Featured Companies section whenever a company-type tile is
+  // selected, so it's obvious the list below changed to the picked category.
+  const companiesSectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (activeCategory !== "All") {
+      companiesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [activeCategory]);
+
+  // Infinite scroll: reveal the next page as the sentinel scrolls into view.
+  // Pagination is client-side (slicing an already-loaded list), so this just
+  // bumps the page count; new cards animate in on entry (see motion.div below).
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hasMoreCompanies) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setCurrentPage((p) => p + 1);
+      },
+      { rootMargin: "300px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreCompanies]);
+
   return (
     <DashboardLayout headerTitle="InterviewPrep Note" fullBleed>
     <WidePageContainer maxWidth="none">
@@ -447,7 +475,7 @@ export function InterviewInsightsPage() {
           </div> */}
 
           {/* Companies Grid */}
-          <section className="space-y-6">
+          <section ref={companiesSectionRef} className="scroll-mt-24 space-y-6">
             <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
               <div>
                 <h2 className="text-foreground" style={{ fontFamily: "var(--font-serif)", fontSize: "28px", fontWeight: 600, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
@@ -472,31 +500,52 @@ export function InterviewInsightsPage() {
               <div className="space-y-10">
                 {activeCategory === "All" ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-                    {paginatedCompanies.map((company) => (
-                      <InlineCompanyCard key={company.id} company={company} />
+                    {paginatedCompanies.map((company, i) => (
+                      <motion.div
+                        key={company.id}
+                        initial={{ opacity: 0, y: 16 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-40px" }}
+                        transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
+                      >
+                        <InlineCompanyCard company={company} />
+                      </motion.div>
                     ))}
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
                     {paginatedCompanies.length > 0 && (
-                      <div className="col-span-1 lg:col-span-1">
+                      <motion.div
+                        className="col-span-1 lg:col-span-1"
+                        initial={{ opacity: 0, y: 16 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-40px" }}
+                        transition={{ duration: 0.35 }}
+                      >
                         <LargeCompanyCard company={paginatedCompanies[0]} />
-                      </div>
+                      </motion.div>
                     )}
-                    {paginatedCompanies.slice(1).map((company) => (
-                      <InlineCompanyCard key={company.id} company={company} />
+                    {paginatedCompanies.slice(1).map((company, i) => (
+                      <motion.div
+                        key={company.id}
+                        initial={{ opacity: 0, y: 16 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-40px" }}
+                        transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
+                      >
+                        <InlineCompanyCard company={company} />
+                      </motion.div>
                     ))}
                   </div>
                 )}
+                {/* Infinite-scroll sentinel — auto-loads the next page as it nears
+                    the viewport; the spinner doubles as the loading animation. */}
                 {hasMoreCompanies && (
-                  <div className="flex items-center justify-center border-t border-border/60 pt-6">
-                    <button
-                      onClick={() => setCurrentPage(p => p + 1)}
-                      className="flex h-9 items-center justify-center rounded-[var(--radius)] border border-border bg-transparent px-6 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                      style={{ fontFamily: "var(--font-sans)" }}
-                    >
-                      Load More
-                    </button>
+                  <div ref={loadMoreRef} className="flex items-center justify-center border-t border-border/60 pt-6">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+                      <Loader2 className="size-4 animate-spin text-primary" />
+                      Loading more companies…
+                    </div>
                   </div>
                 )}
               </div>

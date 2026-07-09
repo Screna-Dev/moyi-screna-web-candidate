@@ -146,7 +146,10 @@ export function CompanyDetailPage() {
   // We wait for the plan to resolve before restricting so we don't penalize
   // Premium users with a flash of locked UI.
   const isLowTier = isAuthenticated && !isPlanLoading && !isPremium;
+  // Free/Basic see the 2 newest posts unlocked and 5 more locked (blurred with
+  // an upgrade prompt) — 7 cards total — plus a locked filter/sort toolbar.
   const FREE_VISIBLE_LIMIT = 2;
+  const FREE_LOCKED_LIMIT = 5;
 
   const fallbackCompany = useMemo(() => resolveCompany(companyId), [companyId]);
 
@@ -445,11 +448,37 @@ export function CompanyDetailPage() {
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
             {/* Main Column */}
             <div className="space-y-6 min-w-0">
-              {/* Toolbar — sort & filters. Hidden for low-tier users: the backend
-                  ignores every search param except `company` for Free/Basic
-                  (forces NEWEST + page 0), so exposing these controls would
-                  mislead. */}
-              {!isLowTier && (
+              {/* Toolbar — sort & filters. For low-tier users the backend ignores
+                  every search param except `company` (forces NEWEST + page 0), so
+                  instead of hiding the controls we render them locked: each chip
+                  and the sort button show a lock and route to pricing on click. */}
+              {isLowTier ? (
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {['Role', 'Round', 'Level', 'Category', 'Time'].map(label => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => navigate('/#pricing')}
+                        title="Upgrade to Advanced to filter"
+                        className="flex h-[32px] items-center gap-[6px] whitespace-nowrap rounded-full border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] px-3 text-[12px] font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
+                      >
+                        <Lock className="size-3 text-[hsl(222,12%,55%)]" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/#pricing')}
+                    title="Upgrade to Advanced to sort"
+                    className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] transition-colors hover:text-[hsl(222,22%,15%)]"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
+                    Sort: {activeSort}
+                  </button>
+                </div>
+              ) : (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
                     <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
@@ -557,9 +586,9 @@ export function CompanyDetailPage() {
 
               {/* Posts */}
               <div className="space-y-4">
-                {visiblePosts.map((post, i) => {
+                {(isLowTier ? visiblePosts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : visiblePosts).map((post, i) => {
                   // Free/Basic users can only open the 2 newest posts per company;
-                  // the rest are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
+                  // the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
                   const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
                   return (
                   <motion.article
