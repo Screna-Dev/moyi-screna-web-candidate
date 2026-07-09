@@ -93,6 +93,35 @@ const TIMEZONES = [
   'Asia/Singapore (SGT, UTC+8)',
   'Asia/Tokyo (JST, UTC+9)',
 ];
+// Current UTC offset (minutes, east-positive) of an IANA zone at a given instant.
+const zoneOffsetMinutes = (tz: string, at: Date) => {
+  const utc = new Date(at.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const zoned = new Date(at.toLocaleString('en-US', { timeZone: tz }));
+  return Math.round((zoned.getTime() - utc.getTime()) / 60000);
+};
+
+// Best entry in TIMEZONES for the visitor's local zone: an exact IANA id match
+// when the browser's zone is in the list, otherwise the entry with the closest
+// current UTC offset. Falls back to the first entry if detection fails.
+const defaultTimezone = () => {
+  try {
+    const localId = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const exact = TIMEZONES.find(z => z.split(' ')[0] === localId);
+    if (exact) return exact;
+    const now = new Date();
+    const localOffset = -now.getTimezoneOffset();
+    let best = TIMEZONES[0];
+    let bestDiff = Infinity;
+    for (const z of TIMEZONES) {
+      const diff = Math.abs(zoneOffsetMinutes(z.split(' ')[0], now) - localOffset);
+      if (diff < bestDiff) { bestDiff = diff; best = z; }
+    }
+    return best;
+  } catch {
+    return TIMEZONES[0];
+  }
+};
+
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STEP_LABELS = ['Plan','Date','Time','Notes','Payment'];
 
@@ -130,7 +159,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   const posthog = usePostHog();
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
-  const [timezone, setTimezone] = useState(TIMEZONES[0]);
+  const [timezone, setTimezone] = useState(defaultTimezone);
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
