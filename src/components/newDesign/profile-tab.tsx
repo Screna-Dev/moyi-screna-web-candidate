@@ -11,7 +11,6 @@ import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
-import { PageHead } from '@/components/newDesign/page-head';
 import { WidePageContainer } from './dashboard-page';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
@@ -1125,14 +1124,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
 export function ProfileTab({ userData }: { userData: UserData | null }) {
   return (
-    <WidePageContainer maxWidth="none">
-      <div className="flex flex-col gap-6">
-        <PageHead
-          title="Profile"
-          subtitle="Your career profile, target roles, and saved preferences."
-        />
-        <ProfileCoreContent userData={userData} />
-      </div>
+    <WidePageContainer maxWidth="none" paddingTop={32}>
+      <ProfileCoreContent userData={userData} />
     </WidePageContainer>
   );
 }

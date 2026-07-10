@@ -347,7 +347,7 @@ export function MyContributionsPage() {
 
   return (
     <DashboardLayout headerTitle="My Contributions" fullBleed>
-      <WidePageContainer maxWidth="none">
+      <WidePageContainer maxWidth="none" paddingTop={32}>
       <div>
         {/* ─── Tabs + CTA ─── */}
         <div className="flex items-center gap-2 mb-6">

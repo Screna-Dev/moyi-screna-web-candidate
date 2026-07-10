@@ -732,6 +732,76 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // ════════════════════════════════════════════════════════
 // MAIN PAGE
 // ════════════════════════════════════════════════════════
+// ─── Hero banner ──────────────────────────────────────────
+function PersonalizedPracticeHeroBanner() {
+  // Arrow-head path from the decorative target motif (inlined).
+  const arrowHead = "M853.2 150.571L881.1 154.171L861.3 173.971L853.2 150.571Z";
+  return (
+    <section
+      aria-label="Personalized Practice hero"
+      className="relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(to right, #fbfaff, #f1efff 48%, #eafbf6)',
+        marginTop: 0,
+        marginLeft: -32,
+        marginRight: -32,
+        marginBottom: 28,
+      }}
+    >
+      {/* Decorative target motif — aria-hidden */}
+      <svg
+        aria-hidden="true"
+        focusable="false"
+        width="600"
+        height="238"
+        viewBox="0 0 1147 330"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, height: '100%', pointerEvents: 'none' }}
+        preserveAspectRatio="xMaxYMid meet"
+      >
+        <rect fill="white" fillOpacity="0.16" height="288" rx="30" transform="rotate(10 587.2 -4.74866)" width="324" x="587.2" y="-4.74866" />
+        <circle cx="842.2" cy="143.811" fill="white" fillOpacity="0.04" r="70.2" />
+        <circle cx="842.2" cy="143.811" r="69.2" stroke="#8B5CF6" strokeOpacity="0.22" strokeWidth="2" />
+        <circle cx="842.2" cy="143.811" fill="white" fillOpacity="0.06" r="47.736" />
+        <circle cx="842.2" cy="143.811" r="46.736" stroke="#14B8A6" strokeOpacity="0.22" strokeWidth="2" />
+        <circle cx="842.201" cy="143.811" fill="white" fillOpacity="0.12" r="25.272" />
+        <circle cx="842.201" cy="143.811" r="24.272" stroke="#F59E0B" strokeOpacity="0.2" strokeWidth="2" />
+        <circle cx="842.2" cy="143.811" fill="#8B5CF6" fillOpacity="0.24" r="9.9" />
+        <circle cx="842.2" cy="143.811" r="8.9" stroke="white" strokeOpacity="0.78" strokeWidth="2" />
+        <rect fill="#8B5CF6" fillOpacity="0.16" height="2.7" rx="1.35" width="45" x="745" y="142.461" />
+        <rect fill="#8B5CF6" fillOpacity="0.16" height="2.7" rx="1.35" width="45" x="894.4" y="142.461" />
+        <rect fill="#14B8A6" fillOpacity="0.16" height="45" rx="1.35" width="2.7" x="840.851" y="46.6113" />
+        <rect fill="#14B8A6" fillOpacity="0.16" height="45" rx="1.35" width="2.7" x="840.851" y="196.011" />
+        <path d={arrowHead} fill="#8B5CF6" fillOpacity="0.22" stroke="white" strokeOpacity="0.32" />
+        <rect fill="#F59E0B" fillOpacity="0.16" height="3.6" rx="1.8" transform="rotate(24 1068.46 199.611)" width="30.6" x="1068.46" y="199.611" />
+        <rect fill="#14B8A6" fillOpacity="0.13" height="3.6" rx="1.8" transform="rotate(24 1077.46 214.011)" width="27" x="1077.46" y="214.011" />
+        <rect fill="white" fillOpacity="0.38" height="30.6" rx="12" width="118.8" x="942" y="81.6113" />
+        <rect fill="white" fillOpacity="0.28" height="30.6" rx="12" width="144" x="958" y="128.611" />
+        <rect fill="#8B5CF6" fillOpacity="0.16" height="3.6" rx="1.8" width="57.6" x="967" y="94.6113" />
+        <rect fill="#14B8A6" fillOpacity="0.15" height="3.6" rx="1.8" width="75.6" x="981.4" y="142.611" />
+        <circle cx="958" cy="96.6113" fill="#F59E0B" fillOpacity="0.2" r="9" />
+        <circle cx="958" cy="96.6113" r="8.25" stroke="white" strokeOpacity="0.66" strokeWidth="1.5" />
+        <circle cx="976.2" cy="143.811" fill="#14B8A6" fillOpacity="0.18" r="7.2" />
+        <circle cx="976.2" cy="143.811" r="6.45" stroke="white" strokeOpacity="0.58" strokeWidth="1.5" />
+      </svg>
+
+      {/* Content */}
+      <div className="relative flex flex-col" style={{ padding: '48px 32px 36px', zIndex: 1 }}>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#8B5CF6', marginBottom: 10 }}>
+          Personalized Practice
+        </span>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 34, fontWeight: 700, color: '#172033', lineHeight: 1.18, margin: 0, marginBottom: 10 }}>
+          Practice for your target role
+        </h1>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: 16, color: '#526070', margin: 0, maxWidth: 560, lineHeight: 1.55 }}>
+          Use your profile or job description to find role-specific sessions for the interview ahead.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export function PersonalizedPracticePage() {
   const posthog = usePostHog();
   const { isAuthenticated: isLoggedIn } = useAuth();
@@ -979,13 +1049,8 @@ export function PersonalizedPracticePage() {
   return (
     <DashboardLayout headerTitle="Personalized Practice" fullBleed>
       <WidePageContainer maxWidth="none">
+        <PersonalizedPracticeHeroBanner />
         <div className="space-y-6">
-          {/* ─── Intro ─────────────────────────────────── */}
-          <div>
-            <p className="text-slate-500 max-w-2xl">
-              AI-powered mock interviews tailored to your profile and target roles.
-            </p>
-          </div>
 
           {/* ─── Target Job Bar ────────────────────── */}
           {targetJob && (

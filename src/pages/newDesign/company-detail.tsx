@@ -13,6 +13,8 @@ import {
   Bookmark,
   Share2,
   Lock,
+  FileText,
+  TrendingUp,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
@@ -111,6 +113,27 @@ const COMPANY_META: Record<string, CompanyMeta> = {
   perplexity: { name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.', totalNotes: 86, last30Days: 20, updatedAgo: '2d ago' },
 };
 
+// Format an ISO-8601 UTC timestamp as a locale-relative "x ago" string.
+// Returns null for missing/invalid input so callers can hide the label
+// (the profile API sends latestUpdatedAt = null when a company has no posts).
+function formatRelativeTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo} month${mo === 1 ? '' : 's'} ago`;
+  const yr = Math.floor(mo / 12);
+  return `${yr} year${yr === 1 ? '' : 's'} ago`;
+}
+
 function titleize(id: string) {
   return id
     .split('-')
@@ -155,7 +178,14 @@ export function CompanyDetailPage() {
 
   // Real category + summary from GET /community/companies/profile (looked up by
   // display name); falls back to the resolved/curated values until it loads.
-  const [profile, setProfile] = useState<{ displayName?: string; category?: string; summary?: string } | null>(null);
+  const [profile, setProfile] = useState<{
+    displayName?: string;
+    category?: string;
+    summary?: string;
+    postCount?: number;
+    recentPostCount?: number;
+    latestUpdatedAt?: string | null;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     getCompanyProfile(fallbackCompany.name)
@@ -173,6 +203,15 @@ export function CompanyDetailPage() {
     category: profile?.category || fallbackCompany.category,
     description: profile?.summary || fallbackCompany.description,
   }), [fallbackCompany, profile]);
+
+  // Header stats, sourced from GET /community/companies/profile once loaded
+  // (published-post counts). Until the profile resolves we show the curated
+  // fallback so the header isn't empty. `?? ` keeps a real 0 from the API.
+  const notesCount = profile?.postCount ?? fallbackCompany.totalNotes;
+  const recentCount = profile?.recentPostCount ?? fallbackCompany.last30Days;
+  const updatedLabel = profile
+    ? formatRelativeTime(profile.latestUpdatedAt) // null when the company has no posts
+    : fallbackCompany.updatedAgo;
 
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [sortOpen, setSortOpen] = useState(false);
@@ -428,6 +467,23 @@ export function CompanyDetailPage() {
                 <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
                   {company.description}
                 </p>
+
+                {/* Stats — published-post counts from the profile API */}
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[hsl(222,12%,45%)]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <FileText className="size-4 text-[hsl(222,12%,55%)]" />
+                    <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
+                    total notes
+                  </span>
+                  {recentCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 text-[hsl(160,60%,38%)]">
+                      <TrendingUp className="size-4" />
+                      <span className="font-semibold">+{recentCount.toLocaleString()}</span>
+                      last 30 days
+                    </span>
+                  )}
+                  {updatedLabel && <span>Updated {updatedLabel}</span>}
+                </div>
               </div>
             </div>
 

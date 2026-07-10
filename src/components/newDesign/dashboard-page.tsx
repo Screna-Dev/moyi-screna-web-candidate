@@ -19,14 +19,18 @@ export function WidePageContainer({
   children,
   bg,
   maxWidth = 1360,
+  paddingTop = 0,
 }: {
   children: ReactNode;
   bg?: string;
   maxWidth?: number | 'none';
+  // Pages that lead with a full-bleed hero banner keep paddingTop at 0 so the
+  // banner sits flush under the top header; content-only pages pass 32.
+  paddingTop?: number;
 }) {
   return (
     <div style={{ background: bg, minHeight: '100%' }}>
-      <div style={{ ...SHARED_STYLE, maxWidth: maxWidth === 'none' ? undefined : maxWidth }}>
+      <div style={{ ...SHARED_STYLE, maxWidth: maxWidth === 'none' ? undefined : maxWidth, paddingTop }}>
         {children}
       </div>
     </div>

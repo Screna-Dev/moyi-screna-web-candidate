@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { Download, Check, AlertCircle, TrendingUp, DollarSign, Clock, AlertTriangle } from "lucide-react";
+import { Download, Check, AlertCircle, TrendingUp, DollarSign, Clock, AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
 import { Modal } from "../ui/Modal";
 import { EmptyState } from "../ui/EmptyState";
 import { exportSessionReport, adminPayoutSummary, markMentorPayoutsPaid } from "../../../../services/mentorshipAdminService";
+import { getMentorPaymentMethodAsAdmin } from "../../../../services/MentorService";
 
 type Status = "Ready to settle" | "Settled" | "Disputed";
 
@@ -27,7 +28,6 @@ type LedgerRow = {
   payout: number;
   stripe: string;
   status: Status;
-  payoutMethod?: string;
 };
 
 // API amount fields are in cents; the ledger displays dollars.
@@ -83,6 +83,11 @@ export function FinanceLedger() {
   const [filters, setFilters]     = useState<Record<string, string>>({ status: "all", mentor: "all" });
   const [hiddenCols, setHiddenCols] = useState<string[]>([]);
   const [kpiData, setKpiData] = useState({ grossCents: 0, feeCents: 0, unsettledCents: 0, pendingCount: 0, settledCents: 0, settledSessions: 0 });
+  const [loadingPdf, setLoadingPdf] = useState<string | null>(null);
+  // Per-mentor payment-method availability, prefetched so the Payout method
+  // column can show "View PDF" vs "N/A" without the user having to click.
+  //   undefined → still checking · false → no file on record · true → has a file
+  const [pdfAvailable, setPdfAvailable] = useState<Record<string, boolean>>({});
 
   const loadPayouts = useCallback(async () => {
     try {
@@ -102,6 +107,23 @@ export function FinanceLedger() {
         ...pending.map((i) => mapSummaryRow(i, "Ready to settle")),
         ...paidAll.map((i) => mapSummaryRow(i, "Settled")),
       ]);
+      // Prefetch payment-method availability for every mentor in the ledger so
+      // the Payout method column reflects has-PDF / N/A up front. Existence only
+      // — the actual (short-lived presigned) URL is fetched fresh on click.
+      const mentorIds = Array.from(
+        new Set([...pending, ...paidAll].map((i) => i?.mentorId).filter(Boolean))
+      );
+      mentorIds.forEach((mentorId) => {
+        getMentorPaymentMethodAsAdmin(mentorId)
+          .then((res) => {
+            const url = res?.data?.data?.url || res?.data?.url || "";
+            setPdfAvailable((prev) => ({ ...prev, [mentorId]: !!url }));
+          })
+          .catch(() => {
+            // 404 (or any failure) → treat as no file so the column shows N/A.
+            setPdfAvailable((prev) => ({ ...prev, [mentorId]: false }));
+          });
+      });
       setKpiData({
         grossCents: monthAll.reduce((s, i) => s + (Number(i?.totalAmountCents) || 0), 0),
         feeCents: monthAll.reduce((s, i) => s + ((Number(i?.totalAmountCents) || 0) - (Number(i?.totalPayoutCents) || 0)), 0),
@@ -139,6 +161,32 @@ export function FinanceLedger() {
     }
   };
 
+  // The mentor's payment-method PDF lives behind a short-lived (1h) presigned
+  // URL, so fetch it lazily on click rather than pre-loading every row. Opens
+  // the PDF in a new tab.
+  const viewPaymentMethod = async (mentorId: string) => {
+    if (!mentorId) return;
+    setLoadingPdf(mentorId);
+    try {
+      const res = await getMentorPaymentMethodAsAdmin(mentorId);
+      const url = res?.data?.data?.url || res?.data?.url || "";
+      if (url) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        setPdfAvailable((prev) => ({ ...prev, [mentorId]: true }));
+      } else {
+        setPdfAvailable((prev) => ({ ...prev, [mentorId]: false }));
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        setPdfAvailable((prev) => ({ ...prev, [mentorId]: false }));
+      } else {
+        toast.error(err?.response?.data?.message || "Failed to load payment method");
+      }
+    } finally {
+      setLoadingPdf(null);
+    }
+  };
+
   const handleExport = async () => {
     try {
       const res = await exportSessionReport("MONTH");
@@ -169,6 +217,8 @@ export function FinanceLedger() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "'Inter', sans-serif", background: C.bgPage, overflow: "hidden" }}>
+
+      <style>{`@keyframes finance-ledger-spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* Settlement modal */}
       <Modal
@@ -319,12 +369,23 @@ export function FinanceLedger() {
                     {!hiddenCols.includes("Status")            && <td style={TD}><span style={badge(statusVariant(row.status))}>{row.status}</span></td>}
                     {!hiddenCols.includes("Payout method")     && (
                       <td style={TD}>
-                        {row.payoutMethod ? (
-                          <span style={{ fontSize: 12, color: C.textSub, background: C.bgPage, padding: "3px 8px", borderRadius: 4, border: `1px solid ${C.border}` }}>
-                            {row.payoutMethod}
+                        {pdfAvailable[row.mentorId] === undefined ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: C.textMuted }}>
+                            <Loader2 size={12} style={{ animation: "finance-ledger-spin 1s linear infinite" }} /> Checking…
                           </span>
+                        ) : pdfAvailable[row.mentorId] === false ? (
+                          <span style={{ fontSize: 12, color: C.textMuted }}>N/A</span>
                         ) : (
-                          <span style={{ color: C.textMuted }}>-</span>
+                          <button
+                            onClick={() => viewPaymentMethod(row.mentorId)}
+                            disabled={loadingPdf === row.mentorId}
+                            style={{ ...secondaryBtn, height: 26, fontSize: 11, gap: 4, opacity: loadingPdf === row.mentorId ? 0.6 : 1, cursor: loadingPdf === row.mentorId ? "default" : "pointer" }}
+                          >
+                            {loadingPdf === row.mentorId
+                              ? <Loader2 size={12} style={{ animation: "finance-ledger-spin 1s linear infinite" }} />
+                              : <FileText size={12} />}
+                            View PDF
+                          </button>
                         )}
                       </td>
                     )}

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router';
-import { ArrowLeft, Clock, Coins, Mic, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Clock, Coins, Mic, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, ArrowRight, BarChart2, Users, Sparkles, BookOpen, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { DashboardLayout } from './dashboard-layout';
+import { createQuickMockInterview, parseQuickMockError } from '@/services/InterviewServices';
 import { motion, AnimatePresence } from 'motion/react';
 import imgRectangle from '@/assets/a7264fd48ee44c90a6ee1d9d5f038a62ea570b04.png';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -307,6 +308,12 @@ export function SessionConfirmPage() {
   const [expectOpen, setExpectOpen] = useState(false);
   const { planData, isLoading: isPlanLoading } = useUserPlan();
 
+  // Quick Mock sessions create the interview here (on "Begin Session") rather than
+  // via a pre-existing training module.
+  const isQuickMock = searchParams.get('quickMock') === '1';
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
   // Credits = duration (min) × rate. Only Voice mode is supported (1 credit/min).
   // Video mode was 2 credits/min — retained for future use:
   // const creditsPerMin = selectedMode === 'Video' ? 2 : 1;
@@ -333,6 +340,49 @@ export function SessionConfirmPage() {
   }
 
   const diffConfig = DIFFICULTY_CONFIG[session.difficulty];
+
+  // Create a Quick Mock session, then hand its LiveKit credentials to /ai-mock via
+  // navigation state (mirrors the personalized-practice flow) so it joins the room
+  // directly. Quick Mock is audio-only; the backend pre-deducts credit on create.
+  const handleBeginQuickMock = async () => {
+    if (starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const companyParam = searchParams.get('company') || '';
+      const role = searchParams.get('role') || session.title;
+      const level = searchParams.get('level') || session.difficulty; // 'Junior' | 'Intermediate' | 'Senior' | 'Staff'
+      const res = await createQuickMockInterview({
+        company: companyParam === 'Any company' ? '' : companyParam,
+        role,
+        level,
+        durationMinutes: durationMins,
+      });
+      const d = res.data?.data ?? res.data;
+      const url = d?.url ?? d?.liveKitUrl;
+      const token = d?.token ?? d?.liveKitToken;
+      if (!url || !token) {
+        throw new Error('Session did not return valid credentials. Please try again.');
+      }
+      const prefetchedSession = {
+        liveKitUrl: url,
+        liveKitToken: token,
+        maxInterviewDuration: d?.max_interview_duration ?? null,
+      };
+      const params = new URLSearchParams({
+        interviewId: String(d?.session_id ?? ''),
+        difficulty: String(level).toLowerCase(),
+        duration: String(durationMins),
+        mode: 'voice',
+      });
+      navigate(`/ai-mock?${params.toString()}`, { state: { prefetchedSession } });
+    } catch (err) {
+      setStartError(parseQuickMockError(err));
+      setStarting(false);
+    }
+    // On success we navigate away; keep `starting` true so the button stays disabled
+    // through the route transition.
+  };
 
   const cardContent = (
         <div className="max-w-3xl mx-auto px-6 pb-16 pt-8">
@@ -607,6 +657,14 @@ export function SessionConfirmPage() {
                 </div>
               )}
 
+              {/* Quick Mock start error (e.g. 422 not_enough_insights / validation) */}
+              {startError && (
+                <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-red-50 border border-red-200">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700 whitespace-pre-line">{startError}</p>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-4 text-sm text-slate-500">
                   <div className="flex items-center gap-1.5">
@@ -624,24 +682,44 @@ export function SessionConfirmPage() {
                 </div>
 
                 {hasEnoughCredits ? (
-                  <Link to={(() => {
-                    const domainTypeMap: Record<string, string> = {
-                      'Behavioral': 'behavioral',
-                      'Product Sense': 'product',
-                      'System Design': 'system-design',
-                      'Resume': 'resume',
-                    };
-                    const type = domainTypeMap[session.domain] ?? 'behavioral';
-                    const difficulty = session.difficulty.toLowerCase();
-                    const duration = session.time.replace(' min', '');
-                    // Voice-only for now. Future: const mode = selectedMode.toLowerCase();
-                    return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=voice`;
-                  })()}>
-                    <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
-                      Begin Session
-                      <ArrowRight className="w-4 h-4" />
+                  isQuickMock ? (
+                    <Button
+                      onClick={handleBeginQuickMock}
+                      disabled={starting}
+                      className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm disabled:opacity-70"
+                    >
+                      {starting ? (
+                        <>
+                          Starting…
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </>
+                      ) : (
+                        <>
+                          Begin Session
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
                     </Button>
-                  </Link>
+                  ) : (
+                    <Link to={(() => {
+                      const domainTypeMap: Record<string, string> = {
+                        'Behavioral': 'behavioral',
+                        'Product Sense': 'product',
+                        'System Design': 'system-design',
+                        'Resume': 'resume',
+                      };
+                      const type = domainTypeMap[session.domain] ?? 'behavioral';
+                      const difficulty = session.difficulty.toLowerCase();
+                      const duration = session.time.replace(' min', '');
+                      // Voice-only for now. Future: const mode = selectedMode.toLowerCase();
+                      return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=voice`;
+                    })()}>
+                      <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
+                        Begin Session
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  )
                 ) : (
                   <Link to="/#pricing">
                     <Button className="bg-red-500 hover:bg-red-600 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm shadow-red-200">

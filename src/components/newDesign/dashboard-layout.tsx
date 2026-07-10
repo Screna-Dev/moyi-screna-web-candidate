@@ -24,6 +24,7 @@ import { useUserPlan } from '@/hooks/useUserPlan';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from './ui/sheet';
 import { JobApplyTab } from './job-apply-tab';
 import { ProfileTab } from './profile-tab';
+import { WidePageContainer } from './dashboard-page';
 import { getPersonalInfo } from '../../services/ProfileServices';
 import { DashboardHome } from '@/components/newDesign/dashboard-home-design';
 import {
@@ -64,8 +65,8 @@ const adminSidebarLinks = [
 // Page titles shown in the top header (serif). headerTitle prop takes precedence.
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/coaching': 'Find Your Coach',
-  '/marketplace': 'Find Your Coach',
+  '/coaching': 'Coaching',
+  '/marketplace': 'Mentorship Marketplace',
   '/mentor-details': 'Mentor Profile',
   '/interview-insights': 'InterviewPrep Note',
   '/quick-mock': 'Quick Mock',
@@ -464,7 +465,7 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
 
   const breadcrumb =
     location.pathname === '/mentor-details'
-      ? { label: 'Find Your Coach', path: '/coaching' }
+      ? { label: 'Coaching', path: '/coaching' }
       : location.pathname.startsWith('/interview-insights/') || location.pathname.startsWith('/experience/')
       ? { label: 'InterviewPrep Note', path: '/interview-insights' }
       : undefined;
@@ -499,13 +500,17 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
         {/* Profile renders the pre-redesign ProfileTab (API-connected), which self-pads via WidePageContainer. */}
         {location.pathname === '/profile' ? (
           <ProfileTab userData={userData} />
+        ) : location.pathname === '/dashboard' ? (
+          // Dashboard self-pads via the same WidePageContainer as every other
+          // ported page, so its content gutters line up with them exactly.
+          <WidePageContainer maxWidth="none" paddingTop={32}>
+            <CareerCommandCenter userData={userData} />
+          </WidePageContainer>
         ) : fullBleed ? (
           children
         ) : (
-          <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-12">
-            {location.pathname === '/dashboard' ? (
-              <CareerCommandCenter userData={userData} />
-            ) : isApplications ? (
+          <div className="w-full max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12">
+            {isApplications ? (
               <>
                 <div className="mb-8">
                   <PageHero

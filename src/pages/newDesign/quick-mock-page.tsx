@@ -28,19 +28,31 @@ const ROLE_CATEGORIES = [
 ];
 const ALL_ROLES = ROLE_CATEGORIES.flatMap((c) => c.roles);
 
-type Difficulty = 'easy' | 'medium' | 'hard';
+// Seniority level. `key` is sent to the backend as `level` and must match the backend
+// enum exactly ('Junior' | 'Intermediate' | 'Senior' | 'Staff'); its lowercase form
+// also feeds the /ai-mock `difficulty` param.
+type Level = 'Junior' | 'Intermediate' | 'Senior' | 'Staff';
 
-const DIFFICULTIES: { key: Difficulty; label: string; dots: number }[] = [
-  { key: 'easy',   label: 'Easy',   dots: 1 },
-  { key: 'medium', label: 'Medium', dots: 2 },
-  { key: 'hard',   label: 'Hard',   dots: 3 },
+const LEVELS: { key: Level; label: string; dots: number }[] = [
+  { key: 'Junior',       label: 'Junior',       dots: 1 },
+  { key: 'Intermediate', label: 'Intermediate', dots: 2 },
+  { key: 'Senior',       label: 'Senior',       dots: 3 },
+  { key: 'Staff',        label: 'Staff',        dots: 4 },
 ];
 
-// ─── Difficulty dots ──────────────────────────────────────
+// Details resolved when the user starts a Quick Mock.
+export interface QuickMockStartOptions {
+  company: string;      // '' when "Any company"
+  role: string;
+  level: Level;
+  durationMinutes: number;
+}
+
+// ─── Level dots ───────────────────────────────────────────
 function DiffDots({ filled, selected }: { filled: number; selected: boolean }) {
   return (
     <span style={{ display: 'inline-flex', gap: 3 }}>
-      {[1, 2, 3].map((i) => (
+      {[1, 2, 3, 4].map((i) => (
         <span key={i} style={{
           width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
           background: i <= filled
@@ -175,11 +187,20 @@ function SearchDropdown({
 }
 
 // ─── Quick Mock Builder ───────────────────────────────────
-function QuickMockBuilder({ onStart }: { onStart: (company: string, role: string, difficulty: Difficulty, duration: number) => void }) {
+function QuickMockBuilder({ onStart }: { onStart: (opts: QuickMockStartOptions) => void }) {
   const [company, setCompany] = useState('Any company');
   const [role, setRole] = useState('Software Engineer');
   const [duration, setDuration] = useState<5 | 10 | 15 | 30>(10);
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+  const [level, setLevel] = useState<Level>('Intermediate');
+
+  const handleStartClick = () => {
+    onStart({
+      company: company === 'Any company' ? '' : company,
+      role,
+      level,
+      durationMinutes: duration,
+    });
+  };
 
   return (
     <div style={{
@@ -235,14 +256,14 @@ function QuickMockBuilder({ onStart }: { onStart: (company: string, role: string
           </div>
         </div>
 
-        {/* Difficulty row */}
+        {/* Level row */}
         <div>
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>Difficulty</p>
-          <div role="group" aria-label="Difficulty" style={{ display: 'flex', gap: 8 }}>
-            {([...DIFFICULTIES.slice(0, 2), { key: 'advanced', label: 'Advanced', dots: 3 }, DIFFICULTIES[2]] as any[]).map((d) => {
-              const sel = difficulty === d.key;
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>Level</p>
+          <div role="group" aria-label="Level" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {LEVELS.map((l) => {
+              const sel = level === l.key;
               return (
-                <button key={d.key} onClick={() => setDifficulty(d.key)} aria-pressed={sel}
+                <button key={l.key} onClick={() => setLevel(l.key)} aria-pressed={sel}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8,
                     height: 44, padding: '0 16px', borderRadius: 12,
@@ -253,8 +274,8 @@ function QuickMockBuilder({ onStart }: { onStart: (company: string, role: string
                     cursor: 'pointer', transition: 'all 0.15s', outline: 'none',
                   }}
                 >
-                  <DiffDots filled={d.dots} selected={sel} />
-                  {d.label}
+                  <DiffDots filled={l.dots} selected={sel} />
+                  {l.label}
                 </button>
               );
             })}
@@ -270,7 +291,7 @@ function QuickMockBuilder({ onStart }: { onStart: (company: string, role: string
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'rgba(255,255,255,0.7)', margin: 0 }}>Role-specific interview questions · never generic AI prompts</p>
           </div>
           <button
-            onClick={() => onStart(company, role, difficulty, duration)}
+            onClick={handleStartClick}
             style={{
               height: 44, padding: '0 24px', borderRadius: 12,
               background: '#fff', color: '#1D4ED8',
@@ -309,17 +330,121 @@ function TargetedPracticeCard() {
   );
 }
 
+// ─── Hero banner ──────────────────────────────────────────
+function QuickMockHeroBanner() {
+  return (
+    <section
+      aria-label="Quick Mock hero"
+      className="relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(to right, #f7faff, #eef6ff 48%, #fff3e7)',
+        marginTop: 0,
+        marginLeft: -32,
+        marginRight: -32,
+        marginBottom: 28,
+      }}
+    >
+      {/* Texture motif — aria-hidden */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute h-[236px] left-0 top-0 w-[1147px]">
+          <div className="absolute inset-[-24.39%_0_-40.22%_0]">
+            <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 1147 388.484">
+              <rect fill="#FDBA74" fillOpacity="0.16" height="340" rx="28" transform="rotate(10 627 -4.43209)" width="360" x="627" y="-4.43209" />
+              <rect fill="white" fillOpacity="0.28" height="50" rx="14" transform="rotate(7 829 150.568)" width="248" x="829" y="150.568" />
+              <rect fill="#F59E0B" fillOpacity="0.18" height="18" rx="2" width="4" x="992" y="183.568" />
+              <rect fill="#A78BFA" fillOpacity="0.18" height="23" rx="2" width="4" x="1004" y="177.568" />
+              <rect fill="#3B82F6" fillOpacity="0.18" height="28" rx="2" width="4" x="1016" y="171.568" />
+              <rect fill="#F59E0B" fillOpacity="0.18" height="33" rx="2" width="4" x="1028" y="183.568" />
+              <rect fill="#3B82F6" fillOpacity="0.18" height="18" rx="2" width="4" x="1040" y="177.568" />
+              <rect fill="#A78BFA" fillOpacity="0.18" height="23" rx="2" width="4" x="1052" y="171.568" />
+              <rect fill="#F59E0B" fillOpacity="0.18" height="28" rx="2" width="4" x="1064" y="183.568" />
+              <rect fill="#A78BFA" fillOpacity="0.18" height="33" rx="2" width="4" x="1076" y="177.568" />
+              <circle cx="956" cy="188.568" r="68.25" stroke="#F59E0B" strokeOpacity="0.14" strokeWidth="1.5" />
+            </svg>
+          </div>
+        </div>
+        {/* Soft glow left */}
+        <div className="absolute h-[230px] left-[-150px] top-[96px] w-[380px]">
+          <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 380 230">
+            <ellipse cx="190" cy="115" fill="white" fillOpacity="0.42" rx="190" ry="115" />
+          </svg>
+        </div>
+        {/* Soft glow right */}
+        <div className="absolute left-[800px] size-[470px] top-[-152px]">
+          <svg className="absolute block inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 470 470">
+            <circle cx="235" cy="235" fill="white" fillOpacity="0.42" r="235" />
+          </svg>
+        </div>
+        {/* AiMockVisual */}
+        <div className="absolute h-[108px] left-[828px] top-[70px] w-[186px]">
+          <div className="absolute inset-[-16.3%_-16.99%_-42.22%_-16.99%]">
+            <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 249.2 171.2">
+              <defs>
+                <filter colorInterpolationFilters="sRGB" filterUnits="userSpaceOnUse" height="171.2" id="qm_filter0" width="249.2" x="0" y="0">
+                  <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                  <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" />
+                  <feOffset dy="14" />
+                  <feGaussianBlur stdDeviation="15.8" />
+                  <feColorMatrix type="matrix" values="0 0 0 0 0.767102 0 0 0 0 0.790478 0 0 0 0 0.833333 0 0 0 0.21 0" />
+                  <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow" />
+                  <feBlend in="SourceGraphic" in2="effect1_dropShadow" mode="normal" result="shape" />
+                </filter>
+              </defs>
+              <g filter="url(#qm_filter0)">
+                <rect fill="#EFF6FF" fillOpacity="0.58" height="108" rx="18" width="186" x="31.6" y="17.6" />
+                <circle cx="68.1" cy="43.1" fill="#2563EB" fillOpacity="0.14" r="12.5" />
+                <rect fill="#2563EB" fillOpacity="0.14" height="6" rx="3" width="136" x="55.6" y="74.6" />
+                <rect fill="#2563EB" fillOpacity="0.14" height="6" rx="3" width="102" x="55.6" y="90.6" />
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="relative flex flex-col" style={{ paddingTop: 54, paddingRight: 32, paddingBottom: 36, paddingLeft: 32, zIndex: 1 }}>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, color: '#2563eb', maxWidth: 260, lineHeight: '18px', marginBottom: 10 }}>
+          INTERVIEW PRACTICE
+        </span>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 34, fontWeight: 700, color: '#182033', lineHeight: 'normal', margin: 0, marginBottom: 14, maxWidth: 460 }}>
+          Run a focused mock
+        </h1>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: 16, fontWeight: 400, color: '#526070', margin: 0, maxWidth: 560, lineHeight: 'normal' }}>
+          Set company, role, time, and difficulty to start a practice session with clear interview context.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 // ─── Page (rendered inside DashboardLayout) ───────────────
 export function QuickMockPage() {
   const navigate = useNavigate();
 
-  const handleStart = (company: string, role: string, difficulty: Difficulty, duration: number) => {
-    navigate(`/session-confirm?session=1&company=${encodeURIComponent(company)}&role=${encodeURIComponent(role)}&difficulty=${difficulty}&duration=${duration}`);
+  // Route to the confirm page, which reviews the session and (on "Begin Session")
+  // actually calls the quick-mock endpoint — so credits are only spent once the
+  // user confirms. `difficulty` doubles as the seniority level shown on the card
+  // and is read back as the backend `level` there.
+  const handleStart = (opts: QuickMockStartOptions) => {
+    const params = new URLSearchParams({
+      quickMock: '1',
+      title: opts.role,
+      role: opts.role,
+      company: opts.company,
+      level: opts.level,
+      category: 'general',
+      focus: opts.company ? `${opts.company} interview` : opts.role,
+      difficulty: opts.level,
+      duration: String(opts.durationMinutes),
+      time: `${opts.durationMinutes} min`,
+    });
+    navigate(`/session-confirm?${params.toString()}`);
   };
 
   return (
     <DashboardLayout headerTitle="Quick Mock" fullBleed>
       <WidePageContainer maxWidth="none">
+        <QuickMockHeroBanner />
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(320px,1fr)]" style={{ gap: '24px', alignItems: 'start' }}>
           <div className="flex flex-col min-w-0">
             <QuickMockBuilder onStart={handleStart} />
