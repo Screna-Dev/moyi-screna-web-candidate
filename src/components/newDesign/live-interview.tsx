@@ -118,7 +118,6 @@ export function LiveInterview({
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [hintRevealed, setHintRevealed] = useState(false);
-  const [questionNum, setQuestionNum] = useState(1);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -261,7 +260,6 @@ export function LiveInterview({
           ...prev,
           { id: Date.now(), role, text: message.text!, timestamp: formatTime(elapsed) },
         ]);
-        if (role === 'ai') setQuestionNum((q) => q + 1);
       }
     },
     onError: (err: unknown) => {
@@ -348,15 +346,6 @@ export function LiveInterview({
       ]);
     }
 
-    // Track question number (each AI speaking with text = new question context)
-    if (step.role === 'ai') {
-      setQuestionNum((prev) => {
-        if (scriptIdx === 0) return 1;
-        if (step.text && step.text.includes('tell me')) return prev + 1;
-        return prev;
-      });
-    }
-
     const timer = setTimeout(() => {
       setScriptIdx((i) => i + 1);
     }, step.duration);
@@ -404,13 +393,8 @@ export function LiveInterview({
       {/* ── Top bar: progress + timer + question ── */}
       <div className="relative z-10 px-6 pt-5 pb-2">
         <div className="max-w-lg mx-auto">
-          {/* Question + timer row */}
-          <div className="flex items-center justify-between mb-3">
-            <span className={`text-[11px] tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              Question {questionNum}
-              <span className={`mx-1 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>·</span>
-              <span className="capitalize">{config.type?.replace('-', ' ') || 'Behavioral'}</span>
-            </span>
+          {/* Timer row */}
+          <div className="flex items-center justify-end mb-3">
             <div className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               <Clock className="w-3 h-3" />
               <span className="tabular-nums">{formatTime(elapsed)}</span>

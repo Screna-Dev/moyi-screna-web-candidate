@@ -186,32 +186,38 @@ export function CompanyDetailPage() {
     recentPostCount?: number;
     latestUpdatedAt?: string | null;
   } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
+    setProfileLoading(true);
+    setProfile(null);
     getCompanyProfile(fallbackCompany.name)
       .then((res) => {
         const data = res.data?.data ?? res.data;
         if (!cancelled && data) setProfile(data);
       })
-      .catch(() => { /* keep fallback */ });
+      .catch(() => { /* leave profile null — no mock fallback for stats */ })
+      .finally(() => { if (!cancelled) setProfileLoading(false); });
     return () => { cancelled = true; };
   }, [fallbackCompany.name]);
 
+  // `name` is the real, route-derived company identity (also used for API
+  // lookups), so it always resolves. `category` and `description` are shown as a
+  // loading skeleton until the profile API resolves and are never backfilled
+  // with curated/mock copy — they're null when the company has no profile data.
   const company = useMemo(() => ({
-    ...fallbackCompany,
     name: profile?.displayName || fallbackCompany.name,
-    category: profile?.category || fallbackCompany.category,
-    description: profile?.summary || fallbackCompany.description,
+    category: profile?.category ?? null,
+    description: profile?.summary ?? null,
   }), [fallbackCompany, profile]);
 
-  // Header stats, sourced from GET /community/companies/profile once loaded
-  // (published-post counts). Until the profile resolves we show the curated
-  // fallback so the header isn't empty. `?? ` keeps a real 0 from the API.
-  const notesCount = profile?.postCount ?? fallbackCompany.totalNotes;
-  const recentCount = profile?.recentPostCount ?? fallbackCompany.last30Days;
-  const updatedLabel = profile
-    ? formatRelativeTime(profile.latestUpdatedAt) // null when the company has no posts
-    : fallbackCompany.updatedAgo;
+  // Header stats, sourced solely from GET /community/companies/profile
+  // (published-post counts). We show a loading skeleton until it resolves and
+  // never fall back to curated/mock numbers — a company with no posts shows a
+  // real 0. `?? 0` keeps a real 0 from the API.
+  const notesCount = profile?.postCount ?? 0;
+  const recentCount = profile?.recentPostCount ?? 0;
+  const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [sortOpen, setSortOpen] = useState(false);
@@ -259,6 +265,10 @@ export function CompanyDetailPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // True while a *reset* fetch is in flight (sort/filter/search change). We show
+  // the loading state and hide the previous results instead of leaving stale
+  // posts on screen. Append fetches ("load more") don't set this.
+  const [isReloading, setIsReloading] = useState(false);
 
   // Client-side category filter over already-loaded posts (server search has no
   // category param). Question categories are stored as enums, so match on the
@@ -385,6 +395,7 @@ export function CompanyDetailPage() {
 
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
+    if (reset) setIsReloading(true);
     setError(null);
     try {
       const params: any = {
@@ -416,12 +427,20 @@ export function CompanyDetailPage() {
     } finally {
       setLoading(false);
       setIsInitialLoading(false);
+      setIsReloading(false);
     }
   }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions]);
 
   useEffect(() => {
+    // Hold the first fetch until the profile (canonical `company.name`) and the
+    // plan/auth tier (`isLowTier`) have both resolved. Otherwise the query fires
+    // once with the route-derived fallback name / default tier — returning wrong
+    // data — and then again with the correct values. `isInitialLoading` keeps the
+    // loading state on screen while we wait. Once settled, filter/sort changes
+    // still refetch normally (fetchPosts identity changes).
+    if (profileLoading || isPlanLoading) return;
     fetchPosts(0, true);
-  }, [fetchPosts]);
+  }, [fetchPosts, profileLoading, isPlanLoading]);
 
   const handleLoadMore = () => {
     if (!loading && hasMore) fetchPosts(page + 1, false);
@@ -460,29 +479,49 @@ export function CompanyDetailPage() {
                   <h1 className="text-[34px] md:text-[40px] font-semibold tracking-tight leading-none text-[hsl(222,22%,15%)] font-[family-name:var(--font-serif)]">
                     {company.name}
                   </h1>
-                  <span className="rounded-full bg-[hsl(221,91%,60%)]/10 px-3 py-1 text-xs font-medium text-[hsl(221,91%,60%)]">
-                    {company.category}
-                  </span>
+                  {profileLoading ? (
+                    <span className="h-6 w-24 animate-pulse rounded-full bg-[hsl(222,12%,88%)]" aria-label="Loading category" aria-busy="true" />
+                  ) : company.category ? (
+                    <span className="rounded-full bg-[hsl(221,91%,60%)]/10 px-3 py-1 text-xs font-medium text-[hsl(221,91%,60%)]">
+                      {company.category}
+                    </span>
+                  ) : null}
                 </div>
-                <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
-                  {company.description}
-                </p>
+                {profileLoading ? (
+                  <div className="mt-3 max-w-2xl space-y-2" aria-label="Loading summary" aria-busy="true">
+                    <span className="block h-4 w-full animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                    <span className="block h-4 w-4/5 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                  </div>
+                ) : company.description ? (
+                  <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
+                    {company.description}
+                  </p>
+                ) : null}
 
                 {/* Stats — published-post counts from the profile API */}
                 <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[hsl(222,12%,45%)]">
-                  <span className="inline-flex items-center gap-1.5">
-                    <FileText className="size-4 text-[hsl(222,12%,55%)]" />
-                    <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
-                    total notes
-                  </span>
-                  {recentCount > 0 && (
-                    <span className="inline-flex items-center gap-1.5 text-[hsl(160,60%,38%)]">
-                      <TrendingUp className="size-4" />
-                      <span className="font-semibold">+{recentCount.toLocaleString()}</span>
-                      last 30 days
+                  {profileLoading ? (
+                    <span className="inline-flex items-center gap-2" aria-label="Loading stats" aria-busy="true">
+                      <span className="h-4 w-28 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                      <span className="h-4 w-24 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
                     </span>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1.5">
+                        <FileText className="size-4 text-[hsl(222,12%,55%)]" />
+                        <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
+                        total notes
+                      </span>
+                      {recentCount > 0 && (
+                        <span className="inline-flex items-center gap-1.5 text-[hsl(160,60%,38%)]">
+                          <TrendingUp className="size-4" />
+                          <span className="font-semibold">+{recentCount.toLocaleString()}</span>
+                          last 30 days
+                        </span>
+                      )}
+                      {updatedLabel && <span>Updated {updatedLabel}</span>}
+                    </>
                   )}
-                  {updatedLabel && <span>Updated {updatedLabel}</span>}
                 </div>
               </div>
             </div>
@@ -596,8 +635,9 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Initial Loading */}
-              {isInitialLoading && (
+              {/* Loading — initial load or a reset fetch (sort/filter/search).
+                  Shown instead of leaving stale posts on screen. */}
+              {(isInitialLoading || isReloading) && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                   <p className="mt-2 text-[hsl(222,12%,45%)]">Loading experiences...</p>
@@ -640,9 +680,9 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Posts */}
+              {/* Posts — hidden during a reset fetch so stale results aren't shown */}
               <div className="space-y-4">
-                {(isLowTier ? visiblePosts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : visiblePosts).map((post, i) => {
+                {!isReloading && (isLowTier ? visiblePosts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : visiblePosts).map((post, i) => {
                   // Free/Basic users can only open the 2 newest posts per company;
                   // the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
                   const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
@@ -828,7 +868,7 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {loading && posts.length > 0 && (
+              {loading && !isReloading && posts.length > 0 && (
                 <div className="text-center py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                 </div>

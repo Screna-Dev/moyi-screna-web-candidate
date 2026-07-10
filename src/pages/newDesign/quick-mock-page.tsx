@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { WidePageContainer } from '@/components/newDesign/dashboard-page';
-import { BookOpen, Building2, Briefcase, Clock, ArrowRight } from 'lucide-react';
+import { BookOpen, Building2, Briefcase, Clock, ArrowRight, Coins, AlertCircle, Loader2 } from 'lucide-react';
+import { getPostOptions } from '@/services/CommunityService';
+import { createQuickMockInterview, parseQuickMockError } from '@/services/InterviewServices';
 
 // ============================================================================
 // Quick Mock entry screen — ported from the new design. Rendered inside
@@ -26,7 +28,12 @@ const ROLE_CATEGORIES = [
   { label: 'Design',      roles: ['Designer'] },
   { label: 'Business / Other', roles: ['Business Analyst'] },
 ];
-const ALL_ROLES = ROLE_CATEGORIES.flatMap((c) => c.roles);
+
+// Quick Mock is audio-only and bills 1 credit per minute (mirrors the session-confirm rate).
+const CREDITS_PER_MIN = 1;
+
+// "Any company" is a synthetic first option; sent to the backend as '' (no company filter).
+const ANY_COMPANY = 'Any company';
 
 // Seniority level. `key` is sent to the backend as `level` and must match the backend
 // enum exactly ('Junior' | 'Intermediate' | 'Senior' | 'Staff'); its lowercase form
@@ -187,15 +194,54 @@ function SearchDropdown({
 }
 
 // ─── Quick Mock Builder ───────────────────────────────────
-function QuickMockBuilder({ onStart }: { onStart: (opts: QuickMockStartOptions) => void }) {
-  const [company, setCompany] = useState('Any company');
+function QuickMockBuilder({
+  onStart,
+  starting,
+  startError,
+}: {
+  onStart: (opts: QuickMockStartOptions) => void;
+  starting: boolean;
+  startError: string | null;
+}) {
+  const [company, setCompany] = useState(ANY_COMPANY);
   const [role, setRole] = useState('Software Engineer');
   const [duration, setDuration] = useState<5 | 10 | 15 | 30>(10);
   const [level, setLevel] = useState<Level>('Intermediate');
 
+  // Company / role option lists. Seeded with the hardcoded fallbacks, then
+  // overwritten by GET /community/posts/options once it resolves. The API gives
+  // companies as a flat string array and roles as { category, options } groups.
+  const [companyOptions, setCompanyOptions] = useState<string[]>(ALL_COMPANIES);
+  const [roleCategories, setRoleCategories] = useState(ROLE_CATEGORIES);
+
+  useEffect(() => {
+    let cancelled = false;
+    type Group = { category: string; options: string[] };
+    getPostOptions()
+      .then((res) => {
+        const data = res?.data?.data ?? res?.data;
+        if (!data || cancelled) return;
+        const companies: string[] = Array.isArray(data.companies) ? data.companies : [];
+        const roleGroups: Group[] = Array.isArray(data.roles) ? data.roles : [];
+        if (companies.length) setCompanyOptions(companies);
+        if (roleGroups.length) {
+          setRoleCategories(roleGroups.map((g) => ({ label: g.category, roles: g.options ?? [] })));
+        }
+      })
+      .catch(() => { /* keep hardcoded fallbacks */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // "Any company" always leads the company list so users can start unfiltered.
+  const companyDropdownOptions = [ANY_COMPANY, ...companyOptions.filter((c) => c !== ANY_COMPANY)];
+  const allRoles = [...new Set(roleCategories.flatMap((c) => c.roles))];
+
+  const creditCost = duration * CREDITS_PER_MIN;
+
   const handleStartClick = () => {
+    if (starting) return;
     onStart({
-      company: company === 'Any company' ? '' : company,
+      company: company === ANY_COMPANY ? '' : company,
       role,
       level,
       durationMinutes: duration,
@@ -223,13 +269,13 @@ function QuickMockBuilder({ onStart }: { onStart: (opts: QuickMockStartOptions) 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <SearchDropdown
             value={company} onChange={setCompany}
-            options={ALL_COMPANIES} categories={COMPANY_CATEGORIES.map((c) => ({ label: c.label, items: c.companies }))}
+            options={companyDropdownOptions}
             label="Company" placeholder="Any company"
             icon={<Building2 style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.7)' }} />}
           />
           <SearchDropdown
             value={role} onChange={setRole}
-            options={ALL_ROLES} categories={ROLE_CATEGORIES.map((c) => ({ label: c.label, items: c.roles }))}
+            options={allRoles} categories={roleCategories.map((c) => ({ label: c.label, items: c.roles }))}
             label="Role" placeholder="Role"
             icon={<Briefcase style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.7)' }} />}
           />
@@ -284,27 +330,50 @@ function QuickMockBuilder({ onStart }: { onStart: (opts: QuickMockStartOptions) 
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.15)', margin: '4px 0' }} />
 
+        {/* Start error (e.g. 422 not_enough_insights / validation / insufficient credits) */}
+        {startError && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.28)' }}>
+            <AlertCircle style={{ width: 16, height: 16, color: '#fff', flexShrink: 0, marginTop: 1 }} />
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: '#fff', margin: 0, whiteSpace: 'pre-line' }}>{startError}</p>
+          </div>
+        )}
+
         {/* Bottom row: Text and CTA */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', marginBottom: 4 }}>Real question bank</p>
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'rgba(255,255,255,0.7)', margin: 0 }}>Role-specific interview questions · never generic AI prompts</p>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', margin: '6px 0 0' }}>
+              <Coins style={{ width: 14, height: 14, color: '#FDBA74' }} />
+              {creditCost} credit{creditCost !== 1 ? 's' : ''} will be deducted from your plan ({duration} min · {CREDITS_PER_MIN}/min)
+            </p>
           </div>
           <button
             onClick={handleStartClick}
+            disabled={starting}
             style={{
               height: 44, padding: '0 24px', borderRadius: 12,
               background: '#fff', color: '#1D4ED8',
               fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 700,
-              border: 'none', cursor: 'pointer',
+              border: 'none', cursor: starting ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', gap: 8,
               whiteSpace: 'nowrap', flexShrink: 0,
               boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              opacity: starting ? 0.7 : 1,
               transition: 'opacity 0.15s',
             }}
           >
-            Start AI Mock
-            <ArrowRight style={{ width: 16, height: 16 }} />
+            {starting ? (
+              <>
+                Starting…
+                <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
+              </>
+            ) : (
+              <>
+                Start AI Mock
+                <ArrowRight style={{ width: 16, height: 16 }} />
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -420,25 +489,48 @@ function QuickMockHeroBanner() {
 // ─── Page (rendered inside DashboardLayout) ───────────────
 export function QuickMockPage() {
   const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  // Route to the confirm page, which reviews the session and (on "Begin Session")
-  // actually calls the quick-mock endpoint — so credits are only spent once the
-  // user confirms. `difficulty` doubles as the seniority level shown on the card
-  // and is read back as the backend `level` there.
-  const handleStart = (opts: QuickMockStartOptions) => {
-    const params = new URLSearchParams({
-      quickMock: '1',
-      title: opts.role,
-      role: opts.role,
-      company: opts.company,
-      level: opts.level,
-      category: 'general',
-      focus: opts.company ? `${opts.company} interview` : opts.role,
-      difficulty: opts.level,
-      duration: String(opts.durationMinutes),
-      time: `${opts.durationMinutes} min`,
-    });
-    navigate(`/session-confirm?${params.toString()}`);
+  // Start the Quick Mock immediately — no confirm step. Create the session,
+  // then hand its LiveKit credentials to /ai-mock via navigation state so it
+  // joins the room directly. Quick Mock is audio-only; the backend deducts
+  // credit on create.
+  const handleStart = async (opts: QuickMockStartOptions) => {
+    if (starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const res = await createQuickMockInterview({
+        company: opts.company,
+        role: opts.role,
+        level: opts.level,
+        durationMinutes: opts.durationMinutes,
+      });
+      const d = res.data?.data ?? res.data;
+      const url = d?.url ?? d?.liveKitUrl;
+      const token = d?.token ?? d?.liveKitToken;
+      if (!url || !token) {
+        throw new Error('Session did not return valid credentials. Please try again.');
+      }
+      const prefetchedSession = {
+        liveKitUrl: url,
+        liveKitToken: token,
+        maxInterviewDuration: d?.max_interview_duration ?? null,
+      };
+      const params = new URLSearchParams({
+        interviewId: String(d?.session_id ?? ''),
+        difficulty: String(opts.level).toLowerCase(),
+        duration: String(opts.durationMinutes),
+        mode: 'voice',
+      });
+      navigate(`/ai-mock?${params.toString()}`, { state: { prefetchedSession } });
+    } catch (err) {
+      setStartError(parseQuickMockError(err));
+      setStarting(false);
+    }
+    // On success we navigate away; keep `starting` true so the button stays
+    // disabled through the route transition.
   };
 
   return (
@@ -447,7 +539,7 @@ export function QuickMockPage() {
         <QuickMockHeroBanner />
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(320px,1fr)]" style={{ gap: '24px', alignItems: 'start' }}>
           <div className="flex flex-col min-w-0">
-            <QuickMockBuilder onStart={handleStart} />
+            <QuickMockBuilder onStart={handleStart} starting={starting} startError={startError} />
           </div>
           <div className="flex flex-col">
             <TargetedPracticeCard />
