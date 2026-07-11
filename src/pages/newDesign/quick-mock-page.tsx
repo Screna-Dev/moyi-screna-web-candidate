@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { WidePageContainer } from '@/components/newDesign/dashboard-page';
 import { BookOpen, Building2, Briefcase, Clock, ArrowRight, Coins, AlertCircle, Loader2 } from 'lucide-react';
-import { getPostOptions } from '@/services/CommunityService';
+import { getPostOptions, getCommunityCompanies } from '@/services/CommunityService';
 import { createQuickMockInterview, parseQuickMockError } from '@/services/InterviewServices';
 
 // ============================================================================
@@ -208,11 +208,23 @@ function QuickMockBuilder({
   const [duration, setDuration] = useState<5 | 10 | 15 | 30>(10);
   const [level, setLevel] = useState<Level>('Intermediate');
 
-  // Company / role option lists. Seeded with the hardcoded fallbacks, then
-  // overwritten by GET /community/posts/options once it resolves. The API gives
-  // companies as a flat string array and roles as { category, options } groups.
+  // Company / role option lists, seeded with the hardcoded fallbacks. Companies
+  // come from GET /community/companies (a flat string array); roles come from
+  // GET /community/posts/options as { category, options } groups.
   const [companyOptions, setCompanyOptions] = useState<string[]>(ALL_COMPANIES);
   const [roleCategories, setRoleCategories] = useState(ROLE_CATEGORIES);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCommunityCompanies()
+      .then((res) => {
+        const data = res?.data?.data ?? res?.data;
+        const companies: string[] = Array.isArray(data) ? data : [];
+        if (companies.length && !cancelled) setCompanyOptions(companies);
+      })
+      .catch(() => { /* keep hardcoded company fallbacks */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,14 +233,12 @@ function QuickMockBuilder({
       .then((res) => {
         const data = res?.data?.data ?? res?.data;
         if (!data || cancelled) return;
-        const companies: string[] = Array.isArray(data.companies) ? data.companies : [];
         const roleGroups: Group[] = Array.isArray(data.roles) ? data.roles : [];
-        if (companies.length) setCompanyOptions(companies);
         if (roleGroups.length) {
           setRoleCategories(roleGroups.map((g) => ({ label: g.category, roles: g.options ?? [] })));
         }
       })
-      .catch(() => { /* keep hardcoded fallbacks */ });
+      .catch(() => { /* keep hardcoded role fallbacks */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -345,7 +355,7 @@ function QuickMockBuilder({
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'rgba(255,255,255,0.7)', margin: 0 }}>Role-specific interview questions · never generic AI prompts</p>
             <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', margin: '6px 0 0' }}>
               <Coins style={{ width: 14, height: 14, color: '#FDBA74' }} />
-              {creditCost} credit{creditCost !== 1 ? 's' : ''} will be deducted from your plan ({duration} min · {CREDITS_PER_MIN}/min)
+              To withhold {creditCost} credit{creditCost !== 1 ? 's' : ''} ({duration} min · {CREDITS_PER_MIN}/min)
             </p>
           </div>
           <button
