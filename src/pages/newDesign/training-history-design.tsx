@@ -1383,7 +1383,7 @@ export function TrainingHistoryPage() {
 
   return (
     <DashboardLayout headerTitle="My Sessions" fullBleed>
-      <WidePageContainer maxWidth="none">
+      <WidePageContainer maxWidth="none" paddingTop={32}>
       <div className="space-y-6">
 
         {/* ── Demo plan switcher — remove in production ── */}

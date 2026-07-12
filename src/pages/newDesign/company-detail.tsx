@@ -13,11 +13,14 @@ import {
   Bookmark,
   Share2,
   Lock,
+  FileText,
+  TrendingUp,
+  X,
+  CheckCircle2,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
-import { toRoleEnum, toRoundEnum, toCategoryEnum } from '../../utils/communityEnums';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -27,7 +30,7 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
-import { RoleFilter, RoundFilter, CategoryFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
+import { RoleFilter, RoundFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -111,6 +114,27 @@ const COMPANY_META: Record<string, CompanyMeta> = {
   perplexity: { name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.', totalNotes: 86, last30Days: 20, updatedAgo: '2d ago' },
 };
 
+// Format an ISO-8601 UTC timestamp as a locale-relative "x ago" string.
+// Returns null for missing/invalid input so callers can hide the label
+// (the profile API sends latestUpdatedAt = null when a company has no posts).
+function formatRelativeTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo} month${mo === 1 ? '' : 's'} ago`;
+  const yr = Math.floor(mo / 12);
+  return `${yr} year${yr === 1 ? '' : 's'} ago`;
+}
+
 function titleize(id: string) {
   return id
     .split('-')
@@ -130,6 +154,82 @@ function resolveCompany(companyId: string | undefined): CompanyMeta {
     last30Days: 0,
     updatedAgo: 'recently',
   };
+}
+
+// ─── Upgrade modal ──────────────────────────────────────────────────────────
+// Shown to Free/Basic users when they try to apply a filter or sort. Replaces the
+// old confusing "click a locked chip → jump straight to pricing" behavior: the
+// filter popovers now open normally and this modal explains the gate on Apply.
+function UpgradeModal({
+  open,
+  count,
+  onClose,
+  onUpgrade,
+}: {
+  open: boolean;
+  count: number;
+  onClose: () => void;
+  onUpgrade: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[hsl(222,22%,15%)]/40 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-[420px] rounded-2xl bg-white p-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 text-[hsl(222,12%,55%)] transition-colors hover:text-[hsl(222,22%,15%)]"
+        >
+          <X className="size-5" />
+        </button>
+
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-5 flex size-14 items-center justify-center rounded-full bg-[hsl(221,91%,60%)]/10">
+            <Lock className="size-6 text-[hsl(221,91%,60%)]" />
+          </div>
+          <h3 className="text-[24px] font-semibold leading-tight text-[hsl(222,22%,15%)] font-[family-name:var(--font-serif)]">
+            {count > 0 ? `Unlock all ${count.toLocaleString()} experiences` : 'Unlock all experiences'}
+          </h3>
+          <p className="mt-2 text-sm text-[hsl(222,12%,45%)]">
+            Upgrade to Advanced for full access to every post.
+          </p>
+        </div>
+
+        <ul className="mt-6 space-y-3">
+          {['Unlimited access to every post', 'Full search, filters & sorting', 'New experiences daily'].map((item) => (
+            <li key={item} className="flex items-center gap-3 text-sm text-[hsl(222,22%,25%)]">
+              <CheckCircle2 className="size-5 shrink-0 text-[hsl(221,91%,60%)]" />
+              {item}
+            </li>
+          ))}
+        </ul>
+
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="mt-7 w-full rounded-xl bg-[hsl(221,91%,60%)] py-3 text-sm font-semibold text-white transition-colors hover:bg-[hsl(221,91%,50%)]"
+        >
+          Upgrade to Advanced
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-3 w-full text-center text-sm font-medium text-[hsl(222,12%,45%)] transition-colors hover:text-[hsl(222,22%,15%)]"
+        >
+          Maybe later
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function CompanyDetailPage() {
@@ -155,27 +255,51 @@ export function CompanyDetailPage() {
 
   // Real category + summary from GET /community/companies/profile (looked up by
   // display name); falls back to the resolved/curated values until it loads.
-  const [profile, setProfile] = useState<{ displayName?: string; category?: string; summary?: string } | null>(null);
+  const [profile, setProfile] = useState<{
+    displayName?: string;
+    category?: string;
+    summary?: string;
+    postCount?: number;
+    recentPostCount?: number;
+    latestUpdatedAt?: string | null;
+  } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
+    setProfileLoading(true);
+    setProfile(null);
     getCompanyProfile(fallbackCompany.name)
       .then((res) => {
         const data = res.data?.data ?? res.data;
         if (!cancelled && data) setProfile(data);
       })
-      .catch(() => { /* keep fallback */ });
+      .catch(() => { /* leave profile null — no mock fallback for stats */ })
+      .finally(() => { if (!cancelled) setProfileLoading(false); });
     return () => { cancelled = true; };
   }, [fallbackCompany.name]);
 
+  // `name` is the real, route-derived company identity (also used for API
+  // lookups), so it always resolves. `category` and `description` are shown as a
+  // loading skeleton until the profile API resolves and are never backfilled
+  // with curated/mock copy — they're null when the company has no profile data.
   const company = useMemo(() => ({
-    ...fallbackCompany,
     name: profile?.displayName || fallbackCompany.name,
-    category: profile?.category || fallbackCompany.category,
-    description: profile?.summary || fallbackCompany.description,
+    category: profile?.category ?? null,
+    description: profile?.summary ?? null,
   }), [fallbackCompany, profile]);
+
+  // Header stats, sourced solely from GET /community/companies/profile
+  // (published-post counts). We show a loading skeleton until it resolves and
+  // never fall back to curated/mock numbers — a company with no posts shows a
+  // real 0. `?? 0` keeps a real 0 from the API.
+  const notesCount = profile?.postCount ?? 0;
+  const recentCount = profile?.recentPostCount ?? 0;
+  const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
   const [sortOpen, setSortOpen] = useState(false);
+  // Soft-paywall modal for Free/Basic users when they apply a filter or sort.
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
@@ -185,16 +309,12 @@ export function CompanyDetailPage() {
   type OptionGroup = { category: string; options: string[] };
   const [roleGroups, setRoleGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [roundGroups, setRoundGroups] = useState<OptionGroup[] | undefined>(undefined);
-  const [categoryGroups, setCategoryGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [filterRole, setFilterRole] = useState('');
   const [filterRound, setFilterRound] = useState('');
   // Level → search `level` param (raw label, matching create-post); Time →
   // search `time` param (via TIME_TO_API enum).
   const [filterLevel, setFilterLevel] = useState('');
   const [filterTime, setFilterTime] = useState('');
-  // Category isn't a /community/posts/search param, so it filters loaded posts
-  // client-side (by matching each post's question categories).
-  const [filterCategory, setFilterCategory] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -204,10 +324,8 @@ export function CompanyDetailPage() {
         if (!data || cancelled) return;
         const roles: OptionGroup[] = Array.isArray(data.roles) ? data.roles : [];
         const rounds: OptionGroup[] = Array.isArray(data.rounds) ? data.rounds : [];
-        const categories: OptionGroup[] = Array.isArray(data.categories) ? data.categories : [];
         if (roles.length) setRoleGroups(roles.map(g => ({ category: g.category, options: g.options ?? [] })));
         if (rounds.length) setRoundGroups(rounds.map(g => ({ category: g.category, options: g.options ?? [] })));
-        if (categories.length) setCategoryGroups(categories.map(g => ({ category: g.category, options: g.options ?? [] })));
       })
       .catch(() => { /* filters fall back to their hardcoded options */ });
     return () => { cancelled = true; };
@@ -220,17 +338,10 @@ export function CompanyDetailPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-
-  // Client-side category filter over already-loaded posts (server search has no
-  // category param). Question categories are stored as enums, so match on the
-  // enum; also accept the raw label as a fallback.
-  const visiblePosts = useMemo(() => {
-    if (!filterCategory) return posts;
-    const enumVal = toCategoryEnum(filterCategory);
-    return posts.filter(p =>
-      (p.questions || []).some(qn => (qn.categories || []).some(c => c === enumVal || c === filterCategory))
-    );
-  }, [posts, filterCategory]);
+  // True while a *reset* fetch is in flight (sort/filter/search change). We show
+  // the loading state and hide the previous results instead of leaving stale
+  // posts on screen. Append fetches ("load more") don't set this.
+  const [isReloading, setIsReloading] = useState(false);
 
   // interview_notes_browsed —— 进入公司详情页（每次进入上报一次）
   useEffect(() => {
@@ -346,6 +457,7 @@ export function CompanyDetailPage() {
 
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
+    if (reset) setIsReloading(true);
     setError(null);
     try {
       const params: any = {
@@ -354,8 +466,8 @@ export function CompanyDetailPage() {
         company: company.name,
       };
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
-      if (filterRole) params.role = toRoleEnum(filterRole);
-      if (filterRound) params.round = toRoundEnum(filterRound);
+      if (filterRole) params.role = filterRole;
+      if (filterRound) params.round = filterRound;
       if (filterLevel) params.level = filterLevel;
       if (filterTime) params.time = TIME_TO_API[filterTime];
 
@@ -377,12 +489,20 @@ export function CompanyDetailPage() {
     } finally {
       setLoading(false);
       setIsInitialLoading(false);
+      setIsReloading(false);
     }
   }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions]);
 
   useEffect(() => {
+    // Hold the first fetch until the profile (canonical `company.name`) and the
+    // plan/auth tier (`isLowTier`) have both resolved. Otherwise the query fires
+    // once with the route-derived fallback name / default tier — returning wrong
+    // data — and then again with the correct values. `isInitialLoading` keeps the
+    // loading state on screen while we wait. Once settled, filter/sort changes
+    // still refetch normally (fetchPosts identity changes).
+    if (profileLoading || isPlanLoading) return;
     fetchPosts(0, true);
-  }, [fetchPosts]);
+  }, [fetchPosts, profileLoading, isPlanLoading]);
 
   const handleLoadMore = () => {
     if (!loading && hasMore) fetchPosts(page + 1, false);
@@ -421,13 +541,50 @@ export function CompanyDetailPage() {
                   <h1 className="text-[34px] md:text-[40px] font-semibold tracking-tight leading-none text-[hsl(222,22%,15%)] font-[family-name:var(--font-serif)]">
                     {company.name}
                   </h1>
-                  <span className="rounded-full bg-[hsl(221,91%,60%)]/10 px-3 py-1 text-xs font-medium text-[hsl(221,91%,60%)]">
-                    {company.category}
-                  </span>
+                  {profileLoading ? (
+                    <span className="h-6 w-24 animate-pulse rounded-full bg-[hsl(222,12%,88%)]" aria-label="Loading category" aria-busy="true" />
+                  ) : company.category ? (
+                    <span className="rounded-full bg-[hsl(221,91%,60%)]/10 px-3 py-1 text-xs font-medium text-[hsl(221,91%,60%)]">
+                      {company.category}
+                    </span>
+                  ) : null}
                 </div>
-                <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
-                  {company.description}
-                </p>
+                {profileLoading ? (
+                  <div className="mt-3 max-w-2xl space-y-2" aria-label="Loading summary" aria-busy="true">
+                    <span className="block h-4 w-full animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                    <span className="block h-4 w-4/5 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                  </div>
+                ) : company.description ? (
+                  <p className="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">
+                    {company.description}
+                  </p>
+                ) : null}
+
+                {/* Stats — published-post counts from the profile API */}
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[hsl(222,12%,45%)]">
+                  {profileLoading ? (
+                    <span className="inline-flex items-center gap-2" aria-label="Loading stats" aria-busy="true">
+                      <span className="h-4 w-28 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                      <span className="h-4 w-24 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
+                    </span>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1.5">
+                        <FileText className="size-4 text-[hsl(222,12%,55%)]" />
+                        <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
+                        total notes
+                      </span>
+                      {recentCount > 0 && (
+                        <span className="inline-flex items-center gap-1.5 text-[hsl(160,60%,38%)]">
+                          <TrendingUp className="size-4" />
+                          <span className="font-semibold">+{recentCount.toLocaleString()}</span>
+                          last 30 days
+                        </span>
+                      )}
+                      {updatedLabel && <span>Updated {updatedLabel}</span>}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -450,16 +607,17 @@ export function CompanyDetailPage() {
             <div className="space-y-6 min-w-0">
               {/* Toolbar — sort & filters. For low-tier users the backend ignores
                   every search param except `company` (forces NEWEST + page 0), so
-                  instead of hiding the controls we render them locked: each chip
-                  and the sort button show a lock and route to pricing on click. */}
+                  the controls render locked: each chip and the sort button show a
+                  lock, and clicking any of them opens the upgrade modal (instead of
+                  bouncing the user straight to pricing). */}
               {isLowTier ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    {['Role', 'Round', 'Level', 'Category', 'Time'].map(label => (
+                    {['Role', 'Round', 'Level', 'Time'].map(label => (
                       <button
                         key={label}
                         type="button"
-                        onClick={() => navigate('/#pricing')}
+                        onClick={() => setUpgradeOpen(true)}
                         title="Upgrade to Advanced to filter"
                         className="flex h-[32px] items-center gap-[6px] whitespace-nowrap rounded-full border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] px-3 text-[12px] font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
                       >
@@ -470,7 +628,7 @@ export function CompanyDetailPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => navigate('/#pricing')}
+                    onClick={() => setUpgradeOpen(true)}
                     title="Upgrade to Advanced to sort"
                     className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] transition-colors hover:text-[hsl(222,22%,15%)]"
                   >
@@ -484,7 +642,6 @@ export function CompanyDetailPage() {
                     <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
                     <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
                     <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
-                    <CategoryFilter singleSelect groups={categoryGroups} onApply={sel => setFilterCategory(sel[0] || '')} />
                     <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />
                   </div>
                   <div className="relative">
@@ -540,8 +697,9 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Initial Loading */}
-              {isInitialLoading && (
+              {/* Loading — initial load or a reset fetch (sort/filter/search).
+                  Shown instead of leaving stale posts on screen. */}
+              {(isInitialLoading || isReloading) && (
                 <div className="text-center py-20 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                   <p className="mt-2 text-[hsl(222,12%,45%)]">Loading experiences...</p>
@@ -555,18 +713,6 @@ export function CompanyDetailPage() {
                   <button onClick={() => fetchPosts(0, true)} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">
                     Try again
                   </button>
-                </div>
-              )}
-
-              {/* Empty — no posts match the active category (client-side filter) */}
-              {!loading && !error && !isInitialLoading && posts.length > 0 && visiblePosts.length === 0 && (
-                <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
-                  <p className="text-[hsl(222,12%,45%)]">No loaded experiences match “{filterCategory}”.</p>
-                  {hasMore && (
-                    <button onClick={() => fetchPosts(page + 1, false)} className="mt-2 text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">
-                      Load more to search further
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -584,9 +730,9 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Posts */}
+              {/* Posts — hidden during a reset fetch so stale results aren't shown */}
               <div className="space-y-4">
-                {(isLowTier ? visiblePosts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : visiblePosts).map((post, i) => {
+                {!isReloading && (isLowTier ? posts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : posts).map((post, i) => {
                   // Free/Basic users can only open the 2 newest posts per company;
                   // the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
                   const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
@@ -772,7 +918,7 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {loading && posts.length > 0 && (
+              {loading && !isReloading && posts.length > 0 && (
                 <div className="text-center py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-[hsl(221,91%,60%)] mx-auto" />
                 </div>
@@ -824,6 +970,13 @@ export function CompanyDetailPage() {
           </div>
         </div>
       </div>
+
+      <UpgradeModal
+        open={upgradeOpen}
+        count={notesCount}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgrade={() => { setUpgradeOpen(false); navigate('/#pricing'); }}
+      />
     </DashboardLayout>
   );
 }

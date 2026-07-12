@@ -14,6 +14,14 @@ import imgLargeEnt from "@/assets/newDesign/cat-large-ent.png";
 import imgMidSized from "@/assets/newDesign/cat-mid-sized.png";
 import imgSmall from "@/assets/newDesign/cat-small.png";
 
+// SVG path data for the hero banner's decorative open-book motif (inlined).
+const bannerSvg = {
+  p3f1d1880: "M687.26 154C733.26 124 791.26 132 855.26 168V258C791.26 220 735.26 216 687.26 242V154Z",
+  p13923000: "M885.26 168C947.26 132 1005.26 124 1053.26 154V242C1005.26 216 949.26 220 885.26 258V168Z",
+  p33177c00: "M703.26 142C755.26 120 799.26 132 861.26 168V244C797.26 208 747.26 204 703.26 228V142Z",
+  p147eae80: "M879.26 168C941.26 132 985.26 120 1037.26 142V228C993.26 204 943.26 208 879.26 244V168Z",
+};
+
 // ─── API post shape (from /community/posts/search) ─────────
 type ApiPostQuestion = { id?: string; title?: string; label?: string };
 type ApiPost = {
@@ -329,33 +337,81 @@ export function InterviewInsightsPage() {
     <DashboardLayout headerTitle="InterviewPrep Note" fullBleed>
     <WidePageContainer maxWidth="none">
 
-      {/* Hero & Stats Area */}
-      <div className="mb-14">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="mt-5 max-w-xl leading-relaxed text-muted-foreground text-[14px]" style={{ fontFamily: "var(--font-sans)" }}>
-              Real interview experiences from the community, seamlessly organized by company, role, round, and level.
-            </p>
-          </div>
-          <Link to="/add-experience" className="shrink-0 w-[210px] h-[44px] block">
-            <ShareButton />
-          </Link>
-        </div>
+      {/* ── Hero banner — full-bleed, no top/left/right margin ── */}
+      <section
+        aria-label="InterviewPrep Note hero"
+        className="relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(to right, #f6fbff, #e8f7ff 44%, #e5faf3)',
+          marginTop: 0,
+          marginLeft: -32,
+          marginRight: -32,
+          marginBottom: 28,
+        }}
+      >
+        {/* Decorative: open book illustration (right side) */}
+        <svg
+          aria-hidden="true"
+          className="absolute pointer-events-none"
+          style={{ right: 0, top: 0, width: '60%', height: '100%', maxWidth: 700 }}
+          fill="none"
+          viewBox="0 0 1147 330"
+          preserveAspectRatio="xMaxYMid meet"
+        >
+          <ellipse cx="810.26" cy="165" fill="#38BDF8" fillOpacity="0.04" rx="215" ry="165" />
+          <g opacity="0.31">
+            <path d={bannerSvg.p3f1d1880} fill="#0EA5A4" fillOpacity="0.16" stroke="#0EA5A4" strokeOpacity="0.1" strokeWidth="1.2" />
+            <path d={bannerSvg.p13923000} fill="#3B82F6" fillOpacity="0.13" stroke="#3B82F6" strokeOpacity="0.1" strokeWidth="1.2" />
+            <path d={bannerSvg.p33177c00} fill="white" fillOpacity="0.48" stroke="#38BDF8" strokeOpacity="0.18" strokeWidth="1.4" />
+            <path d={bannerSvg.p147eae80} fill="white" fillOpacity="0.54" stroke="#34D399" strokeOpacity="0.18" strokeWidth="1.4" />
+            <circle cx="998.26" cy="147" fill="#0EA5A4" fillOpacity="0.2" r="9" />
+            <circle cx="998.26" cy="147" r="8.25" stroke="white" strokeOpacity="0.55" strokeWidth="1.5" />
+          </g>
+        </svg>
 
-        {/* Stats Row */}
-        <div className="mt-12 grid grid-cols-1 divide-y divide-border border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {[
-            { label: "Companies", value: companiesLoading || !rollup ? "—" : rollup.totalCompanyCount.toLocaleString() },
-            { label: "Total Notes", value: companiesLoading || !rollup ? "—" : rollup.totalPostCount.toLocaleString() },
-            { label: "New This Month", value: companiesLoading || !rollup ? "—" : rollup.totalRecentPostCount.toLocaleString() },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="text-3xl font-semibold tracking-tight text-foreground" style={{ fontFamily: "var(--font-mono, monospace)" }}>{stat.value}</div>
-              <div className="mt-2 text-sm font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>{stat.label}</div>
+        {/* Content — normal flow, above decoration */}
+        <div className="relative flex flex-col" style={{ padding: '48px 32px 0', zIndex: 1 }}>
+          {/* Title row */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div style={{ maxWidth: 560 }}>
+              <h1 style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 34, lineHeight: 1.2, color: '#182033', marginBottom: 10 }}>
+                Decode real interview loops
+              </h1>
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: 15, lineHeight: '22px', color: '#526070', maxWidth: 600 }}>
+                Browse community notes by company, role, round, and level so interview patterns are easier to spot.
+              </p>
             </div>
-          ))}
+            <Link to="/add-experience" className="shrink-0 w-[222px] h-[44px] block mt-1">
+              <ShareButton />
+            </Link>
+          </div>
+
+          {/* Stats row — full-bleed within banner, top/bottom border */}
+          <div
+            className="grid sm:grid-cols-3"
+            style={{ marginTop: 32, marginLeft: -32, marginRight: -32, borderTop: '1px solid #e1e4ea', borderBottom: '1px solid #e1e4ea' }}
+          >
+            {[
+              { label: "Companies", value: companiesLoading || !rollup ? "—" : rollup.totalCompanyCount.toLocaleString() },
+              { label: "Total Notes", value: companiesLoading || !rollup ? "—" : rollup.totalPostCount.toLocaleString() },
+              { label: "New This Month", value: companiesLoading || !rollup ? "—" : rollup.totalRecentPostCount.toLocaleString() },
+            ].map((stat, i, arr) => (
+              <div
+                key={stat.label}
+                className="flex flex-col items-center justify-center py-8 text-center"
+                style={{ borderRight: i < arr.length - 1 ? '1px solid #e1e4ea' : 'none' }}
+              >
+                <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 24, lineHeight: '36px', color: '#1e232f', letterSpacing: '-0.75px' }}>
+                  {stat.value}
+                </span>
+                <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 14, lineHeight: '20px', color: '#5a6172', marginTop: 8 }}>
+                  {stat.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       <div className="space-y-16">
           {/* Category Tiles */}

@@ -91,6 +91,9 @@ export interface ApiTrainingPlan {
   target_job_id: string;
   target_job_title: string;
   target_company: string;
+  // "quick" for Quick Mock sessions, otherwise the personalized plan type. Optional
+  // because older backend responses (and cached data) may not include it.
+  plan_type?: string;
   metrics_ref_id: number;
   status: string;
   progress: number;

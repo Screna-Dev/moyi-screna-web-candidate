@@ -347,6 +347,115 @@ function FilterDropdown({
   );
 }
 
+// ─── Hero banner ──────────────────────────────────────────────────────────────
+
+function HeroBanner({ onApply, isAlreadyMentor }: { onApply: () => void; isAlreadyMentor: boolean }) {
+  return (
+    <section
+      aria-label="Coaching hero"
+      className="relative overflow-hidden flex flex-col justify-center"
+      style={{
+        background: 'linear-gradient(to right, #fffcf8, #f2fbf6 48%, #f6f1ff)',
+        borderRadius: 0,
+        padding: '40px 32px 36px',
+        marginTop: 0,
+        marginRight: -32,
+        marginBottom: 28,
+        marginLeft: -32,
+        minHeight: '236px',
+      }}
+    >
+      {/* Decorative: soft wash right (aria-hidden) */}
+      <div
+        aria-hidden="true"
+        className="absolute pointer-events-none"
+        style={{ width: '420px', height: '420px', right: '-80px', top: '-144px', background: 'radial-gradient(circle, rgba(255,255,255,0.52) 0%, transparent 70%)', borderRadius: '50%' }}
+      />
+      {/* Decorative: soft wash left */}
+      <div
+        aria-hidden="true"
+        className="absolute pointer-events-none"
+        style={{ width: '300px', height: '190px', left: '-135px', bottom: '-60px', background: 'radial-gradient(ellipse, rgba(255,255,255,0.52) 0%, transparent 70%)' }}
+      />
+      {/* Decorative: calendar texture motif */}
+      <svg
+        aria-hidden="true"
+        className="absolute pointer-events-none"
+        style={{ right: 0, top: 0, width: '420px', height: '100%' }}
+        fill="none"
+        viewBox="0 0 420 200"
+        preserveAspectRatio="xMaxYMid meet"
+      >
+        <rect fill="white" fillOpacity="0.31" height="130" rx="18" width="270" x="100" y="28" />
+        {[0,1,2,3,4].map((col) => (
+          <rect key={`r0-${col}`} fill={['#F59E0B','#8B5CF6','#14B8A6','#F472B6','#F59E0B'][col]} fillOpacity={col === 3 ? 0.24 : 0.11} height="16" rx="5" width="30" x={122 + col * 48} y="52" />
+        ))}
+        {[0,1,2,3,4].map((col) => (
+          <rect key={`r1-${col}`} fill={['#8B5CF6','#14B8A6','#F472B6','#F59E0B','#8B5CF6'][col]} fillOpacity={col === 1 ? 0.24 : 0.11} height="16" rx="5" width="30" x={122 + col * 48} y={82} />
+        ))}
+        {[0,1,2,3,4].map((col) => (
+          <rect key={`r2-${col}`} fill={['#14B8A6','#F472B6','#F59E0B','#8B5CF6','#14B8A6'][col]} fillOpacity="0.11" height="16" rx="5" width="30" x={122 + col * 48} y="112" />
+        ))}
+        <circle cx="350" cy="68" fill="white" fillOpacity="0.16" r="40" />
+        <circle cx="350" cy="68" r="39.25" stroke="#8B5CF6" strokeOpacity="0.16" strokeWidth="1.5" />
+        <circle cx="350" cy="68" fill="#8B5CF6" fillOpacity="0.26" r="13" />
+        <circle cx="350" cy="68" r="12.25" stroke="white" strokeOpacity="0.7" strokeWidth="1.5" />
+        <circle cx="400" cy="118" fill="#F59E0B" fillOpacity="0.22" r="11" />
+        <circle cx="400" cy="118" r="10.25" stroke="white" strokeOpacity="0.7" strokeWidth="1.5" />
+      </svg>
+
+      {/* Content — in normal flow, above decorative layer */}
+      <div className="relative flex flex-col gap-3" style={{ maxWidth: '560px', zIndex: 1 }}>
+        <h1
+          style={{
+            fontFamily: '"Playfair Display", serif',
+            fontWeight: 700,
+            fontSize: '34px',
+            lineHeight: '1.18',
+            color: '#182033',
+          }}
+        >
+          Get coached by insiders
+        </h1>
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 400,
+            fontSize: '15px',
+            lineHeight: '22px',
+            color: '#526070',
+          }}
+        >
+          Compare verified mentors by role, price, availability, and rating,
+          then book the right 1:1 support.
+        </p>
+        <div className="m-[0px] px-[0px] py-[4px]">
+          <button
+            onClick={onApply}
+            disabled={isAlreadyMentor}
+            className="flex items-center gap-1.5 transition-opacity hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: '#edf4ff',
+              border: '1px solid #bfd3ff',
+              borderRadius: '12px',
+              height: '42px',
+              padding: '0 20px',
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 600,
+              fontSize: '13px',
+              color: '#3f76f6',
+              boxShadow: '0px 10px 22px -8px rgba(31,82,209,0.22)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor  →'}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function CoachingPage() {
@@ -404,28 +513,17 @@ export function CoachingPage() {
   }, []);
 
   return (
-    <DashboardLayout headerTitle="Find Your Coach" fullBleed>
+    <DashboardLayout headerTitle="Coaching" fullBleed>
       <WidePageContainer maxWidth="none">
 
-        {/* ── Hero heading ── */}
+        {/* ── Hero banner (Apply to Become a Mentor lives here) ── */}
+        <HeroBanner onApply={() => setIsBecomeMentorOpen(true)} isAlreadyMentor={isAlreadyMentor} />
+
+        {/* ── Available count ── */}
         <div className="flex items-start justify-between" style={{ marginBottom: '16px' }}>
-          <div>
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--muted-foreground)' }}>
-              {mentors.length} verified mentors available for 1:1 sessions
-            </p>
-          </div>
-          <button
-            onClick={() => setIsBecomeMentorOpen(true)}
-            disabled={isAlreadyMentor}
-            className="flex items-center gap-1.5 transition-opacity hover:opacity-80 shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ background: 'color-mix(in srgb, var(--primary) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', padding: '10px 20px', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 500, color: 'var(--primary)', whiteSpace: 'nowrap' }}
-          >
-            {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor'}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2.91667 7H11.0833" stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d={cardSvg.pf23dd00} stroke="var(--primary)" strokeWidth="1.16667" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--muted-foreground)' }}>
+            {mentors.length} verified mentors available for 1:1 sessions
+          </p>
         </div>
 
         {/* ── Filter bar ── */}
