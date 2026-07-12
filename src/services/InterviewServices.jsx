@@ -4,8 +4,12 @@ import API from "./api";
 const BASE_URL = '/training-plans';
 
 // GET /interviews/training-plans - List training plans
-export const getTrainingPlans = () => {
-  return API.get(`${BASE_URL}`);
+// `params` is passed straight through as query params. The backend defaults to
+// plan_type=personal when omitted (backward compatible); pass
+// { plan_type: 'personal,quick' } to also fetch Quick Mock plans in one call —
+// they come back mixed and sorted by updated_at, each plan carrying its plan_type.
+export const getTrainingPlans = (params) => {
+  return API.get(`${BASE_URL}`, params ? { params } : undefined);
 };
 
 // POST /interviews/training-plans - Create training plan

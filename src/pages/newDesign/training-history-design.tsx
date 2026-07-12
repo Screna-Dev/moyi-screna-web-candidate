@@ -32,6 +32,8 @@ interface AIMockSession {
   status: 'Completed' | 'Incomplete'; feedback: string;
   questionsCount: number; difficulty: AIMockDifficulty; improvement?: number;
   interviewId?: string;
+  planType?: 'personal' | 'trending' | 'quick';  // from plan.plan_type — used to tag Quick Mock rows
+  company?: string;                                // plan.target_company — shown on Quick Mock rows
 }
 interface MentorSession {
   id: string; kind: 'mentor'; sessionType: MentorSessionType;
@@ -129,6 +131,7 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
           const date = dateIso
             ? new Date(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
             : '—';
+          const planType = plan.plan_type as AIMockSession['planType'];
           return {
             id: `ai-${reportId}`,
             kind: 'ai-mock',
@@ -143,6 +146,8 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
             questionsCount: 0,
             difficulty: 'Intermediate',
             interviewId: reportId,
+            planType,
+            company: plan.target_company ?? undefined,
             _sortTs: isNaN(ts) ? 0 : ts,
           };
         });
@@ -358,9 +363,20 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
             )}
           </div>
           <div className="min-w-0">
-            <p className="font-medium text-foreground truncate" style={{ fontSize: '14px', lineHeight: '20px' }}>{session.title}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="font-medium text-foreground truncate" style={{ fontSize: '14px', lineHeight: '20px' }}>{session.title}</p>
+              {session.planType === 'quick' && (
+                <span
+                  className="inline-flex items-center gap-1 shrink-0 rounded-full border border-violet-200 bg-violet-50 text-violet-700"
+                  style={{ height: '18px', paddingLeft: '6px', paddingRight: '7px', fontSize: '10px', fontWeight: 600 }}
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Quick
+                </span>
+              )}
+            </div>
             <p className="text-muted-foreground truncate" style={{ fontSize: '12px', lineHeight: '16px' }}>
-              {session.role} · <span className="font-medium">{session.difficulty}</span>
+              {[session.company, session.role].filter(Boolean).join(' · ')} · <span className="font-medium">{session.difficulty}</span>
             </p>
           </div>
         </div>
@@ -1337,7 +1353,9 @@ export function TrainingHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await getTrainingPlans();
+        // Fetch personal + Quick Mock plans in one call — they come back mixed,
+        // sorted by updated_at, each tagged with plan_type (F3).
+        const res = await getTrainingPlans({ plan_type: 'personal,quick' });
         const plans = res.data?.data ?? res.data ?? [];
         if (!cancelled) setAiSessions(mapPlansToAISessions(Array.isArray(plans) ? plans : []));
       } catch {
