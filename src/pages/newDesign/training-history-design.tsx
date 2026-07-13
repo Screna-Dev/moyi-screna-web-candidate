@@ -114,10 +114,14 @@ function inferRole(jobTitle: string): string {
 function mapPlansToAISessions(plans: any[]): AIMockSession[] {
   if (!Array.isArray(plans)) return [];
   return plans
+    // Only personal training plans and Quick Mock sessions belong in the
+    // history list — skip 'trending' and any other plan types.
+    .filter((plan: any) => plan.plan_type === 'quick' || plan.plan_type === 'personal')
     .flatMap((plan: any) => {
       const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
       return modules
-        .filter((m: any) => m.report_id)
+        // A history row must be a finished session with a viewable report.
+        .filter((m: any) => m.status === 'completed' && m.report_id)
         // Hide "no participation" reports — candidate didn't answer anything.
         .filter((m: any) => m.report_status !== 'no_participation')
         .map((m: any): AIMockSession & { _sortTs: number } => {
@@ -1353,9 +1357,10 @@ export function TrainingHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        // Fetch personal + Quick Mock plans in one call — they come back mixed,
-        // sorted by updated_at, each tagged with plan_type (F3).
-        const res = await getTrainingPlans({ plan_type: 'personal,quick' });
+        // GET /training-plans takes no params — it returns every plan for the
+        // authenticated user (personal, quick, trending), each tagged with
+        // plan_type. We filter to personal + quick in mapPlansToAISessions.
+        const res = await getTrainingPlans();
         const plans = res.data?.data ?? res.data ?? [];
         if (!cancelled) setAiSessions(mapPlansToAISessions(Array.isArray(plans) ? plans : []));
       } catch {
