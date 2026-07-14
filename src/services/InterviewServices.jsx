@@ -4,10 +4,9 @@ import API from "./api";
 const BASE_URL = '/training-plans';
 
 // GET /interviews/training-plans - List training plans
-// `params` is passed straight through as query params. The backend defaults to
-// plan_type=personal when omitted (backward compatible); pass
-// { plan_type: 'personal,quick' } to also fetch Quick Mock plans in one call —
-// they come back mixed and sorted by updated_at, each plan carrying its plan_type.
+// Takes no query params: it returns every plan for the authenticated user
+// (personal, quick, trending), each object carrying its own plan_type field.
+// Filter/tag by plan_type on the client. `params` is still forwarded if passed.
 export const getTrainingPlans = (params) => {
   return API.get(`${BASE_URL}`, params ? { params } : undefined);
 };
