@@ -676,11 +676,9 @@ export function InterviewInsightsPage() {
   // Safe date formatter
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '';
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    } catch {
-      return '';
-    }
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
   // Safe question access
