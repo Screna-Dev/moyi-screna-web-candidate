@@ -144,38 +144,32 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
       to={`/interview-insights/${company.id}`}
       className="group relative flex min-h-[160px] w-full flex-col justify-between rounded-[16px] border border-border bg-[#F7F8F9] p-5 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-border/80 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:border-primary"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <CardLogo name={company.name} size="sm" />
-          <div className="flex min-w-0 flex-col pt-0.5">
-            <h3 className="truncate text-[15px] font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-              {company.name}
-            </h3>
-            <div className="mt-1.5 flex flex-col items-start gap-1">
-              <span className="max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-                {company.category ?? "Company"}
-              </span>
-              <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-                Updated {company.updatedAgo}
-              </span>
-            </div>
+      <div className="flex min-w-0 items-start gap-3.5">
+        <CardLogo name={company.name} size="sm" />
+        <div className="flex min-w-0 flex-col pt-0.5">
+          <h3 className="truncate text-[15px] font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+            {company.name}
+          </h3>
+          <div className="mt-1.5 flex flex-col items-start gap-1">
+            <span className="max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+              {company.category ?? "Company"}
+            </span>
+            <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+              Updated {company.updatedAgo}
+            </span>
           </div>
         </div>
-        <ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-foreground" strokeWidth={2} />
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-4 border-t border-border/60 pt-3.5">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Total notes</span>
-          <span className="mt-1 text-[17px] font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+      <div className="mt-4 flex items-end justify-between gap-3 border-t border-border/60 pt-3.5">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[20px] font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
             {company.totalNotes?.toLocaleString() ?? 0}
           </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>Last 30 days</span>
-          <span className="mt-1 text-[17px] font-bold leading-none tracking-tight text-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-            +{company.last30Days ?? 0}
+          <span className="text-[12px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+            total notes
           </span>
         </div>
+        <ArrowRight className="size-4 shrink-0 text-foreground transition-transform duration-200 group-hover:translate-x-0.5" strokeWidth={2} />
       </div>
     </Link>
   );
@@ -388,13 +382,12 @@ export function InterviewInsightsPage() {
 
           {/* Stats row — full-bleed within banner, top/bottom border */}
           <div
-            className="grid sm:grid-cols-3"
+            className="grid sm:grid-cols-2"
             style={{ marginTop: 32, marginLeft: -32, marginRight: -32, borderTop: '1px solid #e1e4ea', borderBottom: '1px solid #e1e4ea' }}
           >
             {[
               { label: "Companies", value: companiesLoading || !rollup ? "—" : rollup.totalCompanyCount.toLocaleString() },
               { label: "Total Notes", value: companiesLoading || !rollup ? "—" : rollup.totalPostCount.toLocaleString() },
-              { label: "New This Month", value: companiesLoading || !rollup ? "—" : rollup.totalRecentPostCount.toLocaleString() },
             ].map((stat, i, arr) => (
               <div
                 key={stat.label}

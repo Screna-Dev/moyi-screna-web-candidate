@@ -28,7 +28,7 @@ const candidateNavItems = [
 const mentorNavItems = [
   { title: 'Profile', url: '/profile', icon: User },
   { title: 'Mentor Dashboard', url: '/mentor/dashboard', icon: Users },
-  { title: 'Pricing', url: '/pricing', icon: DollarSign },
+  { title: 'Pricing', url: '/#pricing', icon: DollarSign },
 ];
 
 const adminNavItems = [

@@ -18,7 +18,7 @@ export const Navbar = () => {
           <Link to="/profile" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-smooth">
             Profile
           </Link>
-          <Link to="/pricing" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-smooth">
+          <Link to="/#pricing" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-smooth">
             Pricing
           </Link>
         </div>
