@@ -11,6 +11,7 @@ import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { Button } from '@/components/newDesign/ui/button';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview } from '@/services/MentorService';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
 import type { PostHog } from 'posthog-js';
 import { safeCapture } from '@/utils/posthog';
@@ -47,13 +48,16 @@ type MainTab = 'ai-mock' | 'mentor';
 
 type AIMockDifficulty = 'Junior' | 'Intermediate' | 'Senior' | 'Staff';
 
+type AIMockSource = 'personal' | 'quick';
+
 interface AIMockSession {
   id: string; kind: 'ai-mock'; title: string; role: string; type: AIMockType;
   date: string; duration: string; score: number | null;
-  status: 'Completed' | 'Incomplete'; feedback: string;
+  status: 'Completed' | 'Incomplete' | 'Not started'; feedback: string;
   questionsCount: number; difficulty: AIMockDifficulty; improvement?: number;
   interviewId?: string;
   reportStatus?: string;   // "normal" | "no_participation" — from AI scoring (J4 transports via module/report)
+  source: AIMockSource;    // plan_type: personal training vs one-off quick mock
 }
 interface MentorSession {
   id: string; kind: 'mentor'; sessionType: string;
@@ -162,16 +166,25 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
   return plans
     .flatMap((plan: any) => {
       const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
+      // plan_type distinguishes personal training plans from one-off Quick Mocks.
+      // Anything that isn't explicitly "quick" renders as a personal session.
+      // Tolerant match: backend has returned "quick" / "QUICK" / "quick_mock" across envs.
+      const source: AIMockSource = String(plan.plan_type ?? '').toLowerCase().includes('quick') ? 'quick' : 'personal';
       return modules
-        .filter((m: any) => m.report_id)
+        // Keep a module if it has a viewable report (completed) OR it's a quick mock.
+        // Quick mocks are intentionally retained even when never started (no report_id /
+        // score, status "pending") so the history shows "created but not done" entries.
+        .filter((m: any) => m.report_id || source === 'quick')
         // Hide "no participation" reports — candidate didn't answer anything, no evaluation to view.
         // Legacy reports (no report_status field) fall through as normal.
         .filter((m: any) => m.report_status !== 'no_participation')
         .map((m: any): AIMockSession => {
-          const reportId = String(m.report_id);
+          const reportId = m.report_id ? String(m.report_id) : undefined;
           const completed = m.status === 'completed';
           const scoreRaw = Number(m.score ?? 0);
           const score = completed && scoreRaw ? Math.round(scoreRaw) : null;
+          // Un-started quick mock: pending, no report_id and no score → distinct "Not started".
+          const notStarted = !reportId && !completed;
           // Real wall-clock minutes from the session; falls back to the planned
           // estimate when the module hasn't been scored yet (actual is null).
           const minutes = m.actual_duration_minutes ?? m.duration_minutes;
@@ -180,7 +193,7 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
             ? new Date(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
             : '—';
           return {
-            id: `ai-${reportId}`,
+            id: `ai-${reportId ?? m.module_id}`,
             kind: 'ai-mock',
             title: String(m.title ?? plan.target_job_title ?? 'Mock Interview'),
             role: inferRole(plan.target_job_title ?? ''),
@@ -188,12 +201,13 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
             date,
             duration: minutes ? `${minutes} min` : '—',
             score,
-            status: completed ? 'Completed' : 'Incomplete',
+            status: completed ? 'Completed' : notStarted ? 'Not started' : 'Incomplete',
             feedback: '',
             questionsCount: 0,
             difficulty: 'Intermediate',
             interviewId: reportId,
             reportStatus: m.report_status,
+            source,
           };
         });
     })
@@ -302,10 +316,28 @@ function TableHeader() {
   );
 }
 
+// ─── Source Tag (Personal / Quick Mock) ───────────────
+function SourceTag({ source }: { source: AIMockSource }) {
+  const isQuick = source === 'quick';
+  return (
+    <span
+      className={`shrink-0 inline-flex items-center rounded-md border ${
+        isQuick
+          ? 'bg-violet-50 border-violet-200 text-violet-700'
+          : 'bg-blue-50 border-blue-200 text-blue-700'
+      }`}
+      style={{ height: '18px', paddingLeft: '6px', paddingRight: '6px', fontSize: '10px', fontWeight: 500, lineHeight: '18px' }}
+    >
+      {isQuick ? 'Quick Mock' : 'Personal'}
+    </span>
+  );
+}
+
 // ─── AI Mock Row ───────────────────────────────────────
 function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolean }) {
   const navigate = useNavigate();
   const done = session.status === 'Completed';
+  const notStarted = session.status === 'Not started';
 
   const scoreTextColor = !session.score ? 'var(--color-muted-foreground)'
     : session.score >= 85 ? 'var(--accent)'
@@ -347,7 +379,10 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
             )}
           </div>
           <div className="min-w-0">
-            <p className="font-medium text-foreground truncate" style={{ fontSize: '14px', lineHeight: '20px' }}>{session.title}</p>
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="font-medium text-foreground truncate" style={{ fontSize: '14px', lineHeight: '20px' }}>{session.title}</p>
+              <SourceTag source={session.source} />
+            </div>
             <p className="text-muted-foreground truncate" style={{ fontSize: '12px', lineHeight: '16px' }}>
               {session.role}
             </p>
@@ -373,6 +408,14 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
               <span className="rounded-full shrink-0 bg-green-500" style={{ width: '6px', height: '6px' }} />
               Completed
             </span>
+          ) : notStarted ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-xl border bg-amber-50 border-amber-200 text-amber-700"
+              style={{ height: '26px', paddingLeft: '10px', paddingRight: '12px', fontSize: '11px', fontWeight: 500 }}
+            >
+              <span className="rounded-full shrink-0 bg-amber-400" style={{ width: '6px', height: '6px' }} />
+              Not started
+            </span>
           ) : (
             <span
               className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted text-muted-foreground"
@@ -385,26 +428,40 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
         </div>
 
         {/* ACTIONS */}
-        <div className="flex items-center gap-2 justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-3 rounded-xl border-border text-foreground hover:bg-muted gap-1.5"
-            style={{ fontSize: '12px', fontWeight: 500 }}
-            onClick={handleReport}
-            disabled={!session.interviewId}
-          >
-            <BarChart2 className="w-3.5 h-3.5" />View Report
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 px-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
-            style={{ fontSize: '12px', fontWeight: 500, boxShadow: '0px 1px 1.5px rgba(60,119,246,0.2),0px 1px 1px rgba(60,119,246,0.2)' }}
-            onClick={() => navigate('/personalized-practice')}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />Retake
-          </Button>
-        </div>
+        {notStarted ? (
+          // Un-started quick mock: nothing to report on yet. Offer to start it.
+          <div className="flex items-center justify-start">
+            <Button
+              size="sm"
+              className="h-8 px-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
+              style={{ fontSize: '12px', fontWeight: 500, boxShadow: '0px 1px 1.5px rgba(60,119,246,0.2),0px 1px 1px rgba(60,119,246,0.2)' }}
+              onClick={() => navigate('/quick-mock')}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />Start
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 rounded-xl border-border text-foreground hover:bg-muted gap-1.5"
+              style={{ fontSize: '12px', fontWeight: 500 }}
+              onClick={handleReport}
+              disabled={!session.interviewId}
+            >
+              <BarChart2 className="w-3.5 h-3.5" />View Report
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 px-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
+              style={{ fontSize: '12px', fontWeight: 500, boxShadow: '0px 1px 1.5px rgba(60,119,246,0.2),0px 1px 1px rgba(60,119,246,0.2)' }}
+              onClick={() => navigate('/personalized-practice')}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />Retake
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -743,6 +800,7 @@ function LoadingState() {
 export function HistoryPage() {
   const navigate = useNavigate();
   const posthog = usePostHog();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialTab: MainTab = searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock';
 
@@ -760,9 +818,26 @@ export function HistoryPage() {
     let cancelled = false;
     async function fetchHistory() {
       try {
-        const res = await getTrainingPlans();
-        const plans = res.data?.data ?? res.data ?? [];
-        if (!cancelled) setAiSessions(mapPlansToAISessions(Array.isArray(plans) ? plans : []));
+        // Unified history: personal training plans + one-off Quick Mocks, mixed
+        // by updated_at desc server-side. Trending plans are excluded here.
+        const params: Record<string, string> = { plan_type: 'personal,quick' };
+        if (user?.id) params.user_id = user.id;
+        const res = await getTrainingPlans(params);
+        console.log("pramenters",params)
+
+        // Response has been seen in a few shapes across environments; accept all:
+        // { data: [...] } | { data: { data: [...] } } | { data: { plans: [...] } }.
+        const body: any = res.data ?? {};
+        const plans: any[] =
+          Array.isArray(body) ? body :
+          Array.isArray(body.plans) ? body.plans :
+          Array.isArray(body.data) ? body.data :
+          Array.isArray(body.data?.plans) ? body.data.plans :
+          [];
+        // TEMP DEBUG — remove after diagnosing missing quick data
+        console.warn('[history] raw plan_type values:', plans.map((p: any) => p.plan_type));
+        console.warn('[history] plan count:', plans.length, 'plans:', plans);
+        if (!cancelled) setAiSessions(mapPlansToAISessions(plans));
       } catch {
         if (!cancelled) setAiSessions([]);
       } finally {
@@ -771,7 +846,7 @@ export function HistoryPage() {
     }
     fetchHistory();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     let alive = true;
