@@ -168,7 +168,8 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
       const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
       // plan_type distinguishes personal training plans from one-off Quick Mocks.
       // Anything that isn't explicitly "quick" renders as a personal session.
-      const source: AIMockSource = plan.plan_type === 'quick' ? 'quick' : 'personal';
+      // Tolerant match: backend has returned "quick" / "QUICK" / "quick_mock" across envs.
+      const source: AIMockSource = String(plan.plan_type ?? '').toLowerCase().includes('quick') ? 'quick' : 'personal';
       return modules
         // Keep a module if it has a viewable report (completed) OR it's a quick mock.
         // Quick mocks are intentionally retained even when never started (no report_id /
@@ -822,6 +823,8 @@ export function HistoryPage() {
         const params: Record<string, string> = { plan_type: 'personal,quick' };
         if (user?.id) params.user_id = user.id;
         const res = await getTrainingPlans(params);
+        console.log("pramenters",params)
+
         // Response has been seen in a few shapes across environments; accept all:
         // { data: [...] } | { data: { data: [...] } } | { data: { plans: [...] } }.
         const body: any = res.data ?? {};
@@ -831,6 +834,9 @@ export function HistoryPage() {
           Array.isArray(body.data) ? body.data :
           Array.isArray(body.data?.plans) ? body.data.plans :
           [];
+        // TEMP DEBUG — remove after diagnosing missing quick data
+        console.warn('[history] raw plan_type values:', plans.map((p: any) => p.plan_type));
+        console.warn('[history] plan count:', plans.length, 'plans:', plans);
         if (!cancelled) setAiSessions(mapPlansToAISessions(plans));
       } catch {
         if (!cancelled) setAiSessions([]);

@@ -115,8 +115,9 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
   if (!Array.isArray(plans)) return [];
   return plans
     // Only personal training plans and Quick Mock sessions belong in the
-    // history list — skip 'trending' and any other plan types.
-    .filter((plan: any) => plan.plan_type === 'quick' || plan.plan_type === 'personal')
+    // history list — skip 'trending' only. Tolerant to casing/variants
+    // ("QUICK", "quick_mock") and legacy plans with no plan_type (treated personal).
+    .filter((plan: any) => !String(plan.plan_type ?? '').toLowerCase().includes('trend'))
     .flatMap((plan: any) => {
       const modules: any[] = Array.isArray(plan.modules) ? plan.modules : [];
       return modules
@@ -135,7 +136,9 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
           const date = dateIso
             ? new Date(dateIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
             : '—';
-          const planType = plan.plan_type as AIMockSession['planType'];
+          // Normalize to the tag values the row renderer expects.
+          const planType: AIMockSession['planType'] =
+            String(plan.plan_type ?? '').toLowerCase().includes('quick') ? 'quick' : 'personal';
           return {
             id: `ai-${reportId}`,
             kind: 'ai-mock',
@@ -1357,12 +1360,20 @@ export function TrainingHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        // GET /training-plans takes no params — it returns every plan for the
-        // authenticated user (personal, quick, trending), each tagged with
-        // plan_type. We filter to personal + quick in mapPlansToAISessions.
-        const res = await getTrainingPlans();
-        const plans = res.data?.data ?? res.data ?? [];
-        if (!cancelled) setAiSessions(mapPlansToAISessions(Array.isArray(plans) ? plans : []));
+        // Unified history: must explicitly request personal + quick, otherwise the
+        // backend defaults to personal only and Quick Mocks never come back.
+        // Server mixes both by updated_at desc; trending is excluded server-side.
+        const res = await getTrainingPlans({ plan_type: 'personal,quick' });
+        // Accept the envelope variants seen across environments:
+        // { data: [...] } | { data: { data: [...] } } | { data: { plans: [...] } }.
+        const body: any = res.data ?? {};
+        const plans: any[] =
+          Array.isArray(body) ? body :
+          Array.isArray(body.plans) ? body.plans :
+          Array.isArray(body.data) ? body.data :
+          Array.isArray(body.data?.plans) ? body.data.plans :
+          [];
+        if (!cancelled) setAiSessions(mapPlansToAISessions(plans));
       } catch {
         if (!cancelled) setAiSessions([]);
       }
