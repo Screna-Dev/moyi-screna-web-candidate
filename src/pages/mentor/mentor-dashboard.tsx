@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { toast } from 'sonner';
 import {
   LayoutDashboard, CalendarCheck, MessageSquare, User,
-  ShieldCheck, Star, DollarSign, Bell, Search, ChevronRight,
+  ShieldCheck, Star, DollarSign, Search, ChevronRight,
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
   MoreHorizontal, Edit3, Trash2, Eye, Video,
   CheckCircle, RefreshCw, Paperclip,
@@ -3409,7 +3409,6 @@ export function MentorDashboardPage() {
   const [activePage, setActivePage] = useState<NavId>(
     () => (new URLSearchParams(window.location.search).get('code') ? 'profile' : 'overview')
   );
-  const [notifOpen, setNotifOpen] = useState(false);
   // Booking to auto-open in BookingsPage's detail drawer (set when navigating
   // there from another tab, e.g. the Overview "message" action).
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
@@ -3580,39 +3579,6 @@ export function MentorDashboardPage() {
             </div>
           )}
 
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setNotifOpen(!notifOpen)}
-              className="relative p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-[var(--radius)] shadow-lg z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">Notifications</span>
-                  <button className="text-xs text-primary hover:underline">Mark all read</button>
-                </div>
-                <div className="divide-y divide-border">
-                  {[
-                    { icon: CalendarCheck, text: 'New booking request from Priya Sharma', time: '30 min ago', color: 'text-primary' },
-                    { icon: MessageSquare, text: 'Marcus Lee sent you a message', time: '1 hour ago', color: 'text-primary' },
-                    { icon: Star, text: 'Aisha Williams left you a 5-star review', time: '2 hours ago', color: 'text-amber-500' },
-                  ].map((n, i) => (
-                    <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/40 cursor-pointer transition-colors">
-                      <n.icon className={`w-4 h-4 mt-0.5 shrink-0 ${n.color}`} />
-                      <div>
-                        <p className="text-sm text-foreground">{n.text}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{n.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </header>
 
         {/* Global completion notification — shown on every tab until profile & availability are done */}
