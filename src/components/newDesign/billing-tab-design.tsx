@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, CheckCircle2, Download, Info,
-  Plus, X, Loader2, RotateCcw, ChevronDown, Gift,
+  Plus, X, Loader2, RotateCcw, Gift,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -23,6 +23,15 @@ interface Invoice {
   amount: number;
   currency: string;
   invoiceUrl: string;
+  createdAt: string;
+}
+interface UsageTxn {
+  amount: number;
+  recurringAmount: number;
+  permanentAmount: number;
+  transactionType: 'CREDIT' | 'DEBIT' | string;
+  sourceType: string;
+  description: string;
   createdAt: string;
 }
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -318,12 +327,6 @@ const PLANS = [
   { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly', badge: null },
 ] as const;
 
-const SUBSCRIPTION_HISTORY = [
-  { label: 'Advanced plan started',      date: 'Jan 24, 2026' },
-  { label: 'Upgraded from Basic to Advanced', date: 'Jan 24, 2026' },
-  { label: 'Basic plan started',         date: 'Dec 10, 2025' },
-];
-
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
@@ -360,7 +363,6 @@ export function BillingTab() {
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
   const [selectedPlan,    setSelectedPlan]    = useState<'basic' | 'advanced' | 'flagship'>('advanced');
-  const [historyOpen,     setHistoryOpen]     = useState(false);
   const [cancelOpen,      setCancelOpen]      = useState(false);
   const [cancelReason,    setCancelReason]    = useState('');
   const [cancelComment,   setCancelComment]   = useState('');
@@ -374,13 +376,11 @@ export function BillingTab() {
     recurringCreditBalance: number;
     permanentCreditBalance: number;
     totalBalance: number;
-    monthlyAllowance: number;
     resetDate: string | null;
   }>({
     recurringCreditBalance: 0,
     permanentCreditBalance: 0,
     totalBalance: 0,
-    monthlyAllowance: 0,
     resetDate: null,
   });
 
@@ -394,7 +394,6 @@ export function BillingTab() {
         recurringCreditBalance: recurring,
         permanentCreditBalance: permanent,
         totalBalance: data.totalBalance ?? (recurring + permanent),
-        monthlyAllowance: data.monthlyAllowance ?? 0,
         resetDate: data.resetDate ?? null,
       });
     } catch {
@@ -405,6 +404,49 @@ export function BillingTab() {
   useEffect(() => {
     fetchCredits();
   }, []);
+
+  // ── This-month usage (real API: GET /payments/credit-usage ledger) ──
+  // The endpoint returns a paginated ledger of CREDIT/DEBIT transactions, not a
+  // monthly aggregate — so we page through the current billing period, sum the
+  // DEBITs (credits consumed), and keep the entries for the history list.
+  const [usedThisMonth, setUsedThisMonth] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const startISO = subscription?.currentPeriodStart;
+      const now = new Date();
+      const periodStart = startISO
+        ? new Date(startISO).getTime()
+        : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+      const collected: UsageTxn[] = [];
+      try {
+        // Cap at 12 pages so a huge ledger can't spin forever; stop once we
+        // reach the last page or an entry older than the period start.
+        for (let page = 0; page < 12; page++) {
+          const res = await PaymentService.getCreditUsage(page);
+          const data = res.data?.data ?? res.data ?? {};
+          const content: UsageTxn[] = data.content ?? [];
+          collected.push(...content);
+          const isLast = data.pageMeta?.last ?? true;
+          const oldest = content.length
+            ? new Date(content[content.length - 1].createdAt).getTime()
+            : periodStart - 1;
+          if (isLast || oldest < periodStart) break;
+        }
+      } catch {
+        if (!cancelled) setUsedThisMonth(0);
+        return;
+      }
+
+      const used = collected
+        .filter(t => new Date(t.createdAt).getTime() >= periodStart && t.transactionType === 'DEBIT')
+        .reduce((sum, t) => sum + Math.abs(t.amount ?? 0), 0);
+      if (!cancelled) setUsedThisMonth(used);
+    })();
+    return () => { cancelled = true; };
+  }, [subscription?.currentPeriodStart]);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -485,6 +527,9 @@ export function BillingTab() {
   const isMember       = planState !== 'free';
   const isCanceled     = cancelState === 'canceled';
   const bannerCancelAtPeriod = isCanceled || cancelState === 'post_window';
+
+  // Credit balance = recurring credits + permanent credits.
+  const creditBalance = credits.recurringCreditBalance + credits.permanentCreditBalance;
 
   return (
     <div className="space-y-6">
@@ -591,40 +636,6 @@ export function BillingTab() {
                           Cancel
                         </button>
                       </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* ── Subscription History ── */}
-            <div className="px-5 py-3.5 border-t border-border">
-              <button
-                onClick={() => setHistoryOpen(v => !v)}
-                className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors"
-              >
-                Subscription history
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
-              </button>
-              <AnimatePresence>
-                {historyOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 space-y-0 relative">
-                      {/* Timeline line */}
-                      <div className="absolute left-[5px] top-2 bottom-2 w-px bg-border" />
-                      {SUBSCRIPTION_HISTORY.map((item, i) => (
-                        <div key={i} className="flex items-start gap-3 pb-3 last:pb-0 relative pl-5">
-                          <div className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-blue-100 border-2 border-primary shrink-0" />
-                          <div className="flex-1 flex items-center justify-between">
-                            <span className="text-xs text-foreground">{item.label}</span>
-                            <span className="text-xs text-muted-foreground shrink-0 ml-4">{item.date}</span>
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   </motion.div>
                 )}
@@ -790,8 +801,25 @@ export function BillingTab() {
               <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-sans)' }}>Credit balance</span>
             </div>
             <div>
-              <p className="leading-none font-semibold text-white" style={{ fontSize: 38, fontFamily: 'var(--font-sans)' }}>{credits.totalBalance}</p>
+              <p className="leading-none font-semibold text-white" style={{ fontSize: 38, fontFamily: 'var(--font-sans)' }}>{creditBalance}</p>
               <p className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, fontFamily: 'var(--font-sans)' }}>Use credits for AI mock interviews, personalized practice, and coaching support.</p>
+            </div>
+
+            {/* Breakdown — how the balance is calculated: recurring + permanent = total */}
+            <div className="flex flex-col gap-1.5 rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)', fontFamily: 'var(--font-sans)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Recurring credits</span>
+                <span className="text-[11px] font-medium text-white">{credits.recurringCreditBalance}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Permanent credits</span>
+                <span className="text-[11px] font-medium text-white">{credits.permanentCreditBalance}</span>
+              </div>
+              <div className="h-px my-0.5" style={{ background: 'rgba(255,255,255,0.12)' }} />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Total balance</span>
+                <span className="text-[11px] font-semibold text-white">{creditBalance}</span>
+              </div>
             </div>
             <div className="flex flex-col gap-2 mt-auto">
               <button
@@ -813,49 +841,45 @@ export function BillingTab() {
             </div>
           </div>
 
-          {/* Right — usage card */}
+          {/* Right — usage card (real data from GET /payments/credit-usage) */}
           <div className="rounded-xl bg-card border border-border p-5">
             <p className="text-xs font-medium text-foreground mb-4" style={{ fontFamily: 'var(--font-sans)' }}>This month's usage</p>
-            {isMember ? (
-              <div className="flex flex-col gap-4">
-                <div>
-                  <div className="flex justify-between mb-1.5">
-                    <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>AI interviews</span>
-                    <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{Math.max(0, (credits.monthlyAllowance || (planState === 'basic' ? 100 : 300)) - credits.recurringCreditBalance)} / {credits.monthlyAllowance || (planState === 'basic' ? 100 : 300)}</span>
+            {(() => {
+              const used  = usedThisMonth;
+              const total = used + creditBalance;
+              const pct   = total > 0 ? Math.min(100, Math.max(0, Math.round((used / total) * 100))) : 0;
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>AI interviews</span>
+                      <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{used} / {total}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#3b82f6' }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-border overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${(() => { const allow = credits.monthlyAllowance || (planState === 'basic' ? 100 : 300); return Math.min(100, Math.max(0, Math.round(((allow - credits.recurringCreditBalance) / allow) * 100))); })()}%`, background: '#3b82f6' }} />
-                  </div>
-                </div>
-                <div>
                   <p className="text-[10px] text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>You don't need to pay extra credits.</p>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {[
-                  { label: 'AI interviews', used: 12, total: credits.totalBalance || 120, color: '#3b82f6' },
-                ].map(row => {
-                  const pct = Math.round((row.used / row.total) * 100);
+              );
+            })()}
+            <div className="text-[11px] text-muted-foreground mt-4 flex items-start gap-1 leading-relaxed" style={{ fontFamily: 'var(--font-sans)' }}>
+              <Info className="w-3 h-3 shrink-0 mt-0.5" />
+              {(() => {
+                const reset = subscription?.currentPeriodEnd ?? credits.resetDate;
+                if (reset) {
                   return (
-                    <div key={row.label}>
-                      <div className="flex justify-between mb-1.5">
-                        <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{row.label}</span>
-                        <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{row.used} / {row.total} min</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-border overflow-hidden">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: row.color }} />
-                      </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span>{credits.recurringCreditBalance} recurring credit{credits.recurringCreditBalance === 1 ? '' : 's'} reset {formatDate(reset)}.</span>
+                      {credits.permanentCreditBalance > 0 && (
+                        <span>{credits.permanentCreditBalance} permanent credit{credits.permanentCreditBalance === 1 ? '' : 's'} never expire.</span>
+                      )}
                     </div>
                   );
-                })}
-                <p className="text-[10px] text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>You don't need to pay extra credits.</p>
-              </div>
-            )}
-            <p className="text-[11px] text-muted-foreground mt-4 flex items-center gap-1" style={{ fontFamily: 'var(--font-sans)' }}>
-              <Info className="w-3 h-3 shrink-0" />
-              Monthly limits reset {formatDate(credits.resetDate)}
-            </p>
+                }
+                return <span>No monthly reset — all {creditBalance} credit{creditBalance === 1 ? '' : 's'} are permanent.</span>;
+              })()}
+            </div>
           </div>
         </div>
       </div>
@@ -866,7 +890,7 @@ export function BillingTab() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <SectionLabel>Invoices</SectionLabel>
-          <p className="text-xs text-muted-foreground">Sent to {user?.email || 'alex@example.com'}</p>
+          {user?.email && <p className="text-xs text-muted-foreground">Sent to {user.email}</p>}
         </div>
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           {invoices.length === 0 ? (

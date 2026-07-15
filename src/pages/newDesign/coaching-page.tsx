@@ -31,7 +31,7 @@ interface Mentor {
   next: string;
   tags: string[];
   quote: string;
-  slots: number;
+  availability: string;
 }
 
 // Raw mentor object returned by GET /mentorship/mentors (see MentorService).
@@ -53,7 +53,8 @@ interface ApiMentor {
 // an API equivalent fall back gracefully:
 //   - next:  derived from the week-availability booleans (no exact date in list API)
 //   - quote: empty (mentor bio/quote isn't in the list response)
-//   - slots: 0 (list API only exposes boolean week flags, not a slot count)
+//   - availability: derived from the week-availability booleans (this week wins
+//     when both are true; the list API only exposes boolean week flags)
 function mapApiMentor(m: ApiMentor): Mentor {
   return {
     id: m.id,
@@ -67,7 +68,11 @@ function mapApiMentor(m: ApiMentor): Mentor {
     next: m.hasSlotsThisWeek ? 'This week' : m.hasSlotsNextWeek ? 'Next week' : 'Check',
     tags: m.expertiseTags ?? [],
     quote: '',
-    slots: 0,
+    availability: m.hasSlotsThisWeek
+      ? 'Available this week'
+      : m.hasSlotsNextWeek
+        ? 'Available next week'
+        : 'No upcoming availability',
   };
 }
 
@@ -242,7 +247,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
             </svg>
           </div>
           <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '11.5px', lineHeight: '17px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
-            {mentor.slots} slots this week
+            {mentor.availability}
           </span>
         </div>
       </div>

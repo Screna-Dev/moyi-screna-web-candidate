@@ -14,7 +14,6 @@ import {
   Share2,
   Lock,
   FileText,
-  TrendingUp,
   X,
   CheckCircle2,
 } from 'lucide-react';
@@ -293,7 +292,6 @@ export function CompanyDetailPage() {
   // never fall back to curated/mock numbers — a company with no posts shows a
   // real 0. `?? 0` keeps a real 0 from the API.
   const notesCount = profile?.postCount ?? 0;
-  const recentCount = profile?.recentPostCount ?? 0;
   const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
   const [activeSort, setActiveSort] = useState<SortOption>('Newest');
@@ -574,13 +572,6 @@ export function CompanyDetailPage() {
                         <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
                         total notes
                       </span>
-                      {recentCount > 0 && (
-                        <span className="inline-flex items-center gap-1.5 text-[hsl(160,60%,38%)]">
-                          <TrendingUp className="size-4" />
-                          <span className="font-semibold">+{recentCount.toLocaleString()}</span>
-                          last 30 days
-                        </span>
-                      )}
                       {updatedLabel && <span>Updated {updatedLabel}</span>}
                     </>
                   )}

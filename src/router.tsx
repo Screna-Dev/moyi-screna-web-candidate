@@ -5,7 +5,6 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 
 // Public / marketing pages (home subdirectory, use @/ aliases)
 import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
-import { PricingPage } from './pages/newDesign/home/pricing-page';
 import FaqPage from './pages/newDesign/home/faq-page';
 // Jobs feature temporarily hidden for this release — restore when re-launching.
 // import JobBoardPage from './pages/newDesign/home/job-board'
@@ -117,7 +116,11 @@ export const router = createBrowserRouter([
       { path: '/', element: <HomePage /> },
       { path: '/question/:id', element: <QuestionDetailPage /> },
       { path: '/question-unknown/:id', element: <QuestionUnknownPage /> },
-      { path: '/pricing', element: <PricingPage /> },
+      // The old standalone pricing page is retired — pricing now lives in the
+      // /#pricing section on the home page. /pricing is kept as a redirect so
+      // existing SEO/inbound links (Google-indexed) still land in the right place.
+      // (vercel.json also issues a 301 for /pricing at the edge in production.)
+      { path: '/pricing', element: <Navigate to="/#pricing" replace /> },
       { path: '/faq', element: <FaqPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/register', element: <AuthPage /> },
