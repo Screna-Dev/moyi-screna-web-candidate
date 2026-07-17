@@ -1,4 +1,4 @@
-import { X, RotateCcw, ChevronRight, Target, TrendingUp, Brain, MessageSquare, Users, Shield, Lightbulb, Crown, Scale, Quote, ArrowRight, BookOpen, CheckCircle2, AlertTriangle, Clock, CalendarDays, Mic, Play, Video, Pause, SkipForward, SkipBack, Volume2, FileText, Download, Share2, ThumbsUp, CircleAlert } from 'lucide-react';
+import { X, RotateCcw, ChevronRight, Target, TrendingUp, Brain, MessageSquare, Users, Shield, Lightbulb, Crown, Scale, Quote, ArrowRight, BookOpen, CheckCircle2, AlertTriangle, Clock, CalendarDays, Mic, Play, Video, Pause, SkipForward, SkipBack, Volume2, FileText, ThumbsUp, CircleAlert } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
@@ -803,17 +803,6 @@ export function EvaluationPage() {
         {/* ─── SCROLLABLE CONTENT ─── */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain bg-slate-50/60">
           <div className="max-w-[1120px] mx-auto px-6 py-6 space-y-8">
-            {/* Download & Share */}
-            <div className="flex items-center gap-3">
-              <Button variant="outline" className="h-9 text-[12px] gap-2 border-slate-200 rounded-lg">
-                <Download className="w-3.5 h-3.5" />
-                Download Report
-              </Button>
-              <Button variant="outline" className="h-9 text-[12px] gap-2 border-slate-200 rounded-lg">
-                <Share2 className="w-3.5 h-3.5" />
-                Share
-              </Button>
-            </div>
 
             {/* ═══ SECTION 1: Overall Summary ═══ */}
             <motion.section
