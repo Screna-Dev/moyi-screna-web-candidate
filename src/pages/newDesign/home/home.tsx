@@ -1260,13 +1260,13 @@ export function HomePage() {
       {/* ─── The Screna System ─── */}
       <section
         id="features"
-        className="snap-s"
-        style={{ background: '#FBFBFB', height: 'max(900px, 100svh)', overflow: 'hidden' }}
+        className="snap-s overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(900px,100svh)]"
+        style={{ background: '#FBFBFB' }}
       >
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 h-full relative">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col gap-8 pt-24 pb-16 lg:block lg:gap-0 lg:pt-0 lg:pb-0 lg:h-full relative">
           <p
             data-reveal data-delay="0"
-            className="text-center text-[11px] tracking-[2.5px] absolute left-0 right-0"
+            className="text-center text-[11px] tracking-[2.5px] static lg:absolute left-0 right-0"
             style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif", top: 72 }}
           >
             THE SCRENA SYSTEM
@@ -1274,11 +1274,10 @@ export function HomePage() {
 
           <h2
             data-reveal data-delay="100"
-            className="text-center font-normal tracking-[-0.8px] absolute left-0 right-0"
+            className="text-center font-normal tracking-[-0.8px] static lg:absolute left-0 right-0 leading-tight lg:leading-[68px] -mt-4 lg:mt-0"
             style={{
               fontFamily: "'Playfair Display', serif",
-              fontSize: 'clamp(36px, 4.5vw, 54px)',
-              lineHeight: '68px',
+              fontSize: 'clamp(32px, 4.5vw, 54px)',
               color: '#0A0A0A',
               top: 96,
             }}
@@ -1287,9 +1286,13 @@ export function HomePage() {
           </h2>
 
           {/* Tab switcher */}
-          <div data-reveal data-delay="200" className="absolute left-0 right-0 flex justify-center" style={{ top: 191 }}>
+          <div
+            data-reveal data-delay="200"
+            className="static lg:absolute left-0 right-0 flex justify-start sm:justify-center overflow-x-auto -mx-6 px-6 lg:mx-0 lg:px-0"
+            style={{ top: 191, scrollbarWidth: 'none' }}
+          >
             <div
-              className="relative flex items-center p-1 rounded-[26px]"
+              className="relative flex items-center p-1 rounded-[26px] mx-auto"
               style={{ background: '#EDEDED' }}
             >
               <div
@@ -1325,7 +1328,7 @@ export function HomePage() {
 
           {/* Feature content */}
           <div
-            className="absolute left-6 right-6 lg:left-10 lg:right-10 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center"
+            className="static lg:absolute left-6 right-6 lg:left-10 lg:right-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center"
             style={{ top: 320, bottom: 60 }}
           >
             <div data-reveal data-delay="320">
@@ -1383,7 +1386,7 @@ export function HomePage() {
       </section>
 
       {/* ─── How It Works ─── */}
-      <section id="how-it-works" className="snap-s bg-white relative overflow-hidden" style={{ height: 'max(980px, 100svh)' }}>
+      <section id="how-it-works" className="snap-s bg-white relative overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(980px,100svh)]">
         <HowItWorksSection />
       </section>
 

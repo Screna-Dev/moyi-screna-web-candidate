@@ -60,7 +60,6 @@ interface Post {
   likes: number;
   comments: number;
   questions: number;
-  views: number;
 }
 
 interface CommentItem {
@@ -166,7 +165,6 @@ function mapApiPost(p: ApiPost): Post {
     likes: p.likeCount ?? 0,
     comments: p.commentCount ?? 0,
     questions: Array.isArray(p.questions) ? p.questions.length : 0,
-    views: p.saveCount ?? 0, // API has no views field — show saves instead
   };
 }
 
@@ -485,10 +483,6 @@ export function MyContributionsPage() {
                             <span className="flex items-center gap-1 text-xs text-[hsl(222,12%,50%)]">
                               <MessageSquare className="w-3 h-3" />
                               {post.comments}
-                            </span>
-                            <span className="flex items-center gap-1 text-xs text-[hsl(222,12%,50%)]">
-                              <Eye className="w-3 h-3" />
-                              {post.views >= 1000 ? `${(post.views / 1000).toFixed(1)}k` : post.views}
                             </span>
                           </div>
 
