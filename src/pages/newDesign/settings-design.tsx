@@ -193,7 +193,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 8 }}
           transition={{ duration: 0.16 }}
-          className="bg-card w-[480px] rounded-xl shadow-2xl p-6"
+          className="bg-card w-full max-w-[480px] mx-4 rounded-xl shadow-2xl p-6"
           onClick={e => e.stopPropagation()}
         >
           {/* Title */}
@@ -337,7 +337,7 @@ function ProfileTab() {
 
       <form onSubmit={handleSave} className="space-y-4 max-w-lg">
         {/* Name */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="firstName">First name</Label>
             <Input id="firstName" value={firstName} onChange={e => setFirstName(e.target.value)} />
@@ -738,7 +738,7 @@ function MembershipBanner({ isPremium, userName = 'Alex' }: { isPremium: boolean
           <p style={{ fontSize: 24, fontWeight: 500, color: '#0f1f3d', marginBottom: 16, lineHeight: 1.3 }}>
             Thanks for being a Premium Member, {userName} 🎉
           </p>
-          <div className="grid grid-cols-2" style={{ gap: '8px 32px' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: '8px 32px' }}>
             <div className="flex flex-col gap-2">
               {FEATURES_COL1.map(f => <FeatureItem key={f} label={f} />)}
             </div>
@@ -774,7 +774,7 @@ function MembershipBanner({ isPremium, userName = 'Alex' }: { isPremium: boolean
         <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', marginBottom: 20, lineHeight: 1.5 }}>
           Join as a member to access mentorship, auto-apply, personalized coaching, and more.
         </p>
-        <div className="grid grid-cols-2" style={{ gap: '8px 32px', marginBottom: 20 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: '8px 32px', marginBottom: 20 }}>
           <div className="flex flex-col gap-2">
             {STATE_A_COL1.map(f => <FeatureItem key={f} label={f} dark />)}
           </div>
@@ -821,7 +821,7 @@ function RemoveCardModal({ last4, onClose, onConfirm }: { last4: string; onClose
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.16 }}
-        className="bg-card w-[400px] rounded-2xl p-6"
+        className="bg-card w-full max-w-[400px] mx-4 rounded-2xl p-6"
         style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.12)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -945,7 +945,7 @@ function AddCardModal({ title, onClose, onSave }: {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.16 }}
-        className="bg-card w-[440px] rounded-2xl p-6"
+        className="bg-card w-full max-w-[440px] mx-4 rounded-2xl p-6"
         style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.14)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -1392,7 +1392,7 @@ function _OldBillingTab_DO_NOT_USE() {
       {/* ── Section 2: Credit balance ── */}
       <div>
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2">Credit balance</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
           {/* Left — dark card */}
           <div className="rounded-xl p-5 flex flex-col gap-3" style={{ background: '#111827' }}>
@@ -1664,30 +1664,34 @@ function _OldBillingTab_DO_NOT_USE() {
           <p className="text-xs text-muted-foreground">Sent to alex@example.com</p>
         </div>
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          {/* Header */}
-          <div className="grid grid-cols-4 bg-secondary px-5 py-2.5 border-b border-border">
-            {['Date', 'Amount', 'Status', 'Invoice'].map(h => (
-              <span key={h} className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{h}</span>
-            ))}
-          </div>
-          {/* Rows */}
-          <div className="divide-y divide-border">
-            {[
-              { date: 'Apr 24, 2026', amount: '$387.00' },
-              { date: 'Jan 24, 2026', amount: '$387.00' },
-              { date: 'Dec 10, 2025', amount: '$159.00' },
-            ].map((inv, i) => (
-              <div key={i} className="grid grid-cols-4 items-center px-5 py-3.5">
-                <span className="text-xs text-muted-foreground">{inv.date}</span>
-                <span className="text-xs text-primary">{inv.amount}</span>
-                <span>
-                  <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">Paid</span>
-                </span>
-                <button className="text-xs font-medium text-primary hover:text-primary/70 transition-colors text-left flex items-center gap-1">
-                  <Download className="w-3 h-3" />Download
-                </button>
+          <div className="overflow-x-auto">
+            <div className="min-w-[420px]">
+              {/* Header */}
+              <div className="grid grid-cols-4 bg-secondary px-5 py-2.5 border-b border-border">
+                {['Date', 'Amount', 'Status', 'Invoice'].map(h => (
+                  <span key={h} className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{h}</span>
+                ))}
               </div>
-            ))}
+              {/* Rows */}
+              <div className="divide-y divide-border">
+                {[
+                  { date: 'Apr 24, 2026', amount: '$387.00' },
+                  { date: 'Jan 24, 2026', amount: '$387.00' },
+                  { date: 'Dec 10, 2025', amount: '$159.00' },
+                ].map((inv, i) => (
+                  <div key={i} className="grid grid-cols-4 items-center px-5 py-3.5">
+                    <span className="text-xs text-muted-foreground">{inv.date}</span>
+                    <span className="text-xs text-primary">{inv.amount}</span>
+                    <span>
+                      <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">Paid</span>
+                    </span>
+                    <button className="text-xs font-medium text-primary hover:text-primary/70 transition-colors text-left flex items-center gap-1">
+                      <Download className="w-3 h-3" />Download
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1723,15 +1727,18 @@ export function SettingsPage() {
   return (
     <DashboardLayout headerTitle="Settings" fullBleed>
     <MediumPageContainer>
-      <div className="flex gap-8 items-start">
-        {/* Left sidebar nav */}
-        <aside className="w-48 shrink-0">
-          <nav className="flex flex-col gap-0.5">
+      <div className="flex flex-col lg:flex-row gap-5 lg:gap-8 items-stretch lg:items-start">
+        {/* Left sidebar nav — horizontal scroll strip on mobile, vertical rail on desktop */}
+        <aside className="w-full lg:w-48 shrink-0">
+          <nav
+            className="flex lg:flex-col gap-1 lg:gap-0.5 overflow-x-auto lg:overflow-visible -mx-4 px-4 lg:mx-0 lg:px-0 border-b border-border pb-2 lg:border-b-0 lg:pb-0"
+            style={{ scrollbarWidth: 'none' }}
+          >
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left w-full transition-colors ${
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left w-auto lg:w-full shrink-0 whitespace-nowrap transition-colors ${
                   activeTab === id
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
@@ -1745,7 +1752,7 @@ export function SettingsPage() {
         </aside>
 
         {/* Right content panel */}
-        <main className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

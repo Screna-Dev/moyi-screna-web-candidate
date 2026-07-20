@@ -590,7 +590,7 @@ export function CoachingPage() {
         </div>
 
         {/* ── Mentor grid ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
           {mentors.map(mentor => (
             <MentorCard
               key={mentor.id}

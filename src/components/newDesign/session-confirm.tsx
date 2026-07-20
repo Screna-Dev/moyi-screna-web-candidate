@@ -575,7 +575,7 @@ export function SessionConfirmPage() {
                   <Badge
                     key={topic}
                     variant="outline"
-                    className="bg-slate-50 text-slate-600 border-slate-200 rounded-full px-3 py-1 text-xs"
+                    className="bg-slate-50 text-slate-600 border-slate-200 rounded-full px-3 py-1 text-xs max-w-full whitespace-normal break-words text-left justify-start"
                   >
                     {topic}
                   </Badge>

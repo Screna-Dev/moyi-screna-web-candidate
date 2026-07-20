@@ -805,7 +805,7 @@ export function HomePage() {
   return (
     <div
       className="min-h-screen bg-white"
-      style={{ fontFamily: "'Inter', sans-serif" }}
+      style={{ fontFamily: "'Inter', sans-serif", overflowX: 'clip' }}
     >
       {/* ─── Buy credits modal (pay-as-you-go) ─── */}
       <AnimatePresence>
@@ -1024,7 +1024,7 @@ export function HomePage() {
 
       {/* ─── Hero ─── */}
       <section
-        className="snap-s flex flex-col relative overflow-x-hidden"
+        className="snap-s overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(900px,100svh)]"
         style={{
           paddingTop: 'calc(72px + var(--topbar-h, 0px))',
           minHeight: '100svh',
@@ -1141,6 +1141,13 @@ export function HomePage() {
               50% { opacity: 0.35; transform: scale(0.6); }
             }
             .hero-dot { animation: dotPulse 1.8s ease-in-out infinite; }
+
+            /* Hero dashboard screenshot: small on phones, full-size on desktop.
+               Real CSS (not utility classes) so it always applies, and the
+               inline max-width:100% guarantees it can never overflow the screen. */
+            .hero-dashboard-shot { width: 60%; }
+            @media (min-width: 640px)  { .hero-dashboard-shot { width: 78%; } }
+            @media (min-width: 1024px) { .hero-dashboard-shot { width: 88%; } }
             .hero-cta:hover { background: #1E48E6 !important; box-shadow: 0 10px 32px rgba(46,91,255,0.55) !important; transform: translateY(-1px); }
             .hero-cta:active { transform: scale(0.97) translateY(0); }
 
@@ -1196,6 +1203,11 @@ export function HomePage() {
                which is what felt abrupt before. The footer carries
                scroll-snap-align:end so the very bottom is itself a snap target;
                without it, mandatory would trap you above the CTA + footer. */
+            /* Hard stop for horizontal overflow from any section — keeps the
+               page pinned to the viewport width so nothing can shift/spill
+               sideways on mobile. Using clip (not hidden) so the vertical
+               scroll-snap below is unaffected. */
+            html, body { overflow-x: clip; max-width: 100%; }
             html {
               scroll-snap-type: y mandatory;
               scroll-padding-top: calc(72px + var(--topbar-h, 0px));
@@ -1231,13 +1243,13 @@ export function HomePage() {
             Start Free
           </button>
 
-          {/* Dashboard screenshot */}
+          {/* Dashboard screenshot — scaled down on phones so it doesn't dominate the fold */}
           <img
             data-reveal data-delay="420"
             src={imgDashboard}
             alt="Screna dashboard"
-            className="h-auto"
-            style={{ display: 'block', width: '88%', margin: '0 auto' }}
+            className="hero-dashboard-shot"
+            style={{ display: 'block', margin: '0 auto', maxWidth: '100%', height: 'auto' }}
           />
 
           {/* Logo bar — scrolling company logos (old-design marquee) */}

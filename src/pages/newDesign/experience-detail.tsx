@@ -1050,7 +1050,7 @@ export function ExperienceDetailPage() {
                     <div className="w-8 h-8 rounded-full bg-[hsl(220,20%,93%)] flex items-center justify-center text-[hsl(222,12%,45%)] shrink-0">
                       <User className="w-4 h-4" />
                     </div>
-                    <div className="flex-1 relative" ref={refPickerRef}>
+                    <div className="flex-1 min-w-0 relative" ref={refPickerRef}>
                       <textarea
                         ref={composerRef}
                         placeholder='Add a comment… Type "#" to reference a question'
@@ -1083,7 +1083,7 @@ export function ExperienceDetailPage() {
                         )}
                       </AnimatePresence>
 
-                      <div className="flex items-center justify-between mt-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5">
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => setShowRefPicker(!showRefPicker)}
@@ -1093,7 +1093,7 @@ export function ExperienceDetailPage() {
                             Reference question
                           </button>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 ml-auto">
                           <label className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,50%)] cursor-pointer select-none hover:text-[hsl(222,22%,15%)] transition-colors">
                             <input
                               type="checkbox"

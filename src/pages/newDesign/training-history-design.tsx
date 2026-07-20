@@ -1423,8 +1423,8 @@ export function TrainingHistoryPage() {
         {/* ── Demo plan switcher — remove in production ── */}
         
 
-        {/* ── Tabs + Filters — single row ── */}
-        <div className="flex items-center gap-3">
+        {/* ── Tabs + Filters — single row on desktop, wraps on mobile ── */}
+        <div className="flex flex-wrap items-center gap-3 gap-y-3">
 
           {/* Tab pills — shrink-0 so they don't compress */}
           <div className="flex items-center gap-1 shrink-0">
@@ -1498,21 +1498,27 @@ export function TrainingHistoryPage() {
         ) : (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
             {displayList.length === 0 ? <EmptyState /> : (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab + mentorFilter + roleFilter + typeFilter}
-                  initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-                  transition={{ duration:0.15 }}
-                >
-                  <TableHeader showReview={activeTab === 'mentor'} />
-                  {displayList.map((entry, i) => {
-                    const isLast = i === displayList.length - 1;
-                    return entry.kind === 'ai-mock'
-                      ? <AIMockRow key={entry.id} session={entry} isLast={isLast} />
-                      : <MentorRow key={entry.id} session={entry} isLast={isLast} onReviewed={id => setReviewedSessions(prev => new Set(prev).add(id))} reviewedSessions={reviewedSessions} />;
-                  })}
-                </motion.div>
-              </AnimatePresence>
+              // Wide data table: scroll horizontally on small screens so the
+              // right-hand columns (date / status / actions) stay reachable
+              // instead of being clipped off the edge.
+              <div className="overflow-x-auto">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab + mentorFilter + roleFilter + typeFilter}
+                    initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+                    transition={{ duration:0.15 }}
+                    style={{ minWidth: activeTab === 'mentor' ? 1300 : 1080 }}
+                  >
+                    <TableHeader showReview={activeTab === 'mentor'} />
+                    {displayList.map((entry, i) => {
+                      const isLast = i === displayList.length - 1;
+                      return entry.kind === 'ai-mock'
+                        ? <AIMockRow key={entry.id} session={entry} isLast={isLast} />
+                        : <MentorRow key={entry.id} session={entry} isLast={isLast} onReviewed={id => setReviewedSessions(prev => new Set(prev).add(id))} reviewedSessions={reviewedSessions} />;
+                    })}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             )}
           </div>
         )}
