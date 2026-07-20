@@ -178,7 +178,7 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
 // Loading frames shown while the directory / feed requests are in flight.
 function LoadingCards({ count = 9 }: { count?: number }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: '24px' }}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="animate-pulse rounded-[var(--radius)] border border-border bg-secondary/40" style={{ height: 150 }} />
       ))}
@@ -408,7 +408,7 @@ export function InterviewInsightsPage() {
 
       <div className="space-y-16">
           {/* Category Tiles */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))', gap: '24px' }}>
             {categoryTiles.map((cat) => {
               const isActive = activeCategory === cat.name;
               return (
@@ -501,7 +501,7 @@ export function InterviewInsightsPage() {
               <LoadingCards count={9} />
             ) : displayedCompanies.length > 0 ? (
               <div className="space-y-10">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: '24px' }}>
                   {paginatedCompanies.map((company, i) => (
                     <motion.div
                       key={company.id}

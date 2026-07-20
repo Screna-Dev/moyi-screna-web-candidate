@@ -87,7 +87,7 @@ function StatsGrid({ plan, stats, loading }: { plan: Plan; stats: DashboardStats
   ];
 
   return (
-    <div className="grid mb-5" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '24px' }}>
+    <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-5">
       {items.map((s) => (
         <div key={s.label} className="bg-card border border-border rounded-xl flex flex-col gap-2 transition-all hover:-translate-y-px" style={{ padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
           <div className="flex items-start justify-between gap-2">
@@ -177,13 +177,13 @@ function ChartCard({
         </div>
       </div>
 
-      <div className="flex gap-3 mb-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3">
         {[
           { lbl: tab === 'sessions' ? 'Total Sessions' : 'Total Learning Time', val: !hasData ? '—' : tab === 'sessions' ? `${totalVal}` : `${Math.floor(totalVal / 60)}h ${totalVal % 60}m` },
           { lbl: 'Daily Average', val: !hasData ? '—' : tab === 'sessions' ? `${avgVal}` : `${avgVal}m` },
           { lbl: 'Peak Day', val: !hasData ? '—' : tab === 'sessions' ? `${peakVal}` : `${peakVal}m` },
         ].map((c) => (
-          <div key={c.lbl} className="rounded-lg" style={{ background: 'var(--secondary)', padding: '10px 14px', minWidth: 130 }}>
+          <div key={c.lbl} className="rounded-lg min-w-0" style={{ background: 'var(--secondary)', padding: '10px 14px' }}>
             <div style={{ fontSize: 12, color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)' }}>{c.lbl}</div>
             <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--foreground)', marginTop: 2, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-sans)' }}>{c.val}</div>
           </div>
@@ -707,7 +707,7 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
         sessionsDaily={stats?.dailySessionCount}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', alignItems: 'start' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
         <MentorshipPanel />
         <InterviewInsightsPanel insights={stats?.interviewPracticeInsights ?? null} loading={statsLoading} />
         <CommunityPicksPanel />

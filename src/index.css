@@ -109,6 +109,16 @@ All colors MUST be HSL.
     @apply bg-background text-foreground font-sans antialiased;
   }
 
+  /* Global safety net against horizontal overflow on mobile: a single stray
+     wide element can otherwise widen the whole page and push centered content
+     off-screen. `clip` (not hidden) so it never creates a scroll container or
+     interferes with vertical scroll / scroll-snap. */
+  html,
+  body {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-bold tracking-tight;
   }

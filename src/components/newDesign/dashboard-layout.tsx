@@ -305,8 +305,9 @@ function GlobalTopHeader({
           </Sheet>
         )}
 
-        {/* Logo: shown on mobile when sidebar exists, or always when there is no sidebar */}
-        <Link to="/dashboard" className={hasSidebar ? 'lg:hidden flex items-center' : 'flex items-center'}>
+        {/* Logo: shown on mobile when sidebar exists, or always when there is no sidebar.
+            Links to the marketing home page (matches the sidebar logo). */}
+        <Link to="/" className={hasSidebar ? 'lg:hidden flex items-center' : 'flex items-center'}>
           <img src={logoImg} alt="Screna" className="h-6 w-auto" />
         </Link>
 
