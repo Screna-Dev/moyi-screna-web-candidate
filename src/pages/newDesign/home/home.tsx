@@ -844,10 +844,16 @@ export function HomePage() {
 
           {/* Desktop nav links */}
           <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-            {['Features', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {['Features', 'InterviewPrep Note', 'Blog', 'Pricing', 'FAQ'].map((link) => (
               <a
                 key={link}
-                href={`#${link.toLowerCase()}`}
+                href={
+                  link === 'Blog'
+                    ? '/blog'
+                    : link === 'InterviewPrep Note'
+                    ? '/interview-insights'
+                    : `#${link.toLowerCase()}`
+                }
                 className="text-[14px] transition-colors duration-150"
                 style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
                 onMouseEnter={(e) =>
@@ -963,10 +969,16 @@ export function HomePage() {
             className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
             style={{ borderColor: '#E8E8EA' }}
           >
-            {['Features', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {['Features', 'InterviewPrep Note', 'Blog', 'Pricing', 'FAQ'].map((link) => (
               <a
                 key={link}
-                href={`#${link.toLowerCase()}`}
+                href={
+                  link === 'Blog'
+                    ? '/blog'
+                    : link === 'InterviewPrep Note'
+                    ? '/interview-insights'
+                    : `#${link.toLowerCase()}`
+                }
                 className="text-[15px]"
                 style={{ color: '#4A4D57' }}
                 onClick={() => setMobileMenuOpen(false)}
