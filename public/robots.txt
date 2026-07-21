@@ -9,4 +9,4 @@ Disallow: /mentors
 Disallow: /settings
 Disallow: /admin
 
-Sitemap: https://screna.ai/sitemap.xml
+Sitemap: https://www.screna.ai/sitemap.xml
