@@ -62,6 +62,8 @@ import { MentorshipMarketplacePage } from './components/newDesign/mentorship-mar
 import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketplace-list';
 import { MentorDetailsPage } from './components/newDesign/mentor-details';
 import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
+import { BlogListPage } from './pages/newDesign/blog/blog-list';
+import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 
 // Mentor dashboard (dual-role candidate/mentor accounts)
 import { MentorDashboardPage } from './pages/mentor/mentor-dashboard';
@@ -122,6 +124,8 @@ export const router = createBrowserRouter([
       // (vercel.json also issues a 301 for /pricing at the edge in production.)
       { path: '/pricing', element: <Navigate to="/#pricing" replace /> },
       { path: '/faq', element: <FaqPage /> },
+      { path: '/blog', element: <BlogListPage /> },
+      { path: '/blog/:slug', element: <BlogPostPage /> },
       { path: '/auth', element: <AuthPage /> },
       { path: '/register', element: <AuthPage /> },
       { path: '/forgot-password', element: <ForgotPassword /> },
