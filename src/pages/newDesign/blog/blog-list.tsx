@@ -81,7 +81,7 @@ export function BlogListPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
-      <main className="flex-1 mx-auto w-full max-w-6xl px-6 pt-28 pb-20">
+      <main className="flex-1 mx-auto w-full max-w-6xl px-6 pt-40 pb-20">
         {/* Header */}
         <div className="max-w-2xl">
           <h1 className="text-[40px] leading-[1.1] font-semibold tracking-tight text-[#0A0A0A]">
