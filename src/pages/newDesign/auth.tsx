@@ -228,11 +228,12 @@ export function AuthPage() {
   const location = useLocation();
   const isRegisterRoute = location.pathname === '/register';
   const returnTo = searchParams.get('returnTo') || '';
-  const referralCode =
+  const [referralCode, setReferralCode] = useState(
     searchParams.get('ref') ||
     searchParams.get('referral_code') ||
     searchParams.get('referralCode') ||
-    '';
+    ''
+  );
   const [isLogin, setIsLogin] = useState(
     isRegisterRoute ? false : searchParams.get('login') === 'true'
   );
@@ -303,7 +304,7 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle(!isLogin, returnTo, referralCode);
+      loginWithGoogle(!isLogin, returnTo, referralCode.trim());
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');
@@ -355,7 +356,7 @@ export function AuthPage() {
           navigate(returnTo || resolvePostLoginPath(loggedInUser));
         }
       } else {
-        await signup(email, password, name, referralCode || undefined);
+        await signup(email, password, name, referralCode.trim() || undefined);
         setRegisteredEmail(email);
         setIsNewSignup(true);
         setShowVerification(true);
@@ -727,6 +728,24 @@ export function AuthPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Referral code — signup only */}
+                {!isLogin && (
+                  <div className="space-y-2">
+                    <label htmlFor="referralCode" className="block text-sm text-slate-700 font-medium">
+                      Referral code <span className="text-slate-400 font-normal">(optional)</span>
+                    </label>
+                    <Input
+                      id="referralCode"
+                      type="text"
+                      placeholder="Enter a referral code for extra credits"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value)}
+                      disabled={isLoading || isGoogleLoading}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
+                    />
+                  </div>
+                )}
 
                 {/* Remember me — login only */}
                 {isLogin && (
