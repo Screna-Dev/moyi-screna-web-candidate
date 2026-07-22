@@ -1415,6 +1415,8 @@ export function HomePage() {
       </section>
 
       {/* ─── Testimonials marquee ─── */}
+      {/* Hidden for now — will bring back in a later version */}
+      {false && (
       <section
         id="testimonials"
         className="snap-s bg-white flex flex-col justify-center overflow-hidden"
@@ -1482,6 +1484,7 @@ export function HomePage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ─── Pricing ─── */}
       <section
