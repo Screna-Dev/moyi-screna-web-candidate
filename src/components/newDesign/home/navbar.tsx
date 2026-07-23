@@ -10,7 +10,7 @@ import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.p
 // (blog, goal, etc.), not just the landing page itself.
 const NAV_LINKS = [
   { label: 'Features', to: '/#features' },
-  { label: 'InterviewPrep Note', to: '/interview-insights' },
+  { label: 'Interview Questions', to: '/interview-insights' },
   { label: 'Blog', to: '/blog' },
   { label: 'Pricing', to: '/#pricing' },
   { label: 'FAQ', to: '/#faq' },

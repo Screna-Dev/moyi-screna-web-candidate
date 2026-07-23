@@ -94,6 +94,28 @@ correct report.
 
 ---
 
+## 5. Settings → Account: Change Email & Delete Account ❌ No Backend Endpoint
+
+**Context**: `settings-design.tsx` (`ProfileTab`) had these two actions stubbed
+out with fake UI (email change → fake "verification sent"; delete → `TODO`).
+The published API surface exposes **no** endpoint for either:
+
+- **Change email**: no `/profile/change-email` (and no auth-side equivalent).
+  The email field is now **read-only** with a "contact support" note. The
+  `POST /profile/personal-info` endpoint only accepts name/country/timezone.
+- **Delete account**: no delete endpoint anywhere. The UI now shows the row as
+  **"Coming soon"** (disabled button + contact-support note) instead of a fake
+  confirm flow.
+
+**Needed to enable these** (paths would follow the `/profile/*` convention, e.g.
+`/profile/change-password`):
+```
+POST   /api/v1/profile/change-email   Body: { newEmail, password }  → email a verification link
+DELETE /api/v1/profile                → permanently delete account + data
+```
+When the backend adds these, re-wire via new `ProfileServices` functions and
+restore the interactive UI (git history has the wired version).
+
 ## Summary Table
 
 | # | Description | Status | Priority |
@@ -102,3 +124,4 @@ correct report.
 | 2 | Dashboard session cards backed by real API data | ❌ Missing | Medium |
 | 3 | LiveKit transcript data message format confirmation | ⚠️ Unconfirmed | High |
 | 4 | Evaluation page connected to session report API | ⚠️ Partial | Medium |
+| 5 | Change-email + delete-account endpoints | ❌ Missing | Medium |

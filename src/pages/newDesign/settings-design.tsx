@@ -21,11 +21,20 @@ import {
   Plus,
   X,
   Loader2,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { MediumPageContainer } from '@/components/newDesign/dashboard-page';
 import { Input } from '@/components/newDesign/ui/input';
 import { Label } from '@/components/newDesign/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/newDesign/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/newDesign/ui/command';
 import { BillingTab } from '@/components/newDesign/billing-tab-design';
 import memberBg from '@/assets/newDesign/member-bg.png';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +45,40 @@ const TABS = [
   { id: 'security',      label: 'Security',      icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing',       label: 'Billing',       icon: CreditCard },
+];
+
+const COUNTRIES = [
+  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda',
+  'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain',
+  'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan',
+  'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria',
+  'Burkina Faso', 'Burundi', 'Cambodia', 'Cameroon', 'Canada', 'Cape Verde',
+  'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros',
+  'Congo', 'Costa Rica', 'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Denmark',
+  'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador', 'Egypt', 'El Salvador',
+  'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia', 'Fiji',
+  'Finland', 'France', 'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece',
+  'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras',
+  'Hong Kong', 'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland',
+  'Israel', 'Italy', 'Ivory Coast', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan',
+  'Kenya', 'Kiribati', 'Kosovo', 'Kuwait', 'Kyrgyzstan', 'Laos', 'Latvia', 'Lebanon',
+  'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Macau',
+  'Madagascar', 'Malawi', 'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands',
+  'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova', 'Monaco', 'Mongolia',
+  'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia', 'Nauru', 'Nepal',
+  'Netherlands', 'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea',
+  'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palau', 'Palestine', 'Panama',
+  'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar',
+  'Romania', 'Russia', 'Rwanda', 'Saint Kitts and Nevis', 'Saint Lucia',
+  'Saint Vincent and the Grenadines', 'Samoa', 'San Marino', 'Sao Tome and Principe',
+  'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore',
+  'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea',
+  'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland',
+  'Syria', 'Taiwan', 'Tajikistan', 'Tanzania', 'Thailand', 'Timor-Leste', 'Togo',
+  'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
+  'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States',
+  'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen',
+  'Zambia', 'Zimbabwe',
 ];
 
 const TIMEZONES = [
@@ -271,6 +314,50 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Country combobox (searchable, A–Z) ────────────────────────────────────────
+
+function CountrySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  // Include a previously-saved value that isn't in the preset list so it's selectable/visible.
+  const options = value && !COUNTRIES.includes(value) ? [value, ...COUNTRIES] : COUNTRIES;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <span className={value ? 'text-foreground' : 'text-muted-foreground'}>
+            {value || 'Select your country'}
+          </span>
+          <ChevronsUpDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+        <Command>
+          <CommandInput placeholder="Search country…" />
+          <CommandList>
+            <CommandEmpty>No country found.</CommandEmpty>
+            {options.map(c => (
+              <CommandItem
+                key={c}
+                value={c}
+                onSelect={() => { onChange(c); setOpen(false); }}
+              >
+                <Check className={`mr-2 h-4 w-4 ${value === c ? 'opacity-100' : 'opacity-0'}`} />
+                {c}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── Tab panels ───────────────────────────────────────────────────────────────
 
 function ProfileTab() {
@@ -278,22 +365,22 @@ function ProfileTab() {
   const [firstName, setFirstName] = useState('');
   const [lastName,  setLastName]  = useState('');
   const [email,     setEmail]     = useState('');
+  const [country,   setCountry]   = useState('');
   const [timezone,  setTimezone]  = useState('Pacific Time (US & Canada)');
-  const [emailFlow, setEmailFlow] = useState<'closed' | 'open' | 'sent'>('closed');
-  const [curPwd,    setCurPwd]    = useState('');
-  const [newEmail,  setNewEmail]  = useState('');
   const [saving,    setSaving]    = useState(false);
-  const [deleteStep, setDeleteStep] = useState<0 | 1>(0);
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     getPersonalInfo()
-      .then((res: { data: { data?: Record<string, string>; name?: string; email?: string; timezone?: string } }) => {
+      .then((res: { data: { data?: Record<string, string>; name?: string; email?: string; country?: string; timezone?: string } }) => {
         const info = res.data?.data ?? res.data;
         if (!info) return;
         const [first, ...rest] = (info.name || '').trim().split(' ');
         setFirstName(first || '');
         setLastName(rest.join(' ') || '');
         setEmail(info.email || '');
+        setCountry(info.country || '');
         setTimezone(info.timezone || 'Pacific Time (US & Canada)');
       })
       .catch(() => {
@@ -310,11 +397,19 @@ function ProfileTab() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveState('idle');
+    setSaveError('');
     try {
       const name = [firstName, lastName].filter(Boolean).join(' ');
-      await savePersonalInfo({ name, timezone });
-    } catch {
-      // silently fail
+      await savePersonalInfo({ name, country: country || '', timezone });
+      setSaveState('saved');
+      setTimeout(() => setSaveState('idle'), 2500);
+    } catch (err: unknown) {
+      setSaveError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+          'Failed to save changes. Please try again.'
+      );
+      setSaveState('error');
     } finally {
       setSaving(false);
     }
@@ -327,7 +422,7 @@ function ProfileTab() {
         <div>
           <h2 className="text-foreground">Account Information</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Update your account's profile information and email address.
+            Update your account's profile information.
           </p>
         </div>
         <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 ml-6">
@@ -348,93 +443,26 @@ function ProfileTab() {
           </div>
         </div>
 
-        {/* Email */}
+        {/* Email — read-only (no change-email endpoint available yet) */}
         <div className="space-y-1.5">
           <Label htmlFor="email">Email address</Label>
-          <div className="relative">
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="pr-20"
-            />
-            {emailFlow === 'closed' && (
-              <button
-                type="button"
-                onClick={() => setEmailFlow('open')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-primary hover:text-primary/70 px-2 py-1 rounded transition-colors"
-              >
-                Change
-              </button>
-            )}
-          </div>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            readOnly
+            disabled
+            className="bg-secondary text-muted-foreground cursor-not-allowed"
+          />
           <p className="text-xs text-muted-foreground">
-            A verification link will be sent to your new email address.
+            Your email is used to sign in and can't be changed here. Contact support to update it.
           </p>
+        </div>
 
-          {/* Inline email-change panel */}
-          <AnimatePresence>
-            {emailFlow === 'open' && (
-              <motion.div
-                key="email-open"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2 p-4 bg-secondary border border-border rounded-lg space-y-3">
-                  <p className="text-sm font-medium text-foreground">Change email address</p>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="curPwdEmail">Current password</Label>
-                    <Input
-                      id="curPwdEmail"
-                      type="password"
-                      value={curPwd}
-                      onChange={e => setCurPwd(e.target.value)}
-                      placeholder="Enter your password"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="newEmailAddr">New email address</Label>
-                    <Input
-                      id="newEmailAddr"
-                      type="email"
-                      value={newEmail}
-                      onChange={e => setNewEmail(e.target.value)}
-                      placeholder="you@newdomain.com"
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <DarkBtn onClick={() => setEmailFlow('sent')}>Send verification email</DarkBtn>
-                    <GhostBtn onClick={() => setEmailFlow('closed')}>Cancel</GhostBtn>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {emailFlow === 'sent' && (
-              <motion.div
-                key="email-sent"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-2 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-                    <p className="text-sm font-medium text-green-700">Verification email sent</p>
-                  </div>
-                  <p className="text-sm text-green-600/80 ml-6">
-                    Check your new inbox and click the link to confirm. The link expires in 24 hours.
-                  </p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Country */}
+        <div className="space-y-1.5">
+          <Label htmlFor="country">Country</Label>
+          <CountrySelect value={country} onChange={setCountry} />
         </div>
 
         {/* Timezone */}
@@ -450,10 +478,22 @@ function ProfileTab() {
           </select>
         </div>
 
-        <div className="pt-2">
+        <div className="pt-2 flex items-center gap-3">
           <DarkBtn type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save changes'}
           </DarkBtn>
+          {saveState === 'saved' && (
+            <span className="flex items-center gap-1.5 text-sm text-green-600">
+              <CheckCircle2 className="w-4 h-4" />
+              Changes saved
+            </span>
+          )}
+          {saveState === 'error' && (
+            <span className="flex items-center gap-1.5 text-sm text-destructive">
+              <AlertCircle className="w-4 h-4" />
+              {saveError}
+            </span>
+          )}
         </div>
       </form>
 
@@ -461,59 +501,26 @@ function ProfileTab() {
       <div className="mt-8 pt-6 border-t border-border">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-4">Data &amp; Account</p>
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          {/* Export row */}
-          
-
-          {/* Delete account row */}
+          {/* Delete account row — coming soon (no API yet) */}
           <div className="px-5 py-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-destructive">Delete account</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Permanently erase all your data, interview history, and progress.</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">Delete account</p>
+                  <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground text-[11px] font-medium">Coming soon</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Permanently erasing your account isn't available yet. To delete your data now, contact support.
+                </p>
               </div>
-              {deleteStep === 0 && (
-                <button
-                  onClick={() => setDeleteStep(1)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md border border-destructive/40 text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors shrink-0 ml-4"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />Delete account
-                </button>
-              )}
+              <button
+                type="button"
+                disabled
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md border border-border text-sm font-medium text-muted-foreground shrink-0 cursor-not-allowed opacity-60"
+              >
+                <Trash2 className="w-3.5 h-3.5" />Delete account
+              </button>
             </div>
-
-            <AnimatePresence>
-              {deleteStep === 1 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-3 flex items-start gap-3 px-4 py-3.5 rounded-lg border border-destructive/30 bg-destructive/5">
-                    <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-destructive">Are you sure you want to delete your account?</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">This will permanently erase all your data, interview history, and progress. This action cannot be undone.</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => setDeleteStep(0)}
-                        className="px-3 py-1.5 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => { /* TODO: actual delete */ setDeleteStep(0); }}
-                        className="px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-                      >
-                        Yes, delete
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </div>

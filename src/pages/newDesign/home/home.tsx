@@ -844,13 +844,13 @@ export function HomePage() {
 
           {/* Desktop nav links */}
           <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-            {['Features', 'InterviewPrep Note', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
               <a
                 key={link}
                 href={
                   link === 'Blog'
                     ? '/blog'
-                    : link === 'InterviewPrep Note'
+                    : link === 'Interview Questions'
                     ? '/interview-insights'
                     : `#${link.toLowerCase()}`
                 }
@@ -969,13 +969,13 @@ export function HomePage() {
             className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
             style={{ borderColor: '#E8E8EA' }}
           >
-            {['Features', 'InterviewPrep Note', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
               <a
                 key={link}
                 href={
                   link === 'Blog'
                     ? '/blog'
-                    : link === 'InterviewPrep Note'
+                    : link === 'Interview Questions'
                     ? '/interview-insights'
                     : `#${link.toLowerCase()}`
                 }
