@@ -44,10 +44,10 @@ type UserData = {
 // Career group — primary product surfaces, mapped to this app's real routes.
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: FileText, label: 'Questions', path: '/interview-insights' },
+  { icon: Bot, label: 'Quick Mock', path: '/quick-mock', ai: true },
+  { icon: Target, label: 'Practices', path: '/personalized-practice', ai: true },
   { icon: Users, label: 'Coaching', path: '/coaching' },
-  { icon: FileText, label: 'InterviewPrep Note', path: '/interview-insights' },
-  { icon: Bot, label: 'Quick Mock', path: '/quick-mock' },
-  { icon: Target, label: 'Personalized Practice', path: '/personalized-practice' },
 ];
 
 const sidebarAccountLinks = [
@@ -159,6 +159,11 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
             <Link key={item.label} to={item.path} className={navItemClass(isLinkActive(item.path))}>
               <item.icon className="w-4 h-4 shrink-0" />
               <span className="text-sm">{item.label}</span>
+              {item.ai && (
+                <span className="ml-auto text-[10px] font-semibold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
+                  AI
+                </span>
+              )}
             </Link>
           ))}
         </div>
