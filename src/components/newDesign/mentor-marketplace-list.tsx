@@ -208,8 +208,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[10.5px] text-slate-400 leading-none">From</p>
-            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${(mentor.priceFrom / 100).toFixed(2)}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px]">${(mentor.priceFrom / 100).toFixed(2)}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
@@ -358,13 +357,12 @@ export function MentorMarketplaceListPage() {
             <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <h2
-                  className="font-semibold text-slate-900 text-[32px]"
-                  style={{ letterSpacing: '-0.02em' }}
+                  style={{ fontFamily: 'var(--font-serif)', color: 'var(--foreground)', fontSize: '32px', letterSpacing: '-0.02em', fontWeight: 'var(--font-weight-medium)' }}
                 >
-                  Find a mentor
+                  Find Your Coach
                 </h2>
-                <p className="text-[13px] text-slate-400 mt-1">
-                  {mentors.length} verified mentors · updated weekly
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '4px' }}>
+                  {mentors.length} verified mentors
                 </p>
               </div>
               <div className="shrink-0 flex items-center gap-2 flex-wrap">

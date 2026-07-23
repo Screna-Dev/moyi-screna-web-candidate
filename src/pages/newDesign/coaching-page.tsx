@@ -218,7 +218,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
           {mentor.tags.map(tag => (
             <div
               key={tag}
-              style={{ background: 'var(--secondary)', borderRadius: '6px', padding: '2px 8px', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'var(--secondary)', borderRadius: '8px', padding: '2px 8px', display: 'flex', alignItems: 'center' }}
             >
               <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '11px', lineHeight: '16.5px', color: 'var(--secondary-foreground)', whiteSpace: 'nowrap' }}>
                 {tag}
@@ -257,7 +257,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
         <button
           onClick={onBook}
           className="relative w-full transition-opacity hover:opacity-90"
-          style={{ height: '40px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', fontFamily: 'var(--font-sans)' }}
+          style={{ height: '40px', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', borderRadius: '12px', fontFamily: 'var(--font-sans)' }}
         >
           <span style={{ fontWeight: 600, fontSize: '13px', lineHeight: '18px', color: 'var(--primary)' }}>
             Book a Session
@@ -524,15 +524,8 @@ export function CoachingPage() {
         {/* ── Hero banner (Apply to Become a Mentor lives here) ── */}
         <HeroBanner onApply={() => setIsBecomeMentorOpen(true)} isAlreadyMentor={isAlreadyMentor} />
 
-        {/* ── Available count ── */}
-        <div className="flex items-start justify-between" style={{ marginBottom: '16px' }}>
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--muted-foreground)' }}>
-            {mentors.length} verified mentors available for 1:1 sessions
-          </p>
-        </div>
-
         {/* ── Filter bar ── */}
-        <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '32px' }}>
+        <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '16px' }}>
           <div className="flex items-center flex-wrap gap-2">
             {FILTERS.map((filter) => (
               <FilterDropdown
@@ -589,6 +582,15 @@ export function CoachingPage() {
           </div>
         </div>
 
+        {/* ── Results counter ── */}
+        <div className="flex items-start justify-between" style={{ marginBottom: '24px' }}>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: '#667085' }}>
+            {mentors.length === 0
+              ? 'No mentors match your filters — try adjusting them'
+              : `${mentors.length} verified mentor${mentors.length !== 1 ? 's' : ''} available for 1:1 sessions`}
+          </p>
+        </div>
+
         {/* ── Mentor grid ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
           {mentors.map(mentor => (
@@ -599,6 +601,22 @@ export function CoachingPage() {
             />
           ))}
         </div>
+
+        {/* ── Low-results nudge banner ── */}
+        {mentors.length > 0 && mentors.length <= 2 && (
+          <div style={{ marginTop: '24px', padding: '12px 20px', background: '#f8fafc', border: '1px solid #e1e4ea', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: '#5a6172' }}>
+              Can't find the right mentor? Tell us what you need
+            </span>
+            <button
+              onClick={() => navigate('/contact')}
+              className="transition-opacity hover:opacity-80"
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600, color: '#3c77f6', whiteSpace: 'nowrap' }}
+            >
+              Let us know →
+            </button>
+          </div>
+        )}
 
       </WidePageContainer>
 

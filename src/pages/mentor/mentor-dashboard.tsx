@@ -8,7 +8,7 @@ import {
   CheckCircle, RefreshCw, Paperclip,
   Lock, Mail,
   Link, Zap, LogOut,
-  Camera, Circle, Minus,
+  Camera, Circle, Minus, Clock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -274,7 +274,9 @@ function StatusBadge({ status }: { status: string }) {
   };
   const { label, cls } = map[status] ?? { label: status, cls: 'bg-secondary text-muted-foreground' };
   return (
-    null
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${cls}`}>
+      {label}
+    </span>
   );
 }
 
@@ -327,6 +329,7 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
 
   const summaryCards = [
     { label: 'Upcoming Sessions', value: String(upcomingBookings.length), icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
+    { label: 'Pending Requests', value: String(bookings.filter(b => b.status === 'pending').length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Unread Messages', value: '3', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/8' },
     { label: 'Average Rating', value: profile?.averageRating != null ? String(profile.averageRating) : '—', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
@@ -352,7 +355,7 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {summaryCards.map(c => (
           c.label === 'Unread Messages' ? null : (
             <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
@@ -996,34 +999,21 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     <div className="flex-1 flex overflow-hidden">
       <div className={`flex flex-col overflow-hidden transition-all ${selectedBooking ? 'flex-1' : 'flex-1'}`}>
         {/* Tabs */}
-        <div className="px-6 pt-6">
-          <div className="flex items-center gap-[4px]">
+        <div className="px-6 pt-6 border-b border-border bg-card">
+          <div className="flex items-center gap-1">
             {tabs.map(t => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors capitalize"
-                style={{
-                  background: activeTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
-                  color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: activeTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
+                className={`px-4 py-2 text-sm rounded-t-md capitalize transition-colors ${
+                  activeTab === t
+                    ? 'text-primary border-b-2 border-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                style={{ whiteSpace: 'nowrap' }}
               >
                 {t}
-                <span
-                  className="rounded-full flex items-center justify-center"
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    padding: '1px 6px',
-                    background: activeTab === t ? 'var(--color-gray-200, #d8dbe2)' : 'var(--secondary)',
-                    color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
-                    fontWeight: 'var(--font-weight-medium)',
-                  }}
-                >
+                <span className="ml-1.5 text-xs bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5">
                   {t === 'all' ? bookings.length : t === 'upcoming' ? bookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length : bookings.filter(b => b.status === t).length}
                 </span>
               </button>

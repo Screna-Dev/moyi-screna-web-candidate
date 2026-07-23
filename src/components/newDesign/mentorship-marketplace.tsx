@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal, X, Check, Shield, Sparkles, ArrowRight, Lock, Users, Star, Loader2 } from 'lucide-react';
-import { DashboardLayout, PageHero } from './dashboard-layout';
+import { Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, SlidersHorizontal, X, Check, Shield, ArrowRight, Lock, Users, Star, Loader2 } from 'lucide-react';
+import { DashboardLayout } from './dashboard-layout';
 import { Link, useNavigate } from 'react-router';
 import { Footer } from './home/footer';
 import { getMentors } from '../../services/MentorService';
@@ -228,8 +228,7 @@ function MentorCard({ mentor, isMember }: { mentor: ApiMentor; isMember: boolean
             </p>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[10.5px] text-slate-400 leading-none">From</p>
-            <p className="font-semibold text-[#2466f5] text-[20px] mt-0.5">${(mentor.priceFrom / 100).toFixed(2)}</p>
+            <p className="font-semibold text-[#2466f5] text-[20px]">${(mentor.priceFrom / 100).toFixed(2)}</p>
             <p className="text-[10.5px] text-slate-400 mt-0.5">/ session</p>
           </div>
         </div>
@@ -352,15 +351,18 @@ export function MentorshipMarketplacePage() {
 
   return (
     <DashboardLayout noSidebar>
-      <div className="w-full space-y-16 pb-24 pt-[40px] bg-white -mx-6 px-6">
+      <div className="w-full space-y-16 pb-24 pt-28 -mt-8 -mx-6 px-6 bg-[#f9fafb]">
 
         {/* ── Page Header ───────────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <PageHero
-            badge="Verified mentors"
-            title="Coach"
-            subtitle="Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective."
-          />
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h1 className="font-semibold text-slate-900 text-[40px]" style={{ letterSpacing: '-0.025em' }}>
+              Mentorship Market Space
+            </h1>
+            <p className="text-[13.5px] text-slate-500 max-w-[520px] leading-relaxed mt-2">
+              Get 1:1 guidance from experienced mentors when you need judgment, strategy, and real-world perspective.
+            </p>
+          </div>
 
           {/* Utility area */}
           {isMember ? (
@@ -417,13 +419,12 @@ export function MentorshipMarketplacePage() {
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2
-                  className="font-semibold text-slate-900 text-[32px]"
-                  style={{ letterSpacing: '-0.02em' }}
+                  style={{ fontFamily: 'var(--font-serif)', color: 'var(--foreground)', fontSize: '32px', letterSpacing: '-0.02em', fontWeight: 'var(--font-weight-medium)' }}
                 >
-                  Find a mentor
+                  Find Your Coach
                 </h2>
-                <p className="text-[13px] text-slate-400 mt-1">
-                  {mentors.length} verified mentors · updated weekly
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--muted-foreground)', marginTop: '4px' }}>
+                  {mentors.length} verified mentors
                 </p>
               </div>
               <button
@@ -512,124 +513,6 @@ export function MentorshipMarketplacePage() {
                 ))}
               </div>
             )}
-
-            {/* Services helper grid moved here */}
-            <div className="mt-16 pt-16 border-t border-slate-200 flex flex-col items-center w-full">
-              <div className="flex flex-col items-center w-full mb-14">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="h-px w-8 bg-gradient-to-r from-blue-400/0 to-blue-400" />
-                  <span className="text-[12px] font-normal text-slate-500 tracking-[1.2px] uppercase">What You Get</span>
-                  <div className="h-px w-8 bg-gradient-to-l from-blue-400/0 to-blue-400" />
-                </div>
-                <h2 className="font-serif text-[32px] text-slate-900 leading-tight text-center mb-3">
-                  Key Career Topics
-                </h2>
-                <p className="text-[18px] text-slate-500 text-center max-w-[672px]">
-                  Screna mentorship supports you across every stage and topic that matters
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-                {/* Card 1 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundImage: "linear-gradient(135deg, rgb(239, 246, 255) 0%, rgb(238, 242, 255) 100%)" }}>
-                    <div className="w-[29px] h-[29px] rounded-xl bg-blue-50 flex items-center justify-center">
-                      <svg className="w-[33px] h-[33px]" fill="none" viewBox="0 0 33 33">
-                        <path d="M20.625 2.75H8.25C7.52065 2.75 6.82118 3.03973 6.30546 3.55546C5.78973 4.07118 5.5 4.77065 5.5 5.5V27.5C5.5 28.2293 5.78973 28.9288 6.30546 29.4445C6.82118 29.9603 7.52065 30.25 8.25 30.25H24.75C25.4793 30.25 26.1788 29.9603 26.6945 29.4445C27.2103 28.9288 27.5 28.2293 27.5 27.5V9.625L20.625 2.75Z" stroke="#155DFC" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                        <path d="M19.25 2.75V8.25C19.25 8.97935 19.5397 9.67882 20.0555 10.1945C20.5712 10.7103 21.2707 11 22 11H27.5" stroke="#155DFC" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                        <path d="M13.75 12.375H11" stroke="#155DFC" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                        <path d="M22 17.875H11" stroke="#155DFC" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                        <path d="M22 23.375H11" stroke="#155DFC" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">Resume Review</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Targeted feedback on content, positioning, and ATS readability.
-                  </p>
-                </div>
-
-                {/* Card 2 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundImage: "linear-gradient(135deg, rgb(250, 245, 255) 0%, rgb(253, 242, 248) 100%)" }}>
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 29 29">
-                      <path d="M14.5 26.5833C21.1734 26.5833 26.5833 21.1734 26.5833 14.5C26.5833 7.82656 21.1734 2.41667 14.5 2.41667C7.82656 2.41667 2.41667 7.82656 2.41667 14.5C2.41667 21.1734 7.82656 26.5833 14.5 26.5833Z" stroke="#7F22FE" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M14.5 21.75C18.5041 21.75 21.75 18.5041 21.75 14.5C21.75 10.4959 18.5041 7.25 14.5 7.25C10.4959 7.25 7.25 10.4959 7.25 14.5C7.25 18.5041 10.4959 21.75 14.5 21.75Z" stroke="#7F22FE" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M14.5 16.9167C15.8347 16.9167 16.9167 15.8347 16.9167 14.5C16.9167 13.1653 15.8347 12.0833 14.5 12.0833C13.1653 12.0833 12.0833 13.1653 12.0833 14.5C12.0833 15.8347 13.1653 16.9167 14.5 16.9167Z" stroke="#7F22FE" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">Career Strategy</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Align your next move with long-term goals and market realities.
-                  </p>
-                </div>
-
-                {/* Card 3 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundImage: "linear-gradient(135deg, rgb(240, 253, 244) 0%, rgb(236, 253, 245) 100%)" }}>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-                      <path d="M9.16667 15.8333C12.8486 15.8333 15.8333 12.8486 15.8333 9.16667C15.8333 5.48477 12.8486 2.5 9.16667 2.5C5.48477 2.5 2.5 5.48477 2.5 9.16667C2.5 12.8486 5.48477 15.8333 9.16667 15.8333Z" stroke="#009966" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M17.5 17.5L13.9167 13.9167" stroke="#009966" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">Job Search Strategy</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Build a focused pipeline and cut through noise in a competitive market.
-                  </p>
-                </div>
-
-                {/* Card 4 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundImage: "linear-gradient(135deg, rgb(255, 251, 235) 0%, rgb(255, 247, 237) 100%)" }}>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-                      <path d="M10 1.66667C9.33696 1.66667 8.70107 1.93006 8.23223 2.3989C7.76339 2.86774 7.5 3.50363 7.5 4.16667V10C7.5 10.663 7.76339 11.2989 8.23223 11.7678C8.70107 12.2366 9.33696 12.5 10 12.5C10.663 12.5 11.2989 12.2366 11.7678 11.7678C12.2366 11.2989 12.5 10.663 12.5 10V4.16667C12.5 3.50363 12.2366 2.86774 11.7678 2.3989C11.2989 1.93006 10.663 1.66667 10 1.66667Z" stroke="#E17100" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M15.8333 8.33333V10C15.8333 11.5471 15.2188 13.0308 14.1248 14.1248C13.0308 15.2188 11.5471 15.8333 10 15.8333C8.4529 15.8333 6.96917 15.2188 5.87521 14.1248C4.78125 13.0308 4.16667 11.5471 4.16667 10V8.33333" stroke="#E17100" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M10 15.8333V18.3333" stroke="#E17100" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">Interview Prep</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Stress-test your stories, structure, and delivery with a real practitioner.
-                  </p>
-                </div>
-
-                {/* Card 5 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4 relative" style={{ backgroundImage: "linear-gradient(135deg, rgb(236, 254, 255) 0%, rgb(239, 246, 255) 100%)" }}>
-                    <div className="w-6 h-6 relative">
-                      <svg className="absolute w-[18px] h-[18px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 17.9167 17.9167">
-                        <path d="M8.95833 17.2917C13.5607 17.2917 17.2917 13.5607 17.2917 8.95833C17.2917 4.35596 13.5607 0.625 8.95833 0.625C4.35596 0.625 0.625 4.35596 0.625 8.95833C0.625 13.5607 4.35596 17.2917 8.95833 17.2917Z" stroke="#0084D1" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      </svg>
-                      <svg className="absolute w-[8px] h-[18px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 7.91667 17.9167">
-                        <path d="M3.95833 0.625C1.81853 2.87179 0.625 5.85562 0.625 8.95833C0.625 12.061 1.81853 15.0449 3.95833 17.2917C6.09814 15.0449 7.29167 12.061 7.29167 8.95833C7.29167 5.85562 6.09814 2.87179 3.95833 0.625Z" stroke="#0084D1" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      </svg>
-                      <svg className="absolute w-[18px] h-[1.25px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 17.9167 1.25">
-                        <path d="M0.625 0.625H17.2917" stroke="#0084D1" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">LinkedIn Review</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Optimize your profile for inbound opportunities and recruiter reach.
-                  </p>
-                </div>
-
-                {/* Card 6 */}
-                <div className="bg-white rounded-[12px] border border-slate-200 h-[196px] p-6 flex flex-col items-start hover:border-slate-300 transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundImage: "linear-gradient(135deg, rgb(255, 230, 237) 0%, rgb(255, 238, 243) 100%)" }}>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-                      <path d="M18.3333 5.83333L11.25 12.9167L7.08333 8.75L1.66667 14.1667" stroke="#EC003F" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                      <path d="M13.3333 5.83333H18.3333V10.8333" stroke="#EC003F" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[18px] font-medium text-slate-900 mb-2">Intelligent Caching</h3>
-                  <p className="text-[15px] text-slate-500 leading-[1.4]">
-                    Negotiate confidently with data-backed framing and mentor support.
-                  </p>
-                </div>
-
-              </div>
-            </div>
 
             {/* Trust line */}
             <div className="mt-6 flex items-center gap-2 text-[12px] text-slate-400">
@@ -895,40 +778,6 @@ export function MentorshipMarketplacePage() {
           </div>
         </section>
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            CTA MODULE — Become a Mentor (visible to non-members too)
-        ════════════════════════════════════════════════════════════════════ */}
-        {!isMember && (
-          <>
-            <div className="border-t border-slate-100" />
-            <section className="flex justify-center">
-              <div className="w-full max-w-[720px] flex items-center justify-between gap-8 px-8 py-7 rounded-2xl border border-border bg-card shadow-sm">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-foreground text-[16px] mb-1" style={{ fontWeight: 600 }}>
-                      Become a Mentor?
-                    </h3>
-                    <p className="text-muted-foreground text-[13.5px] leading-relaxed max-w-[380px]">
-                      Share your experience and help candidates prepare for their next opportunity.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsBecomeMentorOpen(true)}
-                  disabled={isAlreadyMentor}
-                  className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/25 bg-primary/6 text-primary text-[13px] hover:bg-primary/12 hover:border-primary/40 transition-all duration-150 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary/6 disabled:hover:border-primary/25"
-                  style={{ fontWeight: 500 }}
-                >
-                  {isAlreadyMentor ? 'Mentor Application Submitted' : 'Apply to Become a Mentor'}
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </section>
-          </>
-        )}
 
         {/* Become a Mentor — identity-only application (resume + realName/workEmail/linkedinUrl) */}
         <ApplyMentorModal
@@ -948,7 +797,7 @@ export function MentorshipMarketplacePage() {
               </div>
               <div className="bg-gradient-to-l from-[hsl(221,91%,60%)]/0 to-[hsl(221,91%,60%)] h-px w-8" />
             </div>
-            <h2 className="font-serif text-slate-900 text-[32px] text-center tracking-[1.1875px]">
+            <h2 className="font-serif text-slate-900 text-[32px] text-center">
               Frequently asked questions
             </h2>
           </div>

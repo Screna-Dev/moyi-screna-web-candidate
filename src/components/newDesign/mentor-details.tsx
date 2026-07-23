@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import {
   ArrowLeft, Clock, Calendar, Briefcase, Award, Video, ShieldCheck, X,
   ChevronLeft, ChevronRight, CheckCircle2, Loader2,
+  Linkedin, ArrowUpRight, ChevronDown, Check, Star,
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
@@ -43,6 +44,7 @@ interface MentorData {
   currentRole: string;
   currentCompany: string;
   avatarUrl: string;
+  linkedinUrl?: string;
   bio: string;
   headline: string;
   expertiseTags: string[];
@@ -151,14 +153,20 @@ interface BookingModalProps {
   plan: CoachingPlan;
   mentorId: string;
   mentorName: string;
+  mentorRole: string;
   mentorCompany: string;
+  services: string[];
   onClose: () => void;
 }
 
-function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: BookingModalProps) {
+function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, services, onClose }: BookingModalProps) {
   const posthog = usePostHog();
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
+  // 'paid' | 'deal' — which plan type is selected on step 1
+  const [planType, setPlanType] = useState<'paid' | 'deal'>('paid');
+  // Services the user wants help with (step "Notes"). Wired to the mentor's expertise tags.
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [timezone, setTimezone] = useState(defaultTimezone);
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -246,8 +254,27 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const price = plan.pricing[duration];
+  const isDeal = planType === 'deal';
+  // Special Offer config. NOTE: the mentor API has no discount/deal field, so these
+  // deal prices are placeholders and are NOT sent to the backend — createBooking still
+  // sends the real topicId + duration and the server computes the actual charge.
+  // TODO: wire real special-offer pricing once the backend exposes it.
+  const DEAL = {
+    durations: [
+      { key: '30min' as Duration, label: '30 min', price: 25 },
+      { key: '1hr' as Duration, label: '1 hour', price: 40 },
+    ],
+    regularPrice30: plan.pricing['30min'], // used for strikethrough on 30-min option
+  };
+  const activeDealOption = DEAL.durations.find(d => d.key === duration) ?? DEAL.durations[0];
+  const price = isDeal ? activeDealOption.price : plan.pricing[duration];
   const isSuccess = step === 6;
+
+  function toggleService(tag: string) {
+    setSelectedServices(prev =>
+      prev.includes(tag) ? prev.filter(s => s !== tag) : [...prev, tag]
+    );
+  }
 
   // Calendar helpers
   const firstDOW = new Date(calYear, calMonth, 1).getDay();
@@ -268,6 +295,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
     step === 1 ? true :
     step === 2 ? selectedDay !== null :
     step === 3 ? selectedSlot !== null :
+    step === 4 ? (services.length === 0 || selectedServices.length > 0) && notes.trim().length > 0 :
     true;
 
   async function handleContinue() {
@@ -322,9 +350,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
         {/* ── Header ── */}
         {!isSuccess && (
-          <div className="px-6 pt-5 pb-4 border-b border-border shrink-0">
+          <div className="border-b border-border shrink-0">
             {/* Step indicator */}
-            <div className="flex items-center gap-0 mb-4">
+            <div className="flex items-center gap-0 px-6 pt-5">
               {STEP_LABELS.map((label, i) => {
                 const stepNum = i + 1;
                 const done = step > stepNum;
@@ -350,10 +378,10 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
                 );
               })}
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between px-6 pt-4 pb-4">
               <div>
-                <h2 className="text-sm font-medium text-foreground">{plan.name}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">with {mentorName} · {mentorCompany}</p>
+                <h2 className="text-sm font-medium text-foreground">Book a session with {mentorName}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{mentorRole} · {mentorCompany}</p>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                 <X className="w-4 h-4" />
@@ -367,44 +395,137 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
           {/* Step 1 — Plan + Duration */}
           {step === 1 && (
-            <div className="flex flex-col gap-5">
-              <div className="bg-secondary border border-border rounded-lg p-4 flex flex-col gap-1.5">
-                <span className="text-xs text-muted-foreground">Coaching plan</span>
-                <span className="text-sm font-medium text-foreground">{plan.name}</span>
-                <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
-              </div>
+            <div className="flex flex-col gap-4">
 
-              <div>
-                <p className="text-sm font-medium text-foreground mb-3">Session duration</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {(['30min', '1hr'] as Duration[]).map(d => {
-                    const label = d === '30min' ? '30 minutes' : '1 hour';
-                    const p = plan.pricing[d];
-                    const active = duration === d;
+              {/* ── Special Offer card ── */}
+              <div
+                onClick={() => setPlanType('deal')}
+                className="rounded-xl p-4 flex flex-col gap-2 text-left transition-all"
+                style={{
+                  background: isDeal ? '#FFFBEB' : '#FFFDF5',
+                  border: isDeal ? '2px solid #D97706' : '1.5px solid #FDE68A',
+                  cursor: 'pointer',
+                }}
+              >
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-semibold)', color: '#92400E' }}>Special Offer</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    {isDeal && (
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CheckCircle2 style={{ width: 12, height: 12, color: '#fff' }} />
+                      </div>
+                    )}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', background: '#D97706', borderRadius: '100px', padding: '2px 8px', fontSize: '10px', fontWeight: 'var(--font-weight-semibold)', color: '#fff', whiteSpace: 'nowrap' }}>OFFER</span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p style={{ fontSize: 'var(--text-xs)', color: '#78350F', lineHeight: '1.6' }}>
+                  A discounted intro session — a low-risk way to experience this mentor. One per mentor, one per week across the platform.
+                </p>
+
+                {/* Duration pills */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }} onClick={e => e.stopPropagation()}>
+                  {DEAL.durations.map(opt => {
+                    const isActive = duration === opt.key && isDeal;
+                    const is30 = opt.key === '30min';
+                    const pctOff = is30 && DEAL.regularPrice30 > 0
+                      ? Math.round((1 - opt.price / DEAL.regularPrice30) * 100)
+                      : null;
                     return (
                       <button
-                        key={d}
-                        onClick={() => setDuration(d)}
-                        className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all ${
-                          active
-                            ? 'border-primary bg-primary/5 shadow-sm'
-                            : 'border-border bg-card hover:bg-secondary'
-                        }`}
+                        key={opt.key}
+                        onClick={() => { setPlanType('deal'); setDuration(opt.key); }}
+                        style={{
+                          display: 'flex', flexDirection: 'column', gap: 2, padding: '7px 12px',
+                          borderRadius: '10px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                          background: isActive ? '#FEF3C7' : 'rgba(255,255,255,0.7)',
+                          border: isActive ? '1.5px solid #D97706' : '1.5px solid #FDE68A',
+                        }}
                       >
-                        <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? 'text-primary' : 'text-foreground'}`}>
-                          <Clock className="w-4 h-4" />
-                          {label}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <Clock style={{ width: 12, height: 12, color: '#D97706', flexShrink: 0 }} />
+                          <span style={{ fontSize: '12px', fontWeight: 'var(--font-weight-semibold)', color: '#92400E' }}>
+                            {opt.label}
+                          </span>
+                          <span style={{ fontSize: '12px', fontWeight: 'var(--font-weight-semibold)', color: '#B45309' }}>
+                            · {opt.price === 0 ? 'Free' : `$${opt.price}`}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground">${p.toFixed(2)} / session</span>
+                        {is30 && pctOff !== null && pctOff > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ fontSize: '11px', color: 'var(--muted-foreground)', textDecoration: 'line-through' }}>
+                              ${DEAL.regularPrice30}
+                            </span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', background: '#FEF9C3', border: '1px solid #FDE68A', borderRadius: '100px', padding: '1px 6px', fontSize: '10px', fontWeight: 'var(--font-weight-semibold)', color: '#92400E', whiteSpace: 'nowrap' }}>
+                              {pctOff}% off
+                            </span>
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
+              {/* ── Regular Coaching card ── */}
+              <button
+                onClick={() => setPlanType('paid')}
+                className="rounded-xl p-4 flex flex-col gap-1.5 text-left transition-all"
+                style={{
+                  background: !isDeal ? 'color-mix(in srgb, var(--primary) 4%, transparent)' : 'var(--secondary)',
+                  border: !isDeal ? '2px solid var(--primary)' : '1.5px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <span className="text-sm font-medium text-foreground">{plan.name}</span>
+                  {!isDeal && (
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <CheckCircle2 style={{ width: 12, height: 12, color: '#fff' }} />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
+              </button>
+
+              {/* ── Duration selector — hidden when Deal selected ── */}
+              {!isDeal && (
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-3">Session duration</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['30min', '1hr'] as Duration[]).map(d => {
+                      const label = d === '30min' ? '30 minutes' : '1 hour';
+                      const p = plan.pricing[d];
+                      const active = duration === d;
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => setDuration(d)}
+                          className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all ${
+                            active
+                              ? 'border-primary bg-primary/5 shadow-sm'
+                              : 'border-border bg-card hover:bg-secondary'
+                          }`}
+                        >
+                          <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? 'text-primary' : 'text-foreground'}`}>
+                            <Clock className="w-4 h-4" />
+                            {label}
+                          </div>
+                          <span className="text-xs text-muted-foreground">${p} / session</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-muted/60 rounded-lg px-4 py-3 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Session total</span>
-                <span className="text-lg font-medium text-foreground">${price.toFixed(2)}</span>
+                <span className="text-lg font-medium text-foreground">
+                  {isDeal && activeDealOption.price === 0 ? 'Free' : `$${price}`}
+                </span>
               </div>
             </div>
           )}
@@ -539,22 +660,57 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
           {/* Step 4 — Notes */}
           {step === 4 && (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
+              {services.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium text-foreground">
+                      What would you like help with?
+                    </label>
+                    <span className="text-xs" style={{ color: 'var(--primary)' }}>Required</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2.5 leading-relaxed">
+                    Select one or more services — your mentor will prepare accordingly.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {services.map(tag => {
+                      const active = selectedServices.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() => toggleService(tag)}
+                          className="rounded-full px-3.5 py-1.5 border text-xs font-medium transition-all"
+                          style={{
+                            background: active ? 'var(--primary)' : 'var(--card)',
+                            color: active ? 'var(--primary-foreground)' : 'var(--foreground)',
+                            borderColor: active ? 'var(--primary)' : 'var(--border)',
+                          }}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">
-                  Add notes to this booking
-                </label>
-                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                  This can include what you want help with, your context, or anything your mentor should know before the session.
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium text-foreground">
+                    Notes for your mentor
+                  </label>
+                  <span className="text-xs" style={{ color: 'var(--primary)' }}>Required</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2.5 leading-relaxed">
+                  Share your context, goals, and anything your mentor should know before the session.
                 </p>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   placeholder="e.g. I'm preparing for a FAANG PM onsite and struggling with metric-definition questions. I have 2 practice sessions left before my actual interview on May 5th..."
-                  rows={6}
+                  rows={5}
                   className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-foreground bg-card placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors leading-relaxed"
                 />
-                <p className="text-xs text-muted-foreground mt-1.5">Optional — you can skip this and add notes later.</p>
+                <p className="text-xs text-muted-foreground mt-1.5">Please add a note so your mentor can prepare.</p>
               </div>
             </div>
           )}
@@ -567,10 +723,11 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
               <div className="border border-border rounded-xl overflow-hidden">
                 {[
                   { label: 'Mentor',   value: `${mentorName} · ${mentorCompany}` },
-                  { label: 'Plan',     value: plan.name },
+                  { label: 'Plan',     value: isDeal ? 'Special Offer' : plan.name },
                   { label: 'Duration', value: duration === '30min' ? '30 minutes' : '1 hour' },
                   { label: 'Date',     value: formattedDate },
                   { label: 'Time',     value: selectedSlot ? formatSlotTime(selectedSlot) : '—' },
+                  { label: 'Services', value: selectedServices.join(', ') || '—' },
                 ].map((row, i, arr) => (
                   <div key={row.label} className={`flex items-start justify-between gap-4 px-4 py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                     <span className="text-xs text-muted-foreground w-20 shrink-0">{row.label}</span>
@@ -587,7 +744,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
               <div className="flex items-center justify-between bg-muted/60 rounded-lg px-4 py-3">
                 <span className="text-sm font-medium text-foreground">Total</span>
-                <span className="text-xl font-medium text-foreground">${price.toFixed(2)}</span>
+                <span className="text-xl font-medium text-foreground">${price}</span>
               </div>
 
               <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-secondary border border-border rounded-lg px-3 py-2.5">
@@ -619,7 +776,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
               <div className="w-full border border-border rounded-xl overflow-hidden">
                 {[
                   { label: 'Mentor',   value: mentorName },
-                  { label: 'Plan',     value: plan.name },
+                  { label: 'Plan',     value: isDeal ? 'Special Offer' : plan.name },
                   { label: 'Date',     value: formattedDate },
                   { label: 'Time',     value: selectedSlot ? formatSlotTime(selectedSlot) : '—' },
                 ].map((row, i, arr) => (
@@ -681,6 +838,12 @@ export function MentorDetailsPage() {
   const [activePlan, setActivePlan] = useState<CoachingPlan | null>(null);
   const [mentor, setMentor] = useState<MentorData | null>(null);
   const [loading, setLoading] = useState(!!mentorId);
+  const [verificationOpen, setVerificationOpen] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewHover, setReviewHover] = useState(0);
+  const [reviewName, setReviewName] = useState('');
+  const [reviewText, setReviewText] = useState('');
 
   // mentor_profile_viewed —— 进入 mentor 主页，离开时记录 duration_seconds
   useDwellTracking(EVENTS.MENTOR_PROFILE_VIEWED, () => ({ mentor_id: mentorId }), {
@@ -728,7 +891,9 @@ export function MentorDetailsPage() {
           plan={activePlan}
           mentorId={mentor.id}
           mentorName={mentor.name}
+          mentorRole={mentor.currentRole}
           mentorCompany={mentor.currentCompany}
+          services={mentor.expertiseTags ?? []}
           onClose={() => setActivePlan(null)}
         />
       )}
@@ -752,7 +917,7 @@ export function MentorDetailsPage() {
 
         {/* ── 1. Mentor Hero ── */}
         <section className="bg-card rounded-2xl border border-border p-8 mb-8 flex flex-col md:flex-row gap-8 items-start">
-          <div className="shrink-0 flex flex-col items-center">
+          <div className="shrink-0 flex flex-col items-center" style={{ width: 112 }}>
             {mentor?.avatarUrl ? (
               <img src={mentor.avatarUrl} alt={mentor.name} className="w-28 h-28 rounded-2xl object-cover ring-1 ring-border mb-3" />
             ) : (
@@ -767,13 +932,43 @@ export function MentorDetailsPage() {
             <p className="text-xs text-muted-foreground mt-0.5">{mentor?.reviewCount ?? 0} reviews</p>
           </div>
 
-          <div className="flex-1">
-            <h1 className="text-foreground">{mentor?.name ?? '—'}</h1>
-            <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
-              <Briefcase className="w-4 h-4" />
+          <div className="flex-1 min-w-0">
+            {/* Name row */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-foreground" style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', lineHeight: '1.25' }}>{mentor?.name ?? '—'}</h1>
+              {/* Compact verified badge */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '100px', padding: '3px 9px' }}>
+                <ShieldCheck style={{ width: 12, height: 12, color: '#16a34a', flexShrink: 0 }} />
+                <span style={{ fontSize: '11px', fontWeight: 'var(--font-weight-semibold)', color: '#15803d', letterSpacing: '0.01em' }}>Verified</span>
+              </div>
+              {/* LinkedIn button — only when a URL is available */}
+              {mentor?.linkedinUrl && (
+                <a
+                  href={mentor.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 3, width: 28, height: 28, borderRadius: 7, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#2563EB', flexShrink: 0, textDecoration: 'none', position: 'relative' }}
+                  className="hover:opacity-75"
+                  title="LinkedIn profile"
+                >
+                  <Linkedin style={{ width: 11, height: 11 }} />
+                  <ArrowUpRight style={{ width: 9, height: 9, position: 'absolute', top: 4, right: 4 }} />
+                </a>
+              )}
+            </div>
+
+            {/* Title + company + YoE */}
+            <div className="flex items-center gap-2 mt-2 flex-wrap text-sm text-muted-foreground">
+              <Briefcase style={{ width: 15, height: 15, flexShrink: 0 }} />
               <span>{mentor?.currentRole}</span>
               <span className="text-border">·</span>
               <span className="font-medium text-foreground">{mentor?.currentCompany}</span>
+              {!!mentor?.yearsOfExperience && mentor.yearsOfExperience > 0 && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-muted-foreground">{mentor.yearsOfExperience}+ yrs experience</span>
+                </>
+              )}
             </div>
 
             {/* <div className="flex flex-wrap gap-2 mt-4">
@@ -790,8 +985,8 @@ export function MentorDetailsPage() {
                 <div className="space-y-3">
                   {(mentor?.careerBackground ?? []).map((exp, i) => (
                     <div key={i} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
-                        <Award className="w-4 h-4 text-muted-foreground" />
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#FDF3D8', border: '1px solid #F0D080' }}>
+                        <Award className="w-4 h-4" style={{ color: '#D9A419' }} />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-foreground">{exp.role}</p>
@@ -803,9 +998,34 @@ export function MentorDetailsPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Verification</p>
-                <div className="flex items-center gap-2 text-sm bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-accent-foreground px-3 py-2 rounded-lg w-fit border border-[color-mix(in_srgb,var(--accent)_20%,transparent)]">
-                  <ShieldCheck className="w-4 h-4 text-accent" />
-                  <span className="text-xs font-medium">Identity & Experience Verified</span>
+                <div style={{ width: 'fit-content' }}>
+                  <button
+                    onClick={() => setVerificationOpen(v => !v)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: '#f0fdf4', border: '1px solid #bbf7d0',
+                      borderRadius: verificationOpen ? '10px 10px 0 0' : '10px',
+                      padding: '7px 12px', cursor: 'pointer', transition: 'border-radius 0.15s',
+                    }}
+                  >
+                    <ShieldCheck style={{ width: 15, height: 15, color: '#16a34a', flexShrink: 0 }} />
+                    <span style={{ fontSize: '12px', fontWeight: 'var(--font-weight-semibold)', color: '#15803d' }}>Identity &amp; Experience Verified</span>
+                    <ChevronDown style={{ width: 13, height: 13, color: '#16a34a', transition: 'transform 0.2s', transform: verificationOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                  </button>
+                  {verificationOpen && (
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {[
+                        'Work email verified',
+                        'LinkedIn verified',
+                        `Currently at ${mentor?.currentCompany ?? '—'}`,
+                      ].map(line => (
+                        <div key={line} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <Check style={{ width: 12, height: 12, color: '#16a34a', flexShrink: 0 }} />
+                          <span style={{ fontSize: '12px', color: '#15803d' }}>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -817,20 +1037,30 @@ export function MentorDetailsPage() {
           {/* ── Left: Plans + Reviews + FAQ ── */}
           <div className="lg:col-span-2 space-y-8">
 
-            {/* ── 2. Coaching Plans ── */}
+            {/* ── 2. Service Types ── */}
             <section>
-              <h2 className="text-foreground mb-5">Coaching Plans</h2>
-              <div className="flex flex-col gap-4">
-                {plans.map(plan => (
+              <h2 className="mb-5" style={{ fontFamily: 'var(--font-serif)', color: 'var(--foreground)' }}>Service Types</h2>
+              <div className="flex flex-col gap-3">
+                {plans.slice(0, 1).map(plan => (
                   <div
                     key={plan.id}
                     className="bg-card rounded-xl border border-border p-6 hover:shadow-sm transition-shadow"
                   >
-                    <h3 className="text-foreground" style={{ fontSize: 'var(--text-base)' }}>{plan.name}</h3>
-                    <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{plan.description}</p>
+                    {/* Service tag pills */}
+                    <div className="flex flex-wrap gap-2">
+                      {(mentor?.expertiseTags ?? []).map(tag => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium"
+                          style={{ background: 'var(--secondary)', color: 'var(--foreground)' }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
 
                     {/* Duration + pricing row */}
-                    <div className="flex items-center justify-between mt-5">
+                    <div className="flex items-center justify-between" style={{ marginTop: 20 }}>
                       <div className="flex items-center gap-5">
                         {(['30min', '1hr'] as const).map(d => (
                           <div key={d} className="flex items-center gap-1.5">
@@ -855,7 +1085,78 @@ export function MentorDetailsPage() {
 
             {/* ── 3. Ratings & Reviews ── */}
             <section>
-              <h2 className="text-foreground mb-5">Ratings & Reviews</h2>
+              <div className="flex items-center justify-between mb-5">
+                <h2 style={{ fontFamily: 'var(--font-serif)', color: 'var(--foreground)' }}>Ratings &amp; Reviews</h2>
+                <button
+                  onClick={() => setShowReviewForm(v => !v)}
+                  className="rounded-lg border border-border bg-card px-4 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors"
+                >
+                  {showReviewForm ? 'Cancel' : 'Write a Review'}
+                </button>
+              </div>
+
+              {showReviewForm && (
+                <div className="rounded-xl border border-border p-5 mb-3 flex flex-col gap-4 bg-card">
+                  <p className="text-sm font-medium text-foreground">Share your experience</p>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Your rating</p>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map(i => {
+                        const filled = i <= (reviewHover || reviewRating);
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => setReviewRating(i)}
+                            onMouseEnter={() => setReviewHover(i)}
+                            onMouseLeave={() => setReviewHover(0)}
+                            className="transition-transform hover:scale-110"
+                          >
+                            <Star style={{ width: 24, height: 24 }} fill={filled ? '#FFB900' : 'var(--muted)'} stroke={filled ? '#FFB900' : 'var(--muted)'} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block mb-1.5 text-xs font-medium text-foreground">Your name</label>
+                    <input
+                      type="text"
+                      value={reviewName}
+                      onChange={e => setReviewName(e.target.value)}
+                      placeholder="e.g. Sarah K."
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1.5 text-xs font-medium text-foreground">Your review</label>
+                    <textarea
+                      value={reviewText}
+                      onChange={e => setReviewText(e.target.value)}
+                      placeholder="What did you find most valuable about this session?"
+                      rows={4}
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors leading-relaxed"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      disabled={reviewRating === 0 || !reviewName.trim() || !reviewText.trim()}
+                      className="rounded-lg px-5 py-2 bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                      onClick={() => {
+                        // TODO: no public review-submit API on this page — submitMentorReview(bookingId, ...)
+                        // requires a completed-booking id that isn't available in the mentor-profile context.
+                        // For now just reset and close the form.
+                        setShowReviewForm(false);
+                        setReviewRating(0);
+                        setReviewHover(0);
+                        setReviewName('');
+                        setReviewText('');
+                      }}
+                    >
+                      Submit Review
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-card border border-border rounded-xl mb-5 flex flex-col items-center py-6 gap-2">
                 <p className="text-5xl font-medium text-foreground tracking-tight leading-none">{ratingBreakdown.overall.toFixed(1)}</p>
