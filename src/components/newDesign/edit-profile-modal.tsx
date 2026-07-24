@@ -144,12 +144,21 @@ export function EditProfileModal({ open, onOpenChange, initialData, onSave }: Ed
   };
 
   const handleSubmit = () => {
-    // job_preference_completed —— 用户编辑 Target roles 并保存
-    safeCapture(posthog, EVENTS.JOB_PREFERENCE_COMPLETED, {
-      target_roles: formData.targetRoles,
-      target_roles_count: formData.targetRoles.length,
-      target_company_types: formData.targetCompanyType,
-    });
+    // target_roles_completed / target_companies_completed —— 保存时按各自区块是否「非空且有变更」分别上报（无 payload）
+    const initialRoles = initialData?.targetRoles || [];
+    const initialCompanyTypes = initialData?.targetCompanyType || [];
+    const rolesChanged =
+      formData.targetRoles.length !== initialRoles.length ||
+      formData.targetRoles.some((r) => !initialRoles.includes(r));
+    const companyTypesChanged =
+      formData.targetCompanyType.length !== initialCompanyTypes.length ||
+      formData.targetCompanyType.some((t) => !initialCompanyTypes.includes(t));
+    if (formData.targetRoles.length > 0 && rolesChanged) {
+      safeCapture(posthog, EVENTS.TARGET_ROLES_COMPLETED);
+    }
+    if (formData.targetCompanyType.length > 0 && companyTypesChanged) {
+      safeCapture(posthog, EVENTS.TARGET_COMPANIES_COMPLETED);
+    }
     onSave(formData);
     onOpenChange(false);
   };

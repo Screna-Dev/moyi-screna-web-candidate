@@ -270,6 +270,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const payload: Record<string, string> = { email, password, name };
       if (referralCode) payload.referralCode = referralCode;
       await API.post('/auth/signup', payload);
+      // 00 — Acquire: 邮箱注册成功（UTM 归因经 super properties 自动附带）
+      safeCapture(posthog, EVENTS.SIGNUP_COMPLETED, {
+        signup_method: 'email',
+        promo_code: referralCode || null,
+      });
     } catch (error: any) {
       if (error.response?.data?.errorCode === 'EMAIL_NOT_VERIFIED' || 
           error.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED') {

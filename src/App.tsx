@@ -4,9 +4,11 @@ import { Toaster as Sonner } from "@/components/newDesign/ui/sonner";
 import { TooltipProvider } from "@/components/newDesign/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
+import { usePostHog } from "posthog-js/react";
 import BuildInfo from "./components/BuildInfo";
 import { router } from "./router";
 import { TopBar } from "@/components/newDesign/top-bar";
+import { captureAttribution } from "@/utils/attribution";
 
 const queryClient = new QueryClient();
 
@@ -63,18 +65,29 @@ function TopBarWrapper() {
 
 // AuthProvider and UserPlanProvider are mounted inside the router (RootLayout)
 // so that useNavigate works correctly within AuthContext.
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <TopBarWrapper />
-      <Toaster />
-      <Sonner />
-      <BuildInfo />
-      <Suspense fallback={<LoadingFallback />}>
-        <RouterProvider router={router} />
-      </Suspense>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const posthog = usePostHog();
+
+  // 00 — Acquire: 启动时读取 UTM / referrer 做渠道归因（super + person properties）
+  useEffect(() => {
+    if (!posthog) return;
+    captureAttribution(posthog);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <TopBarWrapper />
+        <Toaster />
+        <Sonner />
+        <BuildInfo />
+        <Suspense fallback={<LoadingFallback />}>
+          <RouterProvider router={router} />
+        </Suspense>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

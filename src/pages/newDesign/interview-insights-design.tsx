@@ -9,6 +9,9 @@ import { type CompanyData } from "@/components/newDesign/interview/company-card"
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
 import { getPosts, getPublicPosts, getCompaniesStats } from "@/services/CommunityService";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePostHog } from "posthog-js/react";
+import { safeCapture } from "@/utils/posthog";
+import { EVENTS } from "@/constants/analyticsEvents";
 import imgFaang from "@/assets/newDesign/cat-faang.png";
 import imgLargeEnt from "@/assets/newDesign/cat-large-ent.png";
 import imgMidSized from "@/assets/newDesign/cat-mid-sized.png";
@@ -188,6 +191,16 @@ function LoadingCards({ count = 9 }: { count?: number }) {
 
 export function InterviewInsightsPage() {
   const { isAuthenticated } = useAuth();
+  const posthog = usePostHog();
+
+  // interview_notes_browsed —— 进入面经列表页（每次进入上报一次）。
+  // view_type 映射：'by_company' = 本页（公司分组网格），'all' = 公司详情页的平铺面经列表。
+  // 本页没有视图切换开关，恒为按公司分组浏览。
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.INTERVIEW_NOTES_BROWSED, { view_type: 'by_company' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [latest, setLatest] = useState<string[]>([]);
   const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
   const [rollup, setRollup] = useState<{ totalCompanyCount: number; totalPostCount: number; totalRecentPostCount: number } | null>(null);

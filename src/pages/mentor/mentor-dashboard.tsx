@@ -11,7 +11,10 @@ import {
   Camera, Circle, Minus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { usePostHog } from 'posthog-js/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import {
   CANDIDATE_DASHBOARD_PATH,
   hasCandidateRole,
@@ -186,6 +189,8 @@ type MentorBooking = {
   sessionType: string | string[];
   date: string;
   time: string;
+  // 原始 ISO 开始时间（埋点用：计算距开始还有几小时）
+  startAt: string | null;
   duration: string;
   status: string;
   note?: string;
@@ -226,6 +231,7 @@ function mapMentorBooking(api: any): MentorBooking {
     sessionType: api?.topicTitle || '—',
     date: start ? bookingDateLabel(start) : '—',
     time: start ? start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—',
+    startAt: api?.startTime ?? null,
     duration: api?.durationMinutes ? `${api.durationMinutes} min` : '—',
     status,
     note: api?.studentNote || api?.note || '',
@@ -961,6 +967,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
 
   const { bookings, loading: bookingsLoading, refetch: refetchBookings } = useMyMentorBookings();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const posthog = usePostHog();
 
   // When opened from elsewhere (e.g. the Overview "message" action) with a target
   // booking, switch to the full list and open that booking's detail drawer.
@@ -978,6 +985,16 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     setCancellingId(bookingId);
     mentorCancelBooking(bookingId)
       .then(() => {
+        // session_cancelled —— mentor 侧取消预约（仅 API 成功后上报）
+        const booking = bookings.find(b => b.id === bookingId);
+        const startMs = booking?.startAt ? new Date(booking.startAt).getTime() : NaN;
+        safeCapture(posthog, EVENTS.SESSION_CANCELLED, {
+          cancelled_by: 'mentor',
+          hours_before_session: Number.isNaN(startMs)
+            ? null
+            : Math.round(((startMs - Date.now()) / 36e5) * 10) / 10,
+          plan_type: 'regular', // Special Offer 未上线，固定 regular（spec 枚举：regular / special_deal）
+        });
         setCancelledIds(prev => new Set([...prev, bookingId]));
         refetchBookings();
       })
@@ -3414,6 +3431,12 @@ export function MentorDashboardPage() {
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const posthog = usePostHog();
+
+  // mentor_dashboard_viewed —— 进入 mentor dashboard 时上报一次
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.MENTOR_DASHBOARD_VIEWED);
+  }, []);
 
   // Bookings nav badge mirrors the "Upcoming" count shown inside the Bookings
   // tab (pending + confirmed), so the sidebar number always matches.

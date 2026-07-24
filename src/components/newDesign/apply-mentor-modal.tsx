@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
 import { getProfile, uploadResume } from '../../services/ProfileServices';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import type { ProfileData } from '../../types/profile';
 
 // The mentor application now collects only identity essentials —
@@ -18,6 +21,7 @@ const emptyForm = {
 };
 
 export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const posthog = usePostHog();
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -61,6 +65,8 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
   // the body so the form never flashes before we know the user already applied.
   useEffect(() => {
     if (!open) return;
+    // mentor_apply_started —— 申请弹窗打开时上报一次
+    safeCapture(posthog, EVENTS.MENTOR_APPLY_STARTED);
     setProfileLoading(true);
 
     const detectApplication = getMyMentorProfile()
@@ -137,6 +143,8 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         workEmail: form.workEmail.trim(),
         linkedinUrl: form.linkedinUrl.trim(),
       });
+      // mentor_apply_submitted —— 申请提交成功（仅 API 成功后上报）
+      safeCapture(posthog, EVENTS.MENTOR_APPLY_SUBMITTED);
       setSubmitted(true);
     } catch (err: unknown) {
       setResumeUploading(false);

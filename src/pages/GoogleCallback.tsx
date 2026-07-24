@@ -4,6 +4,8 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
 import PaymentService from '@/services/PaymentServices';
 import { resolvePostLoginPath } from '@/components/mentor/dashboard-mode';
@@ -150,6 +152,11 @@ export default function GoogleCallback() {
         }
 
         if (isFirstLogin) {
+          // 00 — Acquire: Google 注册成功（isFirstLogin = 新账号）
+          safeCapture(posthog, EVENTS.SIGNUP_COMPLETED, {
+            signup_method: 'google',
+            promo_code: referralCode || null,
+          });
           navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
         } else {
           // Dual-role / mentor accounts land on the chooser or their remembered

@@ -234,7 +234,7 @@ function UpgradeModal({
 export function CompanyDetailPage() {
   const { companyId } = useParams();
   const { isAuthenticated } = useAuth();
-  const { isPremium, isLoading: isPlanLoading } = useUserPlan();
+  const { isPremium, isLoading: isPlanLoading, planData } = useUserPlan();
   const navigate = useNavigate();
   const posthog = usePostHog();
 
@@ -298,6 +298,20 @@ export function CompanyDetailPage() {
   const [sortOpen, setSortOpen] = useState(false);
   // Soft-paywall modal for Free/Basic users when they apply a filter or sort.
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  // paywall_viewed —— UpgradeModal 弹出时上报（低阶用户点击锁定的筛选/排序等入口）。
+  // note_id 为 null：此 paywall 不针对某篇具体面经。
+  // required_tier：面经全量访问需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
+  useEffect(() => {
+    if (!upgradeOpen) return;
+    safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+      note_id: null,
+      required_tier: 'advanced',
+      user_current_tier: planData.currentPlan.toLowerCase(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upgradeOpen]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
@@ -341,9 +355,12 @@ export function CompanyDetailPage() {
   // posts on screen. Append fetches ("load more") don't set this.
   const [isReloading, setIsReloading] = useState(false);
 
-  // interview_notes_browsed —— 进入公司详情页（每次进入上报一次）
+  // interview_notes_browsed —— 进入公司详情页（每次进入上报一次）。
+  // view_type 映射：'all' = 本页（单公司下的平铺面经列表），'by_company' = 列表页的公司分组网格。
   useEffect(() => {
-    safeCapture(posthog, EVENTS.INTERVIEW_NOTES_BROWSED, { sort_by: activeSort, company: company.name });
+    safeCapture(posthog, EVENTS.INTERVIEW_NOTES_BROWSED, { sort_by: activeSort, company: company.name, view_type: 'all' });
+    // company_page_viewed —— 进入某公司主页（company_id 取自路由参数）
+    safeCapture(posthog, EVENTS.COMPANY_PAGE_VIEWED, { company_id: companyId ?? null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -476,6 +493,16 @@ export function CompanyDetailPage() {
 
       setPosts(prev => reset ? content : [...prev, ...content]);
       initInteractions(content, reset);
+
+      // note_search_performed —— 仅统计用户主动搜索（非空关键词触发的 reset 请求）；
+      // 默认列表加载 / load-more 不上报。游客请求不带 search 参数、低阶用户搜索框
+      // 隐藏，故仅登录态上报。results_count 为本次返回条数（API 按页返回，无总数）。
+      if (reset && isAuthenticated && debouncedSearchQuery) {
+        safeCapture(posthog, EVENTS.NOTE_SEARCH_PERFORMED, {
+          query: debouncedSearchQuery,
+          results_count: content.length,
+        });
+      }
       // Low-tier users are locked to the first page (backend forces page=0), so
       // never offer "load more"; guests never paginate either.
       setHasMore(isAuthenticated && !isLowTier ? content.length >= 10 : false);
@@ -489,7 +516,7 @@ export function CompanyDetailPage() {
       setIsInitialLoading(false);
       setIsReloading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions, posthog]);
 
   useEffect(() => {
     // Hold the first fetch until the profile (canonical `company.name`) and the
@@ -739,7 +766,16 @@ export function CompanyDetailPage() {
                       !isAuthenticated
                         ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } })
                         : locked
-                          ? () => navigate('/#pricing')
+                          ? () => {
+                              // paywall_viewed —— 低阶用户点击锁定的面经卡片，看到解锁/升级引导。
+                              // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
+                              safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+                                note_id: post.id,
+                                required_tier: 'advanced',
+                                user_current_tier: planData.currentPlan.toLowerCase(),
+                              });
+                              navigate('/#pricing');
+                            }
                           : undefined
                     }
                   >
@@ -879,10 +915,7 @@ export function CompanyDetailPage() {
                             </div>
                             <Link
                               to={`/experience/${post.id}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                safeCapture(posthog, EVENTS.PREMIUM_NOTE_CLICKED, { note_id: post.id });
-                              }}
+                              onClick={(e) => e.stopPropagation()}
                               className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
                             >
                               View Post
@@ -966,7 +999,16 @@ export function CompanyDetailPage() {
         open={upgradeOpen}
         count={notesCount}
         onClose={() => setUpgradeOpen(false)}
-        onUpgrade={() => { setUpgradeOpen(false); navigate('/#pricing'); }}
+        onUpgrade={() => {
+          // upgrade_clicked —— paywall 弹窗内的升级 CTA（文案为 "Upgrade to Advanced"）
+          safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
+            current_tier: planData.currentPlan.toLowerCase(),
+            target_tier: 'advanced',
+            source: 'paywall',
+          });
+          setUpgradeOpen(false);
+          navigate('/#pricing');
+        }}
       />
     </DashboardLayout>
   );

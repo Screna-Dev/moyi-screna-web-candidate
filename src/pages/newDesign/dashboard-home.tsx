@@ -10,6 +10,8 @@ import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1082,6 +1084,7 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 }
 
 function CancelBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const posthog = usePostHog();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ refunded: boolean; refundAmountCents: number } | null>(null);
@@ -1096,6 +1099,13 @@ function CancelBookingModal({ booking, onClose, onDone }: { booking: Booking; on
     try {
       const res = await cancelBooking(booking.id) as { data?: { data?: { refunded?: boolean; refundAmountCents?: number } } };
       const data = res?.data?.data ?? {};
+      // session_cancelled —— 学员成功取消预约
+      safeCapture(posthog, EVENTS.SESSION_CANCELLED, {
+        cancelled_by: 'learner',
+        // 距 session 开始的小时数（保留 1 位小数；已开始的按 0 计）
+        hours_before_session: Math.max(0, Math.round(((new Date(booking.startTime).getTime() - Date.now()) / 3_600_000) * 10) / 10),
+        plan_type: 'regular', // Special Offer 未上线，固定 regular（spec 枚举：regular / special_deal）
+      });
       setResult({ refunded: !!data.refunded, refundAmountCents: data.refundAmountCents ?? 0 });
     } catch (err) {
       setError(errMessage(err) || 'Could not cancel this session. Please try again.');
@@ -1183,6 +1193,7 @@ function CancelBookingModal({ booking, onClose, onDone }: { booking: Booking; on
 type Slot = { startTime: string; endTime: string };
 
 function RescheduleBookingModal({ booking, onClose, onDone }: { booking: Booking; onClose: () => void; onDone: () => void }) {
+  const posthog = usePostHog();
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -1237,6 +1248,8 @@ function RescheduleBookingModal({ booking, onClose, onDone }: { booking: Booking
     setError(null);
     try {
       await rescheduleBooking(booking.id, selected);
+      // session_rescheduled —— 学员成功改期
+      safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, { initiated_by: 'learner' });
       setConfirmed(true);
     } catch (err) {
       setError(errMessage(err) || 'Could not reschedule to that time. Please pick another slot.');

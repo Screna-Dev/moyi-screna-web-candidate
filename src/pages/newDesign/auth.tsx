@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { usePostHog } from 'posthog-js/react';
 import { useAuth } from '@/contexts/AuthContext';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { Button } from '@/components/newDesign/ui/button';
 import { Input } from '@/components/newDesign/ui/input';
 import { Checkbox } from '@/components/newDesign/ui/checkbox';
@@ -261,6 +264,16 @@ export function AuthPage() {
   const { user, login, signup, loginWithGoogle, verifyEmail, resendVerificationCode, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const posthog = usePostHog();
+
+  // 00 — Acquire: signup_started。进入注册模式时上报一次
+  // （以注册模式挂载，或从登录 tab 切到注册 tab）。
+  const signupStartedRef = useRef(false);
+  useEffect(() => {
+    if (isLogin || signupStartedRef.current) return;
+    signupStartedRef.current = true;
+    safeCapture(posthog, EVENTS.SIGNUP_STARTED);
+  }, [isLogin, posthog]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {

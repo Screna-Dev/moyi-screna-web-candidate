@@ -149,6 +149,27 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
   const params = useParams();
   const interviewId = params.interviewId ?? searchParams.get('interviewId') ?? undefined;
 
+  // mock 入口来源（quick_ai_mock / personalized_practice）与题目集 ID ——
+  // 从路由 state 读取并写入 sessionStorage，刷新后 route state 丢失时也能
+  // 让 mock_completed 上报 source。
+  const [entryMeta] = useState<{ source: string | null; mockSetId: string | null }>(() => {
+    const storageKey = `aiMockEntry:${interviewId ?? ''}`;
+    const state = location.state as any;
+    if (state?.source) {
+      const meta = {
+        source: String(state.source),
+        mockSetId: state.mockSetId != null ? String(state.mockSetId) : null,
+      };
+      try { sessionStorage.setItem(storageKey, JSON.stringify(meta)); } catch { /* ignore */ }
+      return meta;
+    }
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored) return JSON.parse(stored);
+    } catch { /* ignore */ }
+    return { source: null, mockSetId: null };
+  });
+
   // Step state
   const [activeStep, setActiveStep] = useState(0);
   const steps = ['Media Setup', 'Interview'];
@@ -280,6 +301,7 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
         type: config.type,
         difficulty: config.difficulty,
         mode: config.mode,
+        source: entryMeta.source,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -759,6 +781,10 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
                   type: config.type,
                   difficulty: config.difficulty,
                   mode: config.mode,
+                  mock_set_id: entryMeta.mockSetId ?? interviewId ?? null,
+                  source: entryMeta.source,
+                  // is_retry：现有 session/module 数据没有「已尝试过」标记，先固定上报 false（需后端暴露）
+                  is_retry: false,
                 });
                 setStage('live');
               }}

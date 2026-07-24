@@ -393,7 +393,6 @@ function TargetJobModal({
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const posthog = usePostHog();
-  const recoTrackedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -401,21 +400,10 @@ function TargetJobModal({
       setSelectedJobData(null);
       setTab('quick');
       setApiError(null);
-      recoTrackedRef.current = false;
       invalidate();
       fetchRecommendations();
     }
   }, [open]);
-
-  // job_recommendations_viewed —— recommended job list finished rendering (fires once per open)
-  useEffect(() => {
-    if (open && !isLoading && recommendedJobs.length > 0 && !recoTrackedRef.current) {
-      recoTrackedRef.current = true;
-      safeCapture(posthog, EVENTS.JOB_RECOMMENDATIONS_VIEWED, {
-        count: recommendedJobs.length,
-      });
-    }
-  }, [open, isLoading, recommendedJobs.length, posthog]);
 
   const handleQuickApply = async () => {
     if (!selectedRole || !selectedJobData) return;
@@ -805,6 +793,12 @@ function PersonalizedPracticeHeroBanner() {
 export function PersonalizedPracticePage() {
   const posthog = usePostHog();
   const { isAuthenticated: isLoggedIn } = useAuth();
+
+  // personalized_practice_viewed —— 进入 Personalized Practice 页面时上报一次
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.PERSONALIZED_PRACTICE_VIEWED);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { planData } = useUserPlan();
   const { fetchRecommendations: prefetchRecommendations } = useRecommendedJobs();
   const userBalance = planData?.permanentCreditBalance;

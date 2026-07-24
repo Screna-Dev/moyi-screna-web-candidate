@@ -375,7 +375,10 @@ export function SessionConfirmPage() {
         duration: String(durationMins),
         mode: 'voice',
       });
-      navigate(`/ai-mock?${params.toString()}`, { state: { prefetchedSession } });
+      // source / mockSetId —— 供 /ai-mock 的 mock_started / mock_completed 上报入口漏斗
+      navigate(`/ai-mock?${params.toString()}`, {
+        state: { prefetchedSession, source: 'quick_ai_mock', mockSetId: sessionParam },
+      });
     } catch (err) {
       setStartError(parseQuickMockError(err));
       setStarting(false);
@@ -701,7 +704,8 @@ export function SessionConfirmPage() {
                       )}
                     </Button>
                   ) : (
-                    <Link to={(() => {
+                    <Link
+                      to={(() => {
                       const domainTypeMap: Record<string, string> = {
                         'Behavioral': 'behavioral',
                         'Product Sense': 'product',
@@ -713,7 +717,11 @@ export function SessionConfirmPage() {
                       const duration = session.time.replace(' min', '');
                       // Voice-only for now. Future: const mode = selectedMode.toLowerCase();
                       return `/ai-mock?interviewId=${sessionParam}&type=${type}&difficulty=${difficulty}&duration=${duration}&mode=voice`;
-                    })()}>
+                      })()}
+                      // 非 Quick Mock 的详情页均来自 personalized practice 训练模块，
+                      // source / mockSetId 供 mock_started / mock_completed 上报入口漏斗
+                      state={{ source: 'personalized_practice', mockSetId: sessionParam }}
+                    >
                       <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm">
                         Begin Session
                         <ArrowRight className="w-4 h-4" />

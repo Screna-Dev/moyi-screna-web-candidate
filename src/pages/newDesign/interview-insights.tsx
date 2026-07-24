@@ -1342,12 +1342,6 @@ export function InterviewInsightsPage() {
                                 to={`/experience/${post.id}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  // premium_note_clicked —— 点击打开面经详情。
-                                  // 注：Beta 阶段面经无 premium 标记，故对所有打开的面经上报；
-                                  // 待数据模型加入 premium 标记后再按 is_premium 过滤。
-                                  safeCapture(posthog, EVENTS.PREMIUM_NOTE_CLICKED, {
-                                    note_id: post.id,
-                                  });
                                 }}
                                 className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
                               >
