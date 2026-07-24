@@ -66,6 +66,14 @@ export default async function middleware(request: Request) {
       return;
     }
 
+    // Job-title recommendations run a synchronous LLM call that can also
+    // exceed the edge middleware's 25s limit. It has its own dedicated Node
+    // serverless function (api/v1/profile/job-title-recommendations.ts) with
+    // a 60s timeout — let it fall through too.
+    if (url.pathname === '/api/v1/profile/job-title-recommendations') {
+      return;
+    }
+
     const apiUrl =
       process.env.VITE_API_URL || 'https://api-staging.screna.ai/api/v1';
     const backendOrigin = new URL(apiUrl).origin;

@@ -21,20 +21,11 @@ import {
   Plus,
   X,
   Loader2,
-  ChevronsUpDown,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { MediumPageContainer } from '@/components/newDesign/dashboard-page';
 import { Input } from '@/components/newDesign/ui/input';
 import { Label } from '@/components/newDesign/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/newDesign/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/newDesign/ui/command';
 import { BillingTab } from '@/components/newDesign/billing-tab-design';
 import memberBg from '@/assets/newDesign/member-bg.png';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,40 +36,6 @@ const TABS = [
   { id: 'security',      label: 'Security',      icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing',       label: 'Billing',       icon: CreditCard },
-];
-
-const COUNTRIES = [
-  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda',
-  'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain',
-  'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan',
-  'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria',
-  'Burkina Faso', 'Burundi', 'Cambodia', 'Cameroon', 'Canada', 'Cape Verde',
-  'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros',
-  'Congo', 'Costa Rica', 'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Denmark',
-  'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador', 'Egypt', 'El Salvador',
-  'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia', 'Fiji',
-  'Finland', 'France', 'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece',
-  'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras',
-  'Hong Kong', 'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland',
-  'Israel', 'Italy', 'Ivory Coast', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan',
-  'Kenya', 'Kiribati', 'Kosovo', 'Kuwait', 'Kyrgyzstan', 'Laos', 'Latvia', 'Lebanon',
-  'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Macau',
-  'Madagascar', 'Malawi', 'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands',
-  'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova', 'Monaco', 'Mongolia',
-  'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia', 'Nauru', 'Nepal',
-  'Netherlands', 'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea',
-  'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palau', 'Palestine', 'Panama',
-  'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar',
-  'Romania', 'Russia', 'Rwanda', 'Saint Kitts and Nevis', 'Saint Lucia',
-  'Saint Vincent and the Grenadines', 'Samoa', 'San Marino', 'Sao Tome and Principe',
-  'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore',
-  'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea',
-  'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland',
-  'Syria', 'Taiwan', 'Tajikistan', 'Tanzania', 'Thailand', 'Timor-Leste', 'Togo',
-  'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
-  'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States',
-  'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen',
-  'Zambia', 'Zimbabwe',
 ];
 
 const TIMEZONES = [
@@ -314,50 +271,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Country combobox (searchable, A–Z) ────────────────────────────────────────
-
-function CountrySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  // Include a previously-saved value that isn't in the preset list so it's selectable/visible.
-  const options = value && !COUNTRIES.includes(value) ? [value, ...COUNTRIES] : COUNTRIES;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          role="combobox"
-          aria-expanded={open}
-          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <span className={value ? 'text-foreground' : 'text-muted-foreground'}>
-            {value || 'Select your country'}
-          </span>
-          <ChevronsUpDown className="w-4 h-4 text-muted-foreground shrink-0 ml-2" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
-        <Command>
-          <CommandInput placeholder="Search country…" />
-          <CommandList>
-            <CommandEmpty>No country found.</CommandEmpty>
-            {options.map(c => (
-              <CommandItem
-                key={c}
-                value={c}
-                onSelect={() => { onChange(c); setOpen(false); }}
-              >
-                <Check className={`mr-2 h-4 w-4 ${value === c ? 'opacity-100' : 'opacity-0'}`} />
-                {c}
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 // ─── Tab panels ───────────────────────────────────────────────────────────────
 
 function ProfileTab() {
@@ -365,7 +278,6 @@ function ProfileTab() {
   const [firstName, setFirstName] = useState('');
   const [lastName,  setLastName]  = useState('');
   const [email,     setEmail]     = useState('');
-  const [country,   setCountry]   = useState('');
   const [timezone,  setTimezone]  = useState('Pacific Time (US & Canada)');
   const [saving,    setSaving]    = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
@@ -373,14 +285,13 @@ function ProfileTab() {
 
   useEffect(() => {
     getPersonalInfo()
-      .then((res: { data: { data?: Record<string, string>; name?: string; email?: string; country?: string; timezone?: string } }) => {
+      .then((res: { data: { data?: Record<string, string>; name?: string; email?: string; timezone?: string } }) => {
         const info = res.data?.data ?? res.data;
         if (!info) return;
         const [first, ...rest] = (info.name || '').trim().split(' ');
         setFirstName(first || '');
         setLastName(rest.join(' ') || '');
         setEmail(info.email || '');
-        setCountry(info.country || '');
         setTimezone(info.timezone || 'Pacific Time (US & Canada)');
       })
       .catch(() => {
@@ -401,7 +312,7 @@ function ProfileTab() {
     setSaveError('');
     try {
       const name = [firstName, lastName].filter(Boolean).join(' ');
-      await savePersonalInfo({ name, country: country || '', timezone });
+      await savePersonalInfo({ name, timezone });
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2500);
     } catch (err: unknown) {
@@ -457,12 +368,6 @@ function ProfileTab() {
           <p className="text-xs text-muted-foreground">
             Your email is used to sign in and can't be changed here. Contact support to update it.
           </p>
-        </div>
-
-        {/* Country */}
-        <div className="space-y-1.5">
-          <Label htmlFor="country">Country</Label>
-          <CountrySelect value={country} onChange={setCountry} />
         </div>
 
         {/* Timezone */}

@@ -200,38 +200,39 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }, 120);
 
     try {
-      const res = await uploadResume(file);
-      const data = res.data?.data ?? res.data;
+      await uploadResume(file);
       clearInterval(resumeTimerRef.current!);
       setResumeProgress(100);
 
-      if (data?.resume_path) {
-        setResumePath(data.resume_path);
-        const displayName = data?.structured_resume?.profile?.full_name
-          ? `${data.structured_resume.profile.full_name.replace(/ /g, '_')}_Resume.pdf`
-          : file.name;
-        setResumeFile({ name: displayName, size: sizeStr });
-      }
+      // upload-resume returns no useful body and the backend persists the
+      // parsed resume itself, so refetch GET /profile/resume to get the
+      // authoritative structured_resume + resume_path.
+      const profileRes = await getProfile();
+      const pdata = profileRes.data?.data ?? profileRes.data;
+      console.log('[getProfile] after upload:', pdata);
 
-      // Save structured resume to profile
-      if (data?.structured_resume) {
-        setStructuredResume(data.structured_resume as Record<string, unknown>);
-        const vs = data.structured_resume?.profile?.visa_status;
-        if (vs) setVisaStatus(vs);
-        try {
-          await updateProfile(data.structured_resume);
-        } catch {
-          // Upload succeeded; silent fail on save — profile still usable
-        }
-        // If visa status is missing, prompt user
-        if (!vs) {
+      const structuredResume = pdata?.structured_resume;
+      if (pdata?.resume_path) setResumePath(pdata.resume_path);
+      // Keep the actual uploaded file name for display.
+      setResumeFile({ name: file.name, size: sizeStr });
+
+      if (structuredResume) {
+        setStructuredResume(structuredResume as Record<string, unknown>);
+        const vs = structuredResume?.profile?.visa_status;
+        if (vs) {
+          setVisaStatus(vs);
+        } else {
+          // Visa status missing — prompt user
           setPendingVisaStatus('');
           setShowVisaDialog(true);
         }
+      } else {
+        console.warn('[getProfile] no structured_resume after upload — backend may not have persisted');
       }
 
       setTimeout(() => setResumeState('success'), 300);
-    } catch {
+    } catch (uploadErr) {
+      console.error('[uploadResume] upload/refetch failed:', uploadErr);
       clearInterval(resumeTimerRef.current!);
       setResumeState('idle');
       setResumeFile(null);
@@ -250,11 +251,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       if (data?.resume_path) {
         const path = data.resume_path as string;
         setResumePath(path);
+        // Use the actual stored file name from the resume path.
         const filename = path.split('/').pop() || 'Resume.pdf';
-        const displayName = data?.structured_resume?.profile?.full_name
-          ? `${data.structured_resume.profile.full_name.replace(/ /g, '_')}_Resume.pdf`
-          : filename;
-        setResumeFile({ name: displayName, size: 'Stored in your profile' });
+        setResumeFile({ name: filename, size: 'Stored in your profile' });
         setResumeState('success');
       }
     }).catch(() => {}).finally(() => setLoadingResume(false));
