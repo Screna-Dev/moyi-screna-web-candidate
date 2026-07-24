@@ -82,10 +82,16 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 function navItemClass(isActive: boolean) {
-  return `flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+  return `group flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
     isActive
-      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+      ? 'bg-[#EEF1FB] text-gray-900'
+      : 'text-gray-700 hover:bg-[#F4F5F7]'
+  }`;
+}
+
+function navIconClass(isActive: boolean) {
+  return `w-4 h-4 shrink-0 transition-colors ${
+    isActive ? 'text-[#5B7CFA]' : 'text-gray-900 group-hover:text-[#5B7CFA]'
   }`;
 }
 
@@ -131,7 +137,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           <div className="space-y-0.5">
             {adminSidebarLinks.map((item) => (
               <Link key={item.label} to={item.path} className={navItemClass(currentPath === item.path)}>
-                <item.icon className="w-4 h-4 shrink-0" />
+                <item.icon className={navIconClass(currentPath === item.path)} />
                 <span className="text-sm">{item.label}</span>
               </Link>
             ))}
@@ -157,7 +163,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         <div className="space-y-0.5">
           {sidebarLinks.map((item) => (
             <Link key={item.label} to={item.path} className={navItemClass(isLinkActive(item.path))}>
-              <item.icon className="w-4 h-4 shrink-0" />
+              <item.icon className={navIconClass(isLinkActive(item.path))} />
               <span className="text-sm">{item.label}</span>
               {item.ai && (
                 <span className="ml-auto text-[10px] font-semibold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
@@ -178,7 +184,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         <div className="space-y-0.5">
           {sidebarAccountLinks.map((item) => (
             <Link key={item.label} to={item.path} className={navItemClass(isLinkActive(item.path))}>
-              <item.icon className="w-4 h-4 shrink-0" />
+              <item.icon className={navIconClass(isLinkActive(item.path))} />
               <span className="text-sm">{item.label}</span>
             </Link>
           ))}
