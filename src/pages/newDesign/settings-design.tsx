@@ -312,7 +312,7 @@ function ProfileTab() {
     setSaveError('');
     try {
       const name = [firstName, lastName].filter(Boolean).join(' ');
-      await savePersonalInfo({ name, timezone });
+      await savePersonalInfo({ name, timezone, country: 'United States' });
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2500);
     } catch (err: unknown) {
