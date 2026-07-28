@@ -1,15 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
-
-// credits_low_warning_shown 阈值。
-// 注：spec 要求「低于每月额度的 20%」，但当前 planData 不含「每月额度」分母，
-// 故暂用绝对阈值占位。拿到各 plan 的月度 credits 额度后应替换为按 20% 计算。
-const LOW_CREDITS_THRESHOLD = 5;
 
 // Plan types — mirrors the backend tier enum (BASIC | ADVANCED | FLAGSHIP)
 // plus Free for users without an active subscription.
@@ -93,12 +88,11 @@ interface UserPlanProviderProps {
 // Provider component
 export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const posthog = usePostHog();
 
-  // credits 埋点用：记录上一次余额 + 低额提示是否已上报（避免重复）
+  // credits 埋点用：记录上一次余额（用于判断「跌到 0」）
   const prevBalanceRef = useRef<number | null>(null);
-  const lowWarningFiredRef = useRef(false);
 
   const [planData, setPlanData] = useState<PlanUsageData>(defaultPlanData);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,7 +118,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   // `plan-usage` was removed; this preserves the public hook interface so old
   // call sites keep working without changes.
   const refreshPlan = useCallback(async () => {
-    if (!isAuthenticated) {
+    // Staff (admin/ops) have no candidate subscription/credits — skip the calls.
+    if (!isAuthenticated || isStaffRole(user?.roles, user?.role)) {
       setIsLoading(false);
       setPlanData(defaultPlanData);
       return;
@@ -212,7 +207,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.roles, user?.role]);
 
   // Fetch plan when auth state changes (user logs in)
   useEffect(() => {
@@ -234,9 +229,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     }
   }, [isAuthenticated, isAuthLoading, hasFetched, refreshPlan]);
 
-  // credits_depleted / credits_low_warning_shown —— 监听余额变化
-  // depleted：仅在「从 >0 跌到 0」时上报（避免对从未有 credits 的 Free 用户误报）
-  // low_warning：余额首次跌破阈值时上报一次；余额回升后重置
+  // credits_depleted —— 监听余额变化
+  // 仅在「从 >0 跌到 0」时上报（避免对从未有 credits 的 Free 用户误报）
   useEffect(() => {
     if (!isAuthenticated || isLoading || !hasFetched) return;
     const balance = planData.creditBalance;
@@ -246,19 +240,6 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       safeCapture(posthog, EVENTS.CREDITS_DEPLETED, {
         current_plan: planData.currentPlan,
       });
-    }
-
-    if (balance > 0 && balance <= LOW_CREDITS_THRESHOLD) {
-      if (!lowWarningFiredRef.current) {
-        lowWarningFiredRef.current = true;
-        safeCapture(posthog, EVENTS.CREDITS_LOW_WARNING_SHOWN, {
-          credit_balance: balance,
-          threshold: LOW_CREDITS_THRESHOLD,
-          current_plan: planData.currentPlan,
-        });
-      }
-    } else if (balance > LOW_CREDITS_THRESHOLD) {
-      lowWarningFiredRef.current = false;
     }
 
     prevBalanceRef.current = balance;

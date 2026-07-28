@@ -2,9 +2,12 @@ import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Menu, X, Loader2, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 import { BuyCreditsModal } from '@/components/newDesign/BuyCreditsModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { getPersonalInfo } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
@@ -554,9 +557,10 @@ function HowItWorksSection() {
 export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading: isAuthLoading } = useAuth();
   const { planData, isLoading: isPlanLoading } = useUserPlan();
   const { toast } = useToast();
+  const posthog = usePostHog();
 
   const [activeTab, setActiveTab] = useState<Tab>('AI Mock');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -580,6 +584,8 @@ export function HomePage() {
   };
 
   const handleBuyCredits = async (n: number) => {
+    // 04 — 变现: 点击购买 credits（发起 checkout 前上报）
+    safeCapture(posthog, EVENTS.BUY_CREDITS_CLICKED);
     try {
       const res = await PaymentService.purchaseCustomPack(n);
       const url = res?.data?.data?.url ?? res?.data?.url;
@@ -639,6 +645,11 @@ export function HomePage() {
   // there rather than changing tier from the landing page.
   // Billing cycle is MONTHLY-only for now.
   const handleSelectPlan = async (plan: Plan) => {
+    // 04 — 变现: 选择套餐（发起 checkout 前上报；billing 目前仅 MONTHLY）
+    safeCapture(posthog, EVENTS.PLAN_SELECTED, {
+      plan_tier: plan.tier.toLowerCase(),
+      billing_cycle: 'monthly',
+    });
     if (!user) {
       navigate('/auth');
       return;
@@ -735,6 +746,39 @@ export function HomePage() {
     document.querySelectorAll('[data-reveal]').forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, []);
+
+  // ── 00 — Acquire: landing_page_viewed ─────────────────────────────────────
+  // 仅未登录访客上报；等 auth 状态确定（isAuthLoading 结束）后上报一次。
+  const landingViewedRef = useRef(false);
+  useEffect(() => {
+    if (isAuthLoading || user || landingViewedRef.current) return;
+    landingViewedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    safeCapture(posthog, EVENTS.LANDING_PAGE_VIEWED, {
+      utm_source: params.get('utm_source'),
+      utm_medium: params.get('utm_medium'),
+      utm_campaign: params.get('utm_campaign'),
+      referrer: document.referrer || null,
+    });
+  }, [isAuthLoading, user, posthog]);
+
+  // ── 00 — Acquire: pricing_viewed ──────────────────────────────────────────
+  // /pricing 已 301 到 /#pricing（见 router.tsx），到达 #pricing hash 时上报。
+  // 每次到达只报一次（离开 hash 后再次到达会重新上报）；等 auth / plan 加载完
+  // 再报，保证 is_logged_in / current_plan 准确。
+  const pricingViewedRef = useRef(false);
+  useEffect(() => {
+    if (location.hash !== '#pricing') {
+      pricingViewedRef.current = false;
+      return;
+    }
+    if (pricingViewedRef.current || isAuthLoading || (user && isPlanLoading)) return;
+    pricingViewedRef.current = true;
+    safeCapture(posthog, EVENTS.PRICING_VIEWED, {
+      is_logged_in: !!user,
+      current_plan: user ? planData.currentPlan : null,
+    });
+  }, [location.hash, isAuthLoading, user, isPlanLoading, planData.currentPlan, posthog]);
 
   // ── Scroll to hash target (e.g. /#pricing, /#faq) ─────────────────────────
   useEffect(() => {

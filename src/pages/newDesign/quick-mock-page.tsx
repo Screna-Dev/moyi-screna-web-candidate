@@ -5,6 +5,9 @@ import { WidePageContainer } from '@/components/newDesign/dashboard-page';
 import { BookOpen, Building2, Briefcase, Clock, ArrowRight, Coins, AlertCircle, Loader2 } from 'lucide-react';
 import { getPostOptions, getCommunityCompanies } from '@/services/CommunityService';
 import { createQuickMockInterview, parseQuickMockError } from '@/services/InterviewServices';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ============================================================================
 // Quick Mock entry screen — ported from the new design. Rendered inside
@@ -499,8 +502,15 @@ function QuickMockHeroBanner() {
 // ─── Page (rendered inside DashboardLayout) ───────────────
 export function QuickMockPage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  // mock_quick_viewed —— 进入 Quick Mock 页面时上报一次
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.MOCK_QUICK_VIEWED);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Start the Quick Mock immediately — no confirm step. Create the session,
   // then hand its LiveKit credentials to /ai-mock via navigation state so it
@@ -534,7 +544,10 @@ export function QuickMockPage() {
         duration: String(opts.durationMinutes),
         mode: 'voice',
       });
-      navigate(`/ai-mock?${params.toString()}`, { state: { prefetchedSession } });
+      // source —— 供 /ai-mock 的 mock_started / mock_completed 上报入口漏斗
+      navigate(`/ai-mock?${params.toString()}`, {
+        state: { prefetchedSession, source: 'quick_ai_mock' },
+      });
     } catch (err) {
       setStartError(parseQuickMockError(err));
       setStarting(false);

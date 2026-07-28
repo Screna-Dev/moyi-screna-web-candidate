@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import {
   Lock,
   Sparkles,
@@ -61,6 +64,7 @@ function LockedCard({
     violet: 'bg-violet-50 text-violet-600',
     amber:  'bg-amber-50 text-amber-600',
   };
+  const posthog = usePostHog();
 
   return (
     <div className="relative bg-white rounded-2xl border border-slate-200/60 shadow-sm shadow-slate-200/20 overflow-hidden">
@@ -88,7 +92,17 @@ function LockedCard({
         {/* CTAs */}
         <div className="flex items-center gap-2">
           <Link to="/#pricing">
-            <button className="px-4 py-2 bg-[hsl(221,91%,60%)] text-white rounded-xl text-[13px] font-semibold hover:bg-[hsl(221,80%,55%)] transition-all shadow-sm shadow-[hsl(221,91%,60%)]/20">
+            <button
+              onClick={() =>
+                // upgrade_clicked —— 锁定卡片上的「Upgrade to unlock」CTA
+                safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
+                  current_tier: 'free',
+                  target_tier: null,
+                  source: 'dashboard',
+                })
+              }
+              className="px-4 py-2 bg-[hsl(221,91%,60%)] text-white rounded-xl text-[13px] font-semibold hover:bg-[hsl(221,80%,55%)] transition-all shadow-sm shadow-[hsl(221,91%,60%)]/20"
+            >
               Upgrade to unlock
             </button>
           </Link>
@@ -264,6 +278,16 @@ function StageProgressBar() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GuestDashboardPage() {
   const [practiceTab, setPracticeTab] = useState<'recent' | 'start'>('recent');
+  const posthog = usePostHog();
+
+  // upgrade_clicked —— Guest dashboard 的升级 CTA（本页仅面向未付费用户，current_tier 恒为 free）
+  const trackUpgradeClicked = () => {
+    safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
+      current_tier: 'free',
+      target_tier: null,
+      source: 'dashboard',
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[hsl(220,20%,97%)] flex flex-col">
@@ -302,7 +326,10 @@ export function GuestDashboardPage() {
             </button>
           </Link>
           <Link to="/#pricing">
-            <button className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm shadow-[hsl(221,91%,60%)]/25 flex items-center gap-1.5">
+            <button
+              onClick={trackUpgradeClicked}
+              className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm shadow-[hsl(221,91%,60%)]/25 flex items-center gap-1.5"
+            >
               <Zap className="w-3.5 h-3.5" /> Upgrade
             </button>
           </Link>
@@ -359,7 +386,10 @@ export function GuestDashboardPage() {
                   </button>
                 </Link>
                 <Link to="/#pricing">
-                  <button className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5">
+                  <button
+                    onClick={trackUpgradeClicked}
+                    className="text-[13px] font-semibold text-white bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,80%,55%)] px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                  >
                     <Zap className="w-3.5 h-3.5" /> Upgrade Now
                   </button>
                 </Link>

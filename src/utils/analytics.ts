@@ -17,10 +17,11 @@ export const markOnboardingComplete = (
   flowType: string,
   properties?: Record<string, any>
 ) => {
+  const completedAt = new Date().toISOString();
   try {
     // 仅在首次完成时写入 Day 0（避免重复 onboarding 覆盖留存基准日）
     if (!localStorage.getItem(ONBOARDING_COMPLETED_AT_KEY)) {
-      localStorage.setItem(ONBOARDING_COMPLETED_AT_KEY, new Date().toISOString());
+      localStorage.setItem(ONBOARDING_COMPLETED_AT_KEY, completedAt);
     }
   } catch {
     // localStorage 不可用时静默忽略
@@ -28,6 +29,9 @@ export const markOnboardingComplete = (
 
   safeCapture(posthog, EVENTS.ONBOARDING_COMPLETED, {
     flow_type: flowType,
+    // 同步落 person property：days_since_onboarding 口径不再依赖单设备 localStorage，
+    // 存量 null 的回填也以此属性为准（$set_once 保证 Day 0 不被重复 onboarding 覆盖）。
+    $set_once: { onboarding_completed_at: completedAt },
     ...properties,
   });
 };

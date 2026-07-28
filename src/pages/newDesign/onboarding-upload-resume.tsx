@@ -6,6 +6,8 @@ import { uploadResume, updateProfile, saveUserInsights, getJobTitleRecommendatio
 import { createTrainingPlan } from '@/services/InterviewServices';
 import { usePostHog } from 'posthog-js/react';
 import { markOnboardingComplete } from '@/utils/analytics';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -1322,6 +1324,7 @@ function ScreenAnalysisTransition({
   data: FlowData;
   onComplete: (result: AnalysisResult) => void;
 }) {
+  const posthog = usePostHog();
   const [completedCount, setCompletedCount] = useState(0);
   const [progress, setProgress] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
@@ -1377,7 +1380,15 @@ function ScreenAnalysisTransition({
       }));
     };
 
+    const parseStartedAt = Date.now();
     uploadResume(file).then(res => {
+      // resume_parse_completed —— 简历解析成功
+      // cache_hit：后端响应暂未暴露该字段，缺失时上报 null（需后端补充）
+      safeCapture(posthog, EVENTS.RESUME_PARSE_COMPLETED, {
+        duration_ms: Date.now() - parseStartedAt,
+        cache_hit: res.data?.cache_hit ?? res.data?.data?.cache_hit ?? null,
+        source: 'onboarding',
+      });
       const structuredResume = res.data?.data?.structured_resume ?? res.data?.structured_resume ?? res.data;
       const jobTitles: string[] = structuredResume?.job_titles ?? [];
       const visaStatus = structuredResume?.profile?.visa_status;
@@ -1661,6 +1672,14 @@ export function OnboardingUploadResumePage() {
   const [tempVisaStatus, setTempVisaStatus] = useState('');
   const [isSavingVisa, setIsSavingVisa] = useState(false);
   const [pendingVisa, setPendingVisa] = useState<{ structuredResume: any; fileName: string } | null>(null);
+
+  // onboarding_step_viewed —— 每次可见步骤变化时上报（含首个步骤）
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.ONBOARDING_STEP_VIEWED, {
+      step_number: step,
+      step_name: FLOW_STEPS.find(s => s.id === step)?.label ?? String(step),
+    });
+  }, [step, posthog]);
 
   const update = useCallback((partial: Partial<FlowData> | ((prev: FlowData) => Partial<FlowData>)) => {
     setData(prev => {

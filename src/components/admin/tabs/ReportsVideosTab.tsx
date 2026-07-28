@@ -11,6 +11,7 @@ import {
   Calendar,
   Clock,
   ChevronRight,
+  ArrowLeft,
   Loader2,
   AlertCircle,
   CheckCircle,
@@ -307,9 +308,18 @@ export function ReportsVideosTab({ user }) {
       </Card>
 
       {/* Report Detail Modal */}
-      <Dialog open={!!selectedReportId} onOpenChange={handleCloseModal}>
+      <Dialog open={!!selectedReportId} onOpenChange={(open) => { if (!open) handleCloseModal(); }}>
         <DialogContent className="max-w-2xl h-[85vh] p-0 flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b shrink-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0 space-y-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCloseModal}
+              className="gap-1 -ml-2 h-8 w-fit text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to user
+            </Button>
             <DialogTitle>AI Mock Interview Report</DialogTitle>
           </DialogHeader>
 
@@ -325,7 +335,7 @@ export function ReportsVideosTab({ user }) {
               </div>
             </div>
           ) : selectedReport ? (
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="p-6 space-y-6">
                 {/* Header Info */}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -527,7 +537,7 @@ export function ReportsVideosTab({ user }) {
             <DialogTitle>{selectedVideo?.title}</DialogTitle>
           </DialogHeader>
           {selectedVideo && (
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="p-6 space-y-4">
                 <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
                   <div className="text-center">

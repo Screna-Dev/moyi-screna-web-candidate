@@ -8,6 +8,9 @@ import { getPost, getComments, createComment, deleteComment, getReplies, createR
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserPlan } from '@/hooks/useUserPlan';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
@@ -164,6 +167,8 @@ export function ExperienceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const { planData } = useUserPlan();
+  const posthog = usePostHog();
 
   // note_read —— 打开某篇面经，离开时记录 duration_seconds
   useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
@@ -176,6 +181,18 @@ export function ExperienceDetailPage() {
   // Free/Basic users can only open the 2 newest posts per company; the 3rd+
   // returns 403 INSUFFICIENT_PLAN_TIER, which we surface as an upgrade prompt.
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+  // paywall_viewed —— 直接打开被锁定的面经（403 INSUFFICIENT_PLAN_TIER）弹出升级引导时上报。
+  // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
+  useEffect(() => {
+    if (!showUpgradePrompt) return;
+    safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+      note_id: id ?? null,
+      required_tier: 'advanced',
+      user_current_tier: planData.currentPlan.toLowerCase(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showUpgradePrompt]);
 
   // ── Comments ──
   const [comments, setComments] = useState<Comment[]>([]);

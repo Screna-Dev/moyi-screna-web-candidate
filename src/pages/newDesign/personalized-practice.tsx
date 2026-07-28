@@ -496,7 +496,6 @@ function TargetJobModal({
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const posthog = usePostHog();
-  const recoTrackedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -504,21 +503,10 @@ function TargetJobModal({
       setSelectedJobData(null);
       setTab('quick');
       setApiError(null);
-      recoTrackedRef.current = false;
       invalidate();
       fetchRecommendations();
     }
   }, [open]);
-
-  // job_recommendations_viewed —— Quick AI Mock 推荐职位列表渲染完成（每次打开上报一次）
-  useEffect(() => {
-    if (open && !isLoading && recommendedJobs.length > 0 && !recoTrackedRef.current) {
-      recoTrackedRef.current = true;
-      safeCapture(posthog, EVENTS.JOB_RECOMMENDATIONS_VIEWED, {
-        count: recommendedJobs.length,
-      });
-    }
-  }, [open, isLoading, recommendedJobs.length, posthog]);
 
   const handleQuickApply = async () => {
     if (!selectedRole || !selectedJobData) return;

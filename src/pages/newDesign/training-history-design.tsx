@@ -16,6 +16,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview, cancelBooking, rescheduleBooking, submitDispute, submitDisputeScreenshot, getMentor, getMentorSlots } from '@/services/MentorService';
+import { usePostHog } from 'posthog-js/react';
+import type { PostHog } from 'posthog-js';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 import svgPaths from './svg-training-history';
 
 // ─── Types ────────────────────────────────────────────
@@ -44,6 +48,7 @@ interface MentorSession {
   services: string[]; price: string;
   reviewStatus: ReviewStatus; stars?: number; myNote?: string; hasReview?: boolean;
   meetingLink?: string; mentorId?: string; topicId?: string;
+  startAt?: string | null; // 原始 ISO 开始时间，用于埋点计算 hours_before_session
 }
 type TrainingEntry = AIMockSession | MentorSession;
 
@@ -204,8 +209,34 @@ function mapBookingsToMentorSessions(bookings: Booking[]): MentorSession[] {
         meetingLink: b.meetingLink,
         mentorId: b.mentorId,
         topicId: b.topicId,
+        startAt: valid ? b.startTime : null,
       };
     });
+}
+
+// session_completed —— 客户端 best-effort：首次看到某 booking 为 COMPLETED 时上报一次
+// （后端状态确认才是事实来源，此为临时信号）。用 localStorage 去重避免重复上报。
+const SESSION_COMPLETED_TRACKED_KEY = 'screna_session_completed_tracked';
+function trackCompletedSessions(posthog: PostHog | null | undefined, sessions: MentorSession[]) {
+  try {
+    const raw = localStorage.getItem(SESSION_COMPLETED_TRACKED_KEY);
+    const tracked = new Set<string>(raw ? JSON.parse(raw) : []);
+    let changed = false;
+    sessions.forEach((s) => {
+      if (s.status === 'Completed' && !tracked.has(s.id)) {
+        safeCapture(posthog, EVENTS.SESSION_COMPLETED, {
+          session_id: s.id,
+          plan_type: 'regular', // Special Offer 未上线，暂固定 regular
+          service_type: s.coachingPlan || null,
+        });
+        tracked.add(s.id);
+        changed = true;
+      }
+    });
+    if (changed) localStorage.setItem(SESSION_COMPLETED_TRACKED_KEY, JSON.stringify([...tracked]));
+  } catch {
+    // localStorage 不可用时静默忽略
+  }
 }
 
 const AI_ROLES = ['Software Engineer', 'Product Manager', 'Engineering Manager', 'ML Engineer'];
@@ -456,6 +487,7 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
 
 // ─── Reschedule Modal ──────────────────────────────────
 function RescheduleModal({ session, open, onOpenChange }: { session: MentorSession; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const posthog = usePostHog();
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -517,6 +549,8 @@ function RescheduleModal({ session, open, onOpenChange }: { session: MentorSessi
     setSubmitting(true);
     try {
       await rescheduleBooking(session.id, selected);
+      // session_rescheduled —— /history 页学员改期入口
+      safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, { initiated_by: 'learner' });
       window.location.reload();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -585,6 +619,7 @@ function RescheduleModal({ session, open, onOpenChange }: { session: MentorSessi
 
 // ─── Mentor Row ────────────────────────────────────────
 function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session: MentorSession; isLast: boolean; onReviewed: (id: string) => void; reviewedSessions: Set<unknown> }) {
+  const posthog = usePostHog();
   const [expanded, setExpanded] = useState(false);
   const [reviewStars, setReviewStars] = useState(0);
   const [hoverStar, setHoverStar] = useState(0);
@@ -613,6 +648,13 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
     setActing(true);
     try {
       await cancelBooking(session.id);
+      // session_cancelled —— /history 页学员取消入口（plan_type：Special Offer 未上线，固定 regular）
+      const startMs = session.startAt ? new Date(session.startAt).getTime() : NaN;
+      safeCapture(posthog, EVENTS.SESSION_CANCELLED, {
+        cancelled_by: 'learner',
+        hours_before_session: Number.isNaN(startMs) ? null : Math.max(0, Math.round(((startMs - Date.now()) / 36e5) * 10) / 10),
+        plan_type: 'regular',
+      });
       window.location.reload();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -993,6 +1035,14 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                             overallRating: reviewStars,
                             comment: trimmed || undefined,
                           });
+                          // session_reviewed —— 用户提交对 mentor 的评分和评价
+                          safeCapture(posthog, EVENTS.SESSION_REVIEWED, {
+                            session_id: session.id,
+                            plan_type: 'regular', // Special Offer 未上线，暂固定 regular
+                            service_type: session.coachingPlan || null,
+                            rating_stars: reviewStars,
+                            has_comment: trimmed.length > 0,
+                          });
                           setSubmitted(true);
                           session.hasReview = true;
                           onReviewed(session.id);
@@ -1341,6 +1391,7 @@ function EmptyState() {
 // ══════════════════════════════════════════════════════
 export function TrainingHistoryPage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const [activeTab,        setActiveTab]        = useState<MainTab>(
     searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
@@ -1387,7 +1438,11 @@ export function TrainingHistoryPage() {
       try {
         const res = await listMyBookings({ page: 0, size: 100 });
         const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        if (!cancelled) setMentorSessions(mapBookingsToMentorSessions(Array.isArray(content) ? content : []));
+        const mapped = mapBookingsToMentorSessions(Array.isArray(content) ? content : []);
+        if (!cancelled) {
+          setMentorSessions(mapped);
+          trackCompletedSessions(posthog, mapped);
+        }
       } catch {
         if (!cancelled) setMentorSessions([]);
       }

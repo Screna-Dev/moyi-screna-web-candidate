@@ -7,6 +7,9 @@ import { getMentors } from '@/services/MentorService';
 import { ApplyMentorModal } from '@/components/newDesign/apply-mentor-modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasMentorRole } from '@/components/mentor/dashboard-mode';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // SVG path data (inlined from the new design's MentorCard import).
 const cardSvg = {
@@ -465,6 +468,7 @@ function HeroBanner({ onApply, isAlreadyMentor }: { onApply: () => void; isAlrea
 
 export function CoachingPage() {
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const { user } = useAuth();
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
@@ -478,6 +482,20 @@ export function CoachingPage() {
   const [sortBy, setSortBy] = useState('Top rated');
   const sortRef = useRef<HTMLDivElement>(null);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  // coaching_viewed —— 进入 Coaching 页面时上报一次
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.COACHING_VIEWED);
+  }, []);
+
+  // coaching_filter_applied —— 用户应用 / 更改 / 清除某个筛选
+  const applyFilter = (filterId: string, val: string | null) => {
+    setFilters((p) => ({ ...p, [filterId]: val }));
+    safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, {
+      filter_name: filterId,
+      values: val ? [val] : [],
+    });
+  };
 
   const fetchMentorList = useCallback(async () => {
     try {
@@ -505,7 +523,14 @@ export function CoachingPage() {
 
   useEffect(() => {
     let active = true;
-    fetchMentorList().then((list) => { if (active) setMentors(list); });
+    fetchMentorList().then((list) => {
+      if (!active) return;
+      setMentors(list);
+      // coaching_filter_empty_result —— 筛选组合无结果（默认未筛选状态不上报）
+      if (list.length === 0 && Object.values(filters).some(Boolean)) {
+        safeCapture(posthog, EVENTS.COACHING_FILTER_EMPTY_RESULT, { filters });
+      }
+    });
     return () => { active = false; };
   }, [fetchMentorList]);
 
@@ -541,13 +566,16 @@ export function CoachingPage() {
                 selected={filters[filter.id]}
                 isOpen={openDropdown === filter.id}
                 onToggle={() => setOpenDropdown((p) => (p === filter.id ? null : filter.id))}
-                onSelect={(val) => { setFilters((p) => ({ ...p, [filter.id]: val })); setOpenDropdown(null); }}
-                onClear={() => setFilters((p) => ({ ...p, [filter.id]: null }))}
+                onSelect={(val) => { applyFilter(filter.id, val); setOpenDropdown(null); }}
+                onClear={() => applyFilter(filter.id, null)}
               />
             ))}
             {activeFilterCount > 0 && (
               <button
-                onClick={() => setFilters({ role: null, price: null, availability: null, rating: null })}
+                onClick={() => {
+                  setFilters({ role: null, price: null, availability: null, rating: null });
+                  safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, { filter_name: 'all', values: [] });
+                }}
                 className="transition-colors hover:text-foreground"
                 style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--muted-foreground)', padding: '0 4px' }}
               >

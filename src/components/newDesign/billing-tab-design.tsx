@@ -9,6 +9,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { PaymentService } from '@/services';
 import { BuyCreditsModal } from './BuyCreditsModal';
+import { usePostHog } from 'posthog-js/react';
+import { safeCapture } from '@/utils/posthog';
+import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Formatting helpers (mirror billing.tsx) ─────────────────────────────────────
 const formatDate = (iso: string | null | undefined) => {
@@ -327,11 +330,17 @@ const PLANS = [
   { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly', badge: null },
 ] as const;
 
+// plan_switch_confirmed 用：按 tier 排序判断 upgrade / downgrade。
+const TIER_ORDER: Record<string, number> = { free: 0, basic: 1, advanced: 2, flagship: 3 };
+const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade' =>
+  (TIER_ORDER[toTier] ?? 0) > (TIER_ORDER[fromTier] ?? 0) ? 'upgrade' : 'downgrade';
+
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
   const { subscription } = useSubscription();
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   // Cancel/switch actions are still mock — real logic coming.
   const isActing = false;
@@ -359,6 +368,10 @@ export function BillingTab() {
   const nextBillingAmount = subscription?.nextBillingAmount != null
     ? formatAmountCents(subscription.nextBillingAmount, subscription.currency)
     : TIER_PRICE[planState] ?? '—';
+
+  // days_since_subscribed：后端未返回首次订阅日期（currentPeriodStart 只是本期起始，
+  // 续费后会重置，不能当起订日用），暂报 null。
+  const daysSinceSubscribed = null;
 
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
@@ -512,16 +525,37 @@ export function BillingTab() {
 
   // Switch-plan: mock — real logic coming.
   const handleConfirmSwitch = async () => {
+    // plan_switch_confirmed —— 用户确认切换 plan（真实切换逻辑接入后，应仅在 API 成功后上报）
+    safeCapture(posthog, EVENTS.PLAN_SWITCH_CONFIRMED, {
+      from_tier: planState,
+      to_tier: selectedPlan,
+      billing_cycle: subscription?.billingCycle ?? 'monthly',
+      change_type: getChangeType(planState, selectedPlan),
+    });
     fireToast('Plan change saved');
     setSwitchPlanOpen(false);
   };
 
   // Cancellation: mock — real logic coming.
   const handleSubmitCancellation = async () => {
+    // subscription_cancelled —— 取消流程完成。接入真实取消逻辑
+    // （useSubscription.cancel()）后，必须仅在 API 成功时上报。
+    safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
+      plan_tier: planState,
+      days_since_subscribed: daysSinceSubscribed,
+    });
     setCancelSubmitted(true);
   };
   const handleReactivate = async () => {
     fireToast('Subscription reactivated');
+  };
+
+  // subscription_cancel_clicked —— 点击「Cancel subscription」入口
+  const trackCancelClicked = () => {
+    safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCEL_CLICKED, {
+      current_tier: planState,
+      days_since_subscribed: daysSinceSubscribed,
+    });
   };
 
   const isMember       = planState !== 'free';
@@ -549,7 +583,15 @@ export function BillingTab() {
         nextBillingDate={nextBillingDate}
         nextBillingAmount={nextBillingAmount}
         userName={user?.name?.split(' ')[0] || 'Alex'}
-        onUpgrade={() => navigate('/#pricing')}
+        onUpgrade={() => {
+          // upgrade_clicked —— Settings 页「Upgrade to Member」CTA
+          safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
+            current_tier: planState,
+            target_tier: null,
+            source: 'settings',
+          });
+          navigate('/#pricing');
+        }}
       />
 
       {/* ════════════════════════════════════════════════════
@@ -650,7 +692,7 @@ export function BillingTab() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">Need to make a change to your plan?</p>
                   <button
-                    onClick={() => setCancelState('refund_window')}
+                    onClick={() => { trackCancelClicked(); setCancelState('refund_window'); }}
                     className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors hover:underline underline-offset-2 ml-4"
                   >
                     Cancel subscription
@@ -756,7 +798,7 @@ export function BillingTab() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setShowCancelModal(true)}
+                    onClick={() => { trackCancelClicked(); setShowCancelModal(true); }}
                     className="text-xs text-destructive/60 hover:text-destructive transition-colors hover:underline underline-offset-2 shrink-0 ml-4"
                   >
                     Cancel subscription
@@ -823,7 +865,14 @@ export function BillingTab() {
             </div>
             <div className="flex flex-col gap-2 mt-auto">
               <button
-                onClick={() => setShowBuyCredits(true)}
+                onClick={() => {
+                  // buy_credits_clicked —— 打开购买 credits 弹窗
+                  safeCapture(posthog, EVENTS.BUY_CREDITS_CLICKED, {
+                    current_tier: planState,
+                    source: 'settings',
+                  });
+                  setShowBuyCredits(true);
+                }}
                 className="w-full py-2 rounded-lg bg-white text-xs font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
                 style={{ color: '#172554', fontFamily: 'var(--font-sans)' }}
               >

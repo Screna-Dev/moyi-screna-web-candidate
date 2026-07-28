@@ -37,8 +37,9 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState({
     keyword: '',
-    status: '',
     roleType: '',
+    // Plan tier filter, sent to the backend as `plan` (FREE|BASIC|ADVANCED|FLAGSHIP).
+    plan: '',
   });
   const [sortBy, setSortBy] = useState('lastActiveAt');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -48,7 +49,7 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
   // Fetch users on mount and when filters/page/sort change
   useEffect(() => {
     fetchUsers();
-  }, [currentPage, filters.status, filters.roleType, sortBy, sortOrder, refreshTrigger]);
+  }, [currentPage, filters.roleType, filters.plan, sortBy, sortOrder, refreshTrigger]);
 
   // Debounced search for keyword
   useEffect(() => {
@@ -76,8 +77,8 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
     try {
       const params: any = { page: currentPage, sortBy, sortOrder };
       if (filters.keyword) params.keyword = filters.keyword;
-      if (filters.status) params.status = filters.status;
       if (filters.roleType) params.roleType = filters.roleType;
+      if (filters.plan) params.plan = filters.plan;
 
       const response = await adminService.searchUsers(params);
       const data = response.data.data;
@@ -103,15 +104,15 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
     setFilters((prev) => ({ ...prev, keyword: value }));
   };
 
-  const handleStatusChange = (value: string) => {
-    const statusMap: Record<string, string> = {
+  const handlePlanChange = (value: string) => {
+    const planMap: Record<string, string> = {
       all: '',
-      Active: 'ACTIVE',
-      Inactive: 'INACTIVE',
-      Banned: 'BANNED',
-      Trial: 'TRIAL',
+      Free: 'FREE',
+      Basic: 'BASIC',
+      Advanced: 'ADVANCED',
+      Flagship: 'FLAGSHIP',
     };
-    setFilters((prev) => ({ ...prev, status: statusMap[value] || '' }));
+    setFilters((prev) => ({ ...prev, plan: planMap[value] || '' }));
     setCurrentPage(0);
   };
 
@@ -154,25 +155,6 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
   };
 
   // Helper functions
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-      case 'Active':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'TRIAL':
-      case 'Trial':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'INACTIVE':
-      case 'Inactive':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
-      case 'BANNED':
-      case 'Banned':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'CANDIDATE':
@@ -208,14 +190,19 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
   const endItem = Math.min((currentPage + 1) * pageSize, totalElements);
 
   // Get display value for selects
-  const getStatusDisplayValue = () => {
-    const map: Record<string, string> = { ACTIVE: 'Active', INACTIVE: 'Inactive', BANNED: 'Banned', TRIAL: 'Trial' };
-    return map[filters.status] || 'all';
-  };
-
   const getRoleDisplayValue = () => {
     const map: Record<string, string> = { CANDIDATE: 'Candidate', MENTOR: 'Mentor', ADMIN: 'Admin' };
     return map[filters.roleType] || 'all';
+  };
+
+  const getPlanDisplayValue = () => {
+    const map: Record<string, string> = {
+      FREE: 'Free',
+      BASIC: 'Basic',
+      ADVANCED: 'Advanced',
+      FLAGSHIP: 'Flagship',
+    };
+    return map[filters.plan] || 'all';
   };
 
   return (
@@ -245,16 +232,16 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
             </SelectContent>
           </Select>
 
-          <Select value={getStatusDisplayValue()} onValueChange={handleStatusChange}>
+          <Select value={getPlanDisplayValue()} onValueChange={handlePlanChange}>
             <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder="Plan" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Active">Active</SelectItem>
-              <SelectItem value="Inactive">Inactive</SelectItem>
-              <SelectItem value="Banned">Banned</SelectItem>
-              <SelectItem value="Trial">Trial</SelectItem>
+              <SelectItem value="all">All Plans</SelectItem>
+              <SelectItem value="Free">Free</SelectItem>
+              <SelectItem value="Basic">Basic</SelectItem>
+              <SelectItem value="Advanced">Advanced</SelectItem>
+              <SelectItem value="Flagship">Flagship</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -281,6 +268,8 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
                     {renderSortIcon('planName')}
                   </div>
                 </TableHead>
+                {/* TODO: switch to sortBy='totalCredits' (permanent + recurring) once
+                    the backend supports it; for now sorts by permanent credits only. */}
                 <TableHead
                   className="cursor-pointer select-none hover:text-foreground"
                   onClick={() => handleSort('creditBalance')}
@@ -356,7 +345,7 @@ export function UsersList({ selectedUserId, onSelectUser, refreshTrigger }: User
                     </TableCell>
                     <TableCell>
                       <span className="text-sm">
-                        {user.planName || 'N/A'}
+                        {user.planName || 'Free'}
                       </span>
                     </TableCell>
                     <TableCell>

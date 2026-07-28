@@ -18,9 +18,6 @@ import { PremiumOnboardingWizard } from './premium-onboarding-wizard';
 import JobService from '@/services/JobServices';
 import { getOnboardingStatus, getProfilePreferences, saveProfilePreferences } from '@/services/ProfileServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
-import { usePostHog } from 'posthog-js/react';
-import { safeCapture } from '@/utils/posthog';
-import { EVENTS } from '@/constants/analyticsEvents';
 
 const ROLE_SUGGESTIONS = [
   // Engineering / data / other roles
@@ -424,8 +421,6 @@ export function JobApplyTab() {
   // jobs and complete onboarding. Only job *delegation* is Premium-gated, which
   // the backend enforces (see handleDelegateClick → 402/403 → upgrade modal).
   const { canAccessJobs, isLoading: isPlanLoading } = useUserPlan();
-  const posthog = usePostHog();
-  const limitApproachedFiredRef = useRef(false);
 
   // Onboarding gate — premium users who haven't finished resume / preferences
   // / consent see a blocking screen that opens the wizard at the right step.
@@ -538,20 +533,6 @@ export function JobApplyTab() {
   const [profileTargetRoles, setProfileTargetRoles] = useState<string[]>([]);
   const [profilePreferences, setProfilePreferences] = useState<any>(null);
 
-  // application_limit_approached —— 当月申请数达到月度上限 90% 时上报一次
-  useEffect(() => {
-    if (monthlyLimit > 0 && appliedCount >= monthlyLimit * 0.9) {
-      if (!limitApproachedFiredRef.current) {
-        limitApproachedFiredRef.current = true;
-        safeCapture(posthog, EVENTS.APPLICATION_LIMIT_APPROACHED, {
-          application_count: appliedCount,
-          monthly_limit: monthlyLimit,
-        });
-      }
-    } else if (monthlyLimit > 0 && appliedCount < monthlyLimit * 0.9) {
-      limitApproachedFiredRef.current = false;
-    }
-  }, [appliedCount, monthlyLimit, posthog]);
   const appsInitRef = useRef(false);
   const profileRolesInitRef = useRef(false);
 
@@ -684,10 +665,6 @@ export function JobApplyTab() {
     });
     try {
       await JobService.acceptRecommendation(recId);
-      // job_application_delegated —— 用户确认委托代投某职位
-      safeCapture(posthog, EVENTS.JOB_APPLICATION_DELEGATED, {
-        job_id: recId,
-      });
       setRecommendedJobs(prev => prev.filter(j => j.id !== recId));
       await fetchApplications();
       fetchApplicationsCount();

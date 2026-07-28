@@ -174,6 +174,14 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
   // IANA id extracted from the selected label, e.g. "America/Los_Angeles (PDT, UTC−7)" → "America/Los_Angeles"
   const tz = timezone.split(' ')[0];
 
+  // booking_modal_opened —— 预约弹窗打开时上报一次（当前唯一入口是 mentor 主页的 Book 按钮）
+  useEffect(() => {
+    safeCapture(posthog, EVENTS.BOOKING_MODAL_OPENED, {
+      mentor_id: mentorId,
+      entry_source: 'mentor_profile',
+    });
+  }, []);
+
   // Date parts (year, month 0-indexed, day) of a UTC instant rendered in the selected timezone
   const zonedParts = useCallback((iso: string) => {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -272,6 +280,14 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
 
   async function handleContinue() {
     if (step < 5) {
+      if (step === 1) {
+        // booking_plan_selected —— 学员在 Step 1 确认 plan 与时长
+        safeCapture(posthog, EVENTS.BOOKING_PLAN_SELECTED, {
+          plan_type: 'regular', // Special Offer 未上线，暂固定 regular
+          duration: duration === '30min' ? 30 : 60,
+          price,
+        });
+      }
       setStep(s => s + 1);
       return;
     }
@@ -294,7 +310,10 @@ function BookingModal({ plan, mentorId, mentorName, mentorCompany, onClose }: Bo
         safeCapture(posthog, EVENTS.SESSION_BOOKED, {
           mentor_id: mentorId,
           session_plan: plan.id,
-          duration_minutes: duration === '30min' ? 30 : 60,
+          plan_type: 'regular', // Special Offer 未上线，暂固定 regular
+          service_type: plan.name,
+          duration: duration === '30min' ? 30 : 60,
+          amount: price,
         });
         window.location.href = data.checkoutUrl;
         return;

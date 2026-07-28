@@ -34,22 +34,22 @@ function UsersAdminTab() {
 
   return (
     <div className="p-6">
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className={`w-full ${selectedUser ? 'lg:w-[40%]' : 'lg:w-full'} transition-all duration-300`}>
-          <Card className="rounded-xl border">
-            <UsersList
-              selectedUserId={selectedUser?.id ?? null}
-              onSelectUser={handleSelectUser}
-              refreshTrigger={refreshTrigger}
-            />
-          </Card>
-        </div>
-        {selectedUser && (
-          <div className="flex-1">
-            <UserDetailPanel user={selectedUser} onUserUpdated={handleUserUpdated} />
-          </div>
-        )}
-      </div>
+      <Card className="rounded-xl border">
+        <UsersList
+          selectedUserId={selectedUser?.id ?? null}
+          onSelectUser={handleSelectUser}
+          refreshTrigger={refreshTrigger}
+        />
+      </Card>
+
+      <UserDetailPanel
+        user={selectedUser}
+        open={!!selectedUser}
+        onOpenChange={(open) => {
+          if (!open) setSelectedUser(null);
+        }}
+        onUserUpdated={handleUserUpdated}
+      />
     </div>
   );
 }
