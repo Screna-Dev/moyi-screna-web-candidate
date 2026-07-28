@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
-import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock } from "lucide-react";
+import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock, Link } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
@@ -93,7 +93,7 @@ type Mentor = {
   expertiseTags: string[];
   rate30: number;
   rate60: number;
-  status: "Pending" | "Active" | "Rejected" | "Suspend";
+  status: "Pending" | "Active" | "Rejected" | "Suspend" | "Waitlist";
   apiStatus?: ApiStatus;
   reviewStatus?: ReviewStatus;
   statusReason?: string;
@@ -110,6 +110,15 @@ type Mentor = {
   // regardless of whether its title maps to a known service type.
   topics: { id: string; price30min: number; price60min: number }[];
   reviews: Review[];
+  // ── Application / profile fields with no backend endpoint yet. Rendered as
+  //    placeholders ("—" / empty states) until the API exposes them. ──
+  appTitle?: string;
+  appCompany?: string;
+  appYoe?: number;
+  conductsInterviews?: boolean;
+  resumeFile?: string;
+  specialDeal?: { price15: number; price30: number; weeklyLimit: number; dealsBooked: number };
+  experience?: { id: string; title: string; company: string; years: string }[];
 };
 
 // ─── API ↔ UI mappers ─────────────────────────────────────────────────────────
@@ -208,6 +217,9 @@ type Session = {
   within48h: boolean;
   mentorNote?: string;
   studentNote?: string;
+  // No backend field yet — reserved so the Session Recording section can wire up
+  // once the API returns a recording link/file.
+  recording?: { type: "link" | "file"; label: string; url: string } | null;
 };
 
 function mapApiBooking(api: any): Session {
@@ -292,6 +304,9 @@ const sessionStatusVariant = (s: string): BadgeVariant =>
 const disputeVariant = (s: string): BadgeVariant =>
   s === "Open" ? "amber" : s === "Approved" ? "green" : s === "Rejected" ? "red" : "gray";
 
+const mentorStatusVariant = (s: string): BadgeVariant =>
+  s === "Active" ? "green" : s === "Rejected" ? "red" : s === "Suspend" ? "purple" : s === "Pending" ? "amber" : "gray";
+
 function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: `hsl(${(name.charCodeAt(0) * 17) % 360}, 55%, 68%)`, fontSize: size * 0.34, fontWeight: 700, color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -303,6 +318,11 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
 // Outline chip — used for expertise tags
 function ExpertiseChip({ label, small }: { label: string; small?: boolean }) {
   return <span style={{ display: "inline-flex", alignItems: "center", height: small ? 16 : 18, padding: `0 ${small ? 5 : 7}px`, borderRadius: 9999, fontSize: small ? 10 : 10.5, fontWeight: 500, background: "transparent", color: C.textMid, border: `1px solid ${C.border}`, whiteSpace: "nowrap" as const }}>{label}</span>;
+}
+
+// Filled chip — used for service types
+function ServiceChip({ label }: { label: string }) {
+  return <span style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 600, background: C.blueBg, color: C.blue, border: `1px solid ${C.blueBorder}`, whiteSpace: "nowrap" as const }}>{label}</span>;
 }
 
 // Toggle switch
@@ -593,6 +613,12 @@ function VerificationSection({
   const bothDone = mentor.emailVerified && !!mentor.linkedinUrl;
   const canConfirm = bothDone && !mentor.verified;
 
+  // Derive the mentor's company from their work-email domain as a fallback
+  // until the backend exposes an explicit company field.
+  const emailDomain = mentor.email ? mentor.email.split("@")[1]?.split(".")[0] : null;
+  const companyFromDomain = emailDomain ? emailDomain.charAt(0).toUpperCase() + emailDomain.slice(1) : null;
+  const displayCompany = mentor.appCompany || companyFromDomain;
+
   const rowStyle: React.CSSProperties = {
     display: "flex", alignItems: "flex-start", gap: 12,
     padding: "10px 12px", borderRadius: 6,
@@ -638,6 +664,9 @@ function VerificationSection({
               {mentor.emailVerified && checkIcon}
             </div>
             <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.email || "—"}</div>
+            {displayCompany && (
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Company: {displayCompany}</div>
+            )}
           </div>
         </div>
 
@@ -927,6 +956,137 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
 
 // ─── Mentor Directory ──────────────────────────────────────────────────────────
 
+// ─── Service Types Block (inline edit, inside Drawer) ─────────────────────────
+
+const MAX_SERVICE_TYPES = 3;
+
+function ServiceTypesBlock({
+  offerings,
+  onSave,
+}: {
+  offerings: ServiceOffering[];
+  onSave: (updated: ServiceOffering[]) => void;
+}) {
+  const enabledIds = offerings.filter((o) => o.enabled).map((o) => o.typeId);
+  const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState<string[]>(enabledIds);
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_SERVICE_TYPES) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const handleSave = () => {
+    const updated = offerings.map((o) => ({ ...o, enabled: selected.includes(o.typeId) }));
+    const existingIds = offerings.map((o) => o.typeId);
+    const newIds = selected.filter((id) => !existingIds.includes(id));
+    const extra: ServiceOffering[] = newIds.map((id) => ({
+      typeId: id, enabled: true, rate: 0, pricingType: "per-hour" as const,
+      duration: 60, expertiseTags: [], description: "", notes: "", mentorNote: "",
+    }));
+    onSave([...updated, ...extra]);
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setSelected(enabledIds);
+    setEditing(false);
+  };
+
+  const chipBase: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 5,
+    height: 28, padding: "0 11px", borderRadius: 9999,
+    fontSize: 11.5, fontWeight: 500, cursor: "pointer",
+    border: "none", fontFamily: "'Inter', sans-serif",
+    transition: "background 100ms, color 100ms, border-color 100ms",
+    whiteSpace: "nowrap" as const,
+  };
+
+  if (!editing) {
+    const enabledServices = ALL_SERVICE_TYPES.filter((t) => enabledIds.includes(t.id));
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Service Types</div>
+          <button onClick={() => { setSelected(enabledIds); setEditing(true); }} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Inter', sans-serif" }}>
+            Edit
+          </button>
+        </div>
+        {enabledServices.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7 }}>
+            <AlertTriangle size={13} style={{ color: C.amber, flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>
+              No service types selected — this mentor won&apos;t appear in candidate filters.
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {enabledServices.slice(0, MAX_SERVICE_TYPES).map((t) => (
+              <ServiceChip key={t.id} label={t.label} />
+            ))}
+            {enabledServices.length > MAX_SERVICE_TYPES && (
+              <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>+{enabledServices.length - MAX_SERVICE_TYPES} more</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 10, padding: "13px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Service Types</div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 14 }}>
+        {ALL_SERVICE_TYPES.map((t) => {
+          const isSelected = selected.includes(t.id);
+          return (
+            <button
+              key={t.id}
+              onClick={() => toggle(t.id)}
+              style={{
+                ...chipBase,
+                background: isSelected ? C.blue : "white",
+                color: isSelected ? "white" : C.textMid,
+                border: `1px solid ${isSelected ? C.blue : C.border}`,
+                cursor: "pointer",
+              }}
+            >
+              {isSelected && <Check size={11} style={{ flexShrink: 0 }} />}
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={handleSave}
+            disabled={selected.length === 0}
+            style={{ ...primaryBtn, opacity: selected.length === 0 ? 0.4 : 1, cursor: selected.length === 0 ? "not-allowed" : "pointer" }}
+          >
+            Save
+          </button>
+          <button onClick={handleCancel} style={{ fontSize: 12, color: C.textMid, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Inter', sans-serif" }}>
+            Cancel
+          </button>
+        </div>
+        <span style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.5 }}>
+          Changes apply to the mentor&apos;s public profile immediately and are recorded in the audit log.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mentor Directory ──────────────────────────────────────────────────────────
+
 function MentorDirectory() {
   const [mentorList, setMentorList] = useState<Mentor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -939,6 +1099,9 @@ function MentorDirectory() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [pendingDeny, setPendingDeny] = useState<Mentor | null>(null);
   const [denyReason, setDenyReason] = useState("");
+  const [denyOption, setDenyOption] = useState<"mismatch" | "waitlist" | "unverifiable" | "other">("mismatch");
+  // Mentor pending an approve-despite-no-calendar confirmation.
+  const [calPopoverMentor, setCalPopoverMentor] = useState<Mentor | null>(null);
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, display: "block" };
   const inputStyle: React.CSSProperties = { width: "100%", height: 32, padding: "0 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", boxSizing: "border-box" };
@@ -967,10 +1130,43 @@ function MentorDirectory() {
 
   useEffect(() => { loadMentors(); }, [loadMentors]);
 
+  // Detect emails shared by more than one application (possible duplicates).
+  const emailCounts = mentorList.reduce((acc, m) => {
+    if (m.email) acc[m.email] = (acc[m.email] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const duplicateEmails = new Set(Object.keys(emailCounts).filter((e) => emailCounts[e] > 1));
+
   const filtered = mentorList.filter((m) => {
     if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
+    // Client-side-only filters (no dedicated backend status yet).
+    if (filters.status === "missing-services") return m.status === "Active" && !m.offerings.some((o) => o.enabled);
+    if (filters.status === "waitlist") return m.status === "Waitlist";
     return true;
   });
+
+  // Persist service-type enablement. Service offerings live on the profile's
+  // expertiseTags (see mapApiMentor), so we merge the enabled service labels
+  // back in while preserving any non-service expertise tags.
+  const persistServiceTypes = async (mentorId: string, offerings: ServiceOffering[]) => {
+    const m = mentorList.find((x) => x.id === mentorId) || (selected?.id === mentorId ? selected : null);
+    if (!m) return;
+    const serviceLabelsLower = ALL_SERVICE_TYPES.map((t) => t.label.toLowerCase());
+    const enabledLabels = ALL_SERVICE_TYPES
+      .filter((t) => offerings.find((o) => o.typeId === t.id)?.enabled)
+      .map((t) => t.label);
+    const nonServiceTags = (m.expertiseTags || []).filter((t) => !serviceLabelsLower.includes((t || "").toLowerCase()));
+    const newTags = [...nonServiceTags, ...enabledLabels];
+    // Optimistic local update.
+    setMentorList((prev) => prev.map((x) => x.id === mentorId ? { ...x, offerings, expertiseTags: newTags } : x));
+    setSelected((prev) => prev && prev.id === mentorId ? { ...prev, offerings, expertiseTags: newTags } : prev);
+    try {
+      await updateMentorProfile(mentorId, { realName: m.name || "", bio: m.bio || "", headline: "", expertiseTags: newTags });
+      toast.success("Service types saved");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save service types");
+    }
+  };
 
   const openDetail = async (m: Mentor) => {
     setSelected(m);
@@ -1086,11 +1282,13 @@ function MentorDirectory() {
       }
 
       // 3) Status change (if any).
-      const apiStatusFromUi: Record<Mentor["status"], ApiStatus> = {
+      const apiStatusFromUi: Record<Mentor["status"], ApiStatus | undefined> = {
         Pending: "PENDING",
         Active: "APPROVED",
         Rejected: "REJECTED",
         Suspend: "SUSPENDED",
+        // No backend status for Waitlist yet — leave unmapped so it is skipped.
+        Waitlist: undefined,
       };
       const targetApiStatus = apiStatusFromUi[form.status];
       if (form.apiStatus && targetApiStatus && targetApiStatus !== form.apiStatus) {
@@ -1132,7 +1330,7 @@ function MentorDirectory() {
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <FilterBar
-          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "rejected", label: "Rejected" }, { value: "suspend", label: "Suspend" }] }]}
+          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "rejected", label: "Rejected" }, { value: "suspend", label: "Suspend" }, { value: "waitlist", label: "Waitlist" }, { value: "missing-services", label: "Missing service types" }] }]}
           activeFilters={filters}
           onFilterChange={(k, v) => setFilters({ ...filters, [k]: v })}
           searchValue={search}
@@ -1159,6 +1357,7 @@ function MentorDirectory() {
               </thead>
               <tbody>
                 {filtered.map((m) => {
+                  const isDuplicate = !!(m.email && duplicateEmails.has(m.email));
                   return (
                     <tr
                       key={m.id}
@@ -1171,17 +1370,33 @@ function MentorDirectory() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Avatar name={m.name} size={26} />
                           <span style={{ fontWeight: 600, fontSize: 12 }}>{m.name}</span>
+                          {isDuplicate && (
+                            <span title="Possible duplicate application" style={{ color: C.textMuted, display: "flex", cursor: "help", flexShrink: 0 }}>
+                              <Link size={11} />
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</div>
-                        {m.rate60 > 0 && (
-                          <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-                            ${m.rate60.toFixed(2)}/1 hr
-                          </div>
+                        {m.rate30 === 0 || m.status === "Pending" ? (
+                          <span style={{ fontSize: 12, color: "#8A92A3" }}>Not set</span>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                              <span style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</span>
+                              {m.specialDeal && (
+                                <span title={`Special Deal: 15 min · $${m.specialDeal.price15} / 30 min · $${m.specialDeal.price30} · max ${m.specialDeal.weeklyLimit}/week`} style={{ fontSize: 11, color: "#7C3AED", cursor: "help" }}>✦</span>
+                              )}
+                            </div>
+                            {m.rate60 > 0 && (
+                              <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
+                                ${m.rate60.toFixed(2)}/1 hr
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
-                      <td style={TD}><span style={badge(m.status === "Active" ? "green" : m.status === "Rejected" ? "red" : m.status === "Suspend" ? "purple" : m.status === "Pending" ? "amber" : "gray")}>{m.status}</span></td>
+                      <td style={TD}><span style={badge(mentorStatusVariant(m.status))}>{m.status}</span></td>
                       <td style={TD}>
                         {m.calConnected
                           ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.green }}><Check size={12} /> Connected</span>
@@ -1197,7 +1412,9 @@ function MentorDirectory() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm(`Are you sure you want to approve ${m.name}?`)) {
+                                  if (!m.calConnected) {
+                                    setCalPopoverMentor(m);
+                                  } else {
                                     approveMentor(m);
                                   }
                                 }}
@@ -1251,7 +1468,10 @@ function MentorDirectory() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (selected && window.confirm(`Are you sure you want to approve ${selected.name}?`)) {
+                  if (!selected) return;
+                  if (!selected.calConnected) {
+                    setCalPopoverMentor(selected);
+                  } else {
                     approveMentor(selected);
                   }
                 }}
@@ -1327,8 +1547,19 @@ function MentorDirectory() {
                   </div>
                 </div>
                 <DrawerDivider />
+                <DrawerField label="Title & Company" value={selected.appTitle && selected.appCompany ? `${selected.appTitle} · ${selected.appCompany}` : "—"} />
                 <DrawerField label="Mentor Full Name" value={selected.name || <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>} />
                 <DrawerField label="Work Email" value={selected.email || <span style={{ color: C.textSub, fontStyle: "italic" }}>No email on file</span>} />
+                <DrawerField
+                  label="Conducts interviews"
+                  value={
+                    selected.conductsInterviews !== undefined
+                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: selected.conductsInterviews ? C.green : C.textMuted }}>
+                          {selected.conductsInterviews ? <><Check size={12} /> Yes</> : "No"}
+                        </span>
+                      : "—"
+                  }
+                />
                 <DrawerField
                   label="LinkedIn URL"
                   value={selected.linkedinUrl ? (
@@ -1358,11 +1589,37 @@ function MentorDirectory() {
               </div>
             ) : (
               <>
-                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
+                <DrawerField label="Rate (30 min)" value={selected.rate30 ? `$${selected.rate30.toFixed(2)}` : "Not set"} />
+                <DrawerField label="Rate (1 hr)" value={selected.rate60 ? `$${selected.rate60.toFixed(2)}` : "Not set"} />
                 <DrawerField label="Unpaid Balance" value={`$${(selected.unpaid || 0).toLocaleString()}`} />
                 <DrawerField label="Sessions delivered"  value={String(selected.sessions || 0)} />
                 <DrawerField label="Total revenue"       value={`$${(selected.revenue || 0).toLocaleString()}`} />
+
+                {/* ── Application Info — placeholder rows until the backend exposes these fields ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Application Info</div>
+                <DrawerField label="Title & Company" value={selected.appTitle && selected.appCompany ? `${selected.appTitle} · ${selected.appCompany}` : "—"} />
+                <DrawerField label="Years of Experience" value={selected.appYoe !== undefined ? `${selected.appYoe} yrs` : "—"} />
+                <DrawerField
+                  label="Conducts interviews / hiring"
+                  value={
+                    selected.conductsInterviews !== undefined
+                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: selected.conductsInterviews ? C.green : C.textMuted }}>
+                          {selected.conductsInterviews ? <><Check size={12} /> Yes</> : "No"}
+                        </span>
+                      : "—"
+                  }
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0 4px" }}>
+                  <div style={{ fontSize: 11, color: C.textSub, minWidth: 110 }}>Resume</div>
+                  {selected.resumeUrl ? (
+                    <a href={selected.resumeUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: C.blue, textDecoration: "none", fontWeight: 500 }}>
+                      <ExternalLink size={12} style={{ flexShrink: 0 }} /> Download resume
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 12, color: C.textMuted }}>—</span>
+                  )}
+                </div>
 
                 <DrawerDivider />
 
@@ -1393,9 +1650,15 @@ function MentorDirectory() {
                   }}
                 />
 
+                {/* ── Service Types ── */}
                 <DrawerDivider />
+                <ServiceTypesBlock
+                  offerings={selected.offerings}
+                  onSave={(updated) => persistServiceTypes(selected.id, updated)}
+                />
 
-                {/* Expertise Tags */}
+                {/* Expertise Tags (read-only — full tag list, includes custom tags) */}
+                <DrawerDivider />
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
                     Expertise Tags
@@ -1406,6 +1669,56 @@ function MentorDirectory() {
                       : selected.expertiseTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
                   </div>
                 </div>
+
+                {/* ── Special Offer — placeholder until the backend exposes special-deal pricing ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Special Offer</div>
+                {selected.specialDeal ? (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9" }}>✦</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#4c1d95" }}>Enabled</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {[
+                        { label: "15 min session", value: `$${selected.specialDeal.price15}` },
+                        { label: "30 min session", value: `$${selected.specialDeal.price30}` },
+                        { label: "Weekly limit",   value: `${selected.specialDeal.weeklyLimit}` },
+                        { label: "Deals booked",   value: `${selected.specialDeal.dealsBooked}` },
+                      ].map((row) => (
+                        <div key={row.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                          <span style={{ color: "#6d28d9" }}>{row.label}</span>
+                          <span style={{ fontWeight: 600, color: "#4c1d95", fontFamily: "'JetBrains Mono', monospace" }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>Not enabled</div>
+                )}
+
+                {/* ── Experience — placeholder until the backend exposes work history ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Experience</div>
+                {selected.experience && selected.experience.length > 0 ? (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {selected.experience.map((exp) => (
+                        <div key={exp.id} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, padding: "8px 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7 }}>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{exp.title}</div>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>{exp.company} · {exp.years}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 7, lineHeight: 1.4 }}>
+                      Self-reported — spot-check against LinkedIn.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>No experience on file.</div>
+                )}
 
                 {/* Manage Reviews */}
                 <ManageReviews reviews={selected.reviews} />
@@ -1428,6 +1741,7 @@ function MentorDirectory() {
                    <option value="Active">Active</option>
                    <option value="Rejected">Rejected</option>
                    <option value="Suspend">Suspend</option>
+                   <option value="Waitlist">Waitlist</option>
                  </select>
                </div>
             </div>
@@ -1521,42 +1835,103 @@ function MentorDirectory() {
         )}
       </Drawer>
 
-      {pendingDeny && (
+      {/* Calendar not connected — approve confirm */}
+      {calPopoverMentor && (
         <Modal
           open
-          onClose={() => { setPendingDeny(null); setDenyReason(""); }}
-          title={`Deny ${pendingDeny.name}?`}
-          width={420}
+          onClose={() => setCalPopoverMentor(null)}
+          title="Calendar not connected"
+          width={380}
           footer={
             <>
-              <button onClick={() => { setPendingDeny(null); setDenyReason(""); }} style={secondaryBtn}>Cancel</button>
+              <button onClick={() => setCalPopoverMentor(null)} style={secondaryBtn}>Cancel</button>
               <button
-                onClick={() => {
-                  const m = pendingDeny;
-                  const reason = denyReason;
-                  setPendingDeny(null);
-                  setDenyReason("");
-                  denyMentor(m, reason);
-                }}
-                style={{ ...primaryBtn, background: C.red, borderColor: C.red }}
+                onClick={() => { const m = calPopoverMentor; setCalPopoverMentor(null); approveMentor(m); }}
+                style={{ ...primaryBtn, background: C.green, borderColor: C.green }}
               >
-                Confirm deny
+                Confirm
               </button>
             </>
           }
         >
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
-            Denying this mentor will reject their application and remove the MENTOR role from their account. Provide an optional reason.
-          </div>
-          <textarea
-            autoFocus
-            value={denyReason}
-            onChange={(e) => setDenyReason(e.target.value)}
-            placeholder="Reason for denial (optional)"
-            style={{ width: "100%", height: 80, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", resize: "none", outline: "none", boxSizing: "border-box" }}
-          />
+          <p style={{ fontSize: 13, color: C.text, lineHeight: 1.65, margin: 0 }}>
+            This mentor hasn&apos;t connected their calendar yet. Approve and follow up during onboarding?
+          </p>
         </Modal>
       )}
+
+      {/* Deny modal — preset reasons + optional Waitlist */}
+      {pendingDeny && (() => {
+        const isWaitlist = denyOption === "waitlist";
+        const radioOpts: { value: typeof denyOption; label: string }[] = [
+          { value: "mismatch",      label: "Background mismatch" },
+          { value: "waitlist",      label: "Insufficient experience — move to Waitlist" },
+          { value: "unverifiable",  label: "Unverifiable materials" },
+          { value: "other",         label: "Other" },
+        ];
+        const reasonForOption = (): string => {
+          if (denyOption === "mismatch") return "Background mismatch";
+          if (denyOption === "unverifiable") return "Unverifiable materials";
+          return denyReason;
+        };
+        const radioStyle = (active: boolean): React.CSSProperties => ({
+          display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 12px",
+          borderRadius: 8, cursor: "pointer", border: `1px solid ${active ? C.blue : C.border}`,
+          background: active ? C.blueBg : "white", marginBottom: 6,
+        });
+        const reset = () => { setPendingDeny(null); setDenyOption("mismatch"); setDenyReason(""); };
+        return (
+          <Modal
+            open
+            onClose={reset}
+            title={`Deny Application — ${pendingDeny.name}`}
+            width={420}
+            footer={
+              <>
+                <button onClick={reset} style={secondaryBtn}>Cancel</button>
+                <button
+                  onClick={() => {
+                    const m = pendingDeny!;
+                    if (isWaitlist) {
+                      // No backend status for Waitlist yet — reflect it locally only.
+                      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, status: "Waitlist" } : x));
+                      if (selected?.id === m.id) setSelected((prev) => prev ? { ...prev, status: "Waitlist" } : prev);
+                      toast.success(`${m.name} moved to Waitlist`);
+                      reset();
+                    } else {
+                      const reason = reasonForOption();
+                      reset();
+                      denyMentor(m, reason);
+                    }
+                  }}
+                  style={{ ...primaryBtn, background: isWaitlist ? C.amber : C.red, borderColor: isWaitlist ? C.amber : C.red }}
+                >
+                  {isWaitlist ? "Move to Waitlist" : "Confirm deny"}
+                </button>
+              </>
+            }
+          >
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 10 }}>Reason</div>
+            {radioOpts.map((opt) => (
+              <div key={opt.value} style={radioStyle(denyOption === opt.value)} onClick={() => setDenyOption(opt.value)}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${denyOption === opt.value ? C.blue : C.border}`, background: denyOption === opt.value ? C.blue : "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                  {denyOption === opt.value && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white" }} />}
+                </div>
+                <span style={{ fontSize: 13, color: denyOption === opt.value ? C.blue : C.text, fontWeight: denyOption === opt.value ? 500 : 400 }}>{opt.label}</span>
+              </div>
+            ))}
+            {denyOption === "other" && (
+              <textarea
+                autoFocus
+                value={denyReason}
+                onChange={(e) => setDenyReason(e.target.value)}
+                placeholder="Describe the reason..."
+                style={{ width: "100%", height: 72, padding: "8px 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", resize: "none", boxSizing: "border-box" as const, marginTop: 4 }}
+              />
+            )}
+          </Modal>
+        );
+      })()}
 
       {loading && (
         <div style={{ position: "absolute", inset: 0, display: "none" }} />
@@ -1791,6 +2166,28 @@ function SessionsTab() {
               <div style={{ padding: "8px 10px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7, fontSize: 11, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
                 <AlertTriangle size={12} /> Request is within 48-hour window
               </div>
+            )}
+            {selected.status === "Completed" && (
+              <>
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Session Recording</div>
+                {selected.recording ? (
+                  <a
+                    href={selected.recording.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 8, textDecoration: "none", color: C.blue, fontSize: 12, fontWeight: 500 }}
+                  >
+                    <ExternalLink size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.recording.label}</span>
+                    <span style={{ fontSize: 10, color: C.textMuted, flexShrink: 0 }}>{selected.recording.type === "link" ? "Link" : "File"}</span>
+                  </a>
+                ) : (
+                  <div style={{ padding: "10px 12px", background: C.bgSubtle, border: `1px dashed ${C.border}`, borderRadius: 8, fontSize: 12, color: C.textMuted }}>
+                    No recording uploaded by mentor yet.
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -2252,12 +2649,37 @@ function ServiceTypesTab() {
 
 export function MentorshipManagement() {
   const [tab, setTab] = useState<TabId>("mentors");
+  const [counts, setCounts] = useState<{ mentors?: number; sessions?: number; disputes?: number }>({});
+
+  // Best-effort tab counts. Failures are swallowed — a missing count just hides
+  // the badge rather than surfacing an error.
+  useEffect(() => {
+    let cancelled = false;
+    const readTotal = (res: { data?: { data?: { totalElements?: number } } }): number | undefined => {
+      const t = res?.data?.data?.totalElements;
+      return typeof t === "number" ? t : undefined;
+    };
+    (async () => {
+      const [m, s, d] = await Promise.allSettled([
+        listMentors({ page: 0, size: 1 }),
+        listBookings({ page: 0, size: 1 }),
+        listDisputes({ page: 0, size: 1 }),
+      ]);
+      if (cancelled) return;
+      setCounts({
+        mentors: m.status === "fulfilled" ? readTotal(m.value) : undefined,
+        sessions: s.status === "fulfilled" ? readTotal(s.value) : undefined,
+        disputes: d.status === "fulfilled" ? readTotal(d.value) : undefined,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: "mentors",       label: "Mentor directory" },
-    { id: "sessions",      label: "Sessions" },
+    { id: "mentors",       label: "Mentor directory", count: counts.mentors },
+    { id: "sessions",      label: "Sessions", count: counts.sessions },
     { id: "reschedule",    label: "Reschedule / Cancel", count: reschedules.filter((r) => r.status === "Requested").length },
-    { id: "disputes",      label: "Disputes" },
+    { id: "disputes",      label: "Disputes", count: counts.disputes },
     { id: "service-types", label: "Service types" },
   ];
 

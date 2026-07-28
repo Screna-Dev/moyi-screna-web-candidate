@@ -4,9 +4,9 @@ import {
   LayoutDashboard, CalendarCheck, MessageSquare, User,
   ShieldCheck, Star, DollarSign, Search, ChevronRight,
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
-  MoreHorizontal, Edit3, Trash2, Eye, Video,
-  CheckCircle, RefreshCw, Paperclip,
-  Lock, Mail,
+  MoreHorizontal, Trash2, Eye, Video,
+  CheckCircle, XCircle, RefreshCw, Paperclip,
+  Lock, Mail, Bell, Users, Gift, Briefcase,
   Link, Zap, LogOut,
   Camera, Circle, Minus, Clock,
 } from 'lucide-react';
@@ -50,7 +50,7 @@ import {
 /* ─────────────────────────────────────────────
    TYPES
 ───────────────────────────────────────────── */
-type NavId = 'overview' | 'bookings' | 'messages' | 'profile' | 'reviews' | 'earnings';
+type NavId = 'overview' | 'bookings' | 'messages' | 'profile' | 'reviews' | 'earnings' | 'referral';
 type Override = {
   id: string;
   date: string;        // YYYY-MM-DD
@@ -265,23 +265,28 @@ function useMyMentorBookings() {
 /* ─────────────────────────────────────────────
    STATUS BADGE
 ───────────────────────────────────────────── */
+// New design conveys booking status inline (via action buttons / right-side text)
+// rather than a coloured pill, so the badge renders nothing.
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    confirmed:  { label: 'Confirmed',  cls: 'bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)]' },
-    pending:    { label: 'Pending',    cls: 'bg-[hsl(38,92%,90%)] text-[hsl(38,70%,30%)]' },
-    completed:  { label: 'Completed', cls: 'bg-[hsl(220,18%,94%)] text-[hsl(222,12%,40%)]' },
-    cancelled:  { label: 'Cancelled', cls: 'bg-[hsl(0,60%,93%)] text-[hsl(0,60%,40%)]' },
-    awaiting_reschedule: { label: 'Awaiting Approval', cls: 'bg-[hsl(258,80%,93%)] text-[hsl(258,60%,40%)]' },
-    upcoming: { label: 'Upcoming', cls: 'bg-[hsl(210,80%,93%)] text-[hsl(210,60%,35%)]' },
-    verified:   { label: 'Verified',  cls: 'bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)]' },
-    under_review: { label: 'Under Review', cls: 'bg-[hsl(38,92%,90%)] text-[hsl(38,70%,30%)]' },
-    not_submitted: { label: 'Not Submitted', cls: 'bg-[hsl(220,18%,94%)] text-[hsl(222,12%,40%)]' },
-    rejected:   { label: 'Rejected',  cls: 'bg-[hsl(0,60%,93%)] text-[hsl(0,60%,40%)]' },
-  };
-  const { label, cls } = map[status] ?? { label: status, cls: 'bg-secondary text-muted-foreground' };
+  void status;
+  return null;
+}
+
+function FreeEvalPill() {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${cls}`}>
-      {label}
+    <span
+      className="inline-flex items-center gap-1 rounded-full shrink-0"
+      style={{
+        padding: '2px 8px',
+        background: 'var(--color-blue-50)',
+        border: '1px solid var(--color-blue-200)',
+        color: 'var(--color-blue-700)',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 'var(--font-weight-medium)',
+      }}
+    >
+      <Zap className="w-3 h-3" />
+      Special Offer
     </span>
   );
 }
@@ -361,9 +366,9 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {summaryCards.map(c => (
-          c.label === 'Unread Messages' ? null : (
+          (c.label === 'Unread Messages' || c.label === 'Pending Requests') ? null : (
             <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
               <div className={`w-8 h-8 rounded-md ${c.bg} flex items-center justify-center`}>
                 <c.icon className={`w-4 h-4 ${c.color}`} />
@@ -1016,21 +1021,34 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     <div className="flex-1 flex overflow-hidden">
       <div className={`flex flex-col overflow-hidden transition-all ${selectedBooking ? 'flex-1' : 'flex-1'}`}>
         {/* Tabs */}
-        <div className="px-6 pt-6 border-b border-border bg-card">
-          <div className="flex items-center gap-1">
+        <div className="px-6 pt-6 bg-card">
+          <div className="flex items-center gap-[4px]">
             {tabs.map(t => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className={`px-4 py-2 text-sm rounded-t-md capitalize transition-colors ${
-                  activeTab === t
-                    ? 'text-primary border-b-2 border-primary font-medium'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                style={{ whiteSpace: 'nowrap' }}
+                className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors capitalize"
+                style={{
+                  background: activeTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
+                  color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: activeTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {t}
-                <span className="ml-1.5 text-xs bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5">
+                <span
+                  className="rounded-full flex items-center justify-center"
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '1px 6px',
+                    background: activeTab === t ? 'var(--color-gray-200, #d8dbe2)' : 'var(--secondary)',
+                    color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
+                    fontWeight: 'var(--font-weight-medium)',
+                  }}
+                >
                   {t === 'all' ? bookings.length : t === 'upcoming' ? bookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length : bookings.filter(b => b.status === t).length}
                 </span>
               </button>
@@ -1054,6 +1072,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-foreground">{b.memberName}</span>
                     <StatusBadge status={completedIds.has(b.id) ? 'completed' : rescheduledIds.has(b.id) ? 'awaiting_reschedule' : cancelledIds.has(b.id) ? 'cancelled' : (b.status === 'pending' || b.status === 'confirmed') ? 'upcoming' : b.status} />
+                    {(b as any).isFreeEval && <FreeEvalPill />}
                   </div>
                   <div className="flex items-center flex-wrap gap-[var(--space-1)] mt-0.5 px-[0px] py-[6px]">
                     {(Array.isArray(b.sessionType) ? b.sessionType : [b.sessionType]).map((plan: string) => (
@@ -2170,6 +2189,14 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   const [price60, setPrice60] = useState('');
   const [status, setStatus] = useState<SaveStatus>(CLEAN_STATUS);
 
+  // Special Offer is UI-only for now (no backend) — local state, not persisted.
+  const [dealOn, setDealOn] = useState(false);
+  const [deal15On, setDeal15On] = useState(true);
+  const [deal15Price, setDeal15Price] = useState('');
+  const [deal30On, setDeal30On] = useState(true);
+  const [deal30Price, setDeal30Price] = useState('');
+  const [dealWeeklyLimit, setDealWeeklyLimit] = useState(3);
+
   const centsToInput = (c?: number) =>
     typeof c === 'number' ? (c / 100).toFixed(2) : '';
 
@@ -2213,50 +2240,154 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   };
 
   return (
-    <div className="bg-card border border-border rounded-[var(--radius)] p-5">
-      <div className="mb-4">
-        <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Session</h3>
-        <p className="text-sm text-muted-foreground">
-          Set your 30- and 60-minute session prices. Both are required before your
-          profile can go live.
-        </p>
+    <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-5">
+      <div>
+        <h3 className="text-foreground text-lg font-medium mb-1">Session Pricing</h3>
+        <p className="text-sm text-muted-foreground">Set your 30- and 60-minute session prices. Both are required before your profile can go live.</p>
       </div>
 
-      {/* Pricing form — single always-active offering */}
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground">Price 30 min (USD)<span className="text-destructive ml-0.5">*</span></label>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">$</span>
-              <input
-                value={price30}
-                onChange={e => { setPrice30(e.target.value); markDirty(); }}
-                placeholder="50.00"
-                inputMode="decimal"
-                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-              />
+      {/* 30 min / 60 min inputs */}
+      <div className="grid grid-cols-2 gap-4">
+        {([
+          { label: '30-min session', value: price30, set: setPrice30 },
+          { label: '60-min session', value: price60, set: setPrice60 },
+        ] as const).map(tier => {
+          const tooLow = tier.value !== '' && parseFloat(tier.value) < 25;
+          return (
+            <div key={tier.label}>
+              <label className="text-xs text-muted-foreground">{tier.label}<span className="text-destructive ml-0.5">*</span></label>
+              <div className="mt-1 flex items-center border border-input rounded-[var(--radius-sm)] overflow-hidden bg-input-background focus-within:ring-1 focus-within:ring-ring">
+                <span className="px-3 py-2 text-sm text-muted-foreground border-r border-input bg-secondary">$</span>
+                <input
+                  type="number"
+                  min="25"
+                  value={tier.value}
+                  onChange={e => { tier.set(e.target.value); markDirty(); }}
+                  placeholder="—"
+                  className="flex-1 px-3 py-2 text-sm bg-transparent text-foreground outline-none"
+                />
+              </div>
+              {!tier.value && (
+                <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>Not set — this duration won't appear on your booking page.</p>
+              )}
+              {tooLow && (
+                <p className="mt-1 text-xs flex items-center gap-1" style={{ color: 'hsl(0,72%,51%)' }}>
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Minimum price is $25.
+                </p>
+              )}
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Price 60 min (USD)<span className="text-destructive ml-0.5">*</span></label>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">$</span>
-              <input
-                value={price60}
-                onChange={e => { setPrice60(e.target.value); markDirty(); }}
-                placeholder="90.00"
-                inputMode="decimal"
-                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-        </div>
-        <SectionSaveRow status={status} onSave={handleSave} />
+          );
+        })}
       </div>
+
+      {/* Divider */}
+      <div className="h-px" style={{ background: 'var(--border)' }} />
+
+      {/* Special Offer (UI-only) */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-foreground">Offer a Special Offer</div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Give candidates a limited-time discounted or free intro slot.</p>
+          </div>
+          <button
+            onClick={() => setDealOn(!dealOn)}
+            className="relative rounded-full transition-colors shrink-0"
+            style={{ width: 40, height: 22, background: dealOn ? 'var(--primary)' : 'var(--border)', border: 'none', cursor: 'pointer' }}
+          >
+            <span className="absolute rounded-full bg-white shadow transition-all" style={{ width: 16, height: 16, top: 3, left: dealOn ? 21 : 3 }} />
+          </button>
+        </div>
+
+        {!dealOn && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" stroke="var(--muted-foreground)" strokeWidth="1.2"/><path d="M7 6.5v3M7 4.5v.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Enable to offer a discounted slot that candidates can book once.</p>
+          </div>
+        )}
+
+        {dealOn && (
+          <div className="space-y-3">
+            {([
+              { label: '15 minutes', on: deal15On, setOn: setDeal15On, price: deal15Price, setPrice: setDeal15Price },
+              { label: '30 minutes', on: deal30On, setOn: setDeal30On, price: deal30Price, setPrice: setDeal30Price },
+            ] as const).map(row => (
+              <div
+                key={row.label}
+                className="rounded-[var(--radius-sm)] border p-3 space-y-2.5 transition-colors"
+                style={{ borderColor: 'var(--border)', background: row.on ? 'var(--card)' : 'var(--secondary)', opacity: row.on ? 1 : 0.7 }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => row.setOn(!row.on)}
+                    className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                    style={{ background: row.on ? 'var(--primary)' : 'transparent', border: row.on ? '1.5px solid var(--primary)' : '1.5px solid var(--muted-foreground)', cursor: 'pointer' }}
+                  >
+                    {row.on && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                  <span className="text-sm font-medium text-foreground">{row.label}</span>
+                </div>
+                {row.on && (
+                  <div>
+                    <div className="flex items-center border border-input rounded-[var(--radius-sm)] overflow-hidden bg-input-background focus-within:ring-1 focus-within:ring-ring">
+                      <span className="px-3 py-2 text-sm text-muted-foreground border-r border-input bg-secondary">$</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.price}
+                        onChange={e => row.setPrice(e.target.value)}
+                        placeholder="1"
+                        className="flex-1 px-3 py-2 text-sm bg-transparent text-foreground outline-none"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>Minimum $1 — set below your regular price to make it a Special Offer.</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="pt-1">
+              <label className="text-xs font-medium text-foreground mb-1 block">Max Special Offers per week</label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setDealWeeklyLimit(Math.max(1, dealWeeklyLimit - 1))}
+                  className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
+                  style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
+                >−</button>
+                <span className="w-6 text-center text-sm font-medium text-foreground">{dealWeeklyLimit}</span>
+                <button
+                  onClick={() => setDealWeeklyLimit(Math.min(10, dealWeeklyLimit + 1))}
+                  className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
+                  style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
+                >+</button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+              <svg className="shrink-0 mt-px" width="14" height="14" fill="none" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" stroke="var(--muted-foreground)" strokeWidth="1.2"/><path d="M7 6.5v3M7 4.5v.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Each candidate can book your Special Offer once, and one Special Offer per week platform-wide.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <SectionSaveRow status={status} onSave={handleSave} />
     </div>
   );
 }
+
+// Grouped predefined service types shown as selectable chips (maps to expertiseTags).
+const SERVICE_TYPE_GROUPS = [
+  {
+    label: 'Job Search',
+    options: ['Mock Interview', 'Resume Review', 'Portfolio Review', 'Behavioral Coaching', 'Career Transition', 'OPT Job Search Strategy', 'Job Search Strategy'],
+  },
+  {
+    label: 'Offer & Career Development',
+    options: ['Offer Negotiation', 'Onboarding & First 90 Days', 'Career Growth & Promotion'],
+  },
+];
 
 function ProfilePage() {
   const ctx = useMentorProfile();
@@ -2274,15 +2405,16 @@ function ProfilePage() {
   const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
   const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
-  const [services, setServices] = useState([
-    'Mock Interview',
-    'Resume Review',
-    'Career Coaching'
-  ]);
-  const [newService, setNewService] = useState('');
-  const [isAddingService, setIsAddingService] = useState(false);
-  const [editingService, setEditingService] = useState<string | null>(null);
-  const [editServiceValue, setEditServiceValue] = useState('');
+  // Service types map to expertiseTags (API). Specialty tags & experience are
+  // UI-only for now (no backend) — local state, not persisted.
+  const [services, setServices] = useState<string[]>(['Mock Interview', 'Resume Review']);
+  const [specialtyTags, setSpecialtyTags] = useState<string[]>([]);
+  const [specialtyInput, setSpecialtyInput] = useState('');
+  type ExpEntry = { id: string; title: string; company: string; startYear: string; endYear: string; isCurrent: boolean };
+  const [experiences, setExperiences] = useState<ExpEntry[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [draggedExpId, setDraggedExpId] = useState<string | null>(null);
+  const [dragOverExpId, setDragOverExpId] = useState<string | null>(null);
   const [workEmail, setWorkEmail] = useState('');
   const [linkedin, setLinkedin] = useState('');
   // Verification fields are already approved — editing them re-triggers review,
@@ -2328,6 +2460,17 @@ function ProfilePage() {
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
     if (Array.isArray(profile.expertiseTags)) setServices(profile.expertiseTags);
+    // Seed the (UI-only) experience list from the profile's career background.
+    if (Array.isArray(profile.careerBackground)) {
+      setExperiences(profile.careerBackground.map((c, i) => ({
+        id: `exp-seed-${i}`,
+        title: c.role ?? '',
+        company: c.company ?? '',
+        startYear: c.startYear != null ? String(c.startYear) : '',
+        endYear: c.endYear != null ? String(c.endYear) : '',
+        isCurrent: c.endYear == null,
+      })));
+    }
     if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
     if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
     setBasic(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
@@ -2371,34 +2514,51 @@ function ProfilePage() {
     setEditingVerify(false);
   };
 
-  const handleAddService = () => {
-    if (newService.trim() && !services.includes(newService.trim())) {
-      setServices([...services, newService.trim()]);
-      setNewService('');
-      setIsAddingService(false);
-      markSvc();
-    }
-  };
-
-  const handleRemoveService = (tagToRemove: string) => {
-    setServices(services.filter(s => s !== tagToRemove));
-    if (editingService === tagToRemove) {
-      setEditingService(null);
-      setEditServiceValue('');
-    }
+  // Service-type selection (saved to expertiseTags).
+  const toggleService = (s: string) => {
+    setServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
     markSvc();
   };
 
-  const handleSaveEditService = (oldTag: string) => {
-    const trimmed = editServiceValue.trim();
-    if (trimmed && trimmed !== oldTag) {
-      if (!services.includes(trimmed)) {
-        setServices(services.map(s => s === oldTag ? trimmed : s));
-        markSvc();
-      }
+  // Specialty tags — free-text, max 4, 20 chars each (UI-only, not persisted).
+  const addSpecialtyTag = () => {
+    const val = specialtyInput.trim().slice(0, 20);
+    if (!val || specialtyTags.includes(val) || specialtyTags.length >= 4) return;
+    setSpecialtyTags([...specialtyTags, val]);
+    setSpecialtyInput('');
+  };
+  const handleSpecialtyKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); addSpecialtyTag(); }
+    if (e.key === 'Backspace' && specialtyInput === '' && specialtyTags.length > 0) {
+      setSpecialtyTags(specialtyTags.slice(0, -1));
     }
-    setEditingService(null);
-    setEditServiceValue('');
+  };
+
+  // Experience entries (UI-only, not persisted).
+  const currentYear = new Date().getFullYear();
+  const YEARS = Array.from({ length: currentYear - 1969 }, (_, i) => String(currentYear - i));
+  const updateExp = (id: string, patch: Partial<ExpEntry>) =>
+    setExperiences(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+  const setCurrentRole = (id: string) =>
+    setExperiences(prev => prev.map(e => e.id === id ? { ...e, isCurrent: true, endYear: '' } : { ...e, isCurrent: false }));
+  const addExp = () => {
+    if (experiences.length >= 5) return;
+    setExperiences(prev => [...prev, { id: `exp${Date.now()}`, title: '', company: '', startYear: '', endYear: '', isCurrent: false }]);
+  };
+  const deleteExp = (id: string) => { setExperiences(prev => prev.filter(e => e.id !== id)); setDeleteConfirmId(null); };
+  const onDragStart = (id: string) => setDraggedExpId(id);
+  const onDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOverExpId(id); };
+  const onDrop = (targetId: string) => {
+    if (!draggedExpId || draggedExpId === targetId) { setDraggedExpId(null); setDragOverExpId(null); return; }
+    setExperiences(prev => {
+      const arr = [...prev];
+      const fromIdx = arr.findIndex(e => e.id === draggedExpId);
+      const toIdx = arr.findIndex(e => e.id === targetId);
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, item);
+      return arr;
+    });
+    setDraggedExpId(null); setDragOverExpId(null);
   };
 
   // ── Google Calendar connect (same OAuth flow as the marketplace apply page) ──
@@ -2507,178 +2667,245 @@ function ProfilePage() {
           <div>
             <label className="text-xs text-muted-foreground">Bio<span className="text-destructive ml-0.5">*</span></label>
             <textarea value={bio} rows={4} onChange={e => { setBio(e.target.value); markBasic(); }} className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs" style={{ color: bio.trim().split(/\s+/).filter(Boolean).length >= 300 ? 'hsl(142,63%,35%)' : 'var(--muted-foreground)' }}>
+                {bio.trim().split(/\s+/).filter(Boolean).length >= 300 ? '✓ Great length' : 'Recommend more than 300 words'}
+              </p>
+              <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                {bio.trim().split(/\s+/).filter(Boolean).length} words
+              </span>
+            </div>
           </div>
 
           <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
 
-        {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
-        <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
-
-        {/* Coaching Plans */}
-        <div className="bg-card border border-border rounded-[var(--radius)] p-5">
-          <div className="mb-4">
-            <h3 className="text-foreground text-lg font-medium mb-1">Coaching Plans</h3>
-            <p className="text-sm text-muted-foreground">Define the services you provide as a mentor.</p>
+        {/* Experience (UI-only) */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div>
+            <h3 className="text-foreground text-lg font-medium mb-1">Experience</h3>
+            <p className="text-sm text-muted-foreground">Shown on your public profile — most recent first.</p>
           </div>
 
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">Services I Provide<span className="text-destructive ml-0.5">*</span></label>
-            <div className="flex flex-wrap items-center gap-[var(--space-2)] mt-[var(--space-2)]">
-              {services.map(s => (
-                editingService === s ? (
-                  <div
-                    key={s}
-                    className="flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-sm)] shadow-sm transition-all"
-                    style={{ background: 'var(--color-blue-50)', border: '1px solid var(--color-blue-300)' }}
-                  >
-                    <input
-                      autoFocus
-                      value={editServiceValue}
-                      onChange={e => setEditServiceValue(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleSaveEditService(s);
-                        if (e.key === 'Escape') { setEditingService(null); setEditServiceValue(''); }
-                      }}
-                      placeholder="Service name"
-                      className="w-36 rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] outline-none focus:ring-1"
-                      style={{
-                        fontSize: 'var(--text-sm)',
-                        background: 'var(--input-background)',
-                        border: '1px solid var(--color-blue-300)',
-                        color: 'var(--foreground)',
-                        // @ts-ignore
-                        '--tw-ring-color': 'var(--color-blue-500)',
-                      }}
-                    />
-                    <button
-                      onClick={() => handleSaveEditService(s)}
-                      className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                      style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--color-blue-500)', color: '#fff', border: 'none' }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => { setEditingService(null); setEditServiceValue(''); }}
-                      className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                      style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'transparent', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    key={s}
-                    className="group inline-flex items-center gap-[var(--space-1)] rounded-full transition-colors"
-                    style={{
-                      padding: 'var(--space-1) var(--space-3)',
-                      background: 'var(--color-blue-50)',
-                      border: '1px solid var(--color-blue-200)',
-                      color: 'var(--color-blue-700)',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-blue-100)';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-blue-300)';
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-blue-50)';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-blue-200)';
-                    }}
-                  >
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)' }}>{s}</span>
-                    <button
-                      onClick={() => { setEditingService(s); setEditServiceValue(s); }}
-                      title="Edit service"
-                      className="rounded-full p-[2px] transition-colors hover:bg-[var(--color-blue-200)]"
-                      style={{ color: 'var(--color-blue-500)', lineHeight: 0 }}
-                    >
-                      <Edit3 size={12} />
-                    </button>
-                    <button
-                      onClick={() => handleRemoveService(s)}
-                      title="Remove service"
-                      className="rounded-full p-[2px] transition-colors hover:bg-[var(--color-blue-200)]"
-                      style={{ color: 'var(--color-blue-500)', lineHeight: 0 }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                )
-              ))}
+          {experiences.length === 0 && (
+            <div className="flex flex-col items-center gap-3 py-6 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+              <Briefcase className="w-8 h-8" style={{ color: 'var(--muted-foreground)' }} />
+              <p className="text-sm text-center" style={{ color: 'var(--muted-foreground)' }}>Add your work experience so candidates can see your background.</p>
+            </div>
+          )}
 
-              {isAddingService ? (
-                <div
-                  className="flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-sm)] shadow-sm transition-all"
-                  style={{ background: 'var(--color-blue-50)', border: '1px solid var(--color-blue-300)' }}
-                >
-                  <input
-                    autoFocus
-                    value={newService}
-                    onChange={e => setNewService(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleAddService();
-                      if (e.key === 'Escape') { setIsAddingService(false); setNewService(''); }
-                    }}
-                    placeholder="e.g. System Design Mock"
-                    className="w-40 rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] outline-none focus:ring-1"
+          {experiences.length > 0 && (
+            <div className="space-y-2">
+              {experiences.map(exp => {
+                const yearErr = exp.startYear && exp.endYear && !exp.isCurrent && parseInt(exp.endYear) < parseInt(exp.startYear);
+                const isDragOver = dragOverExpId === exp.id && draggedExpId !== exp.id;
+                return (
+                  <div
+                    key={exp.id}
+                    draggable
+                    onDragStart={() => onDragStart(exp.id)}
+                    onDragOver={e => onDragOver(e, exp.id)}
+                    onDrop={() => onDrop(exp.id)}
+                    onDragEnd={() => { setDraggedExpId(null); setDragOverExpId(null); }}
+                    className="rounded-[var(--radius-sm)] border p-3 transition-all"
                     style={{
-                      fontSize: 'var(--text-sm)',
-                      background: 'var(--input-background)',
-                      border: '1px solid var(--color-blue-300)',
-                      color: 'var(--foreground)',
-                      // @ts-ignore
-                      '--tw-ring-color': 'var(--color-blue-500)',
+                      borderColor: isDragOver ? 'var(--primary)' : 'var(--border)',
+                      background: draggedExpId === exp.id ? 'var(--secondary)' : 'var(--card)',
+                      opacity: draggedExpId === exp.id ? 0.5 : 1,
                     }}
-                  />
-                  <button
-                    onClick={handleAddService}
-                    className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                    style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--color-blue-500)', color: '#fff', border: 'none' }}
                   >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => { setIsAddingService(false); setNewService(''); }}
-                    className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                    style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'transparent', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
-                  >
-                    Cancel
-                  </button>
+                    <div className="flex items-start gap-2">
+                      <div className="mt-2 cursor-grab active:cursor-grabbing shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                          <circle cx="4" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/>
+                          <circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/>
+                          <circle cx="4" cy="10.5" r="1.2"/><circle cx="10" cy="10.5" r="1.2"/>
+                        </svg>
+                      </div>
+
+                      <div className="flex-1 space-y-2.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Title <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <input
+                              value={exp.title}
+                              onChange={e => updateExp(exp.id, { title: e.target.value })}
+                              placeholder="e.g. Senior Product Manager"
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Company <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <input
+                              value={exp.company}
+                              onChange={e => updateExp(exp.id, { company: e.target.value })}
+                              placeholder="e.g. Google"
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Start year <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <select
+                              value={exp.startYear}
+                              onChange={e => updateExp(exp.id, { startYear: e.target.value })}
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">Year</option>
+                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">End year</label>
+                            <select
+                              value={exp.isCurrent ? 'Present' : exp.endYear}
+                              disabled={exp.isCurrent}
+                              onChange={e => updateExp(exp.id, { endYear: e.target.value === 'Present' ? '' : e.target.value })}
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+                            >
+                              <option value="Present">Present</option>
+                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        <label className="flex items-center gap-2 cursor-pointer w-fit">
+                          <button
+                            onClick={() => exp.isCurrent ? updateExp(exp.id, { isCurrent: false }) : setCurrentRole(exp.id)}
+                            className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                            style={{ background: exp.isCurrent ? 'var(--primary)' : 'transparent', border: exp.isCurrent ? '1.5px solid var(--primary)' : '1.5px solid var(--muted-foreground)', cursor: 'pointer' }}
+                          >
+                            {exp.isCurrent && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </button>
+                          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>This is my current role</span>
+                        </label>
+
+                        {yearErr && (
+                          <p className="text-xs flex items-center gap-1" style={{ color: 'hsl(0,72%,51%)' }}>
+                            <AlertCircle className="w-3 h-3 shrink-0" />End year cannot be earlier than start year.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 mt-0.5">
+                        {deleteConfirmId === exp.id ? (
+                          <div className="flex flex-col items-end gap-1.5">
+                            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Remove this experience?</span>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => deleteExp(exp.id)} className="px-2 py-0.5 text-xs rounded-md" style={{ background: 'hsl(0,72%,51%)', color: '#fff', border: 'none', cursor: 'pointer' }}>Confirm</button>
+                              <button onClick={() => setDeleteConfirmId(null)} className="px-2 py-0.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)', background: 'transparent', color: 'var(--foreground)', cursor: 'pointer' }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmId(exp.id)}
+                            className="p-1.5 rounded-md transition-colors hover:bg-secondary"
+                            style={{ color: 'var(--muted-foreground)', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <button
+            onClick={addExp}
+            disabled={experiences.length >= 5}
+            className="flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed w-fit"
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: experiences.length >= 5 ? 'var(--muted-foreground)' : 'var(--primary)',
+              background: 'none', border: 'none', cursor: experiences.length >= 5 ? 'not-allowed' : 'pointer',
+              opacity: experiences.length >= 5 ? 0.5 : 1,
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            Add experience
+          </button>
+        </div>
+
+        {/* Service Types (maps to expertiseTags) */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-foreground text-lg font-medium mb-1">Service Types<span className="text-destructive ml-0.5">*</span></h3>
+              <p className="text-sm text-muted-foreground">These help us categorize you so candidates can find you faster through search and filters.</p>
+            </div>
+            <span className="shrink-0 text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{services.length} selected</span>
+          </div>
+
+          <div className="space-y-4">
+            {SERVICE_TYPE_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.label}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.options.map(opt => {
+                    const selected = services.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => toggleService(opt)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: 'var(--space-1) var(--space-3)',
+                          borderRadius: 9999,
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                          background: selected ? 'var(--color-blue-600)' : 'transparent',
+                          color: selected ? '#fff' : 'var(--foreground)',
+                          border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        {opt}
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : (
-                <button
-                  onClick={() => setIsAddingService(true)}
-                  className="inline-flex items-center gap-[var(--space-1)] rounded-full transition-colors"
-                  style={{
-                    padding: 'var(--space-1) var(--space-3)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-weight-medium)',
-                    background: 'transparent',
-                    border: '1px dashed var(--color-blue-300)',
-                    color: 'var(--color-blue-600)',
-                  }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = 'var(--color-blue-50)';
-                    el.style.borderColor = 'var(--color-blue-500)';
-                    el.style.color = 'var(--color-blue-700)';
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = 'transparent';
-                    el.style.borderColor = 'var(--color-blue-300)';
-                    el.style.color = 'var(--color-blue-600)';
-                  }}
-                >
-                  <Plus size={14} />
-                  Add Service
-                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Specialty tags (UI-only) */}
+          <div>
+            <label className="text-sm font-medium text-foreground">Specialty Tags</label>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Add up to 4 short tags (max 20 chars) that describe your niche.</p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {specialtyTags.map(t => (
+                <span key={t} className="inline-flex items-center gap-1 rounded-full" style={{ padding: 'var(--space-1) var(--space-3)', border: '1px solid var(--color-blue-200)', color: 'var(--color-blue-700)', background: 'var(--color-blue-50)', fontSize: 'var(--text-sm)' }}>
+                  {t}
+                  <button onClick={() => setSpecialtyTags(specialtyTags.filter(x => x !== t))} className="rounded-full p-[2px]" style={{ color: 'var(--color-blue-500)', lineHeight: 0, background: 'none', border: 'none', cursor: 'pointer' }}>
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              {specialtyTags.length < 4 && (
+                <input
+                  value={specialtyInput}
+                  onChange={e => setSpecialtyInput(e.target.value.slice(0, 20))}
+                  onKeyDown={handleSpecialtyKeyDown}
+                  placeholder="e.g. FAANG Prep"
+                  className="text-sm border border-dashed rounded-full px-3 py-1 outline-none focus:ring-1 focus:ring-ring"
+                  style={{ background: 'transparent', borderColor: 'var(--color-blue-300)', color: 'var(--foreground)', minWidth: 120 }}
+                />
               )}
             </div>
           </div>
 
           <SectionSaveRow status={svc} onSave={saveServices} />
         </div>
+
+        {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
+        <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
 
         {/* Verification Section */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5">
@@ -2872,11 +3099,48 @@ function ProfilePage() {
                 <span className="text-xs text-muted-foreground">{profile?.averageRating ?? 0} ({profile?.reviewCount ?? 0})</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{headline}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {services.slice(0, 3).map(t => (
-                  <span key={t} className="text-[11px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">{t}</span>
-                ))}
-              </div>
+              {/* Service Type chips */}
+              {services.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {services.map(s => (
+                    <span key={s} className="inline-flex items-center rounded-full text-[10px] font-medium" style={{ padding: '2px 8px', background: 'var(--color-blue-600)', color: '#fff' }}>{s}</span>
+                  ))}
+                </div>
+              )}
+              {/* Specialty Tags */}
+              {specialtyTags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {specialtyTags.map(t => (
+                    <span key={t} className="inline-flex items-center rounded-full text-[10px]" style={{ padding: '2px 8px', border: '1px solid var(--color-blue-300)', color: 'var(--color-blue-700)', background: 'transparent' }}>{t}</span>
+                  ))}
+                </div>
+              )}
+              {/* Experience timeline */}
+              {experiences.length > 0 && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                  <div className="text-[10px] font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</div>
+                  <div className="space-y-2.5">
+                    {experiences.map((exp, i) => (
+                      <div key={exp.id} className="flex items-start gap-2">
+                        <div className="flex flex-col items-center shrink-0" style={{ width: 16 }}>
+                          <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: 'hsl(43,96%,56%)', marginTop: 1 }}>
+                            <Briefcase style={{ width: 8, height: 8, color: '#fff' }} />
+                          </div>
+                          {i < experiences.length - 1 && (
+                            <div className="w-px flex-1 mt-1" style={{ background: 'var(--border)', minHeight: 14 }} />
+                          )}
+                        </div>
+                        <div className="pb-0.5">
+                          <div className="text-[11px] font-semibold" style={{ color: 'var(--foreground)', lineHeight: 1.3 }}>{exp.title || '—'}</div>
+                          <div className="text-[10px]" style={{ color: 'var(--muted-foreground)', lineHeight: 1.4 }}>
+                            {exp.company || '—'}{exp.startYear ? ` · ${exp.startYear} – ${exp.isCurrent ? 'Present' : (exp.endYear || '…')}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button className="mt-3 w-full py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 Book a session
               </button>
@@ -3114,7 +3378,45 @@ function EarningsStatusBadge({ status }: { status: string }) {
   );
 }
 
+// Referral-credit ledger has no backend yet — static sample rows for the Credits tab.
+const CREDIT_TRANSACTIONS = [
+  { id: 'c1', date: 'Jun 3, 2025',  description: 'Google SWE referral — Emily Zhang accepted',  credits: 100,   status: 'Confirmed' },
+  { id: 'c2', date: 'May 28, 2025', description: 'Meta PM referral — slot 1 of 3',               credits: 200,   status: 'Escrow' },
+  { id: 'c3', date: 'May 20, 2025', description: 'Stripe Backend referral — in progress',        credits: 150,   status: 'Escrow' },
+  { id: 'c4', date: 'May 15, 2025', description: 'Airbnb Frontend referral — completed',         credits: 80,    status: 'Confirmed' },
+  { id: 'c5', date: 'May 1, 2025',  description: 'Redeemed as cash',                             credits: -1200, status: 'Redeemed' },
+  { id: 'c6', date: 'Apr 22, 2025', description: 'Figma Design Engineer referral — accepted',    credits: 180,   status: 'Confirmed' },
+];
+
+function CreditStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    'Escrow':    { bg: 'var(--color-blue-50)',  color: 'var(--color-blue-700)' },
+    'Confirmed': { bg: 'hsl(142 71% 93%)',      color: 'hsl(142 63% 26%)' },
+    'Redeemed':  { bg: 'var(--surface-2)',       color: 'var(--muted-foreground)' },
+  };
+  const s = map[status] ?? { bg: 'var(--surface-2)', color: 'var(--muted-foreground)' };
+  return (
+    <span
+      className="inline-flex items-center rounded-[var(--radius-sm)] whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: s.bg, color: s.color }}
+    >
+      {status}
+    </span>
+  );
+}
+
 function EarningsPage() {
+  // Cash tab is API-backed; the Credits tab is static (no referral-credit API yet).
+  const [eTab, setETab] = useState<'Cash' | 'Credits'>('Cash');
+
+  // Referral-credit figures (static until the backend exists).
+  const creditBalance = 2480;
+  const estCashValue = (creditBalance / 12).toFixed(2);
+  const completedReferrals = 7;
+  const eligRefCount = completedReferrals >= 5;
+  const eligBalance = creditBalance >= 1000;
+  const canRedeem = eligRefCount && eligBalance;
+
   // GET /mentorship/profile/earnings → { availableCents, pendingCents, lifetimeCents }.
   const [earningTotals, setEarningTotals] = useState<{ available: number; pending: number; lifetime: number } | null>(null);
   const [earningsLoading, setEarningsLoading] = useState(true);
@@ -3164,10 +3466,33 @@ function EarningsPage() {
         {/* Page header */}
         <div>
           <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>Earnings</h2>
-          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income</p>
+          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income and redeem referral credits</p>
+        </div>
+
+        {/* Tab bar — pill style */}
+        <div className="flex items-center gap-[4px]">
+          {(['Cash', 'Credits'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setETab(t)}
+              className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors"
+              style={{
+                background: eTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
+                color: eTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: eTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                border: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t === 'Credits' ? 'Referral Credits' : t}
+            </button>
+          ))}
         </div>
 
         {/* ── Cash earnings ── */}
+        {eTab === 'Cash' && (
         <div className="space-y-5">
 
             {/* Stat cards */}
@@ -3227,6 +3552,88 @@ function EarningsPage() {
               </tbody>
             </table>
         </div>
+        )}
+
+        {/* ── Referral credits (static) ── */}
+        {eTab === 'Credits' && (
+          <div className="space-y-5">
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Credit Balance</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>{creditBalance.toLocaleString()}</div>
+              </div>
+              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Est. Cash Value</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>${estCashValue}</div>
+                <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>at 12 cr = $1</div>
+              </div>
+            </div>
+
+            {/* Redeem section */}
+            <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Redeem Credits</div>
+              <div className="space-y-2.5 mb-4">
+                {[
+                  { label: `Completed ≥ 5 referrals this month (${completedReferrals} completed)`, met: eligRefCount },
+                  { label: 'Credit balance ≥ 1,000', met: eligBalance },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    {item.met
+                      ? <CheckCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(142 63% 38%)' }} />
+                      : <XCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(0 65% 50%)' }} />
+                    }
+                    <span style={{ fontSize: 'var(--text-sm)', color: item.met ? 'var(--foreground)' : 'var(--muted-foreground)', lineHeight: 1.8 }}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mb-4" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                Exchange rate: 12 credits = $1. Redeemed credits are added to your Cash &gt; Available balance in the next monthly payout cycle.
+              </p>
+              <button
+                disabled={!canRedeem}
+                style={{
+                  width: '100%', padding: '9px 16px',
+                  fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)',
+                  background: 'var(--primary)', color: 'var(--primary-foreground)',
+                  border: 'none', borderRadius: 'var(--radius-sm)',
+                  opacity: canRedeem ? 1 : 0.5,
+                  cursor: canRedeem ? 'pointer' : 'not-allowed',
+                  transition: 'opacity var(--transition-base)',
+                }}
+              >
+                Redeem as cash
+              </button>
+            </div>
+
+            {/* Credit transaction table */}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Date', 'Description', 'Credits', 'Status'].map(col => (
+                    <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CREDIT_TRANSACTIONS.map((row, i) => (
+                  <tr key={row.id} style={{ borderBottom: i < CREDIT_TRANSACTIONS.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{row.date}</td>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>{row.description}</td>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', whiteSpace: 'nowrap', color: row.credits < 0 ? 'hsl(0 65% 48%)' : 'hsl(142 63% 30%)' }}>
+                      {row.credits > 0 ? '+' : ''}{row.credits}
+                    </td>
+                    <td style={{ padding: '12px' }}><CreditStatusBadge status={row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+          </div>
+        )}
 
       </div>
     </div>
@@ -3396,6 +3803,353 @@ function ProfileAndAvailabilityPage() {
 }
 
 /* ─────────────────────────────────────────────
+   REFERRAL PAGE (内推) — no backend yet; static sample content.
+───────────────────────────────────────────── */
+type ROpportunity = {
+  id: string; company: string; role: string;
+  type: 'Submission' | 'Interview Guarantee';
+  status: 'Open' | 'Processing' | 'Complete';
+  location: string; salary: string; credits: number;
+  slotsUsed: number; slotsTotal: number; minMins: number; applicants: number;
+};
+type RApplicant = {
+  id: string; oppId: string; name: string; initials: string;
+  qualified: boolean; trainingMins: number; mockScore: number;
+};
+
+const R_OPPS: ROpportunity[] = [
+  { id: 'o1', company: 'Google',    role: 'Software Engineer',      type: 'Submission',           status: 'Open',       location: 'San Francisco, CA', salary: '$180k–$220k', credits: 100, slotsUsed: 2, slotsTotal: 5, minMins: 300, applicants: 3 },
+  { id: 'o2', company: 'Meta',      role: 'Product Manager',        type: 'Interview Guarantee',  status: 'Processing', location: 'Remote',            salary: '$160k–$200k', credits: 200, slotsUsed: 3, slotsTotal: 3, minMins: 500, applicants: 3 },
+  { id: 'o3', company: 'Stripe',    role: 'Backend Engineer',       type: 'Submission',           status: 'Open',       location: 'New York, NY',      salary: '$190k–$230k', credits: 150, slotsUsed: 1, slotsTotal: 4, minMins: 400, applicants: 2 },
+  { id: 'o4', company: 'Airbnb',    role: 'Frontend Engineer',      type: 'Submission',           status: 'Complete',   location: 'San Francisco, CA', salary: '$170k–$210k', credits: 80,  slotsUsed: 5, slotsTotal: 5, minMins: 200, applicants: 0 },
+  { id: 'o5', company: 'Figma',     role: 'Design Engineer',        type: 'Interview Guarantee',  status: 'Open',       location: 'San Francisco, CA', salary: '$165k–$195k', credits: 180, slotsUsed: 0, slotsTotal: 3, minMins: 350, applicants: 1 },
+];
+
+const R_APPLICANTS: RApplicant[] = [
+  { id: 'a1', oppId: 'o1', name: 'Emily Zhang',  initials: 'EZ', qualified: true,  trainingMins: 420, mockScore: 92 },
+  { id: 'a2', oppId: 'o1', name: 'Marcus Liu',   initials: 'ML', qualified: false, trainingMins: 180, mockScore: 65 },
+  { id: 'a3', oppId: 'o1', name: 'Lisa Park',    initials: 'LP', qualified: true,  trainingMins: 380, mockScore: 88 },
+  { id: 'a4', oppId: 'o3', name: 'Aisha Kumar',  initials: 'AK', qualified: true,  trainingMins: 510, mockScore: 95 },
+  { id: 'a5', oppId: 'o3', name: 'Kevin Li',     initials: 'KL', qualified: false, trainingMins: 90,  mockScore: 58 },
+];
+
+function TypeBadge({ type }: { type: string }) {
+  const isIG = type === 'Interview Guarantee';
+  return (
+    <span className="inline-flex items-center rounded-full whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)',
+        background: isIG ? 'hsl(260 80% 95%)' : 'var(--color-blue-50)',
+        color:      isIG ? 'hsl(260 60% 40%)' : 'var(--color-blue-700)',
+        border:     isIG ? '1px solid hsl(260 60% 82%)' : '1px solid var(--color-blue-200)' }}>
+      {type}
+    </span>
+  );
+}
+
+function OppStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    'Open':       { bg: 'hsl(142 71% 93%)',  color: 'hsl(142 63% 26%)' },
+    'Processing': { bg: 'var(--color-blue-50)', color: 'var(--color-blue-700)' },
+    'Complete':   { bg: 'var(--surface-2)',   color: 'var(--muted-foreground)' },
+    'On Hold':    { bg: 'hsl(38 92% 92%)',    color: 'hsl(38 70% 30%)' },
+  };
+  const s = map[status] ?? { bg: 'var(--surface-2)', color: 'var(--muted-foreground)' };
+  return (
+    <span className="inline-flex items-center rounded-[var(--radius-sm)] whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: s.bg, color: s.color }}>
+      {status}
+    </span>
+  );
+}
+
+function ReferralPage() {
+  type SubTab = 'Opportunities' | 'Pending Applications' | 'Post Opportunity';
+  const [sub, setSub] = useState<SubTab>('Opportunities');
+
+  const [form, setForm] = useState({ company: '', role: '', location: '', salary: '', type: 'Submission', credits: '0', slots: '', minMins: '' });
+  const setF = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const pendingCount = R_APPLICANTS.length;
+  const tabs: SubTab[] = ['Opportunities', 'Pending Applications', 'Post Opportunity'];
+  const oppIds = [...new Set(R_APPLICANTS.map(a => a.oppId))];
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+    fontSize: 'var(--text-sm)', color: 'var(--foreground)',
+    background: 'var(--input-background)', border: '1px solid var(--border)',
+    outline: 'none', transition: 'border-color var(--transition-base)',
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 space-y-5">
+
+        {/* Page header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>Referral</h2>
+            <p className="mt-0.5" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Publish referral opportunities, review applicants, track progress</p>
+          </div>
+          <button
+            onClick={() => setSub('Post Opportunity')}
+            className="flex items-center gap-2 rounded-[var(--radius-sm)] transition-colors"
+            style={{ padding: '8px 16px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none' }}
+          >
+            <Plus className="w-4 h-4" />
+            Post opportunity
+          </button>
+        </div>
+
+        {/* Sub-tabs — underline style */}
+        <div className="flex items-center" style={{ borderBottom: '1px solid var(--border)' }}>
+          {tabs.map(t => (
+            <button
+              key={t}
+              onClick={() => setSub(t)}
+              className="flex items-center gap-1.5 transition-colors"
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: sub === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                color: sub === t ? 'var(--primary)' : 'var(--muted-foreground)',
+                paddingBottom: 10, paddingTop: 4, paddingLeft: 4, paddingRight: 4,
+                marginRight: 24, background: 'none',
+                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                borderBottom: sub === t ? '2px solid var(--primary)' : '2px solid transparent',
+                marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {t}
+              {t === 'Pending Applications' && pendingCount > 0 && (
+                <span className="rounded-full flex items-center justify-center"
+                  style={{ minWidth: 16, height: 16, padding: '0 4px', fontSize: 10, fontWeight: 'var(--font-weight-semibold)', background: 'hsl(0 72% 51%)', color: 'var(--primary-foreground)' }}>
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Opportunities panel ── */}
+        {sub === 'Opportunities' && (
+          <div className="space-y-5">
+            {/* Stat cards */}
+            <div className="grid grid-cols-4 gap-4">
+              {[
+                { label: 'Active',                    value: R_OPPS.filter(o => o.status !== 'Complete').length },
+                { label: 'Pending Applications',      value: pendingCount },
+                { label: 'Completed this month',      value: R_OPPS.filter(o => o.status === 'Complete').length },
+                { label: 'Credits earned this month', value: '1,240' },
+              ].map(c => (
+                <div key={c.label} className="rounded-[var(--radius)] p-4" style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{c.label}</div>
+                  <div className="mt-2" style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Section header */}
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>My opportunities</div>
+
+            {/* Opportunity cards */}
+            <div className="space-y-3">
+              {R_OPPS.map(opp => (
+                <div key={opp.id} className="rounded-[var(--radius)] p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>
+                        {opp.company} — {opp.role}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <TypeBadge type={opp.type} />
+                        <OppStatusBadge status={opp.status} />
+                      </div>
+                      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                        <span>{opp.location}</span>
+                        <span>·</span>
+                        <span>{opp.salary}</span>
+                        <span>·</span>
+                        <span>{opp.credits} cr</span>
+                        <span>·</span>
+                        <span>{opp.slotsUsed} / {opp.slotsTotal} slots</span>
+                        <span>·</span>
+                        <span>≥ {opp.minMins} min / 7 days</span>
+                        {opp.status === 'Processing' && <><span>·</span><span style={{ color: 'hsl(0 65% 48%)' }}>4 days left</span></>}
+                        {opp.status === 'Complete' && <><span>·</span><span>Auto-confirms in 3 days</span></>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {opp.status === 'Open' && (
+                        <>
+                          <button
+                            onClick={() => setSub('Pending Applications')}
+                            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] transition-colors"
+                            style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                            <Users className="w-3.5 h-3.5" />{opp.applicants} applications
+                          </button>
+                          <button className="rounded-[var(--radius-sm)] p-1.5 transition-colors"
+                            style={{ color: 'var(--muted-foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                      {opp.status === 'Processing' && (
+                        <button className="flex items-center gap-1.5 rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none' }}>
+                          <Upload className="w-3.5 h-3.5" />Upload screenshot
+                        </button>
+                      )}
+                      {opp.status === 'Complete' && (
+                        <button disabled className="flex items-center gap-1.5 rounded-[var(--radius-sm)]"
+                          style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', background: 'transparent', border: '1px solid var(--border)', opacity: 0.5, cursor: 'not-allowed' }}>
+                          Awaiting confirmation
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Pending Applications panel ── */}
+        {sub === 'Pending Applications' && (
+          <div className="space-y-4">
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pending applications</div>
+            {oppIds.map(oid => {
+              const opp = R_OPPS.find(o => o.id === oid);
+              const apps = R_APPLICANTS.filter(a => a.oppId === oid);
+              if (!opp) return null;
+              return (
+                <div key={oid} className="rounded-[var(--radius)] overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  {/* Group header */}
+                  <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-0)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>{opp.company} — {opp.role}</span>
+                    <TypeBadge type={opp.type} />
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>{opp.credits} cr · {opp.slotsUsed}/{opp.slotsTotal} slots</span>
+                  </div>
+                  {/* Applicant rows */}
+                  {apps.map((ap, i) => (
+                    <div key={ap.id} className="flex items-center gap-3 px-4"
+                      style={{ paddingTop: 10, paddingBottom: 10, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                      {/* Avatar initials */}
+                      <div className="rounded-full flex items-center justify-center shrink-0"
+                        style={{ width: 34, height: 34, background: 'var(--color-blue-100)', color: 'var(--color-blue-700)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-semibold)' }}>
+                        {ap.initials}
+                      </div>
+                      {/* Name + eligibility */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>{ap.name}</span>
+                          <span className="rounded-[var(--radius-sm)]"
+                            style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)',
+                              background: ap.qualified ? 'hsl(142 71% 93%)' : 'hsl(38 92% 92%)',
+                              color: ap.qualified ? 'hsl(142 63% 26%)' : 'hsl(38 70% 30%)' }}>
+                            {ap.qualified ? 'Eligible' : 'Below threshold'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                          <span>{ap.trainingMins} min past 7 days</span>
+                          <span>·</span>
+                          <span>Mock avg: {ap.mockScore}</span>
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                          Resume
+                        </button>
+                        <button className="flex items-center gap-1 rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                          <Eye className="w-3 h-3" />Mock
+                        </button>
+                        <button disabled={!ap.qualified} className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', opacity: ap.qualified ? 1 : 0.4, cursor: ap.qualified ? 'pointer' : 'not-allowed' }}>
+                          Accept
+                        </button>
+                        <button className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'hsl(0 65% 48%)', background: 'transparent', border: '1px solid hsl(0 65% 75%)' }}>
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Post Opportunity panel ── */}
+        {sub === 'Post Opportunity' && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>New opportunity</div>
+            <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)', maxWidth: 640 }}>
+              <div className="space-y-3">
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Company name</label>
+                  <input value={form.company} onChange={setF('company')} placeholder="e.g. Google" style={inp} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Role title</label>
+                  <input value={form.role} onChange={setF('role')} placeholder="e.g. Software Engineer" style={inp} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Location</label>
+                    <input value={form.location} onChange={setF('location')} placeholder="e.g. Remote" style={inp} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Salary range</label>
+                    <input value={form.salary} onChange={setF('salary')} placeholder="e.g. 180k–240k" style={inp} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Type</label>
+                    <div className="relative">
+                      <select value={form.type} onChange={setF('type')} style={{ ...inp, paddingRight: 32, cursor: 'pointer', appearance: 'none' }}>
+                        <option value="Submission">Submission</option>
+                        <option value="Interview Guarantee">Interview Guarantee</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Credit price</label>
+                    <input type="number" value={form.credits} onChange={setF('credits')} min={0} max={1000} style={inp} />
+                    <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>0 = free referral</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Slot limit</label>
+                    <input type="number" value={form.slots} onChange={setF('slots')} placeholder="Max applicants" style={inp} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Training threshold</label>
+                    <input type="number" value={form.minMins} onChange={setF('minMins')} placeholder="Min minutes" style={inp} />
+                    <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>past 7 days</div>
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <button style={{ padding: '8px 16px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+                    Post opportunity
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    SIDEBAR NAV
 ───────────────────────────────────────────── */
 const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: number; required?: boolean }[] = [
@@ -3405,6 +4159,7 @@ const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: nu
   { id: 'profile',      label: 'Profile & Availability', icon: User, required: true },
   { id: 'reviews',      label: 'Reviews',      icon: Star },
   { id: 'earnings',     label: 'Earnings',     icon: DollarSign },
+  { id: 'referral',     label: 'Referral',     icon: Gift },
 ];
 
 /* ─────────────────────────────────────────────
@@ -3419,6 +4174,7 @@ export function MentorDashboardPage() {
   // Booking to auto-open in BookingsPage's detail drawer (set when navigating
   // there from another tab, e.g. the Overview "message" action).
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const posthog = usePostHog();
@@ -3468,6 +4224,7 @@ export function MentorDashboardPage() {
     profile: 'Profile & Availability',
     reviews: 'Reviews',
     earnings: 'Earnings',
+    referral: 'Referral',
   };
 
   const pageContent: Record<NavId, React.ReactNode> = {
@@ -3477,6 +4234,7 @@ export function MentorDashboardPage() {
     profile: <ProfileAndAvailabilityPage />,
     reviews: <ReviewsPage />,
     earnings: <EarningsWithPayment />,
+    referral: <ReferralPage />,
   };
 
   return (
@@ -3591,6 +4349,40 @@ export function MentorDashboardPage() {
               {profile?.status === 'PENDING' ? 'Pending Review' : profile?.status === 'REJECTED' ? 'Not Approved' : 'Suspended'}
             </div>
           )}
+
+          {/* Notifications */}
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen(!notifOpen)}
+              className="relative p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-[var(--radius)] shadow-lg z-50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">Notifications</span>
+                  <button className="text-xs text-primary hover:underline">Mark all read</button>
+                </div>
+                <div className="divide-y divide-border">
+                  {[
+                    { icon: CalendarCheck, text: 'New booking request from Priya Sharma', time: '30 min ago', color: 'text-primary' },
+                    { icon: MessageSquare, text: 'Marcus Lee sent you a message', time: '1 hour ago', color: 'text-primary' },
+                    { icon: Star, text: 'Aisha Williams left you a 5-star review', time: '2 hours ago', color: 'text-amber-500' },
+                  ].map((n, i) => (
+                    <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/40 cursor-pointer transition-colors">
+                      <n.icon className={`w-4 h-4 mt-0.5 shrink-0 ${n.color}`} />
+                      <div>
+                        <p className="text-sm text-foreground">{n.text}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{n.time}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
         </header>
 
