@@ -2,8 +2,14 @@ import { Avatar, AvatarFallback } from '@/components/newDesign/ui/avatar';
 import { Badge } from '@/components/newDesign/ui/badge';
 import { Card, CardContent } from '@/components/newDesign/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/newDesign/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/newDesign/ui/dialog';
 import type { AdminUser } from '@/data/adminMockData';
-import { CreditCard, Users, TrendingUp } from 'lucide-react';
+import { CreditCard, TrendingUp } from 'lucide-react';
 import { OverviewTab } from './tabs/OverviewTab';
 import { TrainingPlanTab } from './tabs/TrainingPlanTab';
 import { ReportsVideosTab } from './tabs/ReportsVideosTab';
@@ -13,22 +19,12 @@ import { AdminActionsTab } from './tabs/AdminActionsTab';
 
 interface UserDetailPanelProps {
   user: AdminUser | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onUserUpdated?: () => void;
 }
 
-export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        <div className="text-center">
-          <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Select a user to view details</p>
-        </div>
-      </div>
-    );
-  }
-
+export function UserDetailPanel({ user, open, onOpenChange, onUserUpdated }: UserDetailPanelProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
@@ -60,7 +56,17 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl w-[calc(100%-2rem)] h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+        <DialogTitle className="sr-only">
+          {user ? `User details: ${user.name}` : 'User details'}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Detailed view and admin actions for the selected user.
+        </DialogDescription>
+
+        {!user ? null : (
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="p-6 border-b border-border">
         <div className="flex items-start gap-4">
@@ -97,7 +103,7 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
           <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -156,7 +162,7 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs defaultValue="overview" className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="border-b border-border px-6">
           <TabsList className="h-12 bg-transparent">
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -167,7 +173,7 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
             <TabsTrigger value="admin">Admin</TabsTrigger>
           </TabsList>
         </div>
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
           <TabsContent value="overview" className="m-0 h-full">
             <OverviewTab user={user} />
           </TabsContent>
@@ -188,6 +194,9 @@ export function UserDetailPanel({ user, onUserUpdated }: UserDetailPanelProps) {
           </TabsContent>
         </div>
       </Tabs>
-    </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

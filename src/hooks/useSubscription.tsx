@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 
 export type Tier = 'basic' | 'advanced' | 'flagship';
 export type BillingCycle = 'monthly' | 'quarterly' | 'annual';
@@ -167,7 +167,7 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
 };
 
 export function useSubscription(): UseSubscriptionResult {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { toast } = useToast();
 
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
@@ -177,7 +177,8 @@ export function useSubscription(): UseSubscriptionResult {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!isAuthenticated) {
+    // Staff (admin/ops) have no candidate subscription/credits — skip the calls.
+    if (!isAuthenticated || isStaffRole(user?.roles, user?.role)) {
       setSubscription(null);
       setCredits(defaultCredits);
       setIsLoading(false);
@@ -231,7 +232,7 @@ export function useSubscription(): UseSubscriptionResult {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.roles, user?.role]);
 
   useEffect(() => {
     if (isAuthLoading) return;

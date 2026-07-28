@@ -126,7 +126,25 @@ const detectHasPassword = (token: string): boolean => {
 };
 
 // Fetch personal info (name, email, avatar, country, timezone) from API
-const fetchPersonalInfo = async (): Promise<Partial<User>> => {
+// Staff accounts (admin console) are not candidates — they have no
+// candidate-scoped personal-info / subscription / credits records, so those
+// endpoints 404 for them. Detect staff to skip those calls.
+const STAFF_ROLES = ['ADMIN', 'OPS'];
+export const isStaffRole = (roles?: string[] | null, role?: string | null): boolean =>
+  (roles ?? []).some((r) => STAFF_ROLES.includes(String(r).toUpperCase())) ||
+  (role ? STAFF_ROLES.includes(String(role).toUpperCase()) : false);
+
+const fetchPersonalInfo = async (
+  token: string,
+  tokenData: Pick<User, 'id' | 'role' | 'roles'> | null,
+): Promise<Partial<User>> => {
+  // Skip the candidate `personal-info` call for staff (it 404s); take the
+  // email from the JWT claims so the admin header still has something to show.
+  if (isStaffRole(tokenData?.roles, tokenData?.role)) {
+    const claims = decodeTokenPayload(token);
+    return { email: (claims?.email as string) || '' };
+  }
+
   try {
     const response = await getPersonalInfo();
     const data = response.data?.data;
@@ -169,7 +187,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (token) {
         const tokenData = decodeToken(token);
         if (tokenData) {
-          const personalInfo = await fetchPersonalInfo();
+          const personalInfo = await fetchPersonalInfo(token, tokenData);
           const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
           setUser(userData);
           safeIdentify(posthog, userData.id, {
@@ -199,7 +217,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const tokenData = decodeToken(token);
       if (tokenData) {
-        const personalInfo = await fetchPersonalInfo();
+        const personalInfo = await fetchPersonalInfo(token, tokenData);
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
         setUser(userData);
         window.dispatchEvent(new Event('screna-auth-change'));
@@ -242,7 +260,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const tokenData = decodeToken(accessToken);
       if (tokenData) {
-        const personalInfo = await fetchPersonalInfo();
+        const personalInfo = await fetchPersonalInfo(accessToken, tokenData);
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: true };
         setUser(userData);
         window.dispatchEvent(new Event('screna-auth-change'));

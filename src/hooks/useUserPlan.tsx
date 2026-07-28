@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
@@ -88,7 +88,7 @@ interface UserPlanProviderProps {
 // Provider component
 export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const posthog = usePostHog();
 
   // credits 埋点用：记录上一次余额（用于判断「跌到 0」）
@@ -118,7 +118,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   // `plan-usage` was removed; this preserves the public hook interface so old
   // call sites keep working without changes.
   const refreshPlan = useCallback(async () => {
-    if (!isAuthenticated) {
+    // Staff (admin/ops) have no candidate subscription/credits — skip the calls.
+    if (!isAuthenticated || isStaffRole(user?.roles, user?.role)) {
       setIsLoading(false);
       setPlanData(defaultPlanData);
       return;
@@ -206,7 +207,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.roles, user?.role]);
 
   // Fetch plan when auth state changes (user logs in)
   useEffect(() => {
