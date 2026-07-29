@@ -309,7 +309,7 @@ export function ReportsVideosTab({ user }) {
 
       {/* Report Detail Modal */}
       <Dialog open={!!selectedReportId} onOpenChange={(open) => { if (!open) handleCloseModal(); }}>
-        <DialogContent className="max-w-2xl h-[85vh] p-0 flex flex-col">
+        <DialogContent className="max-w-4xl w-[calc(100%-2rem)] h-[85vh] p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b shrink-0 space-y-2">
             <Button
               variant="ghost"

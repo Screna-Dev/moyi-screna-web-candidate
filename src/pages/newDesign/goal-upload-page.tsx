@@ -95,6 +95,7 @@ export function GoalUploadPage({
       saveToLocalStorage(structuredResume, file.name, resumePath);
       updateProfile(structuredResume).catch(() => {});
       setUploadState('success');
+      onUploadSuccess?.();
     } catch (err: any) {
       setUploadError(err?.response?.data?.message || 'Upload failed. Please try again.');
       setUploadState('idle');
@@ -112,6 +113,7 @@ export function GoalUploadPage({
       setPendingResume(null);
       setTempVisaStatus('');
       setUploadState('success');
+      onUploadSuccess?.();
     } catch {
       // still complete upload even if save fails
       saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
@@ -119,6 +121,7 @@ export function GoalUploadPage({
       setPendingResume(null);
       setTempVisaStatus('');
       setUploadState('success');
+      onUploadSuccess?.();
     } finally {
       setIsSavingVisa(false);
     }

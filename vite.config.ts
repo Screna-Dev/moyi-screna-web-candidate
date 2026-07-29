@@ -1,6 +1,7 @@
 /// <reference types="vitest" />
 import path from "path"
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'child_process'
 
@@ -35,6 +36,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: false,
+    // Never pick up test files inside Claude Code's isolation worktrees
+    // (.claude/worktrees/*) — they are duplicate checkouts and running them
+    // double-executes the whole suite and crashes vitest workers.
+    exclude: [...configDefaults.exclude, '**/.claude/**'],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "react-router": path.resolve(__dirname, "node_modules/react-router/dist/development/index.mjs"),

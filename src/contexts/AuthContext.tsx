@@ -4,7 +4,7 @@ import { usePostHog } from 'posthog-js/react';
 import { safeIdentify, safeCapture } from '@/utils/posthog';
 import { getDaysSinceOnboarding } from '@/utils/analytics';
 import { EVENTS } from '@/constants/analyticsEvents';
-import API from '@/services/api';
+import API, { scheduleProactiveRefresh, stopTokenRefreshCycle } from '@/services/api';
 import { getPersonalInfo } from '@/services/ProfileServices';
 
 interface User {
@@ -190,6 +190,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           const personalInfo = await fetchPersonalInfo(token, tokenData);
           const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
           setUser(userData);
+          // Cold start: the stored access token may be up to 30 min old (or
+          // stale from a prior visit). Start the proactive-refresh cycle off
+          // its `exp` — if it's already past ~80% of its life this refreshes
+          // immediately, silently swapping in a fresh token (or ending the
+          // session if the 30-day refresh token is gone).
+          scheduleProactiveRefresh(token);
           safeIdentify(posthog, userData.id, {
             email: userData.email,
             name: userData.name,
@@ -220,6 +226,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const personalInfo = await fetchPersonalInfo(token, tokenData);
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: detectHasPassword(token) };
         setUser(userData);
+        scheduleProactiveRefresh(token);
         window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
           email: userData.email,
@@ -263,6 +270,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const personalInfo = await fetchPersonalInfo(accessToken, tokenData);
         const userData: User = { id: '', email: '', name: '', ...tokenData, ...personalInfo, hasPassword: true };
         setUser(userData);
+        scheduleProactiveRefresh(accessToken);
         window.dispatchEvent(new Event('screna-auth-change'));
         safeIdentify(posthog, userData.id, {
           email: userData.email,
@@ -338,7 +346,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = async () => {
+    // Stop the proactive-refresh timer first so a pending tick can't fire
+    // against cleared storage after we sign out.
+    stopTokenRefreshCycle();
     try {
+      // signout is the one authenticated auth endpoint. A MENTOR-only account
+      // gets 403 here; the access token is a stateless JWT that keeps working
+      // until it expires regardless — so we clear local tokens either way.
       await API.post('/auth/signout');
     } catch (error) {
       console.error('Logout error:', error);

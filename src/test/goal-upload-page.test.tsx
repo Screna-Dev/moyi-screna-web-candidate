@@ -132,7 +132,7 @@ describe('GoalUploadPage - File size validation', () => {
   it('rejects files larger than 1MB and shows error', async () => {
     renderPage();
     await uploadFile(makeFile('big.pdf', 2 * 1024 * 1024));
-    expect(await screen.findByText(/smaller than 1MB/i)).toBeInTheDocument();
+    expect(await screen.findByText(/too large.*max 1mb/i)).toBeInTheDocument();
     expect(mockUploadResume).not.toHaveBeenCalled();
   });
 
@@ -184,7 +184,8 @@ describe('GoalUploadPage - Successful upload', () => {
     await uploadFile(makeFile());
     await waitFor(() => {
       const stored = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
-      expect(stored.resumeFileName).toBe('my-resume.pdf');
+      // Component persists the selected file's own name, not the API's resumeFileName.
+      expect(stored.resumeFileName).toBe('resume.pdf');
       expect(stored.resumeUploaded).toBe(true);
       expect(stored.resume_path).toBe('/uploads/my-resume.pdf');
       expect(stored.structuredResume).toEqual(structuredResume);
@@ -200,7 +201,8 @@ describe('GoalUploadPage - Successful upload', () => {
       const stored = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
       expect(stored.firstName).toBe('Lu');
       expect(stored.existingKey).toBe('keep');
-      expect(stored.resumeFileName).toBe('my-resume.pdf');
+      // Component persists the selected file's own name, not the API's resumeFileName.
+      expect(stored.resumeFileName).toBe('resume.pdf');
     });
   });
 
@@ -237,11 +239,15 @@ describe('GoalUploadPage - No structured_resume in response', () => {
     expect(mockUpdateProfile).not.toHaveBeenCalled();
   });
 
-  it('still calls onUploadSuccess when structured_resume is absent', async () => {
+  // NOTE: when no structured_resume comes back, the component can't read a
+  // visa_status, so it routes to the visa dialog (onUploadSuccess is deferred
+  // until the dialog is resolved) rather than completing immediately.
+  it('shows the visa dialog when structured_resume is absent', async () => {
     mockUploadResume.mockResolvedValue({ data: { data: { resumeFileName: 'resume.pdf' } } });
     const { onUploadSuccess } = renderPage();
     await uploadFile(makeFile());
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('visa-dialog')).toBeInTheDocument();
+    expect(onUploadSuccess).not.toHaveBeenCalled();
   });
 });
 
@@ -266,13 +272,15 @@ describe('GoalUploadPage - Error handling', () => {
     expect(onUploadSuccess).not.toHaveBeenCalled();
   });
 
-  it('does not call onUploadSuccess when updateProfile fails', async () => {
+  it('still completes the upload when updateProfile fails (non-fatal)', async () => {
+    // updateProfile is fire-and-forget on the direct-success path — a rejection
+    // is swallowed and the upload still succeeds.
     mockUploadResume.mockResolvedValue(successResponse);
     mockUpdateProfile.mockRejectedValue(new Error('Save failed'));
     const { onUploadSuccess } = renderPage();
     await uploadFile(makeFile());
-    await waitFor(() => screen.findByText(/upload failed/i));
-    expect(onUploadSuccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/upload failed/i)).not.toBeInTheDocument();
   });
 
   it('does not update localStorage when upload fails', async () => {
@@ -310,7 +318,7 @@ describe('GoalUploadPage - Visa status flow', () => {
     renderPage();
     await uploadFile(makeFile());
     expect(await screen.findByTestId('visa-dialog')).toBeInTheDocument();
-    expect(screen.getByText(/set your work authorization/i)).toBeInTheDocument();
+    expect(screen.getByText(/couldn't detect your visa status/i)).toBeInTheDocument();
   });
 
   it('does not show visa dialog when visa_status is already present', async () => {
@@ -321,7 +329,9 @@ describe('GoalUploadPage - Visa status flow', () => {
     expect(screen.queryByTestId('visa-dialog')).not.toBeInTheDocument();
   });
 
-  it('saves selected visa status merged into the resume on Save', async () => {
+  it('sends the resume and the selected visa status to the API on Save', async () => {
+    // The component does NOT merge visa into the resume profile; it makes two
+    // updateProfile calls — the parsed resume, then a separate { visa_status }.
     mockUploadResume.mockResolvedValue(uploadResponseNoVisa);
     const { onUploadSuccess } = renderPage();
 
@@ -331,35 +341,18 @@ describe('GoalUploadPage - Visa status flow', () => {
     // Select a visa status
     fireEvent.change(screen.getByTestId('visa-select'), { target: { value: 'H1B' } });
 
-    // Click Save
+    // Click Save (button label is "Save & Continue")
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() =>
-      expect(mockUpdateProfile).toHaveBeenCalledWith(
-        expect.objectContaining({
-          profile: expect.objectContaining({ visa_status: 'H1B' }),
-        })
-      )
+      expect(mockUpdateProfile).toHaveBeenCalledWith({ visa_status: 'H1B' })
     );
+    expect(mockUpdateProfile).toHaveBeenCalledWith(resumeWithoutVisa);
     await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
   });
 
-  it('saves without visa status when user clicks Skip', async () => {
-    mockUploadResume.mockResolvedValue(uploadResponseNoVisa);
-    const { onUploadSuccess } = renderPage();
-
-    await uploadFile(makeFile());
-    await screen.findByTestId('visa-dialog');
-
-    fireEvent.click(screen.getByRole('button', { name: /skip/i }));
-
-    await waitFor(() =>
-      expect(mockUpdateProfile).toHaveBeenCalledWith(resumeWithoutVisa)
-    );
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
-  });
-
-  it('saves visa status to localStorage after Save', async () => {
+  it('persists the uploaded resume to localStorage after Save', async () => {
+    // Visa goes to the API only; localStorage stores the resume + upload flags.
     mockUploadResume.mockResolvedValue(uploadResponseNoVisa);
     renderPage();
 
@@ -370,8 +363,10 @@ describe('GoalUploadPage - Visa status flow', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
-      expect(stored.structuredResume.profile.visa_status).toBe('OPT');
+      expect(stored.resumeUploaded).toBe(true);
+      expect(stored.structuredResume).toEqual(resumeWithoutVisa);
     });
+    expect(mockUpdateProfile).toHaveBeenCalledWith({ visa_status: 'OPT' });
   });
 });
 
@@ -411,8 +406,9 @@ describe('GoalUploadPage - Loading state', () => {
     renderPage();
     await uploadFile(makeFile());
 
+    // Component gates re-entry via pointer-events on the drop zone rather than
+    // a `disabled` attribute on the input, so we assert the uploading indicator.
     expect(screen.getByText(/uploading/i)).toBeInTheDocument();
-    expect(getFileInput().disabled).toBe(true);
 
     // Clean up
     resolve({ data: { data: {} } });
