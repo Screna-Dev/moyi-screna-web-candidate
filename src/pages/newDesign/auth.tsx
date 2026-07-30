@@ -231,12 +231,13 @@ export function AuthPage() {
   const location = useLocation();
   const isRegisterRoute = location.pathname === '/register';
   const returnTo = searchParams.get('returnTo') || '';
-  const [referralCode, setReferralCode] = useState(
+  // Referral code is now collected in the onboarding "Source" step, not at signup.
+  // A referral link's code is forwarded to onboarding via the returnTo query params.
+  const referralCode =
     searchParams.get('ref') ||
     searchParams.get('referral_code') ||
     searchParams.get('referralCode') ||
-    ''
-  );
+    '';
   const [isLogin, setIsLogin] = useState(
     isRegisterRoute ? false : searchParams.get('login') === 'true'
   );
@@ -317,7 +318,8 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle(!isLogin, returnTo, referralCode.trim());
+      // Referral code is collected in onboarding now — not passed at signup.
+      loginWithGoogle(!isLogin, returnTo);
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');
@@ -369,7 +371,8 @@ export function AuthPage() {
           navigate(returnTo || resolvePostLoginPath(loggedInUser));
         }
       } else {
-        await signup(email, password, name, referralCode.trim() || undefined);
+        // Referral code is collected in onboarding now — not submitted at signup.
+        await signup(email, password, name);
         setRegisteredEmail(email);
         setIsNewSignup(true);
         setShowVerification(true);
@@ -441,8 +444,12 @@ export function AuthPage() {
         const loggedInUser = await login(registeredEmail, password, false);
         localStorage.removeItem('screna_new_user');
         if (loggedInUser?.role === 'CANDIDATE') {
-          const onboardingDest = '/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '');
-          navigate(onboardingDest);
+          // Carry any referral-link code into onboarding, where it's now collected.
+          const params = new URLSearchParams();
+          if (returnTo) params.set('returnTo', returnTo);
+          if (referralCode.trim()) params.set('ref', referralCode.trim());
+          const qs = params.toString();
+          navigate('/onboarding-resume' + (qs ? `?${qs}` : ''));
           return;
         }
         if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
@@ -741,24 +748,6 @@ export function AuthPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Referral code — signup only */}
-                {!isLogin && (
-                  <div className="space-y-2">
-                    <label htmlFor="referralCode" className="block text-sm text-slate-700 font-medium">
-                      Referral code <span className="text-slate-400 font-normal">(optional)</span>
-                    </label>
-                    <Input
-                      id="referralCode"
-                      type="text"
-                      placeholder="Enter a referral code for extra credits"
-                      value={referralCode}
-                      onChange={(e) => setReferralCode(e.target.value)}
-                      disabled={isLoading || isGoogleLoading}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
-                    />
-                  </div>
-                )}
 
                 {/* Remember me — login only */}
                 {isLogin && (
