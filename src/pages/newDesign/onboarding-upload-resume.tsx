@@ -224,9 +224,9 @@ function SourceStep({
         })}
       </div>
 
-      {/* Invite code — appears when "Referred by someone" is selected */}
+      {/* Invite code — appears once any source option is selected */}
       <AnimatePresence>
-        {source === 'referral' && (
+        {!!source && (
           <motion.div
             initial={{ opacity: 0, height: 0, marginTop: 0 }}
             animate={{ opacity: 1, height: 'auto', marginTop: 20 }}
@@ -519,7 +519,7 @@ export function OnboardingUploadResumePage() {
     // referral_source_completed
     safeCapture(posthog, EVENTS.REFERRAL_SOURCE_COMPLETED, {
       source,
-      referral_code: source === 'referral' && referralApplied ? referralCode.trim() : null,
+      referral_code: referralApplied ? referralCode.trim() : null,
     });
     goTo(3);
   };
