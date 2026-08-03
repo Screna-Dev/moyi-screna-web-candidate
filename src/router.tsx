@@ -160,6 +160,14 @@ export const router = createBrowserRouter([
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/interview-insights/:companyId', element: <CompanyDetailPage /> },
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
+      // Public, SEO-friendly "Interview Questions" surface linked from the home
+      // nav. Same components as the personal-center pages above, rendered in
+      // public mode (marketing nav/footer, no sidebar, no auth wall; guests see
+      // the 2 newest posts per company). Kept on separate paths so the
+      // personal-center /interview-insights experience is unchanged.
+      { path: '/interview-questions', element: <InterviewInsightsPage isPublic /> },
+      { path: '/interview-questions/:companyId', element: <CompanyDetailPage isPublic /> },
+      { path: '/interview-questions/experience/:id', element: <ExperienceDetailPage isPublic /> },
       { path: '/contact',element: <ContactPage />},
       { path: '/help',element: <HelpCenterPage />},
       { path: '/privacy',element: <PrivacyPolicy/>},

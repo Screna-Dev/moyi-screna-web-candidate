@@ -895,7 +895,7 @@ export function HomePage() {
                   link === 'Blog'
                     ? '/blog'
                     : link === 'Interview Questions'
-                    ? '/interview-insights'
+                    ? '/interview-questions'
                     : `#${link.toLowerCase()}`
                 }
                 className="text-[14px] transition-colors duration-150"
@@ -1020,7 +1020,7 @@ export function HomePage() {
                   link === 'Blog'
                     ? '/blog'
                     : link === 'Interview Questions'
-                    ? '/interview-insights'
+                    ? '/interview-questions'
                     : `#${link.toLowerCase()}`
                 }
                 className="text-[15px]"

@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router';
 import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, MapPin, ExternalLink, CircleAlert, ChevronsUpDown } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getPublicPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -163,12 +164,19 @@ function getQuestionHintStatus(
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════
-export function ExperienceDetailPage() {
+export function ExperienceDetailPage({ isPublic = false }: { isPublic?: boolean } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const { planData } = useUserPlan();
   const posthog = usePostHog();
+
+  // Public mode (home "Interview Questions" flow) renders the standalone shell and
+  // lets guests read via the public endpoint; the default keeps the sidebar layout.
+  const Layout = isPublic ? InsightsLayout : DashboardLayout;
+  const listPath = isPublic ? '/interview-questions' : '/interview-insights';
+  const companyPath = (name?: string) =>
+    name ? `${listPath}/${companySlug(name)}` : listPath;
 
   // note_read —— 打开某篇面经，离开时记录 duration_seconds
   useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
@@ -238,7 +246,9 @@ export function ExperienceDetailPage() {
     if (!id) return;
     setPostLoading(true);
     try {
-      const res = await getPost(id);
+      // Guests read via the public endpoint (2 newest posts per company); signed-in
+      // users use the authenticated endpoint (plan-tier gated by the backend).
+      const res = await (isAuthenticated ? getPost(id) : getPublicPost(id));
       const data = res.data?.data ?? res.data;
       setPost(data);
       // Initialize like/save from API
@@ -262,7 +272,7 @@ export function ExperienceDetailPage() {
     } finally {
       setPostLoading(false);
     }
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   const fetchComments = useCallback(async () => {
     if (!id) return;
@@ -552,7 +562,7 @@ export function ExperienceDetailPage() {
         <AlertDialogFooter>
           <Button
             variant="outline"
-            onClick={() => { setShowUpgradePrompt(false); navigate('/interview-insights'); }}
+            onClick={() => { setShowUpgradePrompt(false); navigate(listPath); }}
             className="rounded-xl"
           >
             Cancel
@@ -570,27 +580,27 @@ export function ExperienceDetailPage() {
 
   if (postLoading) {
     return (
-      <DashboardLayout fullBleed>
+      <Layout fullBleed>
         <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 flex items-center justify-center py-32">
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)]" />
           </div>
         </div>
         {gateOverlays}
-      </DashboardLayout>
+      </Layout>
     );
   }
 
   if (!post) {
     return (
-      <DashboardLayout fullBleed>
+      <Layout fullBleed>
         <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
             {showUpgradePrompt ? 'Upgrade to Advanced to view this post.' : 'Post not found.'}
           </div>
         </div>
         {gateOverlays}
-      </DashboardLayout>
+      </Layout>
     );
   }
 
@@ -602,13 +612,13 @@ export function ExperienceDetailPage() {
   );
 
   return (
-    <DashboardLayout fullBleed>
+    <Layout fullBleed>
       <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
           {/* ─── Breadcrumb — back to this post's company insights page ─── */}
           <Link
-            to={post.company ? `/interview-insights/${companySlug(post.company)}` : '/interview-insights'}
+            to={companyPath(post.company)}
             className="inline-flex items-center text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] mb-6 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1.5" />
@@ -1359,7 +1369,7 @@ export function ExperienceDetailPage() {
                 <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 shadow-sm">
                   <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-2">Share your own experience</h4>
                   <p className="text-xs text-[hsl(222,12%,55%)] mb-3 leading-relaxed">Help the community by sharing what you went through.</p>
-                  <Link to="/add-experience">
+                  <Link to={isAuthenticated ? '/add-experience' : '/auth'}>
                     <Button variant="outline" className="w-full rounded-xl h-9 text-xs gap-1.5 border-[hsl(220,16%,90%)]">
                       <ExternalLink className="w-3 h-3" />
                       Add Interview Experience
@@ -1373,6 +1383,6 @@ export function ExperienceDetailPage() {
         </div>
       </div>
       {gateOverlays}
-    </DashboardLayout>
+    </Layout>
   );
 }

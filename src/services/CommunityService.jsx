@@ -40,6 +40,14 @@ export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
 
+// Public single-post fetch for signed-out visitors on the SEO "Interview
+// Questions" home surface. Mirrors the public list endpoint
+// (/community/public/posts/search): the backend serves the 2 newest posts per
+// company and 403s the rest, which the page surfaces as a gate.
+export const getPublicPost = (postId) => {
+  return API.get(`/community/public/posts/${postId}`);
+};
+
 export const createPost = (data) => {
   return API.post('/community/posts', data);
 };

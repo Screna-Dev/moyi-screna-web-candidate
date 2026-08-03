@@ -18,6 +18,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
 import { toast } from 'sonner';
@@ -231,7 +232,7 @@ function UpgradeModal({
   );
 }
 
-export function CompanyDetailPage() {
+export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } = {}) {
   const { companyId } = useParams();
   const { isAuthenticated } = useAuth();
   const { isPremium, isLoading: isPlanLoading, planData } = useUserPlan();
@@ -245,6 +246,16 @@ export function CompanyDetailPage() {
   // We wait for the plan to resolve before restricting so we don't penalize
   // Premium users with a flash of locked UI.
   const isLowTier = isAuthenticated && !isPlanLoading && !isPremium;
+  // Public mode (home "Interview Questions" flow) drops the sidebar + auth wall
+  // so guests can browse. Guests get the same preview as Free/Basic: the 2 newest
+  // posts per company are readable, the rest are locked. Signed-in users keep
+  // their normal plan-tier behavior on both surfaces.
+  const Layout = isPublic ? InsightsLayout : DashboardLayout;
+  const listPath = isPublic ? '/interview-questions' : '/interview-insights';
+  const companyPath = `${listPath}/${companyId}`;
+  const experiencePath = (postId: string) =>
+    isPublic ? `/interview-questions/experience/${postId}` : `/experience/${postId}`;
+  const isPreviewTier = !isAuthenticated || isLowTier;
   // Free/Basic see the 2 newest posts unlocked and 5 more locked (blurred with
   // an upgrade prompt) — 7 cards total — plus a locked filter/sort toolbar.
   const FREE_VISIBLE_LIMIT = 2;
@@ -545,12 +556,12 @@ export function CompanyDetailPage() {
   const getQuestions = (post: Post) => post.questions || [];
 
   return (
-    <DashboardLayout fullBleed>
+    <Layout fullBleed>
       <div className="pb-20 bg-[#f9fafb]">
         <div className="max-w-6xl mx-auto px-6 my-[24px]">
           {/* Back Link */}
           <Link
-            to="/interview-insights"
+            to={listPath}
             className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)] transition-colors hover:text-[hsl(222,22%,15%)] mb-6"
           >
             <ArrowLeft className="size-4" />
@@ -609,7 +620,7 @@ export function CompanyDetailPage() {
             {/* CTA — reuses the shared Button, consistent with the listing page */}
             <Link
               to={isAuthenticated ? '/add-experience' : '/auth'}
-              state={{ from: { pathname: `/interview-insights/${companyId}` } }}
+              state={{ from: { pathname: companyPath } }}
               className="shrink-0"
             >
               <Button className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
@@ -628,7 +639,7 @@ export function CompanyDetailPage() {
                   the controls render locked: each chip and the sort button show a
                   lock, and clicking any of them opens the upgrade modal (instead of
                   bouncing the user straight to pricing). */}
-              {isLowTier ? (
+              {isPreviewTier ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
                     {['Role', 'Round', 'Level', 'Time'].map(label => (
@@ -694,8 +705,8 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Low-tier upgrade banner — explains the browse limit up front. */}
-              {isLowTier && (
+              {/* Guest / low-tier preview banner — explains the browse limit up front. */}
+              {isPreviewTier && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(221,91%,60%)]/10">
@@ -740,7 +751,7 @@ export function CompanyDetailPage() {
                   <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
                   <Link
                     to={isAuthenticated ? '/add-experience' : '/auth'}
-                    state={{ from: { pathname: `/interview-insights/${companyId}` } }}
+                    state={{ from: { pathname: companyPath } }}
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
                   >
                     Be the first to share
@@ -750,10 +761,10 @@ export function CompanyDetailPage() {
 
               {/* Posts — hidden during a reset fetch so stale results aren't shown */}
               <div className="space-y-4">
-                {!isReloading && (isLowTier ? posts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : posts).map((post, i) => {
-                  // Free/Basic users can only open the 2 newest posts per company;
-                  // the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
-                  const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
+                {!isReloading && (isPreviewTier ? posts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : posts).map((post, i) => {
+                  // Guests and Free/Basic users can only open the 2 newest posts per
+                  // company; the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
+                  const locked = isPreviewTier && i >= FREE_VISIBLE_LIMIT;
                   return (
                   <motion.article
                     key={post.id}
@@ -761,22 +772,20 @@ export function CompanyDetailPage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
-                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${(!isAuthenticated || locked) ? 'cursor-pointer' : ''}`}
+                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${locked ? 'cursor-pointer' : ''}`}
                     onClick={
-                      !isAuthenticated
-                        ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } })
-                        : locked
-                          ? () => {
-                              // paywall_viewed —— 低阶用户点击锁定的面经卡片，看到解锁/升级引导。
-                              // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
-                              safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
-                                note_id: post.id,
-                                required_tier: 'advanced',
-                                user_current_tier: planData.currentPlan.toLowerCase(),
-                              });
-                              navigate('/#pricing');
-                            }
-                          : undefined
+                      locked
+                        ? () => {
+                            // paywall_viewed —— 访客/低阶用户点击锁定的面经卡片，看到解锁/升级引导。
+                            // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
+                            safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+                              note_id: post.id,
+                              required_tier: 'advanced',
+                              user_current_tier: planData.currentPlan.toLowerCase(),
+                            });
+                            navigate('/#pricing');
+                          }
+                        : undefined
                     }
                   >
                     <div className="p-6">
@@ -799,32 +808,7 @@ export function CompanyDetailPage() {
                         )}
                       </div>
 
-                      {!isAuthenticated ? (
-                        <div className="relative">
-                          <div className="blur-sm select-none pointer-events-none">
-                            <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
-                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
-                            </div>
-                            <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                              {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 mb-5">
-                              {getQuestions(post).slice(0, 3).map((q, qi) => (
-                                <span key={q.id || qi} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate">
-                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
-                                  {q.title || 'Question'}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(220,16%,90%)] shadow-sm">
-                              <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
-                              <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Sign in to view details</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : locked ? (
+                      {locked ? (
                         <div className="relative">
                           <div className="blur-sm select-none pointer-events-none">
                             <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
@@ -903,7 +887,7 @@ export function CompanyDetailPage() {
                                   subtitle: post.role,
                                   tags: [post.level, post.outcome, post.round].filter(Boolean),
                                   summary: post.summary || `Interview experience at ${post.company} for ${post.role} position`,
-                                  url: `${window.location.origin}/experience/${post.id}`,
+                                  url: `${window.location.origin}${experiencePath(post.id)}`,
                                 }}
                               >
                                 <button type="button" className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] transition-colors">
@@ -914,7 +898,7 @@ export function CompanyDetailPage() {
                               </SharePopover>
                             </div>
                             <Link
-                              to={`/experience/${post.id}`}
+                              to={experiencePath(post.id)}
                               onClick={(e) => e.stopPropagation()}
                               className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
                             >
@@ -951,9 +935,9 @@ export function CompanyDetailPage() {
 
             {/* ── Sidebar ── */}
             <aside className="space-y-5 lg:sticky lg:top-24 lg:h-fit">
-              {/* Search — hidden for low-tier users (backend ignores the search
-                  param for Free/Basic). */}
-              {!isLowTier && (
+              {/* Search — hidden for guests / low-tier users (the public + Free/Basic
+                  endpoints ignore the search param). */}
+              {!isPreviewTier && (
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
                   <input
@@ -1010,7 +994,7 @@ export function CompanyDetailPage() {
           navigate('/#pricing');
         }}
       />
-    </DashboardLayout>
+    </Layout>
   );
 }
 

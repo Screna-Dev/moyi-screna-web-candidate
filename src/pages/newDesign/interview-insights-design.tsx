@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { Link } from "react-router";
 import { ArrowRight, Clock, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/newDesign/dashboard-layout";
+import { InsightsLayout } from "@/components/newDesign/insights-layout";
 import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
 import { type CompanyData } from "@/components/newDesign/interview/company-card";
@@ -141,10 +142,10 @@ function CardLogo({ name, size }: { name: string; size: "sm" | "lg" }) {
   return <div className={`${base} bg-surface-1 shadow-sm ring-1 ring-border/50`}>{initials}</div>;
 }
 
-function InlineCompanyCard({ company }: { company: CompanyData }) {
+function InlineCompanyCard({ company, basePath }: { company: CompanyData; basePath: string }) {
   return (
     <Link
-      to={`/interview-insights/${company.id}`}
+      to={`${basePath}/${company.id}`}
       className="group relative flex min-h-[160px] w-full flex-col justify-between rounded-[16px] border border-border bg-[#F7F8F9] p-5 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-border/80 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:border-primary"
     >
       <div className="flex min-w-0 items-start gap-3.5">
@@ -189,9 +190,17 @@ function LoadingCards({ count = 9 }: { count?: number }) {
   );
 }
 
-export function InterviewInsightsPage() {
+export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean } = {}) {
   const { isAuthenticated } = useAuth();
   const posthog = usePostHog();
+
+  // Public mode (home nav "Interview Questions") renders a standalone, SEO-
+  // friendly page with the marketing nav/footer and no auth wall; the default
+  // (personal-center) mode keeps the sidebar DashboardLayout. Internal links use
+  // the matching base path so each surface stays self-contained.
+  const Layout = isPublic ? InsightsLayout : DashboardLayout;
+  const basePath = isPublic ? "/interview-questions" : "/interview-insights";
+  const shareTo = isPublic && !isAuthenticated ? "/auth" : "/add-experience";
 
   // interview_notes_browsed —— 进入面经列表页（每次进入上报一次）。
   // view_type 映射：'by_company' = 本页（公司分组网格），'all' = 公司详情页的平铺面经列表。
@@ -341,7 +350,7 @@ export function InterviewInsightsPage() {
   }, [hasMoreCompanies]);
 
   return (
-    <DashboardLayout headerTitle="InterviewPrep Note" fullBleed>
+    <Layout fullBleed>
     <WidePageContainer maxWidth="none">
 
       {/* ── Hero banner — full-bleed, no top/left/right margin ── */}
@@ -388,7 +397,7 @@ export function InterviewInsightsPage() {
                 Browse community notes by company, role, round, and level so interview patterns are easier to spot.
               </p>
             </div>
-            <Link to="/add-experience" className="shrink-0 w-[222px] h-[44px] block mt-1">
+            <Link to={shareTo} className="shrink-0 w-[222px] h-[44px] block mt-1">
               <ShareButton />
             </Link>
           </div>
@@ -448,7 +457,7 @@ export function InterviewInsightsPage() {
                         {cat.examples.map((ex) => (
                           <Link
                             key={ex}
-                            to={`/interview-insights/${ex.toLowerCase().replace(/\s+/g, '-')}`}
+                            to={`${basePath}/${ex.toLowerCase().replace(/\s+/g, '-')}`}
                             onClick={(e) => e.stopPropagation()}
                             className="rounded-full bg-white/40 px-[10px] py-1 text-[11px] font-semibold leading-[15.4px] text-foreground transition-colors hover:bg-white/60"
                             style={{ fontFamily: "var(--font-sans)" }}
@@ -523,7 +532,7 @@ export function InterviewInsightsPage() {
                       viewport={{ once: true, margin: "-40px" }}
                       transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
                     >
-                      <InlineCompanyCard company={company} />
+                      <InlineCompanyCard company={company} basePath={basePath} />
                     </motion.div>
                   ))}
                 </div>
@@ -545,7 +554,7 @@ export function InterviewInsightsPage() {
       </div>
 
     </WidePageContainer>
-    </DashboardLayout>
+    </Layout>
   );
 }
 

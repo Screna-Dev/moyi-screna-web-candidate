@@ -17,7 +17,7 @@ const features = [
     title: 'Interview Insights (Community)',
     description:
       'Learn from real interview experiences and discussions—then jump straight into practice based on what you read.',
-    link: '/interview-insights',
+    link: '/interview-questions',
     linkLabel: 'Explore insights',
   },
   {
