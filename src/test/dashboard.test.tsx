@@ -13,7 +13,7 @@ import React from 'react';
 const mockGetPersonalInfo = vi.fn();
 const mockGetProfile = vi.fn();
 const mockSavePersonalInfo = vi.fn();
-const mockUploadResume = vi.fn();
+const mockUploadResumeAndWait = vi.fn();
 const mockUpdateProfile = vi.fn();
 const mockGetTrainingPlans = vi.fn();
 const mockNavigate = vi.fn();
@@ -32,7 +32,7 @@ vi.mock('@/services/ProfileServices', () => ({
   getPersonalInfo: mockGetPersonalInfo,
   getProfile: mockGetProfile,
   savePersonalInfo: mockSavePersonalInfo,
-  uploadResume: mockUploadResume,
+  uploadResumeAndWait: mockUploadResumeAndWait,
   updateProfile: mockUpdateProfile,
 }));
 
@@ -154,27 +154,33 @@ describe('Dashboard - Resume Upload', () => {
     mockGetPersonalInfo.mockResolvedValue(personalInfoResponse);
     mockGetProfile.mockResolvedValue({ data: { data: {} } });
     mockGetTrainingPlans.mockResolvedValue(trainingPlansResponse);
-    mockUploadResume.mockResolvedValue({
-      data: { data: { resumeFileName: 'new-resume.pdf', resumeUploadedAt: new Date().toISOString() } },
+    // upload-resume is async server-side: the component uses the
+    // upload-then-poll helper, which resolves with the parsed resume.
+    mockUploadResumeAndWait.mockResolvedValue({
+      structuredResume: { job_titles: ['Engineer'], profile: { total_years_experience: 3 } },
+      rawText: null,
+      resumePath: '/uploads/new-resume.pdf',
+      jobId: 'job-1',
     });
   });
 
-  it('uploadResume is called with a File object', async () => {
+  it('uploadResumeAndWait is called with a File object', async () => {
     const file = new File(['resume content'], 'my-resume.pdf', { type: 'application/pdf' });
-    await mockUploadResume(file);
-    expect(mockUploadResume).toHaveBeenCalledWith(file);
+    await mockUploadResumeAndWait(file);
+    expect(mockUploadResumeAndWait).toHaveBeenCalledWith(file);
   });
 
-  it('uploadResume returns the new filename', async () => {
+  it('uploadResumeAndWait resolves with the parsed resume and its path', async () => {
     const file = new File(['content'], 'resume.pdf', { type: 'application/pdf' });
-    const result = await mockUploadResume(file);
-    expect(result.data.data.resumeFileName).toBe('new-resume.pdf');
+    const result = await mockUploadResumeAndWait(file);
+    expect(result.resumePath).toBe('/uploads/new-resume.pdf');
+    expect(result.structuredResume.job_titles).toEqual(['Engineer']);
   });
 
-  it('handles uploadResume API failure gracefully', async () => {
-    mockUploadResume.mockRejectedValue(new Error('Upload failed'));
+  it('handles resume upload failure gracefully', async () => {
+    mockUploadResumeAndWait.mockRejectedValue(new Error('Upload failed'));
     const file = new File(['content'], 'resume.pdf', { type: 'application/pdf' });
-    await expect(mockUploadResume(file)).rejects.toThrow('Upload failed');
+    await expect(mockUploadResumeAndWait(file)).rejects.toThrow('Upload failed');
   });
 
   it('uploads only PDF files (MIME validation)', () => {

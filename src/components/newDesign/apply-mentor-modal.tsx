@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
-import { getProfile, uploadResume } from '../../services/ProfileServices';
+import { getProfile, uploadResumeAndWait } from '../../services/ProfileServices';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 import type { ProfileData } from '../../types/profile';
@@ -131,10 +131,12 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
 
     setSubmitting(true);
     try {
-      // Two-step flow: make sure a resume is stored before applying.
+      // Two-step flow: make sure a resume is stored before applying. The upload
+      // is async server-side — wait for the parse job, which is what actually
+      // persists the resume.
       if (resumeFile) {
         setResumeUploading(true);
-        await uploadResume(resumeFile);
+        await uploadResumeAndWait(resumeFile);
         setHasStoredResume(true);
         setResumeUploading(false);
       }

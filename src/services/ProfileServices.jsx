@@ -37,12 +37,125 @@ export const uploadResume = (file) => {
 };
 
 /**
+ * Poll the parse status of a resume upload job.
+ * @param {string} jobId - job_id returned by uploadResume
+ * @returns {Promise} data: {
+ *   job_id, status ('PENDING'|'succeeded'|'failed'|...), attempts, error,
+ *   structured_resume, raw_text
+ * }
+ */
+export const getResumeUploadStatus = (jobId) => {
+  return API.get(`${BASE_URL}/upload-resume/status/${jobId}`);
+};
+
+/**
+ * Persist a structured resume (POST /profile/resume — same endpoint as
+ * updateProfile).
+ *
+ * NOT needed after a successful file upload: the backend auto-saves the parsed
+ * resume the moment the status poll returns `succeeded`. Only call this when
+ *   a) the user EDITED the parsed result and you're overwriting it, or
+ *   b) you went through parseResumeText (pasted text), which has no auto-save.
+ * @param {Object} structuredResume - the StructuredResume object (sent as-is)
+ * @returns {Promise} API response
+ */
+export const saveResume = (structuredResume) => {
+  return API.post(`${BASE_URL}/resume`, structuredResume);
+};
+
+/**
  * Parse resume from pasted text
+ *
+ * ⚠️ Unlike the file-upload path this does NOT auto-save. Follow it with
+ * saveResume() or the resume is never persisted.
  * @param {string} resumeText - Resume text content
  * @returns {Promise} API response with structured resume data
  */
 export const parseResumeText = (resumeText) => {
   return API.post(`${BASE_URL}/parse-resume`, { resumeText });
+};
+
+// ── Resume upload orchestration ───────────────────────────────────────────────
+
+export const RESUME_POLL_INTERVAL_MS = 2000;
+export const RESUME_POLL_MAX_ATTEMPTS = 45; // ~90s ceiling
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Unwrap the CustomApiResponse envelope: res.data.data ?? res.data.
+const envelope = (res) => res?.data?.data ?? res?.data ?? null;
+
+/**
+ * Upload a resume file and wait for the backend to finish parsing it.
+ *
+ * This is the ONLY resume-upload entry point call sites should use.
+ * POST /profile/upload-resume answers 202 with just { job_id, status } — the
+ * parsed resume is never in that response, so every caller has to poll.
+ *
+ * When the poll returns `succeeded` the backend has ALREADY persisted the
+ * structured resume (and released any pending invite reward). Callers must
+ * therefore NOT follow this with saveResume()/updateProfile() — only do that if
+ * the user edits the parsed result.
+ *
+ * Polling stops the instant we see `succeeded`: the auto-save runs on every
+ * `succeeded` response, so re-polling a finished job would overwrite the user's
+ * edits with the original parse.
+ *
+ * @param {File} file - PDF/DOC/DOCX, max 1MB
+ * @param {Object} [opts]
+ * @param {(info: {attempt: number, status: string}) => void} [opts.onPoll] - progress hook
+ * @param {number} [opts.intervalMs]
+ * @param {number} [opts.maxAttempts]
+ * @returns {Promise<{structuredResume: Object|null, rawText: string|null,
+ *   resumePath: string|null, jobId: string|null}>}
+ * @throws when the parse job fails, times out, or no job id comes back
+ */
+export const uploadResumeAndWait = async (file, opts = {}) => {
+  const {
+    onPoll,
+    intervalMs = RESUME_POLL_INTERVAL_MS,
+    maxAttempts = RESUME_POLL_MAX_ATTEMPTS,
+  } = opts;
+
+  const uploaded = envelope(await uploadResume(file)) || {};
+
+  // Defensive: if a deployment ever answers synchronously with the parsed
+  // resume, take it and skip polling entirely.
+  if (uploaded.structured_resume) {
+    return {
+      structuredResume: uploaded.structured_resume,
+      rawText: uploaded.raw_text ?? null,
+      resumePath: uploaded.resume_path ?? null,
+      jobId: uploaded.job_id ?? uploaded.jobId ?? null,
+    };
+  }
+
+  const jobId = uploaded.job_id ?? uploaded.jobId;
+  if (!jobId) {
+    throw new Error('Resume upload did not return a parse job id.');
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await sleep(intervalMs);
+    const s = envelope(await getResumeUploadStatus(jobId)) || {};
+    const status = String(s.status || '').toLowerCase();
+
+    if (status === 'succeeded') {
+      // Resume is saved server-side at this point. Stop polling.
+      return {
+        structuredResume: s.structured_resume ?? null,
+        rawText: s.raw_text ?? null,
+        resumePath: s.resume_path ?? null,
+        jobId,
+      };
+    }
+    if (status === 'failed') {
+      throw new Error(s.error || 'Resume parsing failed.');
+    }
+    onPoll?.({ attempt, status });
+  }
+
+  throw new Error('Timed out while processing your resume.');
 };
 
 // ============================================
@@ -172,6 +285,9 @@ const ProfileService = {
   getProfile,
   updateProfile,
   uploadResume,
+  getResumeUploadStatus,
+  uploadResumeAndWait,
+  saveResume,
   parseResumeText,
   // Personal profile settings
   getPersonalInfo,

@@ -3,9 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, ArrowRight, ArrowLeft, UploadCloud, FileText, RefreshCw,
-  Hash, Plus, UserPlus,
+  Hash, Plus, UserPlus, AlertCircle,
 } from 'lucide-react';
-import { uploadResume } from '@/services/ProfileServices';
+import { uploadResumeAndWait } from '@/services/ProfileServices';
+import { getOnboardingProgress, submitReferralSource } from '@/services/OnboardingServices';
+import { useToast } from '@/hooks/use-toast';
 import { usePostHog } from 'posthog-js/react';
 import { markOnboardingComplete } from '@/utils/analytics';
 import { safeCapture } from '@/utils/posthog';
@@ -103,6 +105,22 @@ const SOURCE_OPTIONS: SourceOption[] = [
   },
 ];
 
+// Map the UI option id → the referral_source enum the API expects.
+const SOURCE_API_ENUM: Record<string, string> = {
+  xiaohongshu: 'XIAOHONGSHU',
+  reddit: 'REDDIT',
+  x: 'X_TWITTER',
+  linkedin: 'LINKEDIN',
+  other_social: 'OTHER_SOCIAL_MEDIA',
+  somewhere_else: 'SOMEWHERE_ELSE',
+  referral: 'REFERRED_BY_SOMEONE',
+};
+
+// Reverse map (enum → UI id) so we can pre-select on resume.
+const SOURCE_UI_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(SOURCE_API_ENUM).map(([id, en]) => [en, id]),
+);
+
 // ─── Shared chrome ────────────────────────────────────────────────────────────
 
 function NavHeader({ stepLabel }: { stepLabel: string }) {
@@ -169,13 +187,14 @@ function StepProgress({ currentStep }: { currentStep: number }) {
 // ─── Step 2: Source ───────────────────────────────────────────────────────────
 
 function SourceStep({
-  source, setSource, referralCode, setReferralCode, referralApplied, onApplyReferral, onNext,
+  source, setSource, referralCode, setReferralCode, referralApplied, submitting, onApplyReferral, onNext,
 }: {
   source: string;
   setSource: (s: string) => void;
   referralCode: string;
   setReferralCode: (v: string) => void;
   referralApplied: boolean;
+  submitting: boolean;
   onApplyReferral: () => void;
   onNext: () => void;
 }) {
@@ -241,6 +260,7 @@ function SourceStep({
               <input
                 id="inviteCode"
                 type="text"
+                maxLength={16}
                 value={referralCode}
                 disabled={referralApplied}
                 onChange={(e) => setReferralCode(e.target.value)}
@@ -274,15 +294,18 @@ function SourceStep({
       {/* Continue */}
       <button
         onClick={onNext}
-        disabled={!source}
+        disabled={!source || submitting}
         className={`w-full mt-8 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 py-4 transition-all duration-200 ${
-          source
+          source && !submitting
             ? 'bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.26)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.36)] hover:-translate-y-[1px]'
             : 'bg-[hsl(220,18%,96%)] text-[hsl(222,12%,60%)] cursor-not-allowed'
         }`}
       >
-        Continue to resume
-        {source && <ArrowRight className="w-4 h-4" />}
+        {submitting ? (
+          <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Saving…</>
+        ) : (
+          <>Continue to resume {source && <ArrowRight className="w-4 h-4" />}</>
+        )}
       </button>
     </div>
   );
@@ -290,7 +313,10 @@ function SourceStep({
 
 // ─── Step 3: Resume ───────────────────────────────────────────────────────────
 
-type UploadState = 'idle' | 'dragging' | 'success' | 'error';
+// The file starts uploading the moment it's picked — 'uploading' covers both
+// the POST and the parse-job polling that follows it, which together can run
+// for up to ~90s. Nothing about that wait should be invisible to the user.
+type UploadState = 'idle' | 'dragging' | 'uploading' | 'success' | 'error';
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -298,34 +324,40 @@ function formatFileSize(bytes: number) {
 }
 
 function ResumeStep({
-  uploadState, setUploadState, file, setFile, isSubmitting, onFinish, onBack, onSkip,
+  uploadState, setUploadState, file, progress, progressLabel, submitError,
+  pendingReferralCredits, onFile, onClear, onFinish, onBack, onSkip,
 }: {
   uploadState: UploadState;
   setUploadState: (s: UploadState) => void;
   file: File | null;
-  setFile: (f: File | null) => void;
-  isSubmitting: boolean;
+  progress: number;
+  progressLabel: string;
+  submitError: string;
+  pendingReferralCredits: number | null;
+  onFile: (f: File) => void;
+  onClear: () => void;
   onFinish: () => void;
   onBack: () => void;
   onSkip: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = useCallback((f: File) => {
-    const ext = f.name.toLowerCase().substring(f.name.lastIndexOf('.'));
-    const ok = ['.pdf', '.doc', '.docx'].includes(ext) && f.size < 5 * 1024 * 1024;
-    if (!ok) { setUploadState('error'); setFile(null); return; }
-    setFile(f);
-    setUploadState('success');
-  }, [setFile, setUploadState]);
-
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); if (uploadState === 'idle') setUploadState('dragging'); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); if (uploadState === 'dragging') setUploadState('idle'); };
-  const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processFile(f); };
-  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) processFile(f); };
-  const onClear = () => { setFile(null); setUploadState('idle'); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (uploadState === 'uploading') return;
+    const f = e.dataTransfer.files[0];
+    if (f) onFile(f);
+  };
+  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file after a failure
+    if (f) onFile(f);
+  };
 
   const isDragging = uploadState === 'dragging';
+  const isUploading = uploadState === 'uploading';
   const isSuccess = uploadState === 'success' && !!file;
   const isError = uploadState === 'error';
 
@@ -335,9 +367,13 @@ function ResumeStep({
         <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 text-[10.5px] font-bold text-[hsl(221,91%,55%)] uppercase tracking-[0.6px]">
           Step 3 of 3
         </span>
-        <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 text-[11.5px] font-semibold text-[hsl(221,91%,55%)]">
-          +30 credits
-        </span>
+        {/* Pending invite reward — shown only when the backend reports one
+            (pendingReferralCredits != null), never when it's null. */}
+        {pendingReferralCredits != null && (
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-[hsl(221,91%,60%)]/8 border border-[hsl(221,91%,60%)]/20 text-[11.5px] font-semibold text-[hsl(221,91%,55%)]">
+            +{pendingReferralCredits} credits
+          </span>
+        )}
       </div>
 
       <h1 className="text-[32px] font-bold text-[hsl(222,22%,12%)] mb-2.5 text-center" style={{ letterSpacing: '-0.025em', lineHeight: 1.1 }}>
@@ -353,6 +389,7 @@ function ResumeStep({
         onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
         className={`w-full rounded-2xl border-[1.5px] transition-all duration-300 overflow-hidden ${
           isDragging ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/5 shadow-[0_0_0_4px_hsl(221,91%,60%,0.1)]'
+          : isUploading ? 'border-[hsl(221,91%,60%)] bg-[hsl(221,91%,60%)]/[0.03]'
           : isSuccess ? 'border-[hsl(142,70%,45%)] bg-[hsl(142,70%,45%)]/[0.04]'
           : isError ? 'border-[hsl(0,60%,55%)] bg-[hsl(0,60%,55%)]/[0.04]'
           : 'border-dashed border-[hsl(220,16%,84%)] bg-white hover:border-[hsl(221,91%,60%)]/50'
@@ -369,7 +406,7 @@ function ResumeStep({
                 <UploadCloud className={`w-5 h-5 ${isDragging ? 'text-white' : 'text-[hsl(222,12%,55%)]'}`} />
               </div>
               <p className="text-[15px] font-semibold text-[hsl(222,22%,18%)] mb-1.5">Drag and drop your resume here</p>
-              <p className="text-[12.5px] text-[hsl(222,12%,55%)] mb-5">PDF or DOCX · Max 5 MB</p>
+              <p className="text-[12.5px] text-[hsl(222,12%,55%)] mb-5">PDF or DOCX · Max 1 MB</p>
               <button onClick={() => inputRef.current?.click()}
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[hsl(221,91%,60%)] text-white text-[13.5px] font-semibold hover:bg-[hsl(221,91%,55%)] shadow-[0_3px_12px_rgba(67,118,248,0.28)] hover:-translate-y-px transition-all"
               >
@@ -379,17 +416,51 @@ function ResumeStep({
             </motion.div>
           )}
 
+          {isUploading && (
+            <motion.div key="uploading" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="flex flex-col items-center px-8 py-10 text-center"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[hsl(221,91%,60%)]/10 border border-[hsl(221,91%,60%)]/20 flex items-center justify-center mb-4">
+                <FileText className="w-5 h-5 text-[hsl(221,91%,55%)]" />
+              </div>
+              <p className="text-[14px] font-semibold text-[hsl(222,22%,15%)] mb-0.5 max-w-[280px] truncate">
+                {file?.name}
+              </p>
+              <p className="text-[12px] text-[hsl(222,12%,58%)] mb-5">{progressLabel}</p>
+              <div className="w-full max-w-[300px]">
+                <div className="flex justify-between mb-1.5">
+                  <span className="text-[11.5px] text-[hsl(222,12%,55%)]">Processing</span>
+                  <span className="text-[11.5px] font-semibold text-[hsl(221,91%,55%)]">{progress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[hsl(220,16%,92%)] overflow-hidden">
+                  <div
+                    className="h-full bg-[hsl(221,91%,60%)] rounded-full transition-[width] duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-[hsl(222,12%,62%)] mt-4 max-w-[300px]">
+                Parsing can take up to a minute. Keep this tab open.
+              </p>
+            </motion.div>
+          )}
+
           {isSuccess && (
             <motion.div key="success" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center px-8 py-10 text-center"
             >
-              <div className="w-12 h-12 rounded-full bg-[hsl(142,70%,45%)] flex items-center justify-center shadow-[0_6px_20px_rgba(34,197,94,0.3)] mb-4">
-                <FileText className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-[14.5px] font-semibold text-[hsl(222,22%,15%)] mb-1">Resume ready</p>
-              <p className="text-[12px] text-[hsl(222,12%,58%)] mb-3 max-w-[280px] truncate">{file.name} · {formatFileSize(file.size)}</p>
+              <motion.div
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 16 }}
+                className="w-12 h-12 rounded-full bg-[hsl(142,70%,45%)] flex items-center justify-center shadow-[0_6px_20px_rgba(34,197,94,0.3)] mb-4"
+              >
+                <Check className="w-6 h-6 text-white" strokeWidth={2.5} />
+              </motion.div>
+              <p className="text-[14.5px] font-semibold text-[hsl(222,22%,15%)] mb-1">Resume uploaded</p>
+              <p className="text-[12px] text-[hsl(222,12%,58%)] mb-1 max-w-[280px] truncate">{file.name} · {formatFileSize(file.size)}</p>
+              <p className="text-[12px] text-[hsl(142,70%,38%)] font-medium mb-3">Saved to your profile</p>
               <button onClick={onClear} className="flex items-center gap-1.5 text-[11.5px] text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors">
-                <RefreshCw className="w-3 h-3" /> Choose a different file
+                <RefreshCw className="w-3 h-3" /> Upload a different file
               </button>
             </motion.div>
           )}
@@ -398,8 +469,15 @@ function ResumeStep({
             <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex flex-col items-center px-8 py-12 text-center"
             >
-              <p className="text-[13.5px] font-semibold text-[hsl(222,22%,18%)] mb-1">Can't use that file</p>
-              <p className="text-[12px] text-[hsl(222,12%,55%)] mb-4 max-w-[260px]">Please use a PDF or DOCX under 5 MB.</p>
+              <div className="w-10 h-10 rounded-full bg-[hsl(0,60%,55%)]/10 flex items-center justify-center mb-3">
+                <AlertCircle className="w-5 h-5 text-[hsl(0,60%,50%)]" />
+              </div>
+              <p className="text-[13.5px] font-semibold text-[hsl(222,22%,18%)] mb-1">
+                {file ? "Couldn't process that resume" : "Can't use that file"}
+              </p>
+              <p className="text-[12px] text-[hsl(222,12%,55%)] mb-4 max-w-[280px]">
+                {submitError || 'Please use a PDF or DOCX under 1 MB.'}
+              </p>
               <button onClick={onClear} className="px-4 py-2 rounded-lg border border-[hsl(220,16%,90%)] text-[12px] font-medium text-[hsl(222,22%,20%)] hover:border-[hsl(221,91%,60%)]/50 transition-all">
                 Try again
               </button>
@@ -418,30 +496,27 @@ function ResumeStep({
         </p>
       </div>
 
-      {/* Finish */}
+      {/* Finish — the resume is already uploaded and saved by the time this is
+          enabled, so it only moves the user on. */}
       <button
         onClick={onFinish}
-        disabled={!isSuccess || isSubmitting}
+        disabled={!isSuccess}
         className={`w-full mt-6 rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 py-4 transition-all duration-200 ${
-          isSuccess && !isSubmitting
+          isSuccess
             ? 'bg-[hsl(221,91%,60%)] text-white shadow-[0_4px_16px_rgba(67,118,248,0.26)] hover:bg-[hsl(221,91%,55%)] hover:shadow-[0_6px_22px_rgba(67,118,248,0.36)] hover:-translate-y-[1px]'
             : 'bg-[hsl(220,18%,96%)] text-[hsl(222,12%,60%)] cursor-not-allowed'
         }`}
       >
-        {isSubmitting ? (
-          <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Setting up…</>
-        ) : (
-          <>Finish setup <ArrowRight className="w-4 h-4" /></>
-        )}
+        {isUploading ? 'Uploading your resume…' : <>Finish setup <ArrowRight className="w-4 h-4" /></>}
       </button>
 
       {/* Back / Skip */}
       <div className="w-full mt-4 flex items-center justify-between">
-        <button onClick={onBack} disabled={isSubmitting}
+        <button onClick={onBack} disabled={isUploading}
           className="flex items-center gap-1.5 text-[13px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors disabled:opacity-50">
           <ArrowLeft className="w-3.5 h-3.5" /> Back
         </button>
-        <button onClick={onSkip} disabled={isSubmitting}
+        <button onClick={onSkip} disabled={isUploading}
           className="text-[13px] font-medium text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,25%)] transition-colors disabled:opacity-50">
           Do it later in my profile
         </button>
@@ -463,14 +538,22 @@ const variants = {
   exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -36 : 36 }),
 };
 
+// Extract the data envelope: res.data.data ?? res.data.
+function unwrap<T = Record<string, unknown>>(res: { data?: unknown }): T {
+  const d = res?.data as { data?: unknown } | undefined;
+  return ((d?.data ?? d) as T) ?? ({} as T);
+}
+
 export function OnboardingUploadResumePage() {
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo') || '';
 
   const [step, setStep] = useState(2);
   const [direction, setDirection] = useState(1);
+  const [loadingProgress, setLoadingProgress] = useState(true);
 
   // Source step state
   const [source, setSource] = useState('');
@@ -481,47 +564,138 @@ export function OnboardingUploadResumePage() {
     '';
   const [referralCode, setReferralCode] = useState(urlReferral);
   const [referralApplied, setReferralApplied] = useState(false);
+  const [sourceSubmitting, setSourceSubmitting] = useState(false);
 
-  // Resume step state
+  // Resume step state. The upload runs as soon as a file is picked, so
+  // `uploadState` doubles as the progress indicator for the whole
+  // upload → parse-poll round trip.
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [file, setFile] = useState<File | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState('Uploading…');
+  const [submitError, setSubmitError] = useState('');
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Pre-select "Referred by someone" if a referral code arrived via URL
+  const stopProgressTimer = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }, []);
+
+  // Don't leave an interval running if the user navigates away mid-upload.
+  useEffect(() => stopProgressTimer, [stopProgressTimer]);
+
+  // Pending invite reward badge — driven by GET /onboarding/progress
+  // (null = no pending reward, don't show the badge).
+  const [pendingReferralCredits, setPendingReferralCredits] = useState<number | null>(null);
+
+  // On entry, resolve where to start from. Handles refresh / device switch mid-flow.
   useEffect(() => {
-    if (urlReferral) setSource('referral');
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getOnboardingProgress();
+        if (cancelled) return;
+        const p = unwrap<{
+          referralSourceCompleted?: boolean;
+          resumeUploaded?: boolean;
+          completed?: boolean;
+          referralSource?: string | null;
+          pendingReferralCredits?: number | null;
+        }>(res);
+
+        if (p.completed) {
+          navigate(returnTo || '/dashboard', { replace: true });
+          return;
+        }
+        setPendingReferralCredits(p.pendingReferralCredits ?? null);
+        if (p.referralSourceCompleted) {
+          if (p.referralSource && SOURCE_UI_ID[p.referralSource]) {
+            setSource(SOURCE_UI_ID[p.referralSource]);
+          }
+          setStep(3); // step 1 done → resume step
+        } else {
+          if (urlReferral) setSource('referral'); // pre-select from ?ref=
+          setStep(2);
+        }
+      } catch (err) {
+        // Progress lookup failed — fall back to the first step rather than
+        // trapping the user. A brand-new user simply starts at step 2.
+        console.error('[onboarding] progress lookup failed', err);
+        if (!cancelled && urlReferral) setSource('referral');
+      } finally {
+        if (!cancelled) setLoadingProgress(false);
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // onboarding_step_viewed
   useEffect(() => {
+    if (loadingProgress) return;
     safeCapture(posthog, EVENTS.ONBOARDING_STEP_VIEWED, {
       step_number: step,
       step_name: FLOW_STEPS.find(s => s.id === step)?.label ?? String(step),
     });
-  }, [step, posthog]);
+  }, [step, posthog, loadingProgress]);
 
   const goTo = (next: number) => {
     setDirection(next > step ? 1 : -1);
     setStep(next);
   };
 
+  // Local "lock in" gesture only — the code is actually validated by the backend
+  // when we POST the referral source on Continue.
   const applyReferral = () => {
     if (!referralCode.trim()) return;
     setReferralApplied(true);
-    try {
-      const existing = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
-      localStorage.setItem('screnaUserData', JSON.stringify({ ...existing, referralCode: referralCode.trim() }));
-    } catch { /* localStorage unavailable — ignore */ }
   };
 
-  const handleSourceNext = () => {
-    // referral_source_completed
-    safeCapture(posthog, EVENTS.REFERRAL_SOURCE_COMPLETED, {
-      source,
-      referral_code: referralApplied ? referralCode.trim() : null,
-    });
-    goTo(3);
+  const handleSourceNext = async () => {
+    if (!source || sourceSubmitting) return;
+    const referralSource = SOURCE_API_ENUM[source];
+    if (!referralSource) return;
+    const inviteCode = referralCode.trim();
+
+    setSourceSubmitting(true);
+    try {
+      // Step 1 — grants +30 credits (first time). An invalid invite code does
+      // NOT fail this call; it returns 200 with inviteCodeApplied=false.
+      const res = await submitReferralSource({ referralSource, inviteCode: inviteCode || null });
+      const data = unwrap<{ creditsGranted?: number; inviteCodeApplied?: boolean }>(res);
+
+      if (inviteCode) {
+        if (data.inviteCodeApplied) {
+          // Reward is now pending until step 2 completes → show the badge.
+          setPendingReferralCredits(30);
+        } else {
+          setPendingReferralCredits(null);
+          toast({
+            title: 'Invite code not applied',
+            description: "That code didn't work, but you're all set to continue.",
+          });
+        }
+      }
+
+      safeCapture(posthog, EVENTS.REFERRAL_SOURCE_COMPLETED, {
+        source: referralSource,
+        referral_code: inviteCode || null,
+        invite_code_applied: data.inviteCodeApplied ?? null,
+        credits_granted: data.creditsGranted ?? null,
+      });
+      goTo(3);
+    } catch (err) {
+      console.error('[onboarding] submit referral source failed', err);
+      toast({
+        title: 'Something went wrong',
+        description: 'Could not save your answer. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSourceSubmitting(false);
+    }
   };
 
   const completeOnboarding = (resumeUploaded: boolean) => {
@@ -532,36 +706,77 @@ export function OnboardingUploadResumePage() {
     navigate(returnTo || '/dashboard');
   };
 
-  const handleFinish = async () => {
-    if (!file) return;
-    setIsSubmitting(true);
+  // Upload starts the moment a file is picked — same as the profile tab, so the
+  // user watches progress instead of a dead button. Reaching `succeeded` IS
+  // step 2 complete: the backend saves the parsed resume itself and releases any
+  // pending invite reward, so there's no follow-up POST /profile/resume.
+  const handleFile = async (picked: File) => {
+    if (uploadState === 'uploading') return;
+
+    const ext = picked.name.toLowerCase().substring(picked.name.lastIndexOf('.'));
+    if (!['.pdf', '.doc', '.docx'].includes(ext) || picked.size > 1024 * 1024) {
+      // Rejected locally — no file kept, so the error copy stays generic.
+      stopProgressTimer();
+      setFile(null);
+      setSubmitError('');
+      setUploadState('error');
+      return;
+    }
+
+    setFile(picked);
+    setSubmitError('');
+    setProgress(0);
+    setProgressLabel('Uploading…');
+    setUploadState('uploading');
+
+    // Creep the bar while the request is in flight: quick to ~55%, then slow so
+    // it keeps moving through the (much longer) parse wait without ever hitting
+    // 100% before the server actually confirms.
+    let p = 0;
+    stopProgressTimer();
+    progressTimerRef.current = setInterval(() => {
+      p += p < 55 ? 4 : p < 80 ? 0.7 : 0.15;
+      setProgress(Math.min(Math.round(p), 92));
+    }, 220);
+
     const startedAt = Date.now();
     try {
-      const res = await uploadResume(file);
+      await uploadResumeAndWait(picked, {
+        // First poll means the file is up and the parse job is running.
+        onPoll: () => setProgressLabel('Analyzing your resume…'),
+      });
+      stopProgressTimer();
+      setProgress(100);
+      setUploadState('success');
       safeCapture(posthog, EVENTS.RESUME_PARSE_COMPLETED, {
         duration_ms: Date.now() - startedAt,
-        cache_hit: res?.data?.cache_hit ?? res?.data?.data?.cache_hit ?? null,
         source: 'onboarding',
       });
-      try {
-        const structuredResume = res?.data?.data?.structured_resume ?? res?.data?.structured_resume ?? res?.data;
-        const existing = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
-        localStorage.setItem('screnaUserData', JSON.stringify({
-          ...existing,
-          resumeFileName: file.name,
-          resumeUploadedAt: new Date().toISOString(),
-          resumeUploaded: true,
-          structuredResume,
-        }));
-      } catch { /* ignore */ }
+      // The reward (if any) is released with step 2 — drop the pending badge.
+      setPendingReferralCredits(null);
     } catch (err) {
-      // Non-blocking — proceed into the app even if parsing fails.
-      console.error('[uploadResume] failed', err);
-    } finally {
-      setIsSubmitting(false);
-      completeOnboarding(true);
+      // Step 2 did NOT complete — keep the user here so they can retry or skip.
+      console.error('[onboarding] resume upload failed', err);
+      stopProgressTimer();
+      setUploadState('error');
+      setSubmitError(
+        err instanceof Error && err.message
+          ? err.message
+          : "We couldn't process your resume. Please try again or skip for now.",
+      );
     }
   };
+
+  const handleClearFile = () => {
+    stopProgressTimer();
+    setFile(null);
+    setProgress(0);
+    setSubmitError('');
+    setUploadState('idle');
+  };
+
+  // The resume is already stored by the time this is reachable.
+  const handleFinish = () => completeOnboarding(true);
 
   const handleSkip = () => {
     safeCapture(posthog, EVENTS.RESUME_UPLOAD_SKIPPED, { step: 'onboarding' });
@@ -576,6 +791,11 @@ export function OnboardingUploadResumePage() {
       </div>
 
       <main className="flex-1 flex flex-col items-center px-6 pt-12 pb-16 overflow-hidden">
+        {loadingProgress ? (
+          <div className="flex-1 flex items-center justify-center py-24">
+            <span className="w-6 h-6 rounded-full border-2 border-[hsl(221,91%,60%)]/30 border-t-[hsl(221,91%,60%)] animate-spin" />
+          </div>
+        ) : (
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
@@ -594,6 +814,7 @@ export function OnboardingUploadResumePage() {
                 referralCode={referralCode}
                 setReferralCode={setReferralCode}
                 referralApplied={referralApplied}
+                submitting={sourceSubmitting}
                 onApplyReferral={applyReferral}
                 onNext={handleSourceNext}
               />
@@ -603,8 +824,12 @@ export function OnboardingUploadResumePage() {
                 uploadState={uploadState}
                 setUploadState={setUploadState}
                 file={file}
-                setFile={setFile}
-                isSubmitting={isSubmitting}
+                progress={progress}
+                progressLabel={progressLabel}
+                submitError={submitError}
+                pendingReferralCredits={pendingReferralCredits}
+                onFile={handleFile}
+                onClear={handleClearFile}
                 onFinish={handleFinish}
                 onBack={() => goTo(2)}
                 onSkip={handleSkip}
@@ -612,6 +837,7 @@ export function OnboardingUploadResumePage() {
             )}
           </motion.div>
         </AnimatePresence>
+        )}
       </main>
 
       <footer className="py-4 px-8 border-t border-[hsl(220,16%,94%)] flex items-center justify-center shrink-0">

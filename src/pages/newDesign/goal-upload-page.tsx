@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/newDesign/ui/select';
 import { Label } from '@/components/newDesign/ui/label';
-import { uploadResume, updateProfile } from '@/services/ProfileServices';
+import { uploadResumeAndWait, updateProfile } from '@/services/ProfileServices';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import imgMascot from '@/assets/aef618fe1fbeac6dda6a449e6b61497c1dc80b4d.png';
 
@@ -80,24 +80,24 @@ export function GoalUploadPage({
     setUploadError(null);
     setUploadState('uploading');
     try {
-      const res = await uploadResume(file);
-      const structuredResume = res.data?.data?.structured_resume ?? res.data?.structured_resume ?? res.data;
-      const resumePath = res.data?.data?.resume_path ?? res.data?.resume_path;
-      const visaStatus = structuredResume?.profile?.visa_status;
+      // Upload + wait for the parse job. On success the backend has already
+      // persisted the resume, so there's no updateProfile() call here.
+      const { structuredResume, resumePath } = await uploadResumeAndWait(file);
+      const visaStatus = (structuredResume as { profile?: { visa_status?: string } } | null)
+        ?.profile?.visa_status;
 
       if (!visaStatus) {
-        setPendingResume({ structuredResume, fileName: file.name, resumePath });
+        setPendingResume({ structuredResume, fileName: file.name, resumePath: resumePath ?? undefined });
         setUploadState('idle');
         setShowVisaDialog(true);
         return;
       }
 
-      saveToLocalStorage(structuredResume, file.name, resumePath);
-      updateProfile(structuredResume).catch(() => {});
+      saveToLocalStorage(structuredResume, file.name, resumePath ?? undefined);
       setUploadState('success');
       onUploadSuccess?.();
     } catch (err: any) {
-      setUploadError(err?.response?.data?.message || 'Upload failed. Please try again.');
+      setUploadError(err?.response?.data?.message || err?.message || 'Upload failed. Please try again.');
       setUploadState('idle');
     }
   };
@@ -105,10 +105,19 @@ export function GoalUploadPage({
   const handleVisaSave = async () => {
     if (!tempVisaStatus || !pendingResume) return;
     setIsSavingVisa(true);
+    // The parsed resume is already saved server-side; this is the "user edited
+    // it" case, so overwrite it once with the visa status merged in. Posting a
+    // bare { visa_status } would replace the whole structured resume with it.
+    const withVisa = {
+      ...(pendingResume.structuredResume || {}),
+      profile: {
+        ...(pendingResume.structuredResume?.profile || {}),
+        visa_status: tempVisaStatus,
+      },
+    };
     try {
-      await updateProfile(pendingResume.structuredResume);
-      await updateProfile({ visa_status: tempVisaStatus });
-      saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
+      await updateProfile(withVisa);
+      saveToLocalStorage(withVisa, pendingResume.fileName, pendingResume.resumePath);
       setShowVisaDialog(false);
       setPendingResume(null);
       setTempVisaStatus('');
@@ -116,7 +125,7 @@ export function GoalUploadPage({
       onUploadSuccess?.();
     } catch {
       // still complete upload even if save fails
-      saveToLocalStorage(pendingResume.structuredResume, pendingResume.fileName, pendingResume.resumePath);
+      saveToLocalStorage(withVisa, pendingResume.fileName, pendingResume.resumePath);
       setShowVisaDialog(false);
       setPendingResume(null);
       setTempVisaStatus('');
