@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { EditProfileModal, type EditProfileData } from '@/components/newDesign/edit-profile-modal';
-import { getPersonalInfo, getProfile, updateProfile, uploadResume } from '@/services/ProfileServices';
+import { getPersonalInfo, getProfile, uploadResumeAndWait } from '@/services/ProfileServices';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
 
@@ -2393,10 +2393,10 @@ export function DashboardPage() {
 
   const handleUploadResume = async (file: File) => {
     try {
-      const uploadRes = await uploadResume(file);
-      const respData = uploadRes.data?.data ?? uploadRes.data;
-      const sr: any = respData?.structured_resume ?? respData;
-      const resumePath: string = respData?.resume_path || '';
+      // Waits for the parse job to succeed; the backend persists the resume
+      // itself at that point, so no updateProfile() follow-up here.
+      const { structuredResume, resumePath } = await uploadResumeAndWait(file);
+      const sr: any = structuredResume;
       const newResumeData: Partial<UserData> = {
         resumeFileName: file.name,
         resumeUploadedAt: new Date().toISOString(),
@@ -2409,8 +2409,6 @@ export function DashboardPage() {
       const updated: UserData = { ...(userData || {}), ...newResumeData };
       setUserData(updated);
       localStorage.setItem('screnaUserData', JSON.stringify(updated));
-      // Fire-and-forget profile save
-      if (sr) updateProfile(sr).catch(() => {});
     } catch (err) {
       console.error('Resume upload failed', err);
     }

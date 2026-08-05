@@ -11,8 +11,7 @@ import {
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import {
-  uploadResume,
-  updateProfile,
+  uploadResumeAndWait,
   getProfile,
   getJobsPreferences,
   upsertJobsPreferences,
@@ -596,18 +595,15 @@ export function PremiumOnboardingWizard({
     setResumeError(null);
     setResumeState('uploading');
     try {
-      const res = await uploadResume(file);
-      const rd = (res as { data?: { data?: { structured_resume?: unknown; resume_path?: string } } & { structured_resume?: unknown; resume_path?: string } }).data;
-      const structuredResume =
-        (rd?.data as { structured_resume?: unknown })?.structured_resume ??
-        (rd as { structured_resume?: unknown })?.structured_resume ??
-        rd;
-      updateProfile(structuredResume).catch(() => {});
+      // Waits for the parse job; the backend persists the resume on success, so
+      // there's no updateProfile() follow-up here.
+      await uploadResumeAndWait(file);
       setResumeFileName(file.name);
       setResumeState('success');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (err as Error)?.message ||
         'Upload failed. Please try again.';
       setResumeError(msg);
       setResumeState('idle');

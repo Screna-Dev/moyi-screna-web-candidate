@@ -18,7 +18,7 @@ export const MENTOR_DASHBOARD_PATH = '/mentor-dashboard';
 export const CANDIDATE_DASHBOARD_PATH = '/dashboard';
 export const SELECT_DASHBOARD_PATH = '/select-dashboard';
 
-type RoleBearer = { role?: string; roles?: string[] } | null | undefined;
+export type RoleBearer = { role?: string; roles?: string[] } | null | undefined;
 
 // All roles for an account, upper-cased, de-duplicated. Falls back to the
 // single `role` field for tokens decoded before `roles[]` was available.

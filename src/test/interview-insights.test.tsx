@@ -22,6 +22,14 @@ vi.mock('@/services/CommunityService', () => ({
   deleteReply: vi.fn(),
   getPostOptions: vi.fn(() => Promise.resolve({ data: { data: {} } })),
   getCommunityCompanies: vi.fn(() => Promise.resolve({ data: { data: [] } })),
+  getCompaniesStats: vi.fn(() => Promise.resolve({
+    data: { data: { companies: [{ company: 'Adobe', postCount: 5, recentPostCount: 2 }], totalCompanyCount: 1, totalPostCount: 5, totalRecentPostCount: 2 } },
+  })),
+  likePost: vi.fn(),
+  unlikePost: vi.fn(),
+  savePost: vi.fn(),
+  unsavePost: vi.fn(),
+  getPublicPosts: vi.fn(() => Promise.resolve({ data: { data: [] } })),
 }));
 
 // ─── AuthContext Mock ─────────────────────────────────────
@@ -330,10 +338,10 @@ describe('Interview Insights - Filters', () => {
     const roleFilterBtn = screen.getByText('Role');
     fireEvent.click(roleFilterBtn);
 
-    // Select "Frontend Engineer" from the filter dropdown (checkbox label)
+    // Select "Frontend Engineer" from the filter dropdown (single-select radio)
     await waitFor(() => {
-      const checkbox = screen.getByRole('checkbox', { name: /Frontend Engineer/i });
-      fireEvent.click(checkbox);
+      const option = screen.getByRole('radio', { name: /Frontend Engineer/i });
+      fireEvent.click(option);
     });
 
     // Apply filter
@@ -366,10 +374,10 @@ describe('Interview Insights - Filters', () => {
     const companyFilterBtn = screen.getByText('Company');
     fireEvent.click(companyFilterBtn);
 
-    // Select "Adobe" from the filter dropdown (checkbox label)
+    // Select "Adobe" from the filter dropdown (single-select radio)
     await waitFor(() => {
-      const checkbox = screen.getByRole('checkbox', { name: /Adobe/i });
-      fireEvent.click(checkbox);
+      const option = screen.getByRole('radio', { name: /Adobe/i });
+      fireEvent.click(option);
     });
 
     // Apply filter
@@ -402,10 +410,10 @@ describe('Interview Insights - Filters', () => {
     const levelFilterBtn = screen.getByText('Level');
     fireEvent.click(levelFilterBtn);
 
-    // Select "Senior" from the filter dropdown (checkbox label)
+    // Select "Senior" from the filter dropdown (single-select radio)
     await waitFor(() => {
-      const checkbox = screen.getByRole('checkbox', { name: /Senior/i });
-      fireEvent.click(checkbox);
+      const option = screen.getByRole('radio', { name: /Senior/i });
+      fireEvent.click(option);
     });
 
     // Apply filter

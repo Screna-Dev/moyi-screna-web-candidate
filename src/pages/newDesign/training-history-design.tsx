@@ -6,7 +6,7 @@ import {
   ChevronDown, CheckCircle2, XCircle,
   BookOpen, Star,
   Bot, Users, ExternalLink, MessageSquare,
-  Lock, Sparkles, ArrowRight, MoreHorizontal, ChevronRight,
+  Lock, Sparkles, ArrowRight, MoreHorizontal, ChevronRight, Mail,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
@@ -44,7 +44,7 @@ interface MentorSession {
   mentorName: string; mentorTitle: string; mentorCompany: string;
   initials: string; avatarBg: string; date: string; time: string; duration: string;
   coachingPlan: string;
-  status: 'Upcoming' | 'Completed' | 'Cancelled';
+  status: 'Upcoming' | 'Pending' | 'Completed' | 'Cancelled';
   services: string[]; price: string;
   reviewStatus: ReviewStatus; stars?: number; myNote?: string; hasReview?: boolean;
   meetingLink?: string; mentorId?: string; topicId?: string;
@@ -172,7 +172,8 @@ function mapPlansToAISessions(plans: any[]): AIMockSession[] {
 function mapBookingStatus(s: BookingStatus): MentorSession['status'] {
   if (s === 'COMPLETED') return 'Completed';
   if (s === 'CANCELLED' || s === 'EXPIRED') return 'Cancelled';
-  return 'Upcoming'; // PENDING / CONFIRMED
+  if (s === 'PENDING') return 'Pending'; // booked but not yet paid — awaiting payment via email
+  return 'Upcoming'; // CONFIRMED (paid)
 }
 
 function mapBookingsToMentorSessions(bookings: Booking[]): MentorSession[] {
@@ -752,6 +753,15 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
               Upcoming
             </span>
           )}
+          {session.status === 'Pending' && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-xl border bg-amber-50 border-amber-200 text-amber-700"
+              style={{ height: '26px', paddingLeft: '10px', paddingRight: '12px', fontSize: '11px', fontWeight: 500 }}
+            >
+              <span className="rounded-full shrink-0 bg-amber-400" style={{ width: '6px', height: '6px' }} />
+              Pending payment
+            </span>
+          )}
           {session.status === 'Cancelled' && (
             <span
               className="inline-flex items-center gap-1.5 rounded-xl border bg-muted border-border text-muted-foreground"
@@ -811,6 +821,25 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                 style={{ fontSize: '12px', fontWeight: 500 }}
               >
                 Join
+              </button>
+            </div>
+          ) : session.status === 'Pending' ? (
+            <div className="flex items-center gap-3">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap"
+                style={{ height: '26px', paddingLeft: '9px', paddingRight: '11px', fontSize: '12px', fontWeight: 500 }}
+                title="Open the payment link in your confirmation email to complete payment. Your session is confirmed once payment is received."
+              >
+                <Mail className="w-3.5 h-3.5 shrink-0" />
+                Awaiting payment
+              </span>
+              <button
+                onClick={handleCancel}
+                disabled={acting}
+                className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ fontSize: '12px', fontWeight: 500 }}
+              >
+                Cancel
               </button>
             </div>
           ) : session.status === 'Completed' ? (
@@ -1106,17 +1135,29 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                 <span className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 ${
                   session.status === 'Completed' ? 'bg-green-50 border-green-200 text-green-800'
                   : session.status === 'Upcoming' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : session.status === 'Pending' ? 'bg-amber-50 border-amber-200 text-amber-700'
                   : 'bg-muted border-border text-muted-foreground'
                 }`} style={{ fontSize: '11px', fontWeight: 500 }}>
                   <span className={`rounded-full w-1.5 h-1.5 shrink-0 ${
                     session.status === 'Completed' ? 'bg-green-500'
                     : session.status === 'Upcoming' ? 'bg-blue-400'
+                    : session.status === 'Pending' ? 'bg-amber-400'
                     : 'bg-muted-foreground/40'
                   }`} />
-                  {session.status}
+                  {session.status === 'Pending' ? 'Pending payment' : session.status}
                 </span>
               </div>
             </div>
+
+            {/* Pending payment note — booking is held until payment is completed */}
+            {session.status === 'Pending' && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+                <Mail className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-amber-800 leading-relaxed" style={{ fontSize: 'var(--text-sm)' }}>
+                  Your booking is reserved but not yet paid. We've emailed you a payment link — open it to complete your payment. Your session is only confirmed once payment is received.
+                </p>
+              </div>
+            )}
 
             {/* Review */}
             {session.stars != null && (
@@ -1396,7 +1437,7 @@ export function TrainingHistoryPage() {
   const [activeTab,        setActiveTab]        = useState<MainTab>(
     searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
   );
-  const [mentorFilter,     setMentorFilter]     = useState<'all' | 'Upcoming' | 'Completed' | 'Cancelled'>('all');
+  const [mentorFilter,     setMentorFilter]     = useState<'all' | 'Upcoming' | 'Pending' | 'Completed' | 'Cancelled'>('all');
   const [roleFilter,       setRoleFilter]       = useState<string | 'all'>('all');
   const [typeFilter,       setTypeFilter]       = useState<AIMockType | 'all'>('all');
   const [reviewedSessions, setReviewedSessions] = useState(new Set());
@@ -1531,9 +1572,9 @@ export function TrainingHistoryPage() {
               >
                 <FilterDropdown
                   label="Status"
-                  options={(['Upcoming', 'Completed', 'Cancelled'] as const)}
+                  options={(['Upcoming', 'Pending', 'Completed', 'Cancelled'] as const)}
                   value={mentorFilter}
-                  onChange={v => setMentorFilter(v as 'all' | 'Upcoming' | 'Completed' | 'Cancelled')}
+                  onChange={v => setMentorFilter(v as 'all' | 'Upcoming' | 'Pending' | 'Completed' | 'Cancelled')}
                 />
               </motion.div>
             )}

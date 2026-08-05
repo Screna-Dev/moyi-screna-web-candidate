@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/newDesign/ui/checkbox';
 import { motion } from 'motion/react';
 import { Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { resolvePostLoginPath } from '@/components/mentor/dashboard-mode';
+import { resolvePostAuthPath } from '@/utils/postAuthRedirect';
 
 function RisoTexture({ className, rotation = 0 }: { className?: string; rotation?: number }) {
   return (
@@ -231,12 +231,13 @@ export function AuthPage() {
   const location = useLocation();
   const isRegisterRoute = location.pathname === '/register';
   const returnTo = searchParams.get('returnTo') || '';
-  const [referralCode, setReferralCode] = useState(
+  // Referral code is now collected in the onboarding "Source" step, not at signup.
+  // A referral link's code is forwarded to onboarding via the returnTo query params.
+  const referralCode =
     searchParams.get('ref') ||
     searchParams.get('referral_code') ||
     searchParams.get('referralCode') ||
-    ''
-  );
+    '';
   const [isLogin, setIsLogin] = useState(
     isRegisterRoute ? false : searchParams.get('login') === 'true'
   );
@@ -275,16 +276,25 @@ export function AuthPage() {
     safeCapture(posthog, EVENTS.SIGNUP_STARTED);
   }, [isLogin, posthog]);
 
+  // Set while a submit handler is doing its own post-auth redirect, so the
+  // "already signed in → bounce out of /auth" effect below doesn't race it and
+  // overwrite an onboarding redirect with the dashboard.
+  const redirectingRef = useRef(false);
+
+  // Already-authenticated visitor landing on /auth → send them where they
+  // belong (onboarding if a candidate hasn't finished it, else dashboard).
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      if (user?.role === 'ADMIN' || user?.role === 'OPS') {
-        navigate('/admin', { replace: true });
-      } else {
-        // Dual-role / mentor accounts route via resolvePostLoginPath (chooser
-        // or remembered dashboard); an explicit returnTo still takes priority.
-        navigate(returnTo || resolvePostLoginPath(user), { replace: true });
-      }
+    if (authLoading || !isAuthenticated || redirectingRef.current) return;
+    let cancelled = false;
+    if (user?.role === 'ADMIN' || user?.role === 'OPS') {
+      navigate('/admin', { replace: true });
+      return;
     }
+    (async () => {
+      const path = await resolvePostAuthPath(user, { returnTo });
+      if (!cancelled) navigate(path, { replace: true });
+    })();
+    return () => { cancelled = true; };
   }, [isAuthenticated, authLoading, navigate, returnTo, user]);
 
   const validatePassword = (pwd: string) => {
@@ -317,7 +327,10 @@ export function AuthPage() {
     setError('');
     setIsGoogleLoading(true);
     try {
-      loginWithGoogle(!isLogin, returnTo, referralCode.trim());
+      // The code isn't redeemed at signup — it's collected in onboarding step 1.
+      // But it still has to survive the OAuth round trip, so carry it in `state`
+      // and hand it to onboarding from GoogleCallback.
+      loginWithGoogle(!isLogin, returnTo, referralCode);
     } catch (err: any) {
       console.error('Google auth error:', err);
       setError('Failed to initiate Google sign-in. Please try again.');
@@ -360,22 +373,26 @@ export function AuthPage() {
 
     try {
       if (isLogin) {
+        redirectingRef.current = true;
         const loggedInUser = await login(email, password, rememberMe);
         toast({ title: 'Welcome back!', description: 'You have successfully signed in.' });
         if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
           navigate('/admin');
         } else {
-          // Candidate, mentor, or dual-role → chooser / remembered dashboard.
-          navigate(returnTo || resolvePostLoginPath(loggedInUser));
+          // Candidate with unfinished onboarding → /onboarding-resume; otherwise
+          // chooser / remembered dashboard.
+          navigate(await resolvePostAuthPath(loggedInUser, { returnTo }));
         }
       } else {
-        await signup(email, password, name, referralCode.trim() || undefined);
+        // Referral code is collected in onboarding now — not submitted at signup.
+        await signup(email, password, name);
         setRegisteredEmail(email);
         setIsNewSignup(true);
         setShowVerification(true);
         toast({ title: 'Account created!', description: 'Please check your email for the verification code.' });
       }
     } catch (err: any) {
+      redirectingRef.current = false;
       console.error('Auth error:', err);
 
       const isEmailNotVerified =
@@ -436,21 +453,29 @@ export function AuthPage() {
     setError('');
     try {
       await verifyEmail(registeredEmail, verificationCode);
-      // Auto-login after verification and go directly to onboarding
+      // Auto-login after verification and go directly to onboarding.
       try {
+        redirectingRef.current = true;
         const loggedInUser = await login(registeredEmail, password, false);
         localStorage.removeItem('screna_new_user');
-        if (loggedInUser?.role === 'CANDIDATE') {
-          const onboardingDest = '/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '');
-          navigate(onboardingDest);
-          return;
-        }
         if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
           navigate('/admin');
           return;
         }
+        // A freshly verified candidate has definitionally not onboarded, so go
+        // straight there without waiting on (or trusting) the progress lookup.
+        // Carry any referral-link code along — it's collected in onboarding now.
+        navigate(
+          await resolvePostAuthPath(loggedInUser, {
+            returnTo,
+            ref: referralCode,
+            forceOnboarding: isNewSignup,
+          }),
+        );
+        return;
       } catch (_) {
         // Auto-login failed — fall back to login form
+        redirectingRef.current = false;
       }
       toast({ title: 'Email verified!', description: 'Your account has been verified successfully.' });
       if (isNewSignup) localStorage.setItem('screna_new_user', '1');
@@ -741,24 +766,6 @@ export function AuthPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Referral code — signup only */}
-                {!isLogin && (
-                  <div className="space-y-2">
-                    <label htmlFor="referralCode" className="block text-sm text-slate-700 font-medium">
-                      Referral code <span className="text-slate-400 font-normal">(optional)</span>
-                    </label>
-                    <Input
-                      id="referralCode"
-                      type="text"
-                      placeholder="Enter a referral code for extra credits"
-                      value={referralCode}
-                      onChange={(e) => setReferralCode(e.target.value)}
-                      disabled={isLoading || isGoogleLoading}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
-                    />
-                  </div>
-                )}
 
                 {/* Remember me — login only */}
                 {isLogin && (

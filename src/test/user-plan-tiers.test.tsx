@@ -19,6 +19,9 @@ vi.mock('@/services', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  // useUserPlan imports isStaffRole from AuthContext; the mock must provide it
+  // or the hook throws before rendering the plan.
+  isStaffRole: () => false,
 }));
 
 vi.mock('@/hooks/use-toast', () => ({

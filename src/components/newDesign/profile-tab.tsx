@@ -6,7 +6,7 @@ import {
   BadgeCheck, Building2, Coins, Camera, Loader2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResume, updateProfile, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, updateProfile, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -200,18 +200,18 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }, 120);
 
     try {
-      await uploadResume(file);
+      // upload-resume answers 202 with a job id only — wait for the parse job.
+      // Once it succeeds the backend has already persisted the resume, so no
+      // save call is needed; we just refetch GET /profile/resume for the
+      // authoritative structured_resume + resume_path.
+      const parsed = await uploadResumeAndWait(file);
       clearInterval(resumeTimerRef.current!);
       setResumeProgress(100);
 
-      // upload-resume returns no useful body and the backend persists the
-      // parsed resume itself, so refetch GET /profile/resume to get the
-      // authoritative structured_resume + resume_path.
       const profileRes = await getProfile();
       const pdata = profileRes.data?.data ?? profileRes.data;
-      console.log('[getProfile] after upload:', pdata);
 
-      const structuredResume = pdata?.structured_resume;
+      const structuredResume = pdata?.structured_resume ?? parsed.structuredResume;
       if (pdata?.resume_path) setResumePath(pdata.resume_path);
       // Keep the actual uploaded file name for display.
       setResumeFile({ name: file.name, size: sizeStr });
@@ -227,7 +227,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
           setShowVisaDialog(true);
         }
       } else {
-        console.warn('[getProfile] no structured_resume after upload — backend may not have persisted');
+        console.warn('[resume] no structured_resume after upload — backend may not have persisted');
       }
 
       setTimeout(() => setResumeState('success'), 300);

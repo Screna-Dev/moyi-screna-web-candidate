@@ -7,8 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 import { Alert, AlertDescription } from '@/components/newDesign/ui/alert';
-import PaymentService from '@/services/PaymentServices';
-import { resolvePostLoginPath } from '@/components/mentor/dashboard-mode';
+import { resolvePostAuthPath } from '@/utils/postAuthRedirect';
 
 // Pull the roles claim out of a JWT without throwing. Lets us route dual-role
 // (candidate + mentor) Google sign-ins to the dashboard chooser.
@@ -133,23 +132,10 @@ export default function GoogleCallback() {
           // ignore parse errors
         }
 
-        // Redeem referral code if one was passed through the OAuth flow
-        if (referralCode) {
-          try {
-            await PaymentService.redeemCode(referralCode);
-            toast({
-              title: 'Referral applied!',
-              description: `Your referral code ${referralCode} has been redeemed.`,
-            });
-          } catch (redeemErr: any) {
-            console.error('Failed to redeem referral code:', redeemErr);
-            toast({
-              title: 'Referral code not applied',
-              description: redeemErr.response?.data?.message || 'We could not redeem your referral code.',
-              variant: 'destructive',
-            });
-          }
-        }
+        // NOTE: a referral invite code is NOT redeemed here. It's an 8-char
+        // invite code, not a promo/redeem code, and it's applied by
+        // POST /onboarding/referral-source in onboarding step 1. All we do is
+        // forward it to that step via ?ref= below.
 
         if (isFirstLogin) {
           // 00 — Acquire: Google 注册成功（isFirstLogin = 新账号）
@@ -157,12 +143,19 @@ export default function GoogleCallback() {
             signup_method: 'google',
             promo_code: referralCode || null,
           });
-          navigate('/onboarding-resume' + (returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''));
-        } else {
-          // Dual-role / mentor accounts land on the chooser or their remembered
-          // dashboard; an explicit returnTo still takes priority.
-          navigate(returnTo || resolvePostLoginPath(rolesFromToken(accessToken)));
         }
+        // New Google accounts go straight to onboarding; returning ones are
+        // checked against GET /onboarding/progress so a half-finished
+        // onboarding is resumed instead of skipped. Mentor / dual-role accounts
+        // keep the chooser, and an explicit returnTo still wins once onboarding
+        // is complete.
+        navigate(
+          await resolvePostAuthPath(rolesFromToken(accessToken), {
+            returnTo,
+            ref: referralCode,
+            forceOnboarding: isFirstLogin,
+          }),
+        );
         
       } catch (err: any) {
         console.error('Error handling Google callback:', err);

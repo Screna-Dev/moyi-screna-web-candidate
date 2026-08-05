@@ -4,8 +4,16 @@ import {
 } from '@portabletext/react';
 import { urlFor, type SanityImage } from '@/services/sanity';
 
+// A @sanity/table block. Node shape:
+// { _type: 'table', rows: [{ _key, cells: [string, ...] }, ...] }
+// The first row is treated as the header.
+interface SanityTable {
+  rows?: Array<{ _key?: string; cells?: string[] }>;
+}
+
 // React renderer for the Sanity Portable Text `body`. Mirrors the Astro blog's
-// PortableTextImage.astro / PortableTextLink.astro custom renderers.
+// PortableTextImage.astro / PortableTextLink.astro / PortableTextTable.astro
+// custom renderers.
 const components: PortableTextComponents = {
   types: {
     // Images embedded in the article body.
@@ -21,6 +29,37 @@ const components: PortableTextComponents = {
           className="my-6 h-auto max-w-full rounded-lg"
           loading="lazy"
         />
+      );
+    },
+    // Tables from the @sanity/table plugin. First row is the header; the
+    // surrounding `prose` container styles the table via Tailwind Typography.
+    table: ({ value }: { value: SanityTable }) => {
+      const rows = value?.rows ?? [];
+      if (rows.length === 0) return null;
+      const [headRow, ...bodyRows] = rows;
+      return (
+        <div className="my-6 overflow-x-auto">
+          <table>
+            {headRow && (
+              <thead>
+                <tr>
+                  {(headRow.cells ?? []).map((cell, i) => (
+                    <th key={i}>{cell}</th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {bodyRows.map((row, r) => (
+                <tr key={row._key ?? r}>
+                  {(row.cells ?? []).map((cell, c) => (
+                    <td key={c}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     },
   },
