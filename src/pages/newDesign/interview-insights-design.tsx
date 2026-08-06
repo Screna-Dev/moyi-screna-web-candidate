@@ -249,8 +249,6 @@ export function InterviewInsightsPage() {
             category: c.category ?? g.category,
           }))
         );
-        // Highest post count first.
-        list.sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0));
         setCompanyStats(list);
         setRollup({
           totalCompanyCount: data?.totalCompanyCount ?? list.length,
@@ -271,19 +269,62 @@ export function InterviewInsightsPage() {
 
   // Directory is API-driven: company name, category, and counts come from the
   // stats endpoint; the description blurb stays curated (the stats API has none).
+  //
+  // The stats API groups companies by category, so a company whose posts carry
+  // inconsistent categories comes back in more than one group (e.g. Scale.ai in
+  // both "Mid-sized" and "FAANG / Big Tech"). Those rows are merged by resolved
+  // id here — two cards sharing a React key made stale duplicates pile up every
+  // time a category tile was toggled. Note counts are summed so the merged card
+  // still reflects the company's full total; the category shown is the one that
+  // contributed the most posts.
   const companies = useMemo<CompanyData[]>(() => {
-    return companyStats.map((s) => {
-      const meta = META_BY_NAME.get(s.company?.toLowerCase().trim());
-      return {
-        id: meta?.id ?? slugify(s.company),
-        name: s.company,
-        category: s.category ?? meta?.category ?? "",
-        description: meta?.description ?? "",
-        totalNotes: s.postCount ?? 0,
-        last30Days: s.recentPostCount ?? 0,
-        updatedAgo: timeAgo(s.latestUpdatedAt),
-      };
-    });
+    type Merged = CompanyData & { latestUpdatedAt?: string; topCategoryCount: number };
+    const byId = new Map<string, Merged>();
+
+    for (const s of companyStats) {
+      const name = s.company?.trim();
+      if (!name) continue;
+      const meta = META_BY_NAME.get(name.toLowerCase());
+      const id = meta?.id ?? slugify(name);
+      if (!id) continue;
+
+      const postCount = s.postCount ?? 0;
+      const category = s.category ?? meta?.category ?? "";
+      const existing = byId.get(id);
+
+      if (!existing) {
+        byId.set(id, {
+          id,
+          name,
+          category,
+          description: meta?.description ?? "",
+          totalNotes: postCount,
+          last30Days: s.recentPostCount ?? 0,
+          updatedAgo: "",
+          latestUpdatedAt: s.latestUpdatedAt,
+          topCategoryCount: postCount,
+        });
+        continue;
+      }
+
+      existing.totalNotes += postCount;
+      existing.last30Days += s.recentPostCount ?? 0;
+      if (postCount > existing.topCategoryCount) {
+        existing.category = category;
+        existing.topCategoryCount = postCount;
+      }
+      if (s.latestUpdatedAt && (!existing.latestUpdatedAt || s.latestUpdatedAt > existing.latestUpdatedAt)) {
+        existing.latestUpdatedAt = s.latestUpdatedAt;
+      }
+    }
+
+    // Highest post count first (after merging, so split rows sort by their total).
+    return [...byId.values()]
+      .sort((a, b) => b.totalNotes - a.totalNotes)
+      .map(({ latestUpdatedAt, topCategoryCount: _topCategoryCount, ...c }) => ({
+        ...c,
+        updatedAgo: timeAgo(latestUpdatedAt),
+      }));
   }, [companyStats]);
 
   // Per-category note totals for the tiles, summed from the live (categorized) companies.
