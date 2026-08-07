@@ -1,0 +1,37 @@
+# Screna AI
+
+> Screna AI is an interview preparation platform for tech job seekers. It runs
+> AI mock interviews (technical, behavioral, and system design), builds a
+> personalized training plan from your resume and target role, hosts a
+> community library of real interview experiences, and connects candidates with
+> human mentors for 1:1 coaching.
+
+Site: https://www.screna.ai
+Contact: operations@screna.ai
+
+## Public pages
+
+- https://www.screna.ai/ — Product overview, how the AI mock interview and training plan work, pricing tiers, and customer testimonials.
+- https://www.screna.ai/blog — Articles on interview preparation, mock interview tactics, career switching, OPT and visa questions, and mentorship.
+- https://www.screna.ai/faq — Frequently asked questions about training plans, the experience library, supported roles, and readiness metrics.
+- https://www.screna.ai/help — Help center covering accounts, onboarding, practice sessions, feedback reports, privacy, and security.
+- https://www.screna.ai/contact — Contact form for product, partnership, and support enquiries.
+
+## Legal
+
+- https://www.screna.ai/privacy — Privacy Policy.
+- https://www.screna.ai/terms — Terms of Service.
+- https://www.screna.ai/cookies — Cookie Policy.
+- https://www.screna.ai/data-protection — Data Protection Policy.
+
+## Machine-readable indexes
+
+- https://www.screna.ai/sitemap.xml — Full URL list, regenerated on request from the published content set.
+- https://www.screna.ai/robots.txt — Crawl directives.
+
+## Notes for crawlers and assistants
+
+- Every URL listed above is server-rendered at build time; the full text is
+  present in the initial HTML response and does not require JavaScript.
+- Pages under /dashboard, /settings, /profile, /interview-insights, and
+  /marketplace sit behind authentication and are excluded from the sitemap.

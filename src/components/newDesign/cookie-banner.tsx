@@ -27,7 +27,10 @@ export function CookieBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 md:p-6">
+    // data-prerender-strip: no consent cookie exists during the build, so the
+    // banner always renders — scripts/prerender.mjs removes it before
+    // snapshotting rather than baking it into every static page.
+    <div data-prerender-strip className="fixed bottom-0 left-0 right-0 z-50 p-4 md:p-6">
       <div className="max-w-4xl mx-auto bg-white border border-[hsl(222,15%,88%)] rounded-2xl shadow-xl px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="flex-1 text-sm text-[hsl(222,12%,40%)] leading-relaxed">
           We use cookies to improve your experience on our site. By continuing, you agree to our{' '}

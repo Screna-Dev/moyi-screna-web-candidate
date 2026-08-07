@@ -1,5 +1,6 @@
 import { Linkedin, Mail } from 'lucide-react';
 import Logo from '@/assets/Navbar.png';
+import { SOCIAL_URLS } from '@/constants/site';
 
 function XIcon({ className }: { className?: string }) {
   return (
@@ -28,6 +29,7 @@ const PRODUCT_LINKS = [
 ];
 
 const COMMUNITY_LINKS = [
+  { label: 'Blog', href: '/blog' },
   { label: 'Interview Insights', href: '/interview-insights' },
   { label: 'Join our Discord', href: 'https://discord.gg/7FqHDtea5X' },
 ];
@@ -39,10 +41,10 @@ const SUPPORT_LINKS = [
 ];
 
 const SOCIAL_LINKS = [
-  { icon: XIcon, label: 'X', href: 'https://x.com/screnaai_?s=21' },
-  { icon: Linkedin, label: 'LinkedIn', href: 'https://www.linkedin.com/company/screnaai/' },
-  { icon: DiscordIcon, label: 'Discord', href: 'https://discord.gg/7FqHDtea5X' },
-  { icon: Mail, label: 'Email', href: 'mailto:operations@screna.ai' },
+  { icon: XIcon, label: 'X', href: SOCIAL_URLS.x },
+  { icon: Linkedin, label: 'LinkedIn', href: SOCIAL_URLS.linkedin },
+  { icon: DiscordIcon, label: 'Discord', href: SOCIAL_URLS.discord },
+  { icon: Mail, label: 'Email', href: SOCIAL_URLS.email },
 ];
 
 function FooterLinkColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {

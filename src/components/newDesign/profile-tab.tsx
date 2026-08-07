@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
@@ -12,6 +12,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from './ui/dialog';
 import { WidePageContainer } from './dashboard-page';
+import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
+import { resumeFileName } from '@/utils/resumeFile';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
 
 type UserData = {
@@ -205,6 +207,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       // save call is needed; we just refetch GET /profile/resume for the
       // authoritative structured_resume + resume_path.
       const parsed = await uploadResumeAndWait(file);
+      emitResumeUploaded();
       clearInterval(resumeTimerRef.current!);
       setResumeProgress(100);
 
@@ -239,9 +242,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }
   };
 
-  useEffect(() => {
-    // Fetch resume data
-    getProfile().then((res: { data: { data?: { resume_path?: string; structured_resume?: { profile?: { full_name?: string; visa_status?: string } } } } }) => {
+  // Also re-run when the global resume prompt uploads from another page, so the
+  // card doesn't stay on its empty state.
+  const fetchResume = useCallback(() => {
+    return getProfile().then((res: { data: { data?: { resume_path?: string; structured_resume?: { profile?: { full_name?: string; visa_status?: string } } } } }) => {
       const data = res.data?.data ?? res.data;
       if (data?.structured_resume) {
         setStructuredResume(data.structured_resume as Record<string, unknown>);
@@ -252,11 +256,18 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         const path = data.resume_path as string;
         setResumePath(path);
         // Use the actual stored file name from the resume path.
-        const filename = path.split('/').pop() || 'Resume.pdf';
+        const filename = resumeFileName(path) || 'Resume.pdf';
         setResumeFile({ name: filename, size: 'Stored in your profile' });
         setResumeState('success');
       }
     }).catch(() => {}).finally(() => setLoadingResume(false));
+  }, []);
+
+  useResumeUploaded(fetchResume);
+
+  useEffect(() => {
+    // Fetch resume data
+    fetchResume();
 
     // Fetch profile preferences (target roles, target companies, company sizes, work authorization)
     getProfilePreferences().then((res: { data: { data?: UserPreferences } }) => {
@@ -296,7 +307,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     }).catch(() => {}).finally(() => setLoadingPersonal(false));
 
     return () => { if (resumeTimerRef.current) clearInterval(resumeTimerRef.current); };
-  }, []);
+  }, [fetchResume]);
 
   const filteredRoleCategories = useMemo(() => {
     const q = roleQuery.trim().toLowerCase();

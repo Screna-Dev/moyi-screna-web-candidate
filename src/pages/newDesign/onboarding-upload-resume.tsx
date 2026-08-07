@@ -6,6 +6,7 @@ import {
   Hash, Plus, UserPlus, AlertCircle,
 } from 'lucide-react';
 import { uploadResumeAndWait } from '@/services/ProfileServices';
+import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 import { getOnboardingProgress, submitReferralSource } from '@/services/OnboardingServices';
 import { useToast } from '@/hooks/use-toast';
 import { usePostHog } from 'posthog-js/react';
@@ -745,6 +746,7 @@ export function OnboardingUploadResumePage() {
         // First poll means the file is up and the parse job is running.
         onPoll: () => setProgressLabel('Analyzing your resume…'),
       });
+      emitResumeUploaded();
       stopProgressTimer();
       setProgress(100);
       setUploadState('success');

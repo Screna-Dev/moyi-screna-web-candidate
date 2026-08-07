@@ -1,8 +1,12 @@
 import { useEffect } from 'react';
 import { Footer } from '@/components/newDesign/home/footer';
 import { Navbar } from '@/components/newDesign/home/navbar';
+import { useSeo } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
 
 export function PrivacyPolicy() {
+  useSeo({ ...SEO_COPY.privacy, path: '/privacy' });
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);

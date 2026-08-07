@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Footer } from '@/components/newDesign/home/footer';
 import {Navbar} from '@/components/newDesign/home/navbar';
+import { useSeo } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
 import { Shield, Lock, Database, Users, Server, FileText, AlertTriangle, CheckCircle, Clock, Key, Globe, FileCheck, UserCheck, Trash2, RefreshCw, Building2, Briefcase } from 'lucide-react';
 
 export function DataProtectionPolicy() {
+  useSeo({ ...SEO_COPY.dataProtection, path: '/data-protection' });
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);

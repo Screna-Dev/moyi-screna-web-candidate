@@ -11,16 +11,23 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { getPersonalInfo } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
+import { useSeo, SITE_URL } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
+import { SOCIAL_PROFILE_URLS, SUPPORT_EMAIL } from '@/constants/site';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
-import imgFeatureA from '@/imports/featurea-png.png';
-import imgWorkflowDiagram from '@/imports/Group_18.png';
-import imgTeacup from '@/imports/App/landing-teacup.png';
-import imgJobOffer from '@/imports/App/landing-job-offer.png';
-import imgMicrophone from '@/imports/App/landing-microphone.png';
-import imgNotebook from '@/imports/App/landing-notebook.png';
-import imgFeatureB from '@/imports/featureb.png';
-import imgFeatureC from '@/imports/featurec.png';
-import imgDashboard from '@/imports/image-2.png';
+// WebP, resized to ~2x display size (see scripts/optimize-images.mjs).
+// These nine images were 9.5 MB as PNGs and dominated the landing page's LCP;
+// they are 1.2 MB now. The .png originals are kept in the repo as the source
+// for that script — nothing imports them.
+import imgFeatureA from '@/imports/featurea-png.webp';
+import imgWorkflowDiagram from '@/imports/Group_18.webp';
+import imgTeacup from '@/imports/App/landing-teacup.webp';
+import imgJobOffer from '@/imports/App/landing-job-offer.webp';
+import imgMicrophone from '@/imports/App/landing-microphone.webp';
+import imgNotebook from '@/imports/App/landing-notebook.webp';
+import imgFeatureB from '@/imports/featureb.webp';
+import imgFeatureC from '@/imports/featurec.webp';
+import imgDashboard from '@/imports/image-2.webp';
 // AI-generated testimonial portraits (people who don't exist — commercial-safe)
 import avMaya from '@/imports/avatars/maya-chen.jpg';
 import avDaniel from '@/imports/avatars/daniel-park.jpg';
@@ -30,6 +37,27 @@ import avSofia from '@/imports/avatars/sofia-martinez.jpg';
 import avJordan from '@/imports/avatars/jordan-blake.jpg';
 import avPriya from '@/imports/avatars/priya-shah.jpg';
 import avEthan from '@/imports/avatars/ethan-wu.jpg';
+
+// ─── Structured data ────────────────────────────────────────────────────────
+// Site-level Organization entity. index.html carries a separate WebApplication
+// block (untouched by useSeo, since it has no data-seo marker) — the two are
+// complementary: one describes the company, the other the product.
+const ORGANIZATION_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Screna AI',
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo.png`,
+  description:
+    'AI-driven interview preparation: mock interviews, personalized training plans, a real interview experience library, and expert mentors.',
+  sameAs: SOCIAL_PROFILE_URLS,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    email: SUPPORT_EMAIL,
+    url: `${SITE_URL}/contact`,
+  },
+};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
@@ -523,6 +551,10 @@ function HowItWorksSection() {
           <img
             src={imgWorkflowDiagram}
             alt="How Screna Works diagram"
+            width={1600}
+            height={1549}
+            loading="lazy"
+            decoding="async"
             style={{ width: '100%', maxWidth: 800, height: 'auto', display: 'block' }}
           />
         </div>
@@ -555,6 +587,8 @@ function HowItWorksSection() {
 
 // ─── Main Home Page ───────────────────────────────────────────────────────────
 export function HomePage() {
+  useSeo({ ...SEO_COPY.home, path: '/', jsonLd: [ORGANIZATION_JSON_LD] });
+
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, isLoading: isAuthLoading } = useAuth();
@@ -837,6 +871,10 @@ export function HomePage() {
         <img
           src={imgFeatureB}
           alt="InterviewPrep Note"
+          width={1600}
+          height={1341}
+          loading="lazy"
+          decoding="async"
           className="w-full h-auto object-contain"
           style={{ display: 'block', maxWidth: '100%' }}
         />
@@ -1137,16 +1175,16 @@ export function HomePage() {
 
           {/* ── Decorative objects ── */}
           <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2 + 16px)', top: 44, zIndex: 1 }}>
-            <img src={imgTeacup} alt="" style={{ width: 118, height: 94, objectFit: 'contain', transform: 'rotate(22.29deg)', display: 'block' }} />
+            <img src={imgTeacup} alt="" width={236} height={214} loading="lazy" decoding="async" style={{ width: 118, height: 94, objectFit: 'contain', transform: 'rotate(22.29deg)', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2)', top: -50, zIndex: 1 }}>
-            <img src={imgNotebook} alt="" style={{ width: 487, height: 325, objectFit: 'contain', transform: 'translateX(22%) rotate(-31.73deg)', transformOrigin: 'top right', display: 'block' }} />
+            <img src={imgNotebook} alt="" width={974} height={930} loading="lazy" decoding="async" style={{ width: 487, height: 325, objectFit: 'contain', transform: 'translateX(22%) rotate(-31.73deg)', transformOrigin: 'top right', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2)', top: 270, zIndex: 1 }}>
-            <img src={imgJobOffer} alt="" style={{ width: 412, height: 275, objectFit: 'contain', transform: 'translateX(-56%) rotate(-11.89deg)', display: 'block' }} />
+            <img src={imgJobOffer} alt="" width={824} height={634} loading="lazy" decoding="async" style={{ width: 412, height: 275, objectFit: 'contain', transform: 'translateX(-56%) rotate(-11.89deg)', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2 + 20px)', top: 440, zIndex: 1 }}>
-            <img src={imgMicrophone} alt="" style={{ width: 214, height: 143, objectFit: 'contain', transform: 'rotate(-37.94deg)', display: 'block' }} />
+            <img src={imgMicrophone} alt="" width={428} height={419} loading="lazy" decoding="async" style={{ width: 214, height: 143, objectFit: 'contain', transform: 'rotate(-37.94deg)', display: 'block' }} />
           </div>
 
           {/* Pill badge */}
@@ -1300,11 +1338,16 @@ export function HomePage() {
           </button>
 
           {/* Dashboard screenshot — scaled down on phones so it doesn't dominate the fold */}
+          {/* LCP element — must not be lazy-loaded. */}
           <img
             data-reveal data-delay="420"
             src={imgDashboard}
             alt="Screna dashboard"
             className="hero-dashboard-shot"
+            width={2000}
+            height={1485}
+            fetchPriority="high"
+            decoding="async"
             style={{ display: 'block', margin: '0 auto', maxWidth: '100%', height: 'auto' }}
           />
 
@@ -1428,6 +1471,10 @@ export function HomePage() {
                 <img
                   src={imgFeatureA}
                   alt="AI Mock feature"
+                  width={1600}
+                  height={1161}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-auto object-contain"
                   style={{ display: 'block', maxWidth: '100%' }}
                 />
@@ -1435,6 +1482,10 @@ export function HomePage() {
                 <img
                   src={imgFeatureB}
                   alt="InterviewPrep Note feature"
+                  width={1600}
+                  height={1341}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-auto object-contain"
                   style={{ display: 'block', maxWidth: '100%' }}
                 />
@@ -1442,6 +1493,10 @@ export function HomePage() {
                 <img
                   src={imgFeatureC}
                   alt="Mentorship feature"
+                  width={1600}
+                  height={1139}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-auto object-contain"
                   style={{ display: 'block', maxWidth: '100%' }}
                 />

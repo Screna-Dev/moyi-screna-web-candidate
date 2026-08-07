@@ -12,17 +12,23 @@ const DATASET = process.env.VITE_SANITY_DATASET || 'production';
 const SITE_URL = (process.env.VITE_SITE_URL || 'https://www.screna.ai').replace(/\/$/, '');
 
 // Public, indexable marketing/content routes. (Keep in sync with robots.txt —
-// anything Disallowed there should NOT be listed here.)
+// anything Disallowed there should NOT be listed here — and with
+// PRERENDER_STATIC in scripts/routes.mjs, which src/test/vercel-routes.test.ts
+// asserts is the identical set.)
+//
+// /interview-insights and /marketplace sit behind the login wall, so they are
+// deliberately absent: advertising them in the sitemap just accrues
+// "crawled - currently not indexed" entries.
 const STATIC_PATHS = [
   '/',
   '/blog',
-  '/interview-insights',
-  '/marketplace',
   '/help',
   '/faq',
+  '/contact',
   '/privacy',
   '/terms',
   '/cookies',
+  '/data-protection',
 ];
 
 interface PostRef {

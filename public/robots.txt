@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /auth
 Disallow: /profile
-Disallow: /interview
+Disallow: /interview-insights
 Disallow: /interview-prep
 Disallow: /jobs
 Disallow: /mentors

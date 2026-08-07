@@ -2,8 +2,12 @@ import { useEffect } from 'react';
 import { Footer } from '@/components/newDesign/home/footer';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Cookie, Shield, Settings, BarChart3, AlertCircle } from 'lucide-react';
+import { useSeo } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
 
 export function CookiePolicy() {
+  useSeo({ ...SEO_COPY.cookies, path: '/cookies' });
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);

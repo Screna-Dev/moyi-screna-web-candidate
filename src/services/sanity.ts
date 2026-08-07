@@ -127,6 +127,41 @@ export async function getPost(slug: string): Promise<Post | null> {
   return sanityClient.fetch(POST_QUERY, { slug });
 }
 
+/**
+ * Sibling posts for the "Related articles" block at the foot of an article.
+ * Prefers the same category and falls back to the newest posts overall, so a
+ * single-post category still produces internal links instead of a dead end.
+ */
+export async function getRelatedPosts(opts: {
+  category?: string;
+  excludeId: string;
+  limit?: number;
+}): Promise<PostListItem[]> {
+  const { category, excludeId } = opts;
+  // Slice bounds are inlined rather than parameterised — GROQ range literals
+  // take constants. Clamped to a small integer so nothing user-supplied can
+  // reach the query string.
+  const limit = Math.max(1, Math.min(12, Math.trunc(opts.limit ?? 3)));
+
+  const sameCategory = category
+    ? await sanityClient.fetch<PostListItem[]>(
+        `*[_type == "post" && defined(slug.current) && category == $category && _id != $excludeId]
+         | order(publishedAt desc)[0...${limit}]{ ${POST_LIST_FIELDS} }`,
+        { category, excludeId },
+      )
+    : [];
+  if (sameCategory.length >= limit) return sameCategory;
+
+  const seen = [excludeId, ...sameCategory.map((p) => p._id)];
+  const fill = limit - sameCategory.length;
+  const filler = await sanityClient.fetch<PostListItem[]>(
+    `*[_type == "post" && defined(slug.current) && !(_id in $seen)]
+     | order(publishedAt desc)[0...${fill}]{ ${POST_LIST_FIELDS} }`,
+    { seen },
+  );
+  return [...sameCategory, ...filler].slice(0, limit);
+}
+
 // ---------------------------------------------------------------------------
 // Image URL builder (respects hotspot/crop)
 // ---------------------------------------------------------------------------
