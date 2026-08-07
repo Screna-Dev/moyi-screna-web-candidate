@@ -1,4 +1,5 @@
 {
+  "trailingSlash": false,
   "redirects": [
     {
       "source": "/pricing",
@@ -6,14 +7,75 @@
       "permanent": true
     }
   ],
-  "rewrites": [
+  "headers": [
     {
-      "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "source": "/app.html",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }]
     }
+  ],
+  "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+
+    { "source": "/blog", "destination": "/app.html" },
+    { "source": "/blog/:slug", "destination": "/app.html" },
+    { "source": "/faq", "destination": "/app.html" },
+    { "source": "/help", "destination": "/app.html" },
+    { "source": "/contact", "destination": "/app.html" },
+    { "source": "/privacy", "destination": "/app.html" },
+    { "source": "/terms", "destination": "/app.html" },
+    { "source": "/cookies", "destination": "/app.html" },
+    { "source": "/data-protection", "destination": "/app.html" },
+
+    { "source": "/question/:id", "destination": "/app.html" },
+    { "source": "/question-unknown/:id", "destination": "/app.html" },
+    { "source": "/auth", "destination": "/app.html" },
+    { "source": "/auth/google/callback", "destination": "/app.html" },
+    { "source": "/register", "destination": "/app.html" },
+    { "source": "/forgot-password", "destination": "/app.html" },
+    { "source": "/signup-flow", "destination": "/app.html" },
+    { "source": "/pgs/ref/:slug", "destination": "/app.html" },
+
+    { "source": "/mock-interview", "destination": "/app.html" },
+    { "source": "/personalized-practice", "destination": "/app.html" },
+    { "source": "/quick-mock", "destination": "/app.html" },
+    { "source": "/coaching", "destination": "/app.html" },
+    { "source": "/session-confirm", "destination": "/app.html" },
+    { "source": "/ai-mock", "destination": "/app.html" },
+    { "source": "/ai-mockwhite", "destination": "/app.html" },
+    { "source": "/evaluation", "destination": "/app.html" },
+    { "source": "/add-experience", "destination": "/app.html" },
+
+    { "source": "/dashboard", "destination": "/app.html" },
+    { "source": "/dashboard/contributions", "destination": "/app.html" },
+    { "source": "/profile", "destination": "/app.html" },
+    { "source": "/contributions", "destination": "/app.html" },
+    { "source": "/refer", "destination": "/app.html" },
+    { "source": "/history", "destination": "/app.html" },
+    { "source": "/settings", "destination": "/app.html" },
+    { "source": "/billing", "destination": "/app.html" },
+    { "source": "/payment-success", "destination": "/app.html" },
+    { "source": "/premium-onboarding", "destination": "/app.html" },
+
+    { "source": "/goal", "destination": "/app.html" },
+    { "source": "/goal-upload", "destination": "/app.html" },
+    { "source": "/onboarding-process", "destination": "/app.html" },
+    { "source": "/onboarding-flow", "destination": "/app.html" },
+    { "source": "/onboarding-resume", "destination": "/app.html" },
+
+    { "source": "/interview-insights", "destination": "/app.html" },
+    { "source": "/interview-insights/:companyId", "destination": "/app.html" },
+    { "source": "/experience/:id", "destination": "/app.html" },
+
+    { "source": "/mentorship", "destination": "/app.html" },
+    { "source": "/marketplace", "destination": "/app.html" },
+    { "source": "/mentor-marketplace", "destination": "/app.html" },
+    { "source": "/mentor-details", "destination": "/app.html" },
+    { "source": "/guest-dashboard", "destination": "/app.html" },
+    { "source": "/select-dashboard", "destination": "/app.html" },
+    { "source": "/mentor-dashboard", "destination": "/app.html" },
+
+    { "source": "/admin", "destination": "/app.html" },
+    { "source": "/redeem-code", "destination": "/app.html" },
+    { "source": "/audit-logs", "destination": "/app.html" }
   ]
 }

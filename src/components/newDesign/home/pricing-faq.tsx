@@ -7,39 +7,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '../ui/accordion';
-
-const faqItems = [
-  {
-    id: 'training-plan',
-    question: 'How does the AI create my Training Plan?',
-    answer:
-      'After you upload your resume and set your target job, our AI analyzes your profile and generates a customized Training Plan. Each session includes targeted questions aligned with your role, experience level, and readiness metrics.',
-  },
-  {
-    id: 'experience-library',
-    question: 'How does the experience library work?',
-    answer:
-      'Our experience library contains real interview questions and experiences shared by candidates across all industries. You can browse by company, role, or question type to learn from others and boost your readiness.',
-  },
-  {
-    id: 'roles-supported',
-    question: 'What roles are supported?',
-    answer:
-      'We support all tech career fields including Frontend, Backend, Full Stack, DevOps, Data Science, ML Engineering, and more. Each role has customized Training Plans with industry-specific readiness metrics.',
-  },
-  {
-    id: 'job-matching',
-    question: 'How does daily job matching work?',
-    answer:
-      'Based on your target job title and profile, our system scans multiple job platforms daily and recommends the latest positions that match your criteria. You\'ll receive personalized job alerts to keep your applications timely.',
-  },
-  {
-    id: 'readiness-metrics',
-    question: 'How are Readiness Metrics calculated?',
-    answer:
-      'Your Readiness Score is initially calculated based on your resume, experience, and target role. As you complete Training Plan sessions, the score is dynamically updated based on your performance, improvement trends, and completion rate.',
-  },
-];
+import { faqItems } from '@/constants/faq';
 
 export function PricingFaq() {
   const ref = useRef(null);
@@ -74,7 +42,7 @@ export function PricingFaq() {
           transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
         >
           <Accordion type="single" collapsible className="w-full">
-            {faqItems.map((item, index) => (
+            {faqItems.map((item) => (
               <AccordionItem
                 key={item.id}
                 value={item.id}
@@ -83,7 +51,17 @@ export function PricingFaq() {
                 <AccordionTrigger className="py-5 text-base font-semibold text-[hsl(222,22%,15%)] hover:text-blue-600 hover:no-underline transition-colors [&[data-state=open]]:text-blue-600">
                   {item.question}
                 </AccordionTrigger>
-                <AccordionContent className="text-[hsl(222,12%,45%)] leading-relaxed text-[15px] pb-5">
+                {/*
+                  forceMount keeps the answer in the DOM while collapsed.
+                  Radix unmounts closed panels by default, which meant the
+                  answers — the entire substance of /faq — never appeared in
+                  the prerendered HTML. Closed panels still carry `hidden`, so
+                  nothing changes visually.
+                */}
+                <AccordionContent
+                  forceMount
+                  className="text-[hsl(222,12%,45%)] leading-relaxed text-[15px] pb-5"
+                >
                   {item.answer}
                 </AccordionContent>
               </AccordionItem>

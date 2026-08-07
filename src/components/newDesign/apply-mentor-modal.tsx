@@ -3,6 +3,7 @@ import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-r
 import { usePostHog } from 'posthog-js/react';
 import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
 import { getProfile, uploadResumeAndWait } from '../../services/ProfileServices';
+import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 import type { ProfileData } from '../../types/profile';
@@ -137,6 +138,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
       if (resumeFile) {
         setResumeUploading(true);
         await uploadResumeAndWait(resumeFile);
+        emitResumeUploaded();
         setHasStoredResume(true);
         setResumeUploading(false);
       }

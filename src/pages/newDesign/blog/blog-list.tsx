@@ -1,35 +1,73 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { motion } from 'motion/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
+import { useSeo, SITE_URL } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
+import { readPrerenderSeed } from '@/utils/prerenderSeed';
 import {
   getPostsPage,
   urlFor,
   CATEGORY_LABELS,
   formatDate,
   type PostListItem,
+  type PostsPage,
 } from '@/services/sanity';
 
 const PAGE_SIZE = 9;
+
+const BREADCRUMB_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+    { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
+  ],
+};
+
+// Module scope, not render — see readPrerenderSeed.
+const SEED = readPrerenderSeed<PostsPage>('__prerender_posts__');
 
 export function BlogListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const category = searchParams.get('category');
 
-  const [posts, setPosts] = useState<PostListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The seed only describes the unfiltered first page; anything else must go
+  // to the network.
+  const seedUsable = SEED && page === 1 && !category;
+  const seedPending = useRef(Boolean(seedUsable));
+
+  const [posts, setPosts] = useState<PostListItem[]>(seedUsable ? SEED.posts ?? [] : []);
+  const [total, setTotal] = useState(seedUsable ? SEED.total ?? 0 : 0);
+  const [categories, setCategories] = useState<string[]>(
+    seedUsable ? (SEED.categories ?? []).filter(Boolean) : [],
+  );
+  const [loading, setLoading] = useState(!seedUsable);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    document.title = 'Blog · Screna';
-  }, []);
+  // Pass null while loading so the prerenderer waits for real posts instead of
+  // snapshotting the skeleton. The error branch still reports ready (as
+  // noindex) — otherwise a Sanity outage would hang the build for 20s here.
+  useSeo(
+    loading
+      ? null
+      : {
+          ...SEO_COPY.blog,
+          path: '/blog',
+          noindex: error,
+          jsonLd: error ? [] : [BREADCRUMB_JSON_LD],
+        },
+  );
 
   useEffect(() => {
+    // Swallow exactly one run: the prerendered first page is already in state.
+    if (seedPending.current) {
+      seedPending.current = false;
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);

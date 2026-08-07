@@ -44,6 +44,8 @@ import { EditProfileModal, type EditProfileData } from '@/components/newDesign/e
 import { getPersonalInfo, getProfile, uploadResumeAndWait } from '@/services/ProfileServices';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
+import { resumeFileName } from '@/utils/resumeFile';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -122,11 +124,7 @@ function mapJobSearchStage(stage?: string): string | undefined {
   return map[stage] ?? stage;
 }
 
-function filenameFromPath(path?: string): string | undefined {
-  if (!path) return undefined;
-  const seg = path.split('/').filter(Boolean).pop();
-  return seg || undefined;
-}
+const filenameFromPath = resumeFileName;
 
 // ─── Career Stage Data ──────────────────────────────────────────────────────
 
@@ -2374,6 +2372,21 @@ export function DashboardPage() {
     });
   }, []);
 
+  // The global resume prompt can upload from on top of this page — refresh the
+  // Career Profile card instead of leaving it on "No resume yet".
+  useResumeUploaded(() => {
+    getProfile().then((res: { data?: { data?: { resume_path?: string } } & { resume_path?: string } }) => {
+      const profData = res.data?.data ?? res.data;
+      if (!profData?.resume_path) return;
+      setUserData((prev) => ({
+        ...(prev || {}),
+        resumePath: profData.resume_path,
+        resumeFileName: filenameFromPath(profData.resume_path as string),
+        resumeUploadedAt: new Date().toISOString(),
+      }));
+    }).catch(() => {});
+  });
+
   const handleUpdateProfile = (newData: UserData) => {
     setUserData(newData);
     localStorage.setItem('screnaUserData', JSON.stringify(newData));
@@ -2396,6 +2409,7 @@ export function DashboardPage() {
       // Waits for the parse job to succeed; the backend persists the resume
       // itself at that point, so no updateProfile() follow-up here.
       const { structuredResume, resumePath } = await uploadResumeAndWait(file);
+      emitResumeUploaded();
       const sr: any = structuredResume;
       const newResumeData: Partial<UserData> = {
         resumeFileName: file.name,

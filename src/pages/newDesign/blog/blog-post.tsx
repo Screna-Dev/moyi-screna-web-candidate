@@ -1,31 +1,116 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { Navbar } from '@/components/newDesign/home/navbar';
 import { Footer } from '@/components/newDesign/home/footer';
 import { PortableText } from '@/components/newDesign/blog/portable-text';
-import { getPost, urlFor, CATEGORY_LABELS, formatDate, type Post } from '@/services/sanity';
+import { useSeo, SITE_URL } from '@/hooks/useSeo';
+import { readPrerenderSeed } from '@/utils/prerenderSeed';
+import {
+  getPost,
+  getRelatedPosts,
+  urlFor,
+  CATEGORY_LABELS,
+  formatDate,
+  type Post,
+  type PostListItem,
+} from '@/services/sanity';
+
+// Module scope, not render — see readPrerenderSeed.
+const SEED = readPrerenderSeed<Post>('__prerender_post__');
+
+function articleJsonLd(post: Post, url: string, image?: string) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.seoTitle || post.title,
+    description: post.excerpt,
+    datePublished: post.publishedAt,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+    ...(image ? { image: [image] } : {}),
+    ...(post.author?.name
+      ? { author: { '@type': 'Person', name: post.author.name, ...(post.author.role ? { jobTitle: post.author.role } : {}) } }
+      : {}),
+    publisher: {
+      '@type': 'Organization',
+      name: 'Screna AI',
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` },
+    },
+  };
+}
+
+function breadcrumbJsonLd(post: Post, url: string) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+      { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
+      { '@type': 'ListItem', position: 3, name: post.title, item: url },
+    ],
+  };
+}
 
 export function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [post, setPost] = useState<Post | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // The seed describes one specific post. Client-side navigation to a
+  // different article must still hit the network.
+  const seeded = SEED && SEED.slug === slug ? SEED : null;
+
+  const [fetched, setFetched] = useState<Post | null>(seeded);
+  const [loading, setLoading] = useState(!seeded);
   const [notFound, setNotFound] = useState(false);
+  const [related, setRelated] = useState<PostListItem[]>([]);
+
+  // While navigating from one article to the next, `fetched` still holds the
+  // previous post for a render. Never show — or describe in <head> — a post
+  // that doesn't match the URL.
+  const post = fetched && fetched.slug === slug ? fetched : null;
+
+  const url = `${SITE_URL}/blog/${slug}`;
+  const coverUrl = post?.cover?.asset?._ref
+    ? urlFor(post.cover).width(1200).height(630).fit('crop').url()
+    : undefined;
+
+  // `null` while loading keeps the prerenderer waiting for the real article.
+  // The not-found branch must still report ready (as noindex), or the build
+  // would stall on any dead slug.
+  useSeo(
+    post
+      ? {
+          title: `${post.seoTitle || post.title || 'Blog'} | Screna AI`,
+          description: post.excerpt ?? '',
+          path: `/blog/${slug}`,
+          type: 'article',
+          image: coverUrl,
+          jsonLd: [articleJsonLd(post, url, coverUrl), breadcrumbJsonLd(post, url)],
+        }
+      : notFound
+        ? {
+            title: 'Post not found | Screna AI',
+            description: 'This article may have been moved or unpublished.',
+            path: `/blog/${slug}`,
+            noindex: true,
+          }
+        : null,
+  );
 
   useEffect(() => {
     if (!slug) return;
+    // Already have this exact post from the prerender seed.
+    if (post) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
     getPost(slug)
       .then((data) => {
         if (cancelled) return;
-        if (!data) {
-          setNotFound(true);
-        } else {
-          setPost(data);
-          document.title = `${data.seoTitle || data.title || 'Blog'} · Screna`;
-        }
+        if (!data) setNotFound(true);
+        else setFetched(data);
       })
       .catch(() => {
         if (!cancelled) setNotFound(true);
@@ -36,7 +121,25 @@ export function BlogPostPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  // Related posts are internal-linking only — they must never gate
+  // `data-seo-ready`, so this runs independently of the article fetch.
+  useEffect(() => {
+    if (!post?._id) return;
+    let cancelled = false;
+    getRelatedPosts({ category: post.category, excludeId: post._id, limit: 3 })
+      .then((items) => {
+        if (!cancelled) setRelated(items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRelated([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [post?._id, post?.category]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -76,8 +179,29 @@ export function BlogPostPage() {
 
         {!loading && post && (
           <article>
+            {/* Visible breadcrumb, mirroring the BreadcrumbList JSON-LD above */}
+            <nav aria-label="Breadcrumb" className="mt-8">
+              <ol className="flex flex-wrap items-center gap-1.5 text-[12px] text-[#8a8f9a]">
+                <li>
+                  <Link to="/" className="hover:text-[#2E5BFF] transition-colors">
+                    Home
+                  </Link>
+                </li>
+                <ChevronRight className="w-3 h-3 shrink-0" aria-hidden="true" />
+                <li>
+                  <Link to="/blog" className="hover:text-[#2E5BFF] transition-colors">
+                    Blog
+                  </Link>
+                </li>
+                <ChevronRight className="w-3 h-3 shrink-0" aria-hidden="true" />
+                <li aria-current="page" className="text-[#5b5f6b] line-clamp-1">
+                  {post.title}
+                </li>
+              </ol>
+            </nav>
+
             {post.category && (
-              <p className="mt-8 text-[11px] font-semibold uppercase tracking-wider text-[#2E5BFF]">
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-[#2E5BFF]">
                 {CATEGORY_LABELS[post.category] ?? post.category}
               </p>
             )}
@@ -85,13 +209,11 @@ export function BlogPostPage() {
               {post.title}
             </h1>
             <p className="mt-3 text-[13px] text-[#8a8f9a]">
-              {[
-                post.author?.name,
-                post.author?.role,
-                post.publishedAt ? formatDate(post.publishedAt) : '',
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              {[post.author?.name, post.author?.role].filter(Boolean).join(' · ')}
+              {(post.author?.name || post.author?.role) && post.publishedAt ? ' · ' : ''}
+              {post.publishedAt && (
+                <time dateTime={post.publishedAt}>{formatDate(post.publishedAt)}</time>
+              )}
             </p>
 
             {post.cover?.asset?._ref && (
@@ -110,6 +232,33 @@ export function BlogPostPage() {
               </div>
             )}
           </article>
+        )}
+
+        {!loading && post && related.length > 0 && (
+          <aside className="mt-16 border-t border-[#EEF1F5] pt-10">
+            <h2 className="text-[19px] font-semibold text-[#0A0A0A]">Related articles</h2>
+            <ul className="mt-5 space-y-5">
+              {related.map((item) => (
+                <li key={item._id}>
+                  <Link to={`/blog/${item.slug}`} className="group block">
+                    {item.category && (
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#2E5BFF]">
+                        {CATEGORY_LABELS[item.category] ?? item.category}
+                      </span>
+                    )}
+                    <p className="mt-1 text-[16px] font-medium leading-snug text-[#0A0A0A] group-hover:text-[#2E5BFF] transition-colors">
+                      {item.title}
+                    </p>
+                    {item.excerpt && (
+                      <p className="mt-1 text-[14px] leading-relaxed text-[#5b5f6b] line-clamp-2">
+                        {item.excerpt}
+                      </p>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </aside>
         )}
       </main>
       <Footer />

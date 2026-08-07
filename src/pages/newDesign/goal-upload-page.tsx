@@ -12,6 +12,7 @@ import {
 } from '@/components/newDesign/ui/select';
 import { Label } from '@/components/newDesign/ui/label';
 import { uploadResumeAndWait, updateProfile } from '@/services/ProfileServices';
+import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import imgMascot from '@/assets/aef618fe1fbeac6dda6a449e6b61497c1dc80b4d.png';
 
@@ -83,6 +84,9 @@ export function GoalUploadPage({
       // Upload + wait for the parse job. On success the backend has already
       // persisted the resume, so there's no updateProfile() call here.
       const { structuredResume, resumePath } = await uploadResumeAndWait(file);
+      // The resume is persisted at this point — tell the global prompt so it
+      // stops asking, even if the visa dialog below is still open.
+      emitResumeUploaded();
       const visaStatus = (structuredResume as { profile?: { visa_status?: string } } | null)
         ?.profile?.visa_status;
 

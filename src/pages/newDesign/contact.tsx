@@ -3,11 +3,15 @@ import { Mail, Clock, ArrowRight, CheckCircle } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
 import { SupportCTA } from '../../components/newDesign/home/support-cta';
+import { useSeo } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
 
 // Destination inbox for contact submissions.
 const CONTACT_EMAIL = 'operations@screna.ai';
 
 export function ContactPage() {
+  useSeo({ ...SEO_COPY.contact, path: '/contact' });
+
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
     firstName: '',

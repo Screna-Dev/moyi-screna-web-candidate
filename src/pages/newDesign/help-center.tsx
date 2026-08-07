@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Search, ChevronDown, BookOpen, UserCircle, ShieldCheck, Layers } from 'lucide-react';
 import { Navbar } from '../../components/newDesign/home/navbar';
 import { Footer } from '../../components/newDesign/home/footer';
+import { useSeo } from '@/hooks/useSeo';
+import { SEO_COPY } from '@/constants/seo';
 
 const CATEGORIES = [
   { id: 'all', label: 'All Topics', icon: BookOpen },
@@ -119,6 +121,8 @@ const FAQ_ITEMS = [
 ];
 
 export function HelpCenterPage() {
+  useSeo({ ...SEO_COPY.help, path: '/help' });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>('1');

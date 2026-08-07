@@ -17,6 +17,7 @@ import {
   upsertJobsPreferences,
   recordCandidateConsent,
 } from '@/services/ProfileServices';
+import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -598,6 +599,7 @@ export function PremiumOnboardingWizard({
       // Waits for the parse job; the backend persists the resume on success, so
       // there's no updateProfile() follow-up here.
       await uploadResumeAndWait(file);
+      emitResumeUploaded();
       setResumeFileName(file.name);
       setResumeState('success');
     } catch (err: unknown) {

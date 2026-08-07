@@ -1,73 +1,94 @@
+import { lazy } from 'react';
 import { createBrowserRouter, Outlet, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 
-// Public / marketing pages (home subdirectory, use @/ aliases)
-import { QuestionDetailPage } from './pages/newDesign/home/question-detail';
-import FaqPage from './pages/newDesign/home/faq-page';
-// Jobs feature temporarily hidden for this release — restore when re-launching.
-// import JobBoardPage from './pages/newDesign/home/job-board'
-// Auth / onboarding pages
-import { AuthPage } from './pages/newDesign/auth';
-import ForgotPassword from './pages/ForgetPassword';
-import { RefRedirect } from './pages/ref-redirect';
-import { SignupFlowPage } from './pages/newDesign/signup-flow';
-
-// Dashboard / post-login pages
-import { DashboardPage } from './pages/newDesign/dashboard';
-import { DashboardHomePage } from './pages/newDesign/dashboard-home';
-import { MockInterviewPage } from './pages/newDesign/home/mock-interview';
-import { AIMockPage } from './pages/newDesign/ai-mock';
-import { AIMockWhitePage } from './pages/newDesign/ai-mock-white';
-import { TrainingHistoryPage as HistoryPage } from './pages/newDesign/training-history-design';
-import { ReferEarnPage } from './pages/newDesign/refer-earn-design';
-import { SettingsPage } from './pages/newDesign/settings-design';
-import { EvaluationPage } from './pages/newDesign/evaluation-page';
-import { AddExperiencePage } from './pages/newDesign/add-experience';
-import { QuestionUnknownPage } from './pages/newDesign/home/question-unknown';
-import { SessionConfirmPage } from './components/newDesign/session-confirm';
-import GoogleCallback from './pages/GoogleCallback';
-import PaymentSuccess from './pages/PaymentSuccess';
-import PremiumOnboardingPage from './pages/PremiumOnboardingPage';
-import { MyContributionsPage } from './pages/newDesign/my-contributions-design';
-import { PersonalizedPracticePage } from './pages/newDesign/personalized-practice-design';
-import { QuickMockPage } from './pages/newDesign/quick-mock-page';
-import { CoachingPage } from './pages/newDesign/coaching-page';
+// ─── Eager imports ──────────────────────────────────────────────────────────
+// The public, prerendered pages (and the chrome they share) must render
+// synchronously from the first chunk: a Suspense fallback here would mean the
+// build-time snapshot captures a spinner instead of the page. Everything else
+// is code-split below.
 import { HomePage } from './pages/newDesign/home/home';
-import { InterviewInsightsPage } from './pages/newDesign/interview-insights-design';
-import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
-import { CompanyDetailPage } from './pages/newDesign/company-detail';
+import FaqPage from './pages/newDesign/home/faq-page';
+import { BlogListPage } from './pages/newDesign/blog/blog-list';
+import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 import { ContactPage } from './pages/newDesign/contact';
-import AdminConsole from './components/admin/console/AdminConsole';
-import AdminRedeemCodes from './pages/AdminRedeemCodes';
-import AdminAuditLogs from './pages/AdminAuditLogs';
-import AdminRoute from './components/AdminRoute';
 import { HelpCenterPage } from './pages/newDesign/help-center';
-import { CookieBanner } from './components/newDesign/cookie-banner';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
 import { CookiePolicy } from './pages/newDesign/cookie-policy';
 import { Terms } from './pages/newDesign/terms';
 import { DataProtectionPolicy } from './pages/newDesign/data-protection-policy';
-import { GoalPage } from './pages/newDesign/goal-page';
-import { GoalUploadPage } from './pages/newDesign/goal-upload-page';
 import { Navbar } from './components/newDesign/home/navbar';
 import { Footer } from './components/newDesign/home/footer';
+import { CookieBanner } from './components/newDesign/cookie-banner';
+import { ResumePromptModal } from './components/newDesign/resume-prompt-modal';
 import { useSessionTracking } from './hooks/useSessionTracking';
-import { OnboardingProcessPage } from './pages/newDesign/onboarding-process';
-import { OnboardingFlowOverviewPage } from './pages/newDesign/onboarding-flow-overview';
-import { OnboardingUploadResumePage } from './pages/newDesign/onboarding-upload-resume';
-import { MentorshipPage } from './components/newDesign/mentorship';
-import { MentorshipMarketplacePage } from './components/newDesign/mentorship-marketplace';
-import { MentorMarketplaceListPage } from './components/newDesign/mentor-marketplace-list';
-import { MentorDetailsPage } from './components/newDesign/mentor-details';
-import { GuestDashboardPage } from './components/newDesign/guest-dashboard';
-import { BlogListPage } from './pages/newDesign/blog/blog-list';
-import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 
-// Mentor dashboard (dual-role candidate/mentor accounts)
-import { MentorDashboardPage } from './pages/mentor/mentor-dashboard';
-import { SelectDashboardPage } from './pages/mentor/select-dashboard';
+// ─── Lazy routes ────────────────────────────────────────────────────────────
+// Everything behind the login wall, plus auth/onboarding. App.tsx already
+// wraps <RouterProvider> in a <Suspense> with a full-page fallback, so no
+// extra boundary is needed here.
+//
+// Named exports need the `.then(m => ({ default: m.X }))` unwrap; default
+// exports do not.
+
+// Auth / onboarding
+const AuthPage = lazy(() => import('./pages/newDesign/auth').then((m) => ({ default: m.AuthPage })));
+const ForgotPassword = lazy(() => import('./pages/ForgetPassword'));
+const GoogleCallback = lazy(() => import('./pages/GoogleCallback'));
+const RefRedirect = lazy(() => import('./pages/ref-redirect').then((m) => ({ default: m.RefRedirect })));
+const SignupFlowPage = lazy(() => import('./pages/newDesign/signup-flow').then((m) => ({ default: m.SignupFlowPage })));
+const GoalPage = lazy(() => import('./pages/newDesign/goal-page').then((m) => ({ default: m.GoalPage })));
+const GoalUploadPage = lazy(() => import('./pages/newDesign/goal-upload-page').then((m) => ({ default: m.GoalUploadPage })));
+const OnboardingProcessPage = lazy(() => import('./pages/newDesign/onboarding-process').then((m) => ({ default: m.OnboardingProcessPage })));
+const OnboardingFlowOverviewPage = lazy(() => import('./pages/newDesign/onboarding-flow-overview').then((m) => ({ default: m.OnboardingFlowOverviewPage })));
+const OnboardingUploadResumePage = lazy(() => import('./pages/newDesign/onboarding-upload-resume').then((m) => ({ default: m.OnboardingUploadResumePage })));
+
+// Questions
+const QuestionDetailPage = lazy(() => import('./pages/newDesign/home/question-detail').then((m) => ({ default: m.QuestionDetailPage })));
+const QuestionUnknownPage = lazy(() => import('./pages/newDesign/home/question-unknown').then((m) => ({ default: m.QuestionUnknownPage })));
+
+// Practice / interview flow
+const MockInterviewPage = lazy(() => import('./pages/newDesign/home/mock-interview').then((m) => ({ default: m.MockInterviewPage })));
+const PersonalizedPracticePage = lazy(() => import('./pages/newDesign/personalized-practice-design').then((m) => ({ default: m.PersonalizedPracticePage })));
+const QuickMockPage = lazy(() => import('./pages/newDesign/quick-mock-page').then((m) => ({ default: m.QuickMockPage })));
+const CoachingPage = lazy(() => import('./pages/newDesign/coaching-page').then((m) => ({ default: m.CoachingPage })));
+const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
+const AIMockPage = lazy(() => import('./pages/newDesign/ai-mock').then((m) => ({ default: m.AIMockPage })));
+const AIMockWhitePage = lazy(() => import('./pages/newDesign/ai-mock-white').then((m) => ({ default: m.AIMockWhitePage })));
+const EvaluationPage = lazy(() => import('./pages/newDesign/evaluation-page').then((m) => ({ default: m.EvaluationPage })));
+const AddExperiencePage = lazy(() => import('./pages/newDesign/add-experience').then((m) => ({ default: m.AddExperiencePage })));
+
+// Dashboard / account
+const DashboardPage = lazy(() => import('./pages/newDesign/dashboard').then((m) => ({ default: m.DashboardPage })));
+const DashboardHomePage = lazy(() => import('./pages/newDesign/dashboard-home').then((m) => ({ default: m.DashboardHomePage })));
+const MyContributionsPage = lazy(() => import('./pages/newDesign/my-contributions-design').then((m) => ({ default: m.MyContributionsPage })));
+const ReferEarnPage = lazy(() => import('./pages/newDesign/refer-earn-design').then((m) => ({ default: m.ReferEarnPage })));
+const HistoryPage = lazy(() => import('./pages/newDesign/training-history-design').then((m) => ({ default: m.TrainingHistoryPage })));
+const SettingsPage = lazy(() => import('./pages/newDesign/settings-design').then((m) => ({ default: m.SettingsPage })));
+const PaymentSuccess = lazy(() => import('./pages/PaymentSuccess'));
+const PremiumOnboardingPage = lazy(() => import('./pages/PremiumOnboardingPage'));
+
+// Interview insights (login-walled)
+const InterviewInsightsPage = lazy(() => import('./pages/newDesign/interview-insights-design').then((m) => ({ default: m.InterviewInsightsPage })));
+const CompanyDetailPage = lazy(() => import('./pages/newDesign/company-detail').then((m) => ({ default: m.CompanyDetailPage })));
+const ExperienceDetailPage = lazy(() => import('./pages/newDesign/experience-detail').then((m) => ({ default: m.ExperienceDetailPage })));
+
+// Mentorship
+const MentorshipPage = lazy(() => import('./components/newDesign/mentorship').then((m) => ({ default: m.MentorshipPage })));
+const MentorshipMarketplacePage = lazy(() => import('./components/newDesign/mentorship-marketplace').then((m) => ({ default: m.MentorshipMarketplacePage })));
+const MentorMarketplaceListPage = lazy(() => import('./components/newDesign/mentor-marketplace-list').then((m) => ({ default: m.MentorMarketplaceListPage })));
+const MentorDetailsPage = lazy(() => import('./components/newDesign/mentor-details').then((m) => ({ default: m.MentorDetailsPage })));
+const GuestDashboardPage = lazy(() => import('./components/newDesign/guest-dashboard').then((m) => ({ default: m.GuestDashboardPage })));
+const MentorDashboardPage = lazy(() => import('./pages/mentor/mentor-dashboard').then((m) => ({ default: m.MentorDashboardPage })));
+const SelectDashboardPage = lazy(() => import('./pages/mentor/select-dashboard').then((m) => ({ default: m.SelectDashboardPage })));
+
+// Admin
+const AdminRoute = lazy(() => import('./components/AdminRoute'));
+const AdminConsole = lazy(() => import('./components/admin/console/AdminConsole'));
+const AdminRedeemCodes = lazy(() => import('./pages/AdminRedeemCodes'));
+const AdminAuditLogs = lazy(() => import('./pages/AdminAuditLogs'));
 
 // Retention: 在 providers 内部挂载，用于上报 session_end（需要读取 useAuth）
 function SessionTracker() {
@@ -83,6 +104,9 @@ function RootLayout() {
         <RecommendedJobsProvider>
           <SessionTracker />
           <Outlet />
+          {/* Signed-in users who skipped onboarding step 3 get asked for their
+              resume on every app page, not just the dashboard. */}
+          <ResumePromptModal />
           <CookieBanner />
         </RecommendedJobsProvider>
       </UserPlanProvider>
