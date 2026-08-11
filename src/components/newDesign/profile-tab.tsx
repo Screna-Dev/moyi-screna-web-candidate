@@ -133,8 +133,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [customRoles, setCustomRoles] = useState<string[]>([]);
   const [roleQuery, setRoleQuery] = useState('');
 
-  const [, setStructuredResume] = useState<Record<string, unknown> | null>(null);
-
   // ── Profile preferences (kept for merging on save) ──
   const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
 
@@ -202,9 +200,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       // Keep the actual uploaded file name for display.
       setResumeFile({ name: file.name, size: sizeStr });
 
-      if (structuredResume) {
-        setStructuredResume(structuredResume as Record<string, unknown>);
-      } else {
+      if (!structuredResume) {
         console.warn('[resume] no structured_resume after upload — backend may not have persisted');
       }
 
@@ -220,11 +216,8 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   // Also re-run when the global resume prompt uploads from another page, so the
   // card doesn't stay on its empty state.
   const fetchResume = useCallback(() => {
-    return getProfile().then((res: { data: { data?: { resume_path?: string; structured_resume?: { profile?: { full_name?: string } } } } }) => {
+    return getProfile().then((res: { data: { data?: { resume_path?: string } } }) => {
       const data = res.data?.data ?? res.data;
-      if (data?.structured_resume) {
-        setStructuredResume(data.structured_resume as Record<string, unknown>);
-      }
       if (data?.resume_path) {
         const path = data.resume_path as string;
         setResumePath(path);

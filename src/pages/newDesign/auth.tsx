@@ -433,19 +433,24 @@ export function AuthPage() {
       // Signin is the only endpoint that reports AUTH_EMAIL_NOT_VERIFIED, so it
       // is the only way an abandoned signup can get back to the code step.
       if (!isLogin && errorCode === AUTH_EMAIL_ALREADY_REGISTERED) {
-        if (isRegisterRoute) {
-          // /register hides the login toggle, so we have to leave the route.
-          const params = new URLSearchParams({ login: 'true', email, notice: 'email-exists' });
-          if (returnTo) params.set('returnTo', returnTo);
-          if (referralCode) params.set('ref', referralCode);
-          navigate(`/auth?${params.toString()}`, { replace: true });
-          return;
-        }
         // Keep email + password so the user just presses "Log In" once.
         setIsLogin(true);
         setPasswordErrors([]);
         setInfo(EMAIL_EXISTS_NOTICE);
         toast({ title: 'Email already registered', description: 'Please log in to continue.' });
+        if (isRegisterRoute) {
+          // /register hides the login toggle, so we also have to leave the
+          // route. /auth and /register render the same element, so this
+          // component stays mounted across the navigation — the state set above
+          // is what switches the form; the query params are only a fallback for
+          // someone loading that URL cold. The email stays out of them: it is
+          // already in component state, and PostHog captures $current_url on
+          // every pageview.
+          const params = new URLSearchParams({ login: 'true', notice: 'email-exists' });
+          if (returnTo) params.set('returnTo', returnTo);
+          if (referralCode) params.set('ref', referralCode);
+          navigate(`/auth?${params.toString()}`, { replace: true });
+        }
         return;
       }
 
