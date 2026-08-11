@@ -3,10 +3,10 @@ import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
   UploadCloud, FileText, Eye, Download, Settings,
-  BadgeCheck, Building2, Coins, Camera, Loader2,
+  BadgeCheck, Building2, Coins, Camera, Loader2, AlertCircle,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, getPersonalInfo, uploadAvatar, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import { WidePageContainer } from './dashboard-page';
 import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
@@ -123,6 +123,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [resumeProgress, setResumeProgress] = useState(0);
   const [resumeFile, setResumeFile] = useState<{ name: string; size: string } | null>(null);
   const [resumePath, setResumePath] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState('');
   const resumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -171,6 +172,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       ? `${(file.size / 1024).toFixed(0)} KB · Just uploaded`
       : `${(file.size / (1024 * 1024)).toFixed(1)} MB · Just uploaded`;
     setResumeFile({ name: file.name, size: sizeStr });
+    setResumeError('');
     setResumeState('uploading');
     setResumeProgress(0);
 
@@ -184,10 +186,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
     try {
       // upload-resume answers 202 with a job id only — wait for the parse job.
-      // Once it succeeds the backend has already persisted the resume, so no
-      // save call is needed; we just refetch GET /profile/resume for the
-      // authoritative structured_resume + resume_path.
-      const parsed = await uploadResumeAndWait(file);
+      // It resolves only once the backend has persisted a resume it could
+      // actually read, so no save call is needed; we just refetch
+      // GET /profile/resume for the authoritative resume_path.
+      await uploadResumeAndWait(file);
       emitResumeUploaded();
       clearInterval(resumeTimerRef.current!);
       setResumeProgress(100);
@@ -195,14 +197,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       const profileRes = await getProfile();
       const pdata = profileRes.data?.data ?? profileRes.data;
 
-      const structuredResume = pdata?.structured_resume ?? parsed.structuredResume;
       if (pdata?.resume_path) setResumePath(pdata.resume_path);
       // Keep the actual uploaded file name for display.
       setResumeFile({ name: file.name, size: sizeStr });
-
-      if (!structuredResume) {
-        console.warn('[resume] no structured_resume after upload — backend may not have persisted');
-      }
 
       setTimeout(() => setResumeState('success'), 300);
     } catch (uploadErr) {
@@ -210,6 +207,13 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       clearInterval(resumeTimerRef.current!);
       setResumeState('idle');
       setResumeFile(null);
+      // An unreadable file gets its own copy — "try again" is wrong advice when
+      // the same file will fail the same way.
+      setResumeError(
+        isResumeUnreadableError(uploadErr)
+          ? RESUME_UNREADABLE_MESSAGE
+          : 'Upload failed. Please try again.',
+      );
     }
   };
 
@@ -577,7 +581,14 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
             />
 
             {!loadingResume && resumeState === 'idle' && (
-              <p className="text-xs text-muted-foreground text-center">Keep your resume current — we use it for every application.</p>
+              resumeError ? (
+                <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{resumeError}</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center">Keep your resume current — we use it for every application.</p>
+              )
             )}
           </div>
         </div>

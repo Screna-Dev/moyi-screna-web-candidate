@@ -26,6 +26,16 @@ vi.mock('@/components/newDesign/ui/button', () => ({
 import { GoalUploadPage } from '../pages/newDesign/goal-upload-page';
 
 // ─── Helpers ──────────────────────────────────────────────
+// Shaped like the real ResumeUnreadableError (ProfileServices) — the page reads
+// `message`, so that plus the code is all it needs.
+function unreadableError() {
+  const err = new Error(
+    "We couldn't read your resume. Please try another file — a text-based PDF or Word document works best (scanned or image-only files can't be read).",
+  ) as Error & { code: string };
+  err.code = 'RESUME_UNREADABLE';
+  return err;
+}
+
 function makeFile(name = 'resume.pdf', sizeBytes = 500 * 1024, type = 'application/pdf'): File {
   const file = new File(['x'.repeat(sizeBytes)], name, { type });
   // File constructor doesn't set size from repeated chars reliably; override explicitly
@@ -179,14 +189,22 @@ describe('GoalUploadPage - Successful upload', () => {
 // ════════════════════════════════════════════════════════════
 // NO STRUCTURED RESUME IN RESPONSE
 // ════════════════════════════════════════════════════════════
-describe('GoalUploadPage - No structured resume returned', () => {
-  beforeEach(() => vi.clearAllMocks());
+// A file that stored fine but parsed to nothing never reaches the component as
+// a resolved upload — uploadResumeAndWait rejects with ResumeUnreadableError so
+// the step stays incomplete and the user is asked for a different file.
+describe('GoalUploadPage - Unreadable resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
 
-  it('still completes the upload when no structured resume comes back', async () => {
-    mockUploadResumeAndWait.mockResolvedValue({ structuredResume: null, resumePath: null, jobId: 'job-1' });
+  it('shows the "try another file" message and does not complete the step', async () => {
+    mockUploadResumeAndWait.mockRejectedValue(unreadableError());
     const { onUploadSuccess } = renderPage();
     await uploadFile(makeFile());
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/couldn't read your resume/i)).toBeInTheDocument();
+    expect(onUploadSuccess).not.toHaveBeenCalled();
+    expect(localStorage.getItem('screnaUserData')).toBeNull();
   });
 });
 

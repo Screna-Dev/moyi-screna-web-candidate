@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
-import { getProfile, uploadResumeAndWait } from '../../services/ProfileServices';
+import { getProfile, uploadResumeAndWait, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '../../services/ProfileServices';
 import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
@@ -152,6 +152,13 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
       setSubmitted(true);
     } catch (err: unknown) {
       setResumeUploading(false);
+      if (isResumeUnreadableError(err)) {
+        // The file is stored but unusable — drop it so the picker asks for a
+        // different one instead of resubmitting the same failure.
+        setResumeFile(null);
+        setError(RESUME_UNREADABLE_MESSAGE);
+        return;
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       if (msg?.toLowerCase().includes('already')) {
         // Application already exists (e.g. a concurrent submit, or the precall
