@@ -13,6 +13,17 @@ import "./styles/index.css";
   VITE_API_PATH: import.meta.env.VITE_API_PATH,
 };
 
+// The browser's automatic scroll restoration is wrong for this SPA: on reload,
+// session restore, or bfcache-style re-entry Chrome re-applies the pixel offset
+// from the previous visit *before* React has mounted anything, and the home
+// page's `scroll-snap-type: y mandatory` then locks that offset onto the
+// nearest section boundary — so `/` opens parked on Features / How it works
+// instead of the hero. We drive scrolling ourselves (see ScrollToTop in
+// router.tsx and the /#pricing hash handler in home.tsx).
+if ("scrollRestoration" in history) {
+  history.scrollRestoration = "manual";
+}
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");
 
