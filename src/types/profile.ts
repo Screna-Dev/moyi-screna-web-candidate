@@ -81,16 +81,6 @@ export interface Profile {
 
 // Constants
 
-export const VISA_STATUS_OPTIONS = [
-  { value: "US Citizen", label: "US Citizen" },
-  { value: "Green Card", label: "Green Card" },
-  { value: "H1B", label: "H1B Visa" },
-  { value: "OPT", label: "OPT" },
-  { value: "CPT", label: "CPT" },
-  { value: "F1", label: "F1 Student Visa" },
-  { value: "Other", label: "Other" },
-] as const;
-
 export const SKILL_CATEGORIES = [
   'Web Technologies',
   'Database',

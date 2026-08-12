@@ -1,5 +1,5 @@
-import { lazy } from 'react';
-import { createBrowserRouter, Outlet, Navigate } from 'react-router-dom';
+import { lazy, useEffect, useLayoutEffect } from 'react';
+import { createBrowserRouter, Outlet, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -96,6 +96,49 @@ function SessionTracker() {
   return null;
 }
 
+// Every route opens at the top. `history.scrollRestoration` is 'manual' (see
+// main.tsx), so nothing puts us back at the top for free — not on a fresh load
+// and not on back/forward. A hash is the one exception: /#pricing and friends
+// are handled by the target page's own hash effect, which must not be fought.
+//
+// useLayoutEffect so the reset lands before paint. 'instant' is required:
+// `scroll-behavior: smooth` on <html> would otherwise animate the jump, and on
+// the home page the mandatory scroll-snap cancels a smooth programmatic scroll
+// partway through, leaving it stranded mid-page.
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+
+  useLayoutEffect(() => {
+    if (hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+  }, [pathname, hash]);
+
+  // A late layout shift (fonts, the hero image, the announcement bar mounting)
+  // can nudge the offset again after the first paint, so re-assert once the
+  // page has settled — but only if nothing scrolled us on purpose in between.
+  useEffect(() => {
+    if (hash) return;
+    let cancelled = false;
+    const stop = () => { cancelled = true; };
+    window.addEventListener('wheel', stop, { passive: true, once: true });
+    window.addEventListener('touchstart', stop, { passive: true, once: true });
+    window.addEventListener('keydown', stop, { once: true });
+    const id = window.setTimeout(() => {
+      if (!cancelled && window.scrollY !== 0) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      }
+    }, 200);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+      window.removeEventListener('keydown', stop);
+    };
+  }, [pathname, hash]);
+
+  return null;
+}
+
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
@@ -103,6 +146,7 @@ function RootLayout() {
       <UserPlanProvider>
         <RecommendedJobsProvider>
           <SessionTracker />
+          <ScrollToTop />
           <Outlet />
           {/* Signed-in users who skipped onboarding step 3 get asked for their
               resume on every app page, not just the dashboard. */}

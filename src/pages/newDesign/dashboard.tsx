@@ -41,7 +41,8 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { EditProfileModal, type EditProfileData } from '@/components/newDesign/edit-profile-modal';
-import { getPersonalInfo, getProfile, uploadResumeAndWait } from '@/services/ProfileServices';
+import { getPersonalInfo, getProfile, uploadResumeAndWait, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '@/services/ProfileServices';
+import { useToast } from '@/hooks/use-toast';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
@@ -2308,6 +2309,7 @@ export function DashboardPage() {
   const { planData } = useUserPlan();
   const creditBalance = planData.permanentCreditBalance;
   const resumeInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     try {
@@ -2425,6 +2427,15 @@ export function DashboardPage() {
       localStorage.setItem('screnaUserData', JSON.stringify(updated));
     } catch (err) {
       console.error('Resume upload failed', err);
+      // There is no inline upload state on this page — the hidden input is the
+      // whole UI — so a toast is the only place to say what went wrong.
+      toast({
+        title: isResumeUnreadableError(err) ? "We couldn't read your resume" : 'Resume upload failed',
+        description: isResumeUnreadableError(err)
+          ? RESUME_UNREADABLE_MESSAGE
+          : 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 

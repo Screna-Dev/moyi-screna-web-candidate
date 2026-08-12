@@ -291,28 +291,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  // Errors propagate to the caller untouched. /auth/signup's only account-state
+  // failure is AUTH_EMAIL_ALREADY_REGISTERED (400) — it never reports an
+  // unverified account, so there's no code to resend from here. The caller routes
+  // that to signin, which is what surfaces AUTH_EMAIL_NOT_VERIFIED and resends.
   const signup = async (email: string, password: string, name: string, referralCode?: string) => {
-    try {
-      const payload: Record<string, string> = { email, password, name };
-      if (referralCode) payload.referralCode = referralCode;
-      await API.post('/auth/signup', payload);
-      // 00 — Acquire: 邮箱注册成功（UTM 归因经 super properties 自动附带）
-      safeCapture(posthog, EVENTS.SIGNUP_COMPLETED, {
-        signup_method: 'email',
-        promo_code: referralCode || null,
-      });
-    } catch (error: any) {
-      if (error.response?.data?.errorCode === 'EMAIL_NOT_VERIFIED' || 
-          error.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED') {
-        try {
-          await API.post('/auth/resend-confirmation-code', { email });
-        } catch (resendError) {
-          console.error('Failed to resend verification code:', resendError);
-        }
-        throw error;
-      }
-      throw error;
-    }
+    const payload: Record<string, string> = { email, password, name };
+    if (referralCode) payload.referralCode = referralCode;
+    await API.post('/auth/signup', payload);
+    // 00 — Acquire: 邮箱注册成功（UTM 归因经 super properties 自动附带）
+    safeCapture(posthog, EVENTS.SIGNUP_COMPLETED, {
+      signup_method: 'email',
+      promo_code: referralCode || null,
+    });
   };
 
   const verifyEmail = async (email: string, code: string) => {

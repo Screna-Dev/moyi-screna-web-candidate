@@ -226,6 +226,18 @@ function PrivacyContent() {
   );
 }
 
+const EMAIL_EXISTS_NOTICE =
+  "This email is already registered. Log in to continue — if you haven't verified it yet, we'll take you to the verification step.";
+
+// The two auth failures the backend gives a dedicated code for. Everything else
+// arrives as a generic UNAUTHORIZED / BAD_REQUEST, so `message` is the only
+// discriminator — and it's free text, not a contract. Branch on codes here.
+const AUTH_EMAIL_NOT_VERIFIED = 'AUTH_EMAIL_NOT_VERIFIED';          // 401 on signin — account INACTIVE
+const AUTH_EMAIL_ALREADY_REGISTERED = 'AUTH_EMAIL_ALREADY_REGISTERED'; // 400 on signup — password account exists
+
+const authErrorCode = (err: any): string =>
+  typeof err?.response?.data?.errorCode === 'string' ? err.response.data.errorCode : '';
+
 export function AuthPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -249,6 +261,11 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  // Non-error notice (e.g. "this email is already registered, log in instead"),
+  // shown in place of the red error banner.
+  const [info, setInfo] = useState(
+    searchParams.get('notice') === 'email-exists' ? EMAIL_EXISTS_NOTICE : ''
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
@@ -316,6 +333,7 @@ export function AuthPage() {
   const handleToggle = () => {
     setIsLogin(!isLogin);
     setError('');
+    setInfo('');
     setFieldErrors({});
     setPassword('');
     setPasswordErrors([]);
@@ -346,6 +364,7 @@ export function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     setFieldErrors({});
 
     if (!email || !password) {
@@ -395,18 +414,43 @@ export function AuthPage() {
       redirectingRef.current = false;
       console.error('Auth error:', err);
 
-      const isEmailNotVerified =
-        err.response?.data?.errorCode === 'AUTH_EMAIL_NOT_VERIFIED' ||
-        err.response?.data?.errorCode === 'USER_EXISTS_UNVERIFIED' ||
-        (err.response?.data?.errorCode === 'BAD_REQUEST' &&
-          err.response?.data?.message?.toLowerCase().includes('email not verified'));
+      const errorCode = authErrorCode(err);
 
-      if (isEmailNotVerified) {
+      // Signin against an account that never confirmed its email. This is the
+      // far side of the signup handoff below: an abandoned verification lands
+      // back on the code step, with a fresh code sent.
+      if (errorCode === AUTH_EMAIL_NOT_VERIFIED) {
         setRegisteredEmail(email);
         setIsNewSignup(false);
         setShowVerification(true);
         try { await resendVerificationCode(email); } catch (_) {}
         toast({ title: 'Email not verified', description: "Please check your email for the verification code. We've sent a new one." });
+        return;
+      }
+
+      // Signup against an email that already has a password account (verified or
+      // not) → hand off to login instead of a dead-end "already registered".
+      // Signin is the only endpoint that reports AUTH_EMAIL_NOT_VERIFIED, so it
+      // is the only way an abandoned signup can get back to the code step.
+      if (!isLogin && errorCode === AUTH_EMAIL_ALREADY_REGISTERED) {
+        // Keep email + password so the user just presses "Log In" once.
+        setIsLogin(true);
+        setPasswordErrors([]);
+        setInfo(EMAIL_EXISTS_NOTICE);
+        toast({ title: 'Email already registered', description: 'Please log in to continue.' });
+        if (isRegisterRoute) {
+          // /register hides the login toggle, so we also have to leave the
+          // route. /auth and /register render the same element, so this
+          // component stays mounted across the navigation — the state set above
+          // is what switches the form; the query params are only a fallback for
+          // someone loading that URL cold. The email stays out of them: it is
+          // already in component state, and PostHog captures $current_url on
+          // every pageview.
+          const params = new URLSearchParams({ login: 'true', notice: 'email-exists' });
+          if (returnTo) params.set('returnTo', returnTo);
+          if (referralCode) params.set('ref', referralCode);
+          navigate(`/auth?${params.toString()}`, { replace: true });
+        }
         return;
       }
 
@@ -432,7 +476,15 @@ export function AuthPage() {
       }
 
       let msg = 'Something went wrong. Please try again.';
-      if (err.response) msg = err.response.data?.message || 'Invalid email or password';
+      if (err.response?.status === 401) {
+        // Signin's remaining 401s are "User not found", "Invalid password" and
+        // "banned" — only distinguishable by free-text message. Collapse the
+        // first two into one answer so we don't confirm whether an account
+        // exists, and point banned users at support.
+        msg = /banned/i.test(String(err.response.data?.message ?? ''))
+          ? 'Your account has been suspended. Please contact operations@screna.ai.'
+          : 'Email or password is incorrect.';
+      } else if (err.response) msg = err.response.data?.message || 'Something went wrong. Please try again.';
       else if (err.request) msg = 'No response from server. Please check your connection.';
       else msg = err.message || msg;
 
@@ -647,6 +699,13 @@ export function AuthPage() {
                 <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   {error}
+                </div>
+              )}
+
+              {!error && info && (
+                <div className="flex items-start gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-6">
+                  <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  {info}
                 </div>
               )}
 

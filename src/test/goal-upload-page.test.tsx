@@ -9,43 +9,12 @@ import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 
 // ─── Mocks ────────────────────────────────────────────────
-const { mockUploadResumeAndWait, mockUpdateProfile } = vi.hoisted(() => ({
+const { mockUploadResumeAndWait } = vi.hoisted(() => ({
   mockUploadResumeAndWait: vi.fn(),
-  mockUpdateProfile: vi.fn(),
 }));
 
 vi.mock('@/services/ProfileServices', () => ({
   uploadResumeAndWait: mockUploadResumeAndWait,
-  updateProfile: mockUpdateProfile,
-}));
-
-vi.mock('@/types/profile', () => ({
-  VISA_STATUS_OPTIONS: [
-    { value: 'US Citizen', label: 'US Citizen' },
-    { value: 'H1B', label: 'H1B Visa' },
-    { value: 'OPT', label: 'OPT' },
-  ],
-}));
-
-vi.mock('@/components/newDesign/ui/dialog', () => ({
-  Dialog: ({ open, children }: any) => open ? <div data-testid="visa-dialog">{children}</div> : null,
-  DialogContent: ({ children }: any) => <div>{children}</div>,
-  DialogHeader: ({ children }: any) => <div>{children}</div>,
-  DialogTitle: ({ children }: any) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: any) => <p>{children}</p>,
-  DialogFooter: ({ children }: any) => <div>{children}</div>,
-}));
-
-vi.mock('@/components/newDesign/ui/select', () => ({
-  Select: ({ value, onValueChange, children }: any) => (
-    <select data-testid="visa-select" value={value} onChange={(e) => onValueChange(e.target.value)}>
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: any) => <>{children}</>,
-  SelectValue: ({ placeholder }: any) => <option value="">{placeholder}</option>,
-  SelectContent: ({ children }: any) => <>{children}</>,
-  SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
 }));
 
 vi.mock('@/components/newDesign/ui/button', () => ({
@@ -54,13 +23,19 @@ vi.mock('@/components/newDesign/ui/button', () => ({
   ),
 }));
 
-vi.mock('@/components/newDesign/ui/label', () => ({
-  Label: ({ children }: any) => <label>{children}</label>,
-}));
-
 import { GoalUploadPage } from '../pages/newDesign/goal-upload-page';
 
 // ─── Helpers ──────────────────────────────────────────────
+// Shaped like the real ResumeUnreadableError (ProfileServices) — the page reads
+// `message`, so that plus the code is all it needs.
+function unreadableError() {
+  const err = new Error(
+    "We couldn't read your resume. Please try another file — a text-based PDF or Word document works best (scanned or image-only files can't be read).",
+  ) as Error & { code: string };
+  err.code = 'RESUME_UNREADABLE';
+  return err;
+}
+
 function makeFile(name = 'resume.pdf', sizeBytes = 500 * 1024, type = 'application/pdf'): File {
   const file = new File(['x'.repeat(sizeBytes)], name, { type });
   // File constructor doesn't set size from repeated chars reliably; override explicitly
@@ -92,9 +67,8 @@ function renderPage(onUploadSuccess = vi.fn()) {
 // ─── Mock API responses ───────────────────────────────────
 // uploadResumeAndWait uploads, polls the parse job, and resolves once the
 // backend reports `succeeded` — at which point the resume is already saved
-// server-side, so the component must NOT call updateProfile on the happy path.
-// Include visa_status so happy-path tests don't trigger the visa dialog.
-const structuredResume = { profile: { full_name: 'Test User', headline: 'Engineer', visa_status: 'US Citizen' } };
+// server-side, so the component never re-saves it.
+const structuredResume = { profile: { full_name: 'Test User', headline: 'Engineer' } };
 
 const successResponse = {
   structuredResume,
@@ -138,7 +112,6 @@ describe('GoalUploadPage - File size validation', () => {
 
   it('accepts files at exactly 1MB', async () => {
     mockUploadResumeAndWait.mockResolvedValue(successResponse);
-    mockUpdateProfile.mockResolvedValue({ data: {} });
     renderPage();
     await uploadFile(makeFile('exact.pdf', 1 * 1024 * 1024));
     await waitFor(() => expect(mockUploadResumeAndWait).toHaveBeenCalledTimes(1));
@@ -146,7 +119,6 @@ describe('GoalUploadPage - File size validation', () => {
 
   it('accepts files under 1MB', async () => {
     mockUploadResumeAndWait.mockResolvedValue(successResponse);
-    mockUpdateProfile.mockResolvedValue({ data: {} });
     renderPage();
     await uploadFile(makeFile('small.pdf', 300 * 1024));
     await waitFor(() => expect(mockUploadResumeAndWait).toHaveBeenCalledTimes(1));
@@ -161,7 +133,6 @@ describe('GoalUploadPage - Successful upload', () => {
     vi.clearAllMocks();
     localStorage.clear();
     mockUploadResumeAndWait.mockResolvedValue(successResponse);
-    mockUpdateProfile.mockResolvedValue({ data: {} });
   });
 
   it('calls uploadResumeAndWait with the selected file', async () => {
@@ -169,13 +140,6 @@ describe('GoalUploadPage - Successful upload', () => {
     const file = makeFile();
     await uploadFile(file);
     await waitFor(() => expect(mockUploadResumeAndWait).toHaveBeenCalledWith(file));
-  });
-
-  it('does not re-save the resume — the backend persists it on parse success', async () => {
-    const { onUploadSuccess } = renderPage();
-    await uploadFile(makeFile());
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
-    expect(mockUpdateProfile).not.toHaveBeenCalled();
   });
 
   it('saves resume info to localStorage', async () => {
@@ -225,19 +189,22 @@ describe('GoalUploadPage - Successful upload', () => {
 // ════════════════════════════════════════════════════════════
 // NO STRUCTURED RESUME IN RESPONSE
 // ════════════════════════════════════════════════════════════
-describe('GoalUploadPage - No structured resume returned', () => {
-  beforeEach(() => vi.clearAllMocks());
+// A file that stored fine but parsed to nothing never reaches the component as
+// a resolved upload — uploadResumeAndWait rejects with ResumeUnreadableError so
+// the step stays incomplete and the user is asked for a different file.
+describe('GoalUploadPage - Unreadable resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
 
-  // NOTE: with no structured resume the component can't read a visa_status, so
-  // it routes to the visa dialog (onUploadSuccess is deferred until the dialog
-  // is resolved) rather than completing immediately.
-  it('shows the visa dialog when no structured resume comes back', async () => {
-    mockUploadResumeAndWait.mockResolvedValue({ structuredResume: null, resumePath: null, jobId: 'job-1' });
+  it('shows the "try another file" message and does not complete the step', async () => {
+    mockUploadResumeAndWait.mockRejectedValue(unreadableError());
     const { onUploadSuccess } = renderPage();
     await uploadFile(makeFile());
-    expect(await screen.findByTestId('visa-dialog')).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't read your resume/i)).toBeInTheDocument();
     expect(onUploadSuccess).not.toHaveBeenCalled();
-    expect(mockUpdateProfile).not.toHaveBeenCalled();
+    expect(localStorage.getItem('screnaUserData')).toBeNull();
   });
 });
 
@@ -281,84 +248,6 @@ describe('GoalUploadPage - Error handling', () => {
 });
 
 // ════════════════════════════════════════════════════════════
-// VISA STATUS FLOW
-// ════════════════════════════════════════════════════════════
-describe('GoalUploadPage - Visa status flow', () => {
-  const resumeWithoutVisa = { profile: { full_name: 'Test User' } }; // no visa_status
-  const resumeWithVisa = { profile: { full_name: 'Test User', visa_status: 'H1B' } };
-
-  const parsedNoVisa = { structuredResume: resumeWithoutVisa, resumePath: null, jobId: 'job-1' };
-  const parsedWithVisa = { structuredResume: resumeWithVisa, resumePath: null, jobId: 'job-1' };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockUpdateProfile.mockResolvedValue({ data: {} });
-  });
-
-  it('shows visa dialog when the parsed resume has no visa_status', async () => {
-    mockUploadResumeAndWait.mockResolvedValue(parsedNoVisa);
-    renderPage();
-    await uploadFile(makeFile());
-    expect(await screen.findByTestId('visa-dialog')).toBeInTheDocument();
-    expect(screen.getByText(/couldn't detect your visa status/i)).toBeInTheDocument();
-  });
-
-  it('does not show visa dialog when visa_status is already present', async () => {
-    mockUploadResumeAndWait.mockResolvedValue(parsedWithVisa);
-    const { onUploadSuccess } = renderPage();
-    await uploadFile(makeFile());
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
-    expect(screen.queryByTestId('visa-dialog')).not.toBeInTheDocument();
-    // Nothing to re-save — the backend already persisted the parsed resume.
-    expect(mockUpdateProfile).not.toHaveBeenCalled();
-  });
-
-  it('overwrites the saved resume once, with the visa status merged in', async () => {
-    // This is the documented "user edited the parse result" case: a single
-    // POST /profile/resume carrying the full resume. A bare { visa_status }
-    // body would replace the whole stored resume with just that field.
-    mockUploadResumeAndWait.mockResolvedValue(parsedNoVisa);
-    const { onUploadSuccess } = renderPage();
-
-    await uploadFile(makeFile());
-    await screen.findByTestId('visa-dialog');
-
-    // Select a visa status
-    fireEvent.change(screen.getByTestId('visa-select'), { target: { value: 'H1B' } });
-
-    // Click Save (button label is "Save & Continue")
-    fireEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() =>
-      expect(mockUpdateProfile).toHaveBeenCalledWith({
-        profile: { full_name: 'Test User', visa_status: 'H1B' },
-      })
-    );
-    expect(mockUpdateProfile).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(onUploadSuccess).toHaveBeenCalledTimes(1));
-  });
-
-  it('persists the resume with the chosen visa status to localStorage after Save', async () => {
-    mockUploadResumeAndWait.mockResolvedValue(parsedNoVisa);
-    renderPage();
-
-    await uploadFile(makeFile());
-    await screen.findByTestId('visa-dialog');
-    fireEvent.change(screen.getByTestId('visa-select'), { target: { value: 'OPT' } });
-    fireEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() => {
-      const stored = JSON.parse(localStorage.getItem('screnaUserData') || '{}');
-      expect(stored.resumeUploaded).toBe(true);
-      expect(stored.structuredResume).toEqual({
-        profile: { full_name: 'Test User', visa_status: 'OPT' },
-      });
-    });
-  });
-});
-
-// ════════════════════════════════════════════════════════════
 // RETRY AFTER FAILURE
 // ════════════════════════════════════════════════════════════
 describe('GoalUploadPage - Retry after failure', () => {
@@ -368,7 +257,6 @@ describe('GoalUploadPage - Retry after failure', () => {
     mockUploadResumeAndWait
       .mockRejectedValueOnce(new Error('Network error'))
       .mockResolvedValueOnce(successResponse);
-    mockUpdateProfile.mockResolvedValue({ data: {} });
 
     const { onUploadSuccess } = renderPage();
 

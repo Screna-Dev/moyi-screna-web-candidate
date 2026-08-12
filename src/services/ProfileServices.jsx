@@ -86,6 +86,74 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const envelope = (res) => res?.data?.data ?? res?.data ?? null;
 
 /**
+ * The parse job can report `succeeded` having produced nothing usable — a
+ * scanned/image-only PDF, an unparseable layout, an empty document. It comes
+ * back either with no `structured_resume` at all or with an empty skeleton (see
+ * isUsableStructuredResume). Either way the file itself is stored, so
+ * `resume_path` is set and the global resume prompt goes quiet, while every
+ * feature that actually consumes a resume (mock generation, mentor
+ * applications, job matching, onboarding prefill) reads `structured_resume` and
+ * would silently get nothing.
+ *
+ * That is not a successful upload. `uploadResumeAndWait` throws this instead so
+ * call sites ask for a different file rather than showing a green checkmark.
+ */
+export const RESUME_UNREADABLE_CODE = 'RESUME_UNREADABLE';
+
+export const RESUME_UNREADABLE_MESSAGE =
+  "We couldn't read your resume. Please try another file — a text-based PDF or Word document works best (scanned or image-only files can't be read).";
+
+export class ResumeUnreadableError extends Error {
+  constructor(resumePath = null) {
+    super(RESUME_UNREADABLE_MESSAGE);
+    this.name = 'ResumeUnreadableError';
+    this.code = RESUME_UNREADABLE_CODE;
+    // The file IS on the server — surfaced so a caller can still show/replace it.
+    this.resumePath = resumePath;
+  }
+}
+
+export const isResumeUnreadableError = (err) => err?.code === RESUME_UNREADABLE_CODE;
+
+/**
+ * A failed parse doesn't always come back empty — the common shape is a full
+ * skeleton with a name in it and nothing else:
+ *
+ *   { profile: { full_name: "…", summary: "" }, summary: "", job_titles: [],
+ *     skills: [], experience: [], education: [], projects: [],
+ *     certifications: [], links: { other: [] } }
+ *
+ * A name is usually recoverable from the file metadata or the first text line
+ * even when the body is an image, so it proves nothing. Require at least one
+ * piece of substance: any populated section, or a summary/headline.
+ */
+export const isUsableStructuredResume = (resume) => {
+  if (!resume || typeof resume !== 'object') return false;
+
+  const sections = ['experience', 'education', 'skills', 'job_titles', 'projects', 'certifications'];
+  if (sections.some((k) => Array.isArray(resume[k]) && resume[k].length > 0)) return true;
+
+  const profile = resume.profile || {};
+  const text = [resume.summary, profile.summary, profile.headline];
+  if (text.some((v) => typeof v === 'string' && v.trim().length > 0)) return true;
+
+  return Number(profile.total_years_experience) > 0;
+};
+
+// A `succeeded` job with no parsed resume in its payload is ambiguous: the
+// status endpoint doesn't always echo one back. Ask the profile before telling
+// the user their file is unreadable. (Only for a MISSING resume — one that came
+// back empty is unambiguous, and the stored copy would be the same empty parse
+// or, worse, a previous good resume that would mask this failure.)
+const readStoredResume = async () => {
+  try {
+    return envelope(await getProfile());
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Upload a resume file and wait for the backend to finish parsing it.
  *
  * This is the ONLY resume-upload entry point call sites should use.
@@ -101,13 +169,18 @@ const envelope = (res) => res?.data?.data ?? res?.data ?? null;
  * `succeeded` response, so re-polling a finished job would overwrite the user's
  * edits with the original parse.
  *
+ * Resolving means a resume the rest of the product can use: `structuredResume`
+ * is always populated. A job that succeeds without producing one rejects with
+ * ResumeUnreadableError — see its definition above.
+ *
  * @param {File} file - PDF/DOC/DOCX, max 1MB
  * @param {Object} [opts]
  * @param {(info: {attempt: number, status: string}) => void} [opts.onPoll] - progress hook
  * @param {number} [opts.intervalMs]
  * @param {number} [opts.maxAttempts]
- * @returns {Promise<{structuredResume: Object|null, rawText: string|null,
+ * @returns {Promise<{structuredResume: Object, rawText: string|null,
  *   resumePath: string|null, jobId: string|null}>}
+ * @throws {ResumeUnreadableError} when the file parsed to nothing usable
  * @throws when the parse job fails, times out, or no job id comes back
  */
 export const uploadResumeAndWait = async (file, opts = {}) => {
@@ -122,6 +195,9 @@ export const uploadResumeAndWait = async (file, opts = {}) => {
   // Defensive: if a deployment ever answers synchronously with the parsed
   // resume, take it and skip polling entirely.
   if (uploaded.structured_resume) {
+    if (!isUsableStructuredResume(uploaded.structured_resume)) {
+      throw new ResumeUnreadableError(uploaded.resume_path ?? null);
+    }
     return {
       structuredResume: uploaded.structured_resume,
       rawText: uploaded.raw_text ?? null,
@@ -142,12 +218,28 @@ export const uploadResumeAndWait = async (file, opts = {}) => {
 
     if (status === 'succeeded') {
       // Resume is saved server-side at this point. Stop polling.
-      return {
-        structuredResume: s.structured_resume ?? null,
-        rawText: s.raw_text ?? null,
-        resumePath: s.resume_path ?? null,
-        jobId,
-      };
+      if (s.structured_resume) {
+        if (!isUsableStructuredResume(s.structured_resume)) {
+          throw new ResumeUnreadableError(s.resume_path ?? null);
+        }
+        return {
+          structuredResume: s.structured_resume,
+          rawText: s.raw_text ?? null,
+          resumePath: s.resume_path ?? null,
+          jobId,
+        };
+      }
+
+      const stored = await readStoredResume();
+      if (isUsableStructuredResume(stored?.structured_resume)) {
+        return {
+          structuredResume: stored.structured_resume,
+          rawText: s.raw_text ?? null,
+          resumePath: stored.resume_path ?? s.resume_path ?? null,
+          jobId,
+        };
+      }
+      throw new ResumeUnreadableError(stored?.resume_path ?? s.resume_path ?? null);
     }
     if (status === 'failed') {
       throw new Error(s.error || 'Resume parsing failed.');
@@ -287,6 +379,7 @@ const ProfileService = {
   uploadResume,
   getResumeUploadStatus,
   uploadResumeAndWait,
+  isResumeUnreadableError,
   saveResume,
   parseResumeText,
   // Personal profile settings

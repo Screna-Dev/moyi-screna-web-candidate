@@ -3,14 +3,11 @@ import { Link } from 'react-router';
 import {
   Sparkles, Check, Pencil, X, Plus, Search, ArrowRight,
   UploadCloud, FileText, Eye, Download, Settings,
-  BadgeCheck, Building2, Coins, Camera, Loader2,
+  BadgeCheck, Building2, Coins, Camera, Loader2, AlertCircle,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, updateProfile, getPersonalInfo, uploadAvatar } from '../../services/ProfileServices';
+import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, getPersonalInfo, uploadAvatar, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from './ui/dialog';
 import { WidePageContainer } from './dashboard-page';
 import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
 import { resumeFileName } from '@/utils/resumeFile';
@@ -87,16 +84,6 @@ type UserPreferences = {
   work_authorization?: string;
 };
 
-const VISA_OPTIONS = [
-  { id: 'OPT',        label: 'OPT (F-1)',          sub: 'Requires OPT/H1B sponsorship' },
-  { id: 'CPT',        label: 'CPT',                sub: 'Requires CPT sponsorship'     },
-  { id: 'H1B',        label: 'H-1B',               sub: 'Employer sponsored'           },
-  { id: 'F1',         label: 'F1 Student Visa',    sub: 'Student visa'                 },
-  { id: 'Green Card', label: 'Permanent Resident', sub: 'Green Card holder'            },
-  { id: 'US Citizen', label: 'US Citizen',         sub: 'No sponsorship required'      },
-  { id: 'Other',      label: 'Other',              sub: ''                             },
-];
-
 // ── ProfileCoreContent ────────────────────────────────────────────────────────
 
 function SkeletonBlock({ className }: { className?: string }) {
@@ -136,6 +123,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [resumeProgress, setResumeProgress] = useState(0);
   const [resumeFile, setResumeFile] = useState<{ name: string; size: string } | null>(null);
   const [resumePath, setResumePath] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState('');
   const resumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -145,12 +133,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [customRoles, setCustomRoles] = useState<string[]>([]);
   const [roleQuery, setRoleQuery] = useState('');
-
-  // ── Work Authorization state ──
-  const [visaStatus, setVisaStatus] = useState<string>('');
-  const [showVisaDialog, setShowVisaDialog] = useState(false);
-  const [pendingVisaStatus, setPendingVisaStatus] = useState<string>('');
-  const [structuredResume, setStructuredResume] = useState<Record<string, unknown> | null>(null);
 
   // ── Profile preferences (kept for merging on save) ──
   const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
@@ -190,6 +172,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       ? `${(file.size / 1024).toFixed(0)} KB · Just uploaded`
       : `${(file.size / (1024 * 1024)).toFixed(1)} MB · Just uploaded`;
     setResumeFile({ name: file.name, size: sizeStr });
+    setResumeError('');
     setResumeState('uploading');
     setResumeProgress(0);
 
@@ -203,10 +186,10 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
 
     try {
       // upload-resume answers 202 with a job id only — wait for the parse job.
-      // Once it succeeds the backend has already persisted the resume, so no
-      // save call is needed; we just refetch GET /profile/resume for the
-      // authoritative structured_resume + resume_path.
-      const parsed = await uploadResumeAndWait(file);
+      // It resolves only once the backend has persisted a resume it could
+      // actually read, so no save call is needed; we just refetch
+      // GET /profile/resume for the authoritative resume_path.
+      await uploadResumeAndWait(file);
       emitResumeUploaded();
       clearInterval(resumeTimerRef.current!);
       setResumeProgress(100);
@@ -214,24 +197,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       const profileRes = await getProfile();
       const pdata = profileRes.data?.data ?? profileRes.data;
 
-      const structuredResume = pdata?.structured_resume ?? parsed.structuredResume;
       if (pdata?.resume_path) setResumePath(pdata.resume_path);
       // Keep the actual uploaded file name for display.
       setResumeFile({ name: file.name, size: sizeStr });
-
-      if (structuredResume) {
-        setStructuredResume(structuredResume as Record<string, unknown>);
-        const vs = structuredResume?.profile?.visa_status;
-        if (vs) {
-          setVisaStatus(vs);
-        } else {
-          // Visa status missing — prompt user
-          setPendingVisaStatus('');
-          setShowVisaDialog(true);
-        }
-      } else {
-        console.warn('[resume] no structured_resume after upload — backend may not have persisted');
-      }
 
       setTimeout(() => setResumeState('success'), 300);
     } catch (uploadErr) {
@@ -239,19 +207,21 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
       clearInterval(resumeTimerRef.current!);
       setResumeState('idle');
       setResumeFile(null);
+      // An unreadable file gets its own copy — "try again" is wrong advice when
+      // the same file will fail the same way.
+      setResumeError(
+        isResumeUnreadableError(uploadErr)
+          ? RESUME_UNREADABLE_MESSAGE
+          : 'Upload failed. Please try again.',
+      );
     }
   };
 
   // Also re-run when the global resume prompt uploads from another page, so the
   // card doesn't stay on its empty state.
   const fetchResume = useCallback(() => {
-    return getProfile().then((res: { data: { data?: { resume_path?: string; structured_resume?: { profile?: { full_name?: string; visa_status?: string } } } } }) => {
+    return getProfile().then((res: { data: { data?: { resume_path?: string } } }) => {
       const data = res.data?.data ?? res.data;
-      if (data?.structured_resume) {
-        setStructuredResume(data.structured_resume as Record<string, unknown>);
-        const vs = data.structured_resume?.profile?.visa_status;
-        if (vs) setVisaStatus(vs);
-      }
       if (data?.resume_path) {
         const path = data.resume_path as string;
         setResumePath(path);
@@ -294,7 +264,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
           }).filter(Boolean)
         );
       }
-      if (data?.work_authorization) setVisaStatus(data.work_authorization);
     }).catch(() => {}).finally(() => setLoadingPreferences(false));
 
     // Fetch personal info (name, email, timezone)
@@ -371,16 +340,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     );
   };
 
-  const savePreferences = (patch: { workAuthorization?: string }) => {
-    const wa = patch.workAuthorization ?? visaStatus;
-    const updated: UserPreferences = {
-      ...(userPrefs ?? {}),
-      ...(wa ? { work_authorization: wa } : {}),
-    };
-    setUserPrefs(updated);
-    saveProfilePreferences(updated).catch(() => {});
-  };
-
   const handleCompanyDone = () => {
     setEditingCompanies(false);
     setCompanyQuery('');
@@ -392,19 +351,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     };
     setUserPrefs(updated);
     saveProfilePreferences(updated).catch(() => {});
-  };
-
-  const handleVisaModalSave = () => {
-    if (!pendingVisaStatus) return;
-    setVisaStatus(pendingVisaStatus);
-    setShowVisaDialog(false);
-    savePreferences({ workAuthorization: pendingVisaStatus });
-    const base = structuredResume ?? {};
-    const updated = {
-      ...base,
-      profile: { ...(base.profile as Record<string, unknown>), visa_status: pendingVisaStatus },
-    };
-    updateProfile(updated).then(() => setStructuredResume(updated)).catch(() => {});
   };
 
   const handleRoleConfirm = () => {
@@ -635,7 +581,14 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
             />
 
             {!loadingResume && resumeState === 'idle' && (
-              <p className="text-xs text-muted-foreground text-center">Keep your resume current — we use it for every application.</p>
+              resumeError ? (
+                <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{resumeError}</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center">Keep your resume current — we use it for every application.</p>
+              )
             )}
           </div>
         </div>
@@ -1071,60 +1024,6 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
         </div>
       </div>
 
-
-      {/* ── Visa Status Dialog (shown after resume upload when visa is missing) ── */}
-      <Dialog open={showVisaDialog} onOpenChange={setShowVisaDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Set Your Work Authorization</DialogTitle>
-            <DialogDescription>
-              Your resume didn't include a visa status. Please select your current work authorization so we can match you with the right employers.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 py-2">
-            {VISA_OPTIONS.map(({ id, label, sub }) => {
-              const sel = pendingVisaStatus === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setPendingVisaStatus(id)}
-                  className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-lg border text-left transition-all ${
-                    sel ? 'border-primary bg-primary/5 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]' : 'border-border bg-card hover:border-primary/40'
-                  }`}
-                >
-                  <div>
-                    <p className={`text-sm font-medium ${sel ? 'text-primary' : 'text-foreground'}`}>{label}</p>
-                    {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-                  </div>
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                    sel ? 'border-primary bg-primary' : 'border-border bg-card'
-                  }`}>
-                    {sel && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <button
-              onClick={() => setShowVisaDialog(false)}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Skip for now
-            </button>
-            <button
-              onClick={handleVisaModalSave}
-              disabled={!pendingVisaStatus}
-              className="disabled:opacity-40 disabled:cursor-not-allowed"
-              style={primaryButtonStyle}
-              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = T.blue600; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = T.blue500; }}
-            >
-              <Check className="w-3.5 h-3.5" />Save & Continue
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );

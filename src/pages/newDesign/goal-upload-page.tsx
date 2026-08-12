@@ -4,16 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Check, UploadCloud, Target, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/newDesign/ui/button';
 import { Card, CardContent } from '@/components/newDesign/ui/card';
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/newDesign/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/newDesign/ui/select';
-import { Label } from '@/components/newDesign/ui/label';
-import { uploadResumeAndWait, updateProfile } from '@/services/ProfileServices';
+import { uploadResumeAndWait } from '@/services/ProfileServices';
 import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
-import { VISA_STATUS_OPTIONS } from '@/types/profile';
 import imgMascot from '@/assets/aef618fe1fbeac6dda6a449e6b61497c1dc80b4d.png';
 
 type UploadState = 'idle' | 'uploading' | 'success';
@@ -32,16 +24,6 @@ export function GoalUploadPage({
   const [uploadState, setUploadState] = useState<UploadState>(initialState === 'target-job' ? 'success' : 'idle');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Visa dialog state
-  const [showVisaDialog, setShowVisaDialog] = useState(false);
-  const [tempVisaStatus, setTempVisaStatus] = useState('');
-  const [isSavingVisa, setIsSavingVisa] = useState(false);
-  const [pendingResume, setPendingResume] = useState<{
-    structuredResume: any;
-    fileName: string;
-    resumePath?: string;
-  } | null>(null);
 
   const saveToLocalStorage = (structuredResume: any, fileName: string, resumePath?: string) => {
     const existing = (() => {
@@ -85,17 +67,8 @@ export function GoalUploadPage({
       // persisted the resume, so there's no updateProfile() call here.
       const { structuredResume, resumePath } = await uploadResumeAndWait(file);
       // The resume is persisted at this point — tell the global prompt so it
-      // stops asking, even if the visa dialog below is still open.
+      // stops asking.
       emitResumeUploaded();
-      const visaStatus = (structuredResume as { profile?: { visa_status?: string } } | null)
-        ?.profile?.visa_status;
-
-      if (!visaStatus) {
-        setPendingResume({ structuredResume, fileName: file.name, resumePath: resumePath ?? undefined });
-        setUploadState('idle');
-        setShowVisaDialog(true);
-        return;
-      }
 
       saveToLocalStorage(structuredResume, file.name, resumePath ?? undefined);
       setUploadState('success');
@@ -103,40 +76,6 @@ export function GoalUploadPage({
     } catch (err: any) {
       setUploadError(err?.response?.data?.message || err?.message || 'Upload failed. Please try again.');
       setUploadState('idle');
-    }
-  };
-
-  const handleVisaSave = async () => {
-    if (!tempVisaStatus || !pendingResume) return;
-    setIsSavingVisa(true);
-    // The parsed resume is already saved server-side; this is the "user edited
-    // it" case, so overwrite it once with the visa status merged in. Posting a
-    // bare { visa_status } would replace the whole structured resume with it.
-    const withVisa = {
-      ...(pendingResume.structuredResume || {}),
-      profile: {
-        ...(pendingResume.structuredResume?.profile || {}),
-        visa_status: tempVisaStatus,
-      },
-    };
-    try {
-      await updateProfile(withVisa);
-      saveToLocalStorage(withVisa, pendingResume.fileName, pendingResume.resumePath);
-      setShowVisaDialog(false);
-      setPendingResume(null);
-      setTempVisaStatus('');
-      setUploadState('success');
-      onUploadSuccess?.();
-    } catch {
-      // still complete upload even if save fails
-      saveToLocalStorage(withVisa, pendingResume.fileName, pendingResume.resumePath);
-      setShowVisaDialog(false);
-      setPendingResume(null);
-      setTempVisaStatus('');
-      setUploadState('success');
-      onUploadSuccess?.();
-    } finally {
-      setIsSavingVisa(false);
     }
   };
 
@@ -321,37 +260,6 @@ export function GoalUploadPage({
 
         </AnimatePresence>
       </div>
-
-      {/* Visa Status Dialog */}
-      <Dialog open={showVisaDialog} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle>One more thing</DialogTitle>
-            <DialogDescription>
-              We couldn't detect your visa status from your resume. Please select it so we can tailor your results.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <Label className="text-sm font-medium mb-2 block">Visa Status</Label>
-            <Select value={tempVisaStatus} onValueChange={setTempVisaStatus}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select your visa status" />
-              </SelectTrigger>
-              <SelectContent>
-                {VISA_STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleVisaSave} disabled={!tempVisaStatus || isSavingVisa} className="w-full">
-              {isSavingVisa ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save & Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
