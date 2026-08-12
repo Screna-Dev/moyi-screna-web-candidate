@@ -83,10 +83,6 @@ async function blogRoutes() {
     throw new Error('dist/index.html is already a snapshot — re-run `vite build` before prerendering');
   }
   SHELL_TITLE = shellSrc.match(/<title>([^<]*)<\/title>/)?.[1] ?? '';
-  // The shell is reused by ~45 SPA routes, some of them publicly indexable
-  // (/experience/:id). Shipping the home page's canonical with all of them
-  // would declare the home page authoritative for every one — worse than
-  // having no canonical at all.
   const shell = shellSrc
     .replace(/\s*<link rel="canonical"[^>]*>/, '')
     .replace(/\s*<meta property="og:url"[^>]*>/, '')

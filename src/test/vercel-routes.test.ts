@@ -95,21 +95,80 @@ describe('vercel.json route coverage', () => {
     const paths = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(paths.sort()).toEqual([...PRERENDER_STATIC].sort());
   });
+});
 
-  // robots.txt used to Disallow: /interview, which prefix-matches — and so
-  // silently blocked /interview-insights.
-  it('has no robots.txt Disallow rule that prefix-matches a public route', () => {
-    const disallowed = readFileSync('public/robots.txt', 'utf8')
-      .split('\n')
-      .map((l) => l.match(/^Disallow:\s*(\S+)/)?.[1])
-      .filter((v): v is string => Boolean(v));
-    for (const rule of disallowed) {
-      for (const p of PRERENDER_STATIC) {
-        expect(
-          p === '/' || !p.startsWith(rule),
-          `robots.txt "Disallow: ${rule}" prefix-matches the public route ${p}`,
-        ).toBe(true);
-      }
+// robots.txt is a whitelist: `Disallow: /` blocks the whole site and each
+// `Allow:` opens one public path back up. A naive prefix check can't judge that
+// (every path starts with "/"), so these tests evaluate the file the way a
+// crawler does — RFC 9309 §2.2.2: of all matching rules the longest pattern
+// wins, and Allow breaks a tie. The failure this guards against is real: an
+// earlier version had `Disallow: /interview`, which prefix-matched and so
+// silently blocked /interview-insights.
+//
+// The file has a single `User-agent: *` group, so every rule line applies.
+const robotsRules = readFileSync('public/robots.txt', 'utf8')
+  .split('\n')
+  .map((l) => l.replace(/#.*$/, '').trim())
+  .flatMap((l) => {
+    const m = l.match(/^(Allow|Disallow):\s*(\S*)$/i);
+    return m && m[2] ? [{ allow: m[1].toLowerCase() === 'allow', pattern: m[2] }] : [];
+  });
+
+// A `$` suffix anchors the end of the path; `*` matches any run of characters.
+const robotsMatcher = (pattern: string) => {
+  const anchored = pattern.endsWith('$');
+  const body = anchored ? pattern.slice(0, -1) : pattern;
+  const escaped = body.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+  return new RegExp('^' + escaped + (anchored ? '$' : ''));
+};
+
+const isCrawlable = (path: string) => {
+  let winner: { allow: boolean; length: number } | undefined;
+  for (const rule of robotsRules) {
+    if (!robotsMatcher(rule.pattern).test(path)) continue;
+    const length = rule.pattern.length;
+    // Longest pattern wins; on a tie Allow wins.
+    if (!winner || length > winner.length || (length === winner.length && rule.allow)) {
+      winner = { allow: rule.allow, length };
     }
+  }
+  return winner ? winner.allow : true; // no rule matches => crawlable
+};
+
+describe('robots.txt', () => {
+  it('parses into rules', () => {
+    expect(robotsRules.length).toBeGreaterThan(5);
+    expect(robotsRules.some((r) => !r.allow && r.pattern === '/')).toBe(true);
+  });
+
+  it.each(PRERENDER_STATIC)('leaves the public route %s crawlable', (p) => {
+    expect(isCrawlable(p), `robots.txt blocks the public route ${p}`).toBe(true);
+  });
+
+  it('leaves blog posts crawlable', () => {
+    expect(isCrawlable('/blog/how-to-prepare-for-a-system-design-interview')).toBe(true);
+  });
+
+  // A disallowed sitemap is reported as unreadable in Search Console, which
+  // costs every URL in it.
+  it('leaves the sitemap and rendering assets crawlable', () => {
+    for (const p of ['/sitemap.xml', '/assets/index-abc123.js', '/assets/index-abc123.css']) {
+      expect(isCrawlable(p), `robots.txt blocks ${p}`).toBe(true);
+    }
+  });
+
+  it.each([
+    '/auth',
+    '/dashboard',
+    '/profile',
+    '/settings',
+    '/billing',
+    '/admin',
+    '/interview-insights',
+    '/marketplace',
+    '/mock-interview',
+    '/onboarding-flow',
+  ])('keeps the app route %s out of the index', (p) => {
+    expect(isCrawlable(p), `robots.txt still allows crawling ${p}`).toBe(false);
   });
 });

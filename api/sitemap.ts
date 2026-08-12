@@ -11,10 +11,11 @@ const PROJECT_ID = process.env.VITE_SANITY_PROJECT_ID || 'x5tgtd0h';
 const DATASET = process.env.VITE_SANITY_DATASET || 'production';
 const SITE_URL = (process.env.VITE_SITE_URL || 'https://www.screna.ai').replace(/\/$/, '');
 
-// Public, indexable marketing/content routes. (Keep in sync with robots.txt —
-// anything Disallowed there should NOT be listed here — and with
-// PRERENDER_STATIC in scripts/routes.mjs, which src/test/vercel-routes.test.ts
-// asserts is the identical set.)
+// Public, indexable marketing/content routes. (Keep in sync with robots.txt,
+// which is a whitelist — anything listed here needs its own `Allow:` rule
+// there, or it gets advertised in the sitemap and then blocked at crawl time —
+// and with PRERENDER_STATIC in scripts/routes.mjs, which
+// src/test/vercel-routes.test.ts asserts is the identical set.)
 //
 // /interview-insights and /marketplace sit behind the login wall, so they are
 // deliberately absent: advertising them in the sitemap just accrues

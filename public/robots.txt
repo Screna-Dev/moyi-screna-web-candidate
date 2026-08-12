@@ -1,12 +1,55 @@
+# https://www.screna.ai/robots.txt
+#
+# Whitelist model: crawling is disallowed by default (Disallow: /), and only
+# the marketing/content pages below are opened back up. Everything behind the
+# login wall — /dashboard, /profile, /settings, /billing, /admin, /auth, the
+# interview and onboarding flows, /interview-insights, /marketplace — is
+# therefore blocked without needing its own rule.
+#
+# Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each
+# Allow below overrides the catch-all Disallow.
+#
+# The Allow list mirrors PRERENDER_STATIC in scripts/routes.mjs and
+# STATIC_PATHS in api/sitemap.ts. Adding a public page means touching all
+# three; src/test/vercel-routes.test.ts asserts they stay in sync.
+
 User-agent: *
-Allow: /
-Disallow: /auth
-Disallow: /profile
-Disallow: /interview-insights
-Disallow: /interview-prep
-Disallow: /jobs
-Disallow: /mentors
-Disallow: /settings
-Disallow: /admin
+
+# Landing page. The $ anchors the match, so this is the home page only —
+# without it, "/" would prefix-match every URL on the site.
+Allow: /$
+
+# Blog index and every post (/blog/:slug).
+Allow: /blog
+
+# Marketing, support and legal pages.
+Allow: /faq
+Allow: /help
+Allow: /contact
+Allow: /privacy
+Allow: /terms
+Allow: /cookies
+Allow: /data-protection
+
+# Crawlers must be able to fetch the sitemap itself, otherwise Search Console
+# reports it as unreadable.
+Allow: /sitemap.xml
+Allow: /llms.txt
+
+# Rendering resources. Google renders pages before indexing them; blocking the
+# CSS/JS bundles or the hero images would make the landing page look broken to
+# the crawler.
+Allow: /*.css
+Allow: /*.js
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.webp
+Allow: /*.svg
+Allow: /*.ico
+Allow: /*.woff2
+Allow: /*.webmanifest
+
+Disallow: /
 
 Sitemap: https://www.screna.ai/sitemap.xml
