@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -127,6 +127,89 @@ function MembershipBanner({
 
   /* ── Paid member — banner intentionally removed for members ── */
   return null;
+}
+
+// ─── Switch Plan Confirm Modal ──────────────────────────────────────────────────
+// An upgrade is charged to the saved card immediately and takes effect right
+// away, so it needs an explicit confirmation — there is no Stripe Checkout page
+// in between to act as one.
+function SwitchPlanConfirmModal({
+  onClose,
+  onConfirm,
+  isActing = false,
+  fromPlanName,
+  toPlanName,
+  toPlanPrice,
+  changeType,
+  nextBillingDate,
+}: {
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+  isActing?: boolean;
+  fromPlanName: string;
+  toPlanName: string;
+  toPlanPrice: string;
+  changeType: 'upgrade' | 'downgrade';
+  nextBillingDate: string;
+}) {
+  const isUpgrade = changeType === 'upgrade';
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }} transition={{ duration: 0.16 }}
+        className="bg-card w-[420px] rounded-xl shadow-xl p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-foreground mb-2" style={{ fontSize: 16 }}>
+          {isUpgrade ? `Upgrade to ${toPlanName}?` : `Switch to ${toPlanName}?`}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+          {fromPlanName} → <span className="text-foreground font-medium">{toPlanName}</span> · {toPlanPrice}
+        </p>
+
+        <div className="flex items-start gap-2.5 rounded-lg bg-secondary px-3 py-2.5 mb-6 border border-border/60">
+          <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {isUpgrade ? (
+              <>
+                Your card on file will be charged <span className="text-foreground font-medium">today</span>,
+                prorated for the rest of the current period. {toPlanName} features unlock
+                immediately — this can't be undone from here.
+              </>
+            ) : (
+              <>
+                You keep {fromPlanName} until <span className="text-foreground font-medium">{nextBillingDate}</span>,
+                then move to {toPlanName}. Nothing is charged today.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={isActing}
+            className="px-4 py-2 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-60"
+          >
+            Go back
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isActing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isUpgrade ? 'Confirm and pay' : 'Schedule change'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 // ─── Cancel Confirm Modal ───────────────────────────────────────────────────────
@@ -359,9 +442,23 @@ const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
-  const { subscription, isActing, changeTier, cancel, resume } = useSubscription();
+  const {
+    subscription, isActing, changeTier, cancel, resume, refresh, cancelPendingDowngrade,
+  } = useSubscription();
   const navigate = useNavigate();
   const posthog = usePostHog();
+
+  // Guards the async fetchers below from setting state after unmount, and holds
+  // the invoice-poll timer so it can be cancelled rather than outliving us.
+  const mountedRef = useRef(true);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
 
   // ── Plan state (real) ──
   // useSubscription normalizes unknown/legacy tiers (e.g. old PREMIUM/STARTER
@@ -369,11 +466,22 @@ export function BillingTab() {
   const planState: PlanState =
     subscription && subscription.status !== 'canceled' ? subscription.plan : 'free';
 
-  // The 3-day refund window can't be derived yet: the backend returns no
-  // original-subscription date (`currentPeriodStart` resets on every renewal),
-  // so the refund_window UI below stays unreachable. Wire this to a real
-  // `subscribedAt` / `refundEligibleUntil` field when the API exposes one.
-  const isInRefundWindow = false;
+  // Refund policy (premium-consent-modal §4.3): full refund within 3 calendar
+  // days of *any* payment, renewals included — so the window reopens every
+  // period and `currentPeriodStart` (which resets on renewal) is the anchor.
+  //
+  // Inside the window, cancelling is immediate: access ends right away and the
+  // backend refunds in full via Stripe (no Ops review, no email — only the money
+  // takes 5–10 business days to settle). Outside it, cancelling just stops the
+  // renewal and access runs to the end of the period.
+  const REFUND_WINDOW_DAYS = 3;
+  const paidAtMs = subscription?.currentPeriodStart
+    ? new Date(subscription.currentPeriodStart).getTime()
+    : null;
+  const isInRefundWindow =
+    paidAtMs !== null &&
+    !Number.isNaN(paidAtMs) &&
+    Date.now() - paidAtMs <= REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   const cancelState: CancelState =
     subscription?.status === 'canceled'
@@ -386,12 +494,34 @@ export function BillingTab() {
 
   const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const planName = planState === 'free' ? 'Free' : titleCase(planState);
-  const pendingTierName = subscription?.downgradePendingTier
-    ? titleCase(subscription.downgradePendingTier)
-    : null;
   const cycleName = subscription
     ? subscription.billingCycle.charAt(0).toUpperCase() + subscription.billingCycle.slice(1)
     : 'Monthly';
+
+  // A scheduled downgrade can be a tier change, a billing-cycle change, or both
+  // — the backend defers either to the end of the current period. Reading only
+  // the tier meant a cycle downgrade was invisible here.
+  //
+  // `downgradePendingPlan` is a combined "TIER_CYCLE" value, so one half is
+  // often just a restatement of the current setting (e.g. pending BASIC_MONTHLY
+  // while already monthly). Only mention what actually differs.
+  const pendingTierName =
+    subscription?.downgradePendingTier && subscription.downgradePendingTier !== subscription.plan
+      ? titleCase(subscription.downgradePendingTier)
+      : null;
+  const pendingCycleName =
+    subscription?.downgradePendingCycle &&
+    subscription.downgradePendingCycle !== subscription.billingCycle
+      ? titleCase(subscription.downgradePendingCycle)
+      : null;
+  const pendingChangeLabel =
+    pendingTierName && pendingCycleName
+      ? `${pendingTierName} · ${pendingCycleName} billing`
+      : pendingTierName
+        ? pendingTierName
+        : pendingCycleName
+          ? `${pendingCycleName} billing`
+          : null;
   const nextBillingDate = formatDate(subscription?.currentPeriodEnd);
   const TIER_PRICE: Record<string, string> = { basic: '$7.99', advanced: '$29.99', flagship: '$79.99' };
   const nextBillingAmount = subscription?.nextBillingAmount != null
@@ -405,6 +535,7 @@ export function BillingTab() {
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
   const [selectedPlan,    setSelectedPlan]    = useState<'basic' | 'advanced' | 'flagship'>('advanced');
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
 
   // Preselect the tier the user is actually on once the subscription loads (and
   // after any change), so the panel never opens on a stale selection.
@@ -412,20 +543,28 @@ export function BillingTab() {
     if (planState !== 'free') setSelectedPlan(planState);
   }, [planState]);
 
+  // Belt and braces: a downgrade could get scheduled (another tab, or the row
+  // above) while the panel is already open on that tier.
+  const isSelectionScheduled = selectedPlan === subscription?.downgradePendingTier;
+
   // Badges come from live data: the tier in use, plus a scheduled downgrade
-  // target if one is pending.
-  const planOptions = PLAN_OPTIONS.map(plan => ({
-    ...plan,
-    badge:
-      plan.id === planState
-        ? { text: 'Current', color: 'blue' as const }
-        : plan.id === subscription?.downgradePendingTier
-          ? { text: 'Scheduled', color: 'green' as const }
-          : null,
-  }));
+  // target if one is pending. The scheduled tier is not selectable — requesting
+  // the same downgrade again is a no-op at best, so it's disabled and undone via
+  // "Cancel change" on the plan row instead.
+  const planOptions = PLAN_OPTIONS.map(plan => {
+    const isScheduled = plan.id === subscription?.downgradePendingTier;
+    return {
+      ...plan,
+      disabled: isScheduled,
+      badge:
+        plan.id === planState
+          ? { text: 'Current', color: 'blue' as const }
+          : isScheduled
+            ? { text: 'Scheduled', color: 'green' as const }
+            : null,
+    };
+  });
   const [cancelOpen,      setCancelOpen]      = useState(false);
-  const [cancelReason,    setCancelReason]    = useState('');
-  const [cancelComment,   setCancelComment]   = useState('');
   const [cancelSubmitted, setCancelSubmitted] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
@@ -444,12 +583,13 @@ export function BillingTab() {
     resetDate: null,
   });
 
-  const fetchCredits = async () => {
+  const fetchCredits = useCallback(async () => {
     try {
       const res = await PaymentService.getCredits();
       const data = res.data?.data ?? res.data ?? {};
       const recurring = data.recurringCreditBalance ?? 0;
       const permanent = data.permanentCreditBalance ?? 0;
+      if (!mountedRef.current) return;
       setCredits({
         recurringCreditBalance: recurring,
         permanentCreditBalance: permanent,
@@ -459,11 +599,11 @@ export function BillingTab() {
     } catch {
       /* keep defaults on failure */
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchCredits();
-  }, []);
+  }, [fetchCredits]);
 
   // ── This-month usage (real API: GET /payments/credit-usage ledger) ──
   // The endpoint returns a paginated ledger of CREDIT/DEBIT transactions, not a
@@ -471,42 +611,42 @@ export function BillingTab() {
   // DEBITs (credits consumed), and keep the entries for the history list.
   const [usedThisMonth, setUsedThisMonth] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const startISO = subscription?.currentPeriodStart;
-      const now = new Date();
-      const periodStart = startISO
-        ? new Date(startISO).getTime()
-        : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const fetchUsage = useCallback(async () => {
+    const startISO = subscription?.currentPeriodStart;
+    const now = new Date();
+    const periodStart = startISO
+      ? new Date(startISO).getTime()
+      : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-      const collected: UsageTxn[] = [];
-      try {
-        // Cap at 12 pages so a huge ledger can't spin forever; stop once we
-        // reach the last page or an entry older than the period start.
-        for (let page = 0; page < 12; page++) {
-          const res = await PaymentService.getCreditUsage(page);
-          const data = res.data?.data ?? res.data ?? {};
-          const content: UsageTxn[] = data.content ?? [];
-          collected.push(...content);
-          const isLast = data.pageMeta?.last ?? true;
-          const oldest = content.length
-            ? new Date(content[content.length - 1].createdAt).getTime()
-            : periodStart - 1;
-          if (isLast || oldest < periodStart) break;
-        }
-      } catch {
-        if (!cancelled) setUsedThisMonth(0);
-        return;
+    const collected: UsageTxn[] = [];
+    try {
+      // Cap at 12 pages so a huge ledger can't spin forever; stop once we
+      // reach the last page or an entry older than the period start.
+      for (let page = 0; page < 12; page++) {
+        const res = await PaymentService.getCreditUsage(page);
+        const data = res.data?.data ?? res.data ?? {};
+        const content: UsageTxn[] = data.content ?? [];
+        collected.push(...content);
+        const isLast = data.pageMeta?.last ?? true;
+        const oldest = content.length
+          ? new Date(content[content.length - 1].createdAt).getTime()
+          : periodStart - 1;
+        if (isLast || oldest < periodStart) break;
       }
+    } catch {
+      if (mountedRef.current) setUsedThisMonth(0);
+      return;
+    }
 
-      const used = collected
-        .filter(t => new Date(t.createdAt).getTime() >= periodStart && t.transactionType === 'DEBIT')
-        .reduce((sum, t) => sum + Math.abs(t.amount ?? 0), 0);
-      if (!cancelled) setUsedThisMonth(used);
-    })();
-    return () => { cancelled = true; };
+    const used = collected
+      .filter(t => new Date(t.createdAt).getTime() >= periodStart && t.transactionType === 'DEBIT')
+      .reduce((sum, t) => sum + Math.abs(t.amount ?? 0), 0);
+    if (mountedRef.current) setUsedThisMonth(used);
   }, [subscription?.currentPeriodStart]);
+
+  useEffect(() => {
+    fetchUsage();
+  }, [fetchUsage]);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -514,19 +654,51 @@ export function BillingTab() {
   const [invoices, setInvoices]               = useState<Invoice[]>([]);
   const [invoicePage]                         = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await PaymentService.getInvoices(invoicePage);
-        const content = res.data?.data?.content ?? res.data?.content ?? [];
-        if (!cancelled) setInvoices(content);
-      } catch {
-        if (!cancelled) setInvoices([]);
-      }
-    })();
-    return () => { cancelled = true; };
+  // Returns the row count so callers can tell whether a new invoice landed.
+  const fetchInvoices = useCallback(async (): Promise<number> => {
+    try {
+      const res = await PaymentService.getInvoices(invoicePage);
+      const content = res.data?.data?.content ?? res.data?.content ?? [];
+      if (mountedRef.current) setInvoices(content);
+      return content.length;
+    } catch {
+      if (mountedRef.current) setInvoices([]);
+      return 0;
+    }
   }, [invoicePage]);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
+  // Re-read every section of this tab. Any billing mutation (tier change,
+  // cancel, resume, credit top-up) can move the subscription, the credit
+  // balance, the usage ledger AND the invoice list, so they refresh together —
+  // refreshing only the subscription is what left the invoice table stale after
+  // an upgrade.
+  const refreshBilling = useCallback(async () => {
+    await Promise.allSettled([refresh(), fetchCredits(), fetchUsage(), fetchInvoices()]);
+  }, [refresh, fetchCredits, fetchUsage, fetchInvoices]);
+
+  // An upgrade's invoice is created by Stripe and reaches our DB via webhook, so
+  // it may not exist yet when the tier call returns. Poll a few times, stopping
+  // as soon as a new row shows up. Fire-and-forget: the immediate refresh has
+  // already run, this only fills in a late invoice.
+  const pollForNewInvoice = useCallback(async (countBefore: number) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Held in a ref so unmount clears it — a dangling timer kept firing after
+      // the component was gone.
+      await new Promise<void>(resolve => {
+        pollTimerRef.current = setTimeout(() => {
+          pollTimerRef.current = null;
+          resolve();
+        }, 1500);
+      });
+      if (!mountedRef.current) return;
+      const count = await fetchInvoices();
+      if (count > countBefore) return;
+    }
+  }, [fetchInvoices]);
 
   const fireToast   = (msg: string) => { setToastMsg(null); requestAnimationFrame(() => setToastMsg(msg)); };
 
@@ -536,7 +708,10 @@ export function BillingTab() {
       const res = await PaymentService.purchaseCustomPack(n);
       const url = res.data?.data?.url ?? res.data?.url;
       if (url) { window.location.href = url; return; }
-      await fetchCredits();
+      // Charged on the saved card — a credit pack also produces an invoice.
+      const invoiceCountBefore = invoices.length;
+      await refreshBilling();
+      void pollForNewInvoice(invoiceCountBefore);
     } catch {
       fireToast('Unable to start checkout. Please try again.');
     }
@@ -570,12 +745,26 @@ export function BillingTab() {
     }
   };
 
-  // Switch plan → POST /payments/subscriptions/tier. Upgrades are prorated and
-  // immediate; downgrades are scheduled for the end of the current period.
-  // If the response carries a Stripe URL the change is NOT applied yet — the
-  // user has to complete payment there, same as the create-subscription flow.
+  // Step 1 — never call the API straight from the panel. An upgrade charges the
+  // saved card immediately (no Checkout page to act as a confirmation), so ask
+  // first.
+  const handleRequestSwitch = () => {
+    if (selectedPlan === planState) {
+      setSwitchPlanOpen(false);
+      return;
+    }
+    // Already queued for the end of the period — nothing to request.
+    if (isSelectionScheduled) return;
+    setShowSwitchConfirm(true);
+  };
+
+  // Step 2 — POST /payments/subscriptions/tier. Upgrades are prorated and take
+  // effect immediately; downgrades are scheduled for the end of the period.
+  // If the response does carry a Stripe URL, nothing has applied yet and the
+  // user must be sent there instead.
   const handleConfirmSwitch = async () => {
     if (selectedPlan === planState) {
+      setShowSwitchConfirm(false);
       setSwitchPlanOpen(false);
       return;
     }
@@ -598,11 +787,21 @@ export function BillingTab() {
       return;
     }
 
+    // An upgrade bills right away, so the subscription, credit allowance, usage
+    // ledger and invoice list can all have moved — refresh the whole tab, then
+    // keep watching for the invoice that Stripe delivers by webhook.
+    const invoiceCountBefore = invoices.length;
+    await refreshBilling();
+    if (changeType === 'upgrade') {
+      void pollForNewInvoice(invoiceCountBefore);
+    }
+
     fireToast(
       changeType === 'upgrade'
-        ? 'Plan upgraded'
-        : 'Downgrade scheduled for the end of your billing period',
+        ? `Upgraded to ${titleCase(selectedPlan)} · active now`
+        : `Change to ${titleCase(selectedPlan)} scheduled for ${nextBillingDate}`,
     );
+    setShowSwitchConfirm(false);
     setSwitchPlanOpen(false);
   };
 
@@ -618,27 +817,47 @@ export function BillingTab() {
     });
     setShowCancelModal(false);
     setCancelOpen(false);
+    await refreshBilling();
     fireToast(`Subscription canceled · access continues until ${nextBillingDate}`);
   };
 
-  // Refund-window variant: same API call, but keeps the inline confirmation
-  // panel open. The reason/comment fields are collected for the team to read —
-  // there is no endpoint to submit them to yet.
+  // Refund-window variant: same cancel endpoint, but inside 3 days the backend
+  // ends access immediately and refunds in full — no Ops review, no email, and
+  // only the money takes time to settle. No reason/comment is collected.
+  //
+  // Because access ends at once, the refresh below can flip planState to Free
+  // and unmount this whole module, taking the inline confirmation with it — so
+  // the outcome also goes out as a toast, which lives outside the module.
   const handleSubmitCancellation = async () => {
     const ok = await cancel();
     if (!ok) return;
     safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
       plan_tier: planState,
       days_since_subscribed: daysSinceSubscribed,
-      cancel_reason: cancelReason || null,
+      refunded: true,
     });
     setCancelSubmitted(true);
+    fireToast(`Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`);
+    await refreshBilling();
+  };
+
+  // Undo a scheduled downgrade (tier and/or cycle) before it lands →
+  // POST /payments/subscriptions/cancel-pending-downgrade. Without this the user
+  // is stuck with the pending change until the period ends.
+  const handleCancelPendingDowngrade = async () => {
+    const ok = await cancelPendingDowngrade();
+    if (!ok) return;
+    await refreshBilling();
+    fireToast(`Scheduled change canceled · staying on ${planName}${
+      pendingCycleName ? ` · ${cycleName}` : ''
+    }`);
   };
 
   // Reactivate → POST /payments/subscriptions/resume (undoes a pending cancel).
   const handleReactivate = async () => {
     const ok = await resume();
     if (!ok) return;
+    await refreshBilling();
     fireToast('Subscription reactivated');
   };
 
@@ -660,6 +879,20 @@ export function BillingTab() {
   return (
     <div className="space-y-6">
       {/* ── Modals ── */}
+      <AnimatePresence>
+        {showSwitchConfirm && (
+          <SwitchPlanConfirmModal
+            onClose={() => setShowSwitchConfirm(false)}
+            onConfirm={handleConfirmSwitch}
+            isActing={isActing}
+            fromPlanName={planName}
+            toPlanName={titleCase(selectedPlan)}
+            toPlanPrice={PLAN_OPTIONS.find(p => p.id === selectedPlan)?.price ?? '—'}
+            changeType={getChangeType(planState, selectedPlan)}
+            nextBillingDate={nextBillingDate}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} onConfirm={handleCancelSubscription} isActing={isActing} accessEndsDate={nextBillingDate} />}</AnimatePresence>
       <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
       <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
@@ -712,11 +945,23 @@ export function BillingTab() {
                         ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
                         : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
                   </p>
-                  {/* A scheduled downgrade only takes effect at period end. */}
-                  {pendingTierName && !isCanceled && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Changing to {pendingTierName} on {nextBillingDate}
-                    </p>
+                  {/* A scheduled downgrade (tier and/or cycle) only takes
+                      effect at the end of the current period, and can be undone
+                      until then. */}
+                  {pendingChangeLabel && !isCanceled && (
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-xs text-muted-foreground">
+                        Changing to {pendingChangeLabel} on {nextBillingDate}
+                      </p>
+                      <button
+                        onClick={handleCancelPendingDowngrade}
+                        disabled={isActing}
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors disabled:opacity-60"
+                      >
+                        {isActing && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Cancel change
+                      </button>
+                    </div>
                   )}
                 </div>
                 {!isCanceled && (
@@ -739,10 +984,19 @@ export function BillingTab() {
                   >
                     <div className="mt-3 bg-secondary rounded-lg overflow-hidden border border-border/60">
                       {planOptions.map(plan => (
-                        <div
+                        <button
                           key={plan.id}
+                          type="button"
                           onClick={() => setSelectedPlan(plan.id)}
-                          className={`flex items-center justify-between px-4 py-3 cursor-pointer border-b border-border/50 last:border-0 transition-colors ${selectedPlan === plan.id ? 'bg-primary/5' : 'hover:bg-muted'}`}
+                          disabled={plan.disabled}
+                          aria-pressed={selectedPlan === plan.id}
+                          className={`w-full text-left flex items-center justify-between px-4 py-3 border-b border-border/50 last:border-0 transition-colors ${
+                            plan.disabled
+                              ? 'cursor-not-allowed opacity-60'
+                              : selectedPlan === plan.id
+                                ? 'cursor-pointer bg-primary/5'
+                                : 'cursor-pointer hover:bg-muted'
+                          }`}
                         >
                           <div>
                             <div className="flex items-center gap-2">
@@ -753,25 +1007,30 @@ export function BillingTab() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">{plan.price} · {plan.desc}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {plan.price} · {plan.desc}
+                              {plan.disabled && ' · already scheduled'}
+                            </p>
                           </div>
                           <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${selectedPlan === plan.id ? 'border-primary bg-primary' : 'border-border bg-card'}`}>
                             {selectedPlan === plan.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
-                        </div>
+                        </button>
                       ))}
                       <div className="bg-card border-t border-border">
                         {selectedPlan !== planState && (
                           <p className="px-4 pt-3 text-[11px] text-muted-foreground leading-relaxed">
-                            {getChangeType(planState, selectedPlan) === 'upgrade'
-                              ? 'Upgrades apply immediately and are prorated against your current period.'
+                            {isSelectionScheduled
+                              ? `${titleCase(selectedPlan)} is already scheduled for ${nextBillingDate} — use "Cancel change" above to undo it.`
+                              : getChangeType(planState, selectedPlan) === 'upgrade'
+                              ? 'Upgrades are charged to your card today, prorated for the rest of the period, and apply immediately.'
                               : `Downgrades take effect ${nextBillingDate ? `on ${nextBillingDate}` : 'at the end of your billing period'} — you keep your current access until then.`}
                           </p>
                         )}
                         <div className="flex gap-2 px-4 py-3">
                           <button
-                            onClick={handleConfirmSwitch}
-                            disabled={isActing || selectedPlan === planState}
+                            onClick={handleRequestSwitch}
+                            disabled={isActing || selectedPlan === planState || isSelectionScheduled}
                             className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -814,14 +1073,14 @@ export function BillingTab() {
                     <div>
                       <p className="text-xs font-medium text-destructive">Cancel subscription</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        You're within the 3-day refund window — you're eligible for a full refund.
+                        You're within the 3-day refund window — cancel now for a full refund.
                       </p>
                     </div>
                     <button
                       onClick={() => setCancelOpen(v => !v)}
                       className="px-3 py-1.5 rounded-lg border border-destructive/50 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors shrink-0 ml-4"
                     >
-                      Request cancellation
+                      Cancel and refund
                     </button>
                   </div>
                   <AnimatePresence>
@@ -835,41 +1094,25 @@ export function BillingTab() {
                           <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
                             <div className="flex items-center gap-2 mb-1.5">
                               <CheckCircle2 className="w-3.5 h-3.5 text-foreground shrink-0" />
-                              <p className="text-xs font-medium text-foreground">Cancellation request submitted</p>
+                              <p className="text-xs font-medium text-foreground">Subscription canceled</p>
                             </div>
                             <p className="text-xs text-muted-foreground leading-relaxed">
-                              Our team will review within 24 hours. You'll receive email confirmation with refund details to your payment method.
+                              A full refund of {nextBillingAmount} is on its way to your original payment
+                              method. Allow 5–10 business days for it to appear on your statement.
                             </p>
                           </div>
                         ) : (
                           <div className="mt-3 bg-red-50 border border-red-100 rounded-lg p-4">
-                            <p className="text-xs font-medium text-red-600 mb-1">Tell us why you're leaving</p>
+                            <p className="text-xs font-medium text-red-600 mb-1">Cancel now with a full refund</p>
                             <p className="text-xs text-red-500/80 mb-3">
-                              Our team will review and process your request within 24 hours.
+                              This takes effect immediately and can't be undone.
                             </p>
-                            <select
-                              value={cancelReason}
-                              onChange={e => setCancelReason(e.target.value)}
-                              className="w-full h-8 rounded-lg border border-red-200 bg-white px-2.5 text-xs text-foreground mb-2.5 focus:outline-none focus:ring-1 focus:ring-red-300"
-                            >
-                              <option value="">Select a reason…</option>
-                              <option>Found a job</option>
-                              <option>Too expensive</option>
-                              <option>Not using it enough</option>
-                              <option>Missing features I need</option>
-                              <option>Other</option>
-                            </select>
-                            <textarea
-                              value={cancelComment}
-                              onChange={e => setCancelComment(e.target.value)}
-                              placeholder="Any additional comments (optional)"
-                              rows={3}
-                              className="w-full rounded-lg border border-red-200 bg-white px-2.5 py-2 text-xs text-foreground mb-3 resize-none focus:outline-none focus:ring-1 focus:ring-red-300 placeholder:text-muted-foreground"
-                            />
                             <div className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 mb-3 border border-red-100">
                               <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                               <p className="text-xs text-muted-foreground leading-relaxed">
-                                Refund of <span className="text-foreground font-medium">{nextBillingAmount}</span> will be returned to your payment method within 5–10 business days upon approval.
+                                Your access ends right away — not at the end of the period. A full refund of{' '}
+                                <span className="text-foreground font-medium">{nextBillingAmount}</span> goes back to
+                                your original payment method and takes 5–10 business days to appear.
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -879,7 +1122,7 @@ export function BillingTab() {
                                 className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-destructive text-white text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
                               >
                                 {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                                Submit request
+                                Confirm cancellation
                               </button>
                               <button
                                 onClick={() => setCancelOpen(false)}
