@@ -29,6 +29,15 @@ import {
   deleteReview,
 } from "../../../../services/mentorshipAdminService";
 import { updateBookingMentorNote } from "../../../../services/MentorService";
+import {
+  DISCIPLINES,
+  DISCIPLINE_LABELS,
+  SERVICE_TYPES,
+  SERVICE_TYPE_LABELS,
+  type Discipline,
+  type PhotoStatus,
+  type ServiceType,
+} from "@/constants/mentorship";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -45,6 +54,10 @@ const ALL_EXPERTISE_TAGS = [
 ];
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
+
+// Backend floor for regular session prices ($25.00). Special-offer prices are a
+// separate column and are not subject to it.
+const MIN_PRICE_CENTS = 2500;
 
 // Upper bounds for mentor pricing so an arbitrary number can't be entered.
 const MAX_RATE_30 = 1000; // $/30 min
@@ -90,7 +103,14 @@ type Mentor = {
   password?: string;
   bio?: string;
   timezone?: string;
-  expertiseTags: string[];
+  // Closed enums on the profile — replaced the old free-text expertiseTags.
+  // Both must be non-empty for the mentor to be listed and bookable.
+  services: ServiceType[];
+  disciplines: Discipline[];
+  // Avatar moderation — PHOTO_APPROVED (with a resolvable avatar) is the 7th
+  // listing requirement.
+  photoStatus?: PhotoStatus;
+  avatarUrl?: string;
   rate30: number;
   rate60: number;
   status: "Pending" | "Active" | "Rejected" | "Suspend" | "Waitlist";
@@ -139,12 +159,12 @@ function mapApiMentor(api: any): Mentor {
   const rate30 = price30s.length ? Math.min(...price30s) / 100 : 0;
   const rate60 = price60s.length ? Math.min(...price60s) / 100 : 0;
 
-  // Service offerings are persisted on the profile's expertiseTags, so an
-  // offering is "enabled" when its service-type label is present there.
-  const expertiseTags: string[] = Array.isArray(api?.expertiseTags) ? api.expertiseTags : [];
+  // `offerings` is now purely the topic/pricing view: an offering is "enabled"
+  // when the mentor actually has a bookable topic with that title. What the
+  // mentor is discoverable *as* lives on `services`/`disciplines` instead.
   const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
     const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
-    const enabled = expertiseTags.some((tag) => (tag || "").toLowerCase() === t.label.toLowerCase());
+    const enabled = !!matched;
     return {
       typeId: t.id,
       enabled,
@@ -167,7 +187,10 @@ function mapApiMentor(api: any): Mentor {
     email: api?.email || api?.workEmail || "",
     bio: api?.bio || "",
     timezone: api?.googleTimezone || "",
-    expertiseTags,
+    services: Array.isArray(api?.services) ? api.services : [],
+    disciplines: Array.isArray(api?.disciplines) ? api.disciplines : [],
+    photoStatus: (api?.photoStatus as PhotoStatus) || undefined,
+    avatarUrl: api?.avatarUrl || "",
     rate30,
     rate60,
     status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
@@ -727,7 +750,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<Partial<Mentor>>({
-    name: "", email: "", password: "", bio: "", expertiseTags: [], rate30: 50, rate60: 100, unpaid: 0,
+    name: "", email: "", password: "", bio: "", services: [], disciplines: [], rate30: 50, rate60: 100, unpaid: 0,
     offerings: ALL_SERVICE_TYPES.map(t => ({
       typeId: t.id,
       enabled: t.id === "mock-interview" || t.id === "resume-review",
@@ -761,7 +784,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
         password: form.password || "",
         bio: form.bio || "",
         headline: "",
-        expertiseTags: form.expertiseTags || [],
+        services: form.services || [],
         company: "",
         title: "",
         yearsOfExperience: 0,
@@ -832,49 +855,37 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
       {step === 2 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Profile & Expertise</div>
+          {/* onboard/create accept `services` only — disciplines are set later
+              via the profile update endpoint. */}
           <div>
-            <label style={labelStyle}>Expertise Tags</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.bgSubtle, minHeight: 40, alignItems: "center" }}>
-              {(form.expertiseTags || []).map((tag) => (
-                <span
-                  key={tag}
-                  style={{
-                    display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px 0 8px", borderRadius: 9999,
-                    fontSize: 11, fontWeight: 600,
-                    border: `1px solid ${C.blueBorder}`,
-                    background: C.blueBg,
-                    color: C.blue,
-                    fontFamily: "'Inter', sans-serif",
-                    gap: 4
-                  }}
-                >
-                  {tag}
+            <label style={labelStyle}>Service Types</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {SERVICE_TYPES.map((t) => {
+                const isSelected = (form.services || []).includes(t);
+                return (
                   <button
-                    onClick={() => setForm(prev => ({ ...prev, expertiseTags: prev.expertiseTags?.filter(t => t !== tag) }))}
-                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", color: C.blue }}
+                    key={t}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setForm(prev => ({
+                        ...prev,
+                        services: (prev.services || []).includes(t)
+                          ? (prev.services || []).filter(x => x !== t)
+                          : [...(prev.services || []), t],
+                      }));
+                    }}
+                    style={{
+                      ...serviceTagStyle,
+                      background: isSelected ? C.blueBg : "white",
+                      border: `1px ${isSelected ? "solid" : "dashed"} ${isSelected ? C.blueBorder : C.border}`,
+                      color: isSelected ? C.blue : C.textMid,
+                      cursor: "pointer",
+                    }}
                   >
-                    <X size={10} />
+                    {isSelected ? <Check size={10} /> : <Plus size={10} style={{ color: C.textMuted }} />} {SERVICE_TYPE_LABELS[t]}
                   </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                placeholder="Type tag and press Enter..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const val = e.currentTarget.value.trim();
-                    if (val && !form.expertiseTags?.includes(val)) {
-                      setForm(prev => ({ ...prev, expertiseTags: [...(prev.expertiseTags||[]), val] }));
-                    }
-                    e.currentTarget.value = '';
-                  }
-                }}
-                style={{
-                  flex: 1, minWidth: 150, border: "none", background: "transparent", outline: "none",
-                  fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text
-                }}
-              />
+                );
+              })}
             </div>
           </div>
           <div>
@@ -958,41 +969,40 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
 
 // ─── Service Types Block (inline edit, inside Drawer) ─────────────────────────
 
+// How many chips to show before collapsing into "+N more" in the read view.
 const MAX_SERVICE_TYPES = 3;
 
+// Edits the two closed enums the backend filters and lists on. Both are sent
+// together as a whole-array replace (PUT /mentorship/admin/mentors/{id}/profile).
 function ServiceTypesBlock({
-  offerings,
+  services,
+  disciplines,
   onSave,
 }: {
-  offerings: ServiceOffering[];
-  onSave: (updated: ServiceOffering[]) => void;
+  services: ServiceType[];
+  disciplines: Discipline[];
+  onSave: (services: ServiceType[], disciplines: Discipline[]) => void;
 }) {
-  const enabledIds = offerings.filter((o) => o.enabled).map((o) => o.typeId);
   const [editing, setEditing] = useState(false);
-  const [selected, setSelected] = useState<string[]>(enabledIds);
+  const [selected, setSelected] = useState<ServiceType[]>(services);
+  const [selectedDisciplines, setSelectedDisciplines] = useState<Discipline[]>(disciplines);
 
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX_SERVICE_TYPES) return prev;
-      return [...prev, id];
-    });
+  const toggle = (id: ServiceType) => {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleDiscipline = (id: Discipline) => {
+    setSelectedDisciplines((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const handleSave = () => {
-    const updated = offerings.map((o) => ({ ...o, enabled: selected.includes(o.typeId) }));
-    const existingIds = offerings.map((o) => o.typeId);
-    const newIds = selected.filter((id) => !existingIds.includes(id));
-    const extra: ServiceOffering[] = newIds.map((id) => ({
-      typeId: id, enabled: true, rate: 0, pricingType: "per-hour" as const,
-      duration: 60, expertiseTags: [], description: "", notes: "", mentorNote: "",
-    }));
-    onSave([...updated, ...extra]);
+    onSave(selected, selectedDisciplines);
     setEditing(false);
   };
 
   const handleCancel = () => {
-    setSelected(enabledIds);
+    setSelected(services);
+    setSelectedDisciplines(disciplines);
     setEditing(false);
   };
 
@@ -1006,16 +1016,15 @@ function ServiceTypesBlock({
   };
 
   if (!editing) {
-    const enabledServices = ALL_SERVICE_TYPES.filter((t) => enabledIds.includes(t.id));
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Service Types</div>
-          <button onClick={() => { setSelected(enabledIds); setEditing(true); }} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Inter', sans-serif" }}>
+          <button onClick={() => { setSelected(services); setSelectedDisciplines(disciplines); setEditing(true); }} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Inter', sans-serif" }}>
             Edit
           </button>
         </div>
-        {enabledServices.length === 0 ? (
+        {services.length === 0 ? (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7 }}>
             <AlertTriangle size={13} style={{ color: C.amber, flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>
@@ -1024,12 +1033,29 @@ function ServiceTypesBlock({
           </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {enabledServices.slice(0, MAX_SERVICE_TYPES).map((t) => (
-              <ServiceChip key={t.id} label={t.label} />
+            {services.slice(0, MAX_SERVICE_TYPES).map((t) => (
+              <ServiceChip key={t} label={SERVICE_TYPE_LABELS[t]} />
             ))}
-            {enabledServices.length > MAX_SERVICE_TYPES && (
-              <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>+{enabledServices.length - MAX_SERVICE_TYPES} more</span>
+            {services.length > MAX_SERVICE_TYPES && (
+              <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>+{services.length - MAX_SERVICE_TYPES} more</span>
             )}
+          </div>
+        )}
+
+        {/* Discipline — equally required for the mentor to be listed. */}
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", margin: "14px 0 8px" }}>Disciplines</div>
+        {disciplines.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7 }}>
+            <AlertTriangle size={13} style={{ color: C.amber, flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>
+              No discipline selected — this mentor stays unlisted and won&apos;t appear in candidate filters.
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {disciplines.map((d) => (
+              <ServiceChip key={d} label={DISCIPLINE_LABELS[d]} />
+            ))}
           </div>
         )}
       </div>
@@ -1043,12 +1069,12 @@ function ServiceTypesBlock({
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 14 }}>
-        {ALL_SERVICE_TYPES.map((t) => {
-          const isSelected = selected.includes(t.id);
+        {SERVICE_TYPES.map((t) => {
+          const isSelected = selected.includes(t);
           return (
             <button
-              key={t.id}
-              onClick={() => toggle(t.id)}
+              key={t}
+              onClick={() => toggle(t)}
               style={{
                 ...chipBase,
                 background: isSelected ? C.blue : "white",
@@ -1058,7 +1084,30 @@ function ServiceTypesBlock({
               }}
             >
               {isSelected && <Check size={11} style={{ flexShrink: 0 }} />}
-              {t.label}
+              {SERVICE_TYPE_LABELS[t]}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Disciplines</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 14 }}>
+        {DISCIPLINES.map((d) => {
+          const isSelected = selectedDisciplines.includes(d);
+          return (
+            <button
+              key={d}
+              onClick={() => toggleDiscipline(d)}
+              style={{
+                ...chipBase,
+                background: isSelected ? C.blue : "white",
+                color: isSelected ? "white" : C.textMid,
+                border: `1px solid ${isSelected ? C.blue : C.border}`,
+                cursor: "pointer",
+              }}
+            >
+              {isSelected && <Check size={11} style={{ flexShrink: 0 }} />}
+              {DISCIPLINE_LABELS[d]}
             </button>
           );
         })}
@@ -1066,10 +1115,11 @@ function ServiceTypesBlock({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Both arrays must be non-empty or the backend unlists the mentor. */}
           <button
             onClick={handleSave}
-            disabled={selected.length === 0}
-            style={{ ...primaryBtn, opacity: selected.length === 0 ? 0.4 : 1, cursor: selected.length === 0 ? "not-allowed" : "pointer" }}
+            disabled={selected.length === 0 || selectedDisciplines.length === 0}
+            style={{ ...primaryBtn, opacity: selected.length === 0 || selectedDisciplines.length === 0 ? 0.4 : 1, cursor: selected.length === 0 || selectedDisciplines.length === 0 ? "not-allowed" : "pointer" }}
           >
             Save
           </button>
@@ -1140,28 +1190,27 @@ function MentorDirectory() {
   const filtered = mentorList.filter((m) => {
     if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
     // Client-side-only filters (no dedicated backend status yet).
-    if (filters.status === "missing-services") return m.status === "Active" && !m.offerings.some((o) => o.enabled);
+    // "Missing services" now means the listing requirements aren't met: the
+    // backend keeps such a mentor unlisted regardless of approval status.
+    if (filters.status === "missing-services") return m.services.length === 0 || m.disciplines.length === 0;
     if (filters.status === "waitlist") return m.status === "Waitlist";
     return true;
   });
 
-  // Persist service-type enablement. Service offerings live on the profile's
-  // expertiseTags (see mapApiMentor), so we merge the enabled service labels
-  // back in while preserving any non-service expertise tags.
-  const persistServiceTypes = async (mentorId: string, offerings: ServiceOffering[]) => {
+  // Persist the mentor's services + disciplines. Both are whole-array replaces
+  // on the profile — they no longer touch topics or pricing.
+  const persistServiceTypes = async (
+    mentorId: string,
+    services: ServiceType[],
+    disciplines: Discipline[],
+  ) => {
     const m = mentorList.find((x) => x.id === mentorId) || (selected?.id === mentorId ? selected : null);
     if (!m) return;
-    const serviceLabelsLower = ALL_SERVICE_TYPES.map((t) => t.label.toLowerCase());
-    const enabledLabels = ALL_SERVICE_TYPES
-      .filter((t) => offerings.find((o) => o.typeId === t.id)?.enabled)
-      .map((t) => t.label);
-    const nonServiceTags = (m.expertiseTags || []).filter((t) => !serviceLabelsLower.includes((t || "").toLowerCase()));
-    const newTags = [...nonServiceTags, ...enabledLabels];
     // Optimistic local update.
-    setMentorList((prev) => prev.map((x) => x.id === mentorId ? { ...x, offerings, expertiseTags: newTags } : x));
-    setSelected((prev) => prev && prev.id === mentorId ? { ...prev, offerings, expertiseTags: newTags } : prev);
+    setMentorList((prev) => prev.map((x) => x.id === mentorId ? { ...x, services, disciplines } : x));
+    setSelected((prev) => prev && prev.id === mentorId ? { ...prev, services, disciplines } : prev);
     try {
-      await updateMentorProfile(mentorId, { realName: m.name || "", bio: m.bio || "", headline: "", expertiseTags: newTags });
+      await updateMentorProfile(mentorId, { realName: m.name || "", bio: m.bio || "", headline: "", services, disciplines });
       toast.success("Service types saved");
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to save service types");
@@ -1245,22 +1294,26 @@ function MentorDirectory() {
 
   const saveProfile = async (form: Mentor) => {
     try {
-      // 1) Profile — real name + expertise tags (and bio/headline).
+      // 1) Profile — real name, services + disciplines (and bio/headline).
+      //    Both enum arrays are whole-array replaces.
       await updateMentorProfile(form.id, {
         realName: form.name || "",
         bio: form.bio || "",
         headline: "",
-        expertiseTags: form.expertiseTags || [],
+        services: form.services || [],
+        disciplines: form.disciplines || [],
       });
 
       // 2) Topic prices — apply the edited rates (dollars → cents) to every
-      //    bookable topic. null/omitted leaves a price unchanged, and prices
-      //    must be ≥ 1000 cents, so only send values that clear that floor.
+      //    bookable topic. The admin topic endpoint keeps partial-update
+      //    semantics (unlike the mentor-facing one), so an omitted price is
+      //    left unchanged; but the $25.00 floor now applies here too, so only
+      //    send values that clear it.
       const price30min = Math.round((Number(form.rate30) || 0) * 100);
       const price60min = Math.round((Number(form.rate60) || 0) * 100);
       const pricePayload: { price30min?: number; price60min?: number } = {};
-      if (price30min >= 1000) pricePayload.price30min = price30min;
-      if (price60min >= 1000) pricePayload.price60min = price60min;
+      if (price30min >= MIN_PRICE_CENTS) pricePayload.price30min = price30min;
+      if (price60min >= MIN_PRICE_CENTS) pricePayload.price60min = price60min;
       if (pricePayload.price30min || pricePayload.price60min) {
         // The edit form doesn't reliably carry the topic list, so fetch the
         // mentor's real topics (a single auto-created "Mentorship Session") and
@@ -1653,22 +1706,14 @@ function MentorDirectory() {
                 {/* ── Service Types ── */}
                 <DrawerDivider />
                 <ServiceTypesBlock
-                  offerings={selected.offerings}
-                  onSave={(updated) => persistServiceTypes(selected.id, updated)}
+                  services={selected.services}
+                  disciplines={selected.disciplines}
+                  onSave={(svc, disc) => persistServiceTypes(selected.id, svc, disc)}
                 />
 
-                {/* Expertise Tags (read-only — full tag list, includes custom tags) */}
-                <DrawerDivider />
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                    Expertise Tags
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {selected.expertiseTags.length === 0
-                      ? <span style={{ fontSize: 12, color: C.textMuted }}>No expertise tags</span>
-                      : selected.expertiseTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
-                  </div>
-                </div>
+                {/* The free-text "Expertise Tags" block lived here. The backend
+                    dropped `expertiseTags` for the closed services/disciplines
+                    enums, both of which ServiceTypesBlock above now renders. */}
 
                 {/* ── Special Offer — placeholder until the backend exposes special-deal pricing ── */}
                 <DrawerDivider />
@@ -1757,80 +1802,40 @@ function MentorDirectory() {
                </div>
             </div>
 
+            {/* Services + disciplines are closed enums now — free-text tags
+                can no longer be sent, so both are chip pickers. */}
             <div>
-              <label style={labelStyle}>Expertise tags</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.bgSubtle, minHeight: 40, alignItems: "center" }}>
-                {(editForm.expertiseTags || []).map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px 0 8px", borderRadius: 9999,
-                      fontSize: 11, fontWeight: 600,
-                      border: `1px solid ${C.blueBorder}`,
-                      background: C.blueBg,
-                      color: C.blue,
-                      fontFamily: "'Inter', sans-serif",
-                      gap: 4
-                    }}
-                  >
-                    {tag}
+              <label style={labelStyle}>Service types</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {SERVICE_TYPES.map((t) => {
+                  const isSelected = (editForm.services || []).includes(t);
+                  return (
                     <button
+                      key={t}
                       onClick={(e) => {
                         e.preventDefault();
-                        setEditForm(prev => prev ? ({ ...prev, expertiseTags: prev.expertiseTags.filter(t => t !== tag) }) : prev);
+                        setEditForm(prev => prev ? ({
+                          ...prev,
+                          services: prev.services.includes(t)
+                            ? prev.services.filter(x => x !== t)
+                            : [...prev.services, t],
+                        }) : prev);
                       }}
-                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", color: C.blue }}
+                      style={{
+                        ...serviceTagStyle,
+                        background: isSelected ? C.blueBg : "white",
+                        border: `1px ${isSelected ? "solid" : "dashed"} ${isSelected ? C.blueBorder : C.border}`,
+                        color: isSelected ? C.blue : C.textMid,
+                        cursor: "pointer",
+                      }}
                     >
-                      <X size={10} />
+                      {isSelected ? <Check size={10} /> : <Plus size={10} style={{ color: C.textMuted }} />} {SERVICE_TYPE_LABELS[t]}
                     </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  placeholder="Type tag and press Enter..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const val = e.currentTarget.value.trim();
-                      if (val && editForm && !editForm.expertiseTags.includes(val)) {
-                        setEditForm(prev => prev ? ({ ...prev, expertiseTags: [...prev.expertiseTags, val] }) : prev);
-                      }
-                      e.currentTarget.value = '';
-                    }
-                  }}
-                  style={{
-                    flex: 1, minWidth: 150, border: "none", background: "transparent", outline: "none",
-                    fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text
-                  }}
-                />
+                  );
+                })}
               </div>
-              {/* Suggestions — the platform service offerings, minus ones
-                  already selected. Click to add. */}
-              {(() => {
-                const selectedSet = new Set(editForm.expertiseTags || []);
-                const suggestions = ALL_SERVICE_TYPES.map((t) => t.label).filter((t) => !selectedSet.has(t));
-                if (!suggestions.length) return null;
-                return (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Suggestions</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {suggestions.map((t) => (
-                        <button
-                          key={t}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setEditForm(prev => prev && !prev.expertiseTags.includes(t) ? ({ ...prev, expertiseTags: [...prev.expertiseTags, t] }) : prev);
-                          }}
-                          style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
-                        >
-                          <Plus size={10} style={{ color: C.textMuted }} /> {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
+
           </div>
         )}
       </Drawer>

@@ -34,4 +34,4 @@ Contact: operations@screna.ai
 - Every URL listed above is server-rendered at build time; the full text is
   present in the initial HTML response and does not require JavaScript.
 - Pages under /dashboard, /settings, /profile, /interview-insights, and
-  /marketplace sit behind authentication and are excluded from the sitemap.
+  /coaching sit behind authentication and are excluded from the sitemap.

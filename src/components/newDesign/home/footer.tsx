@@ -24,7 +24,7 @@ const linkClass =
 const headingClass = 'font-semibold text-[hsl(222,22%,15%)] text-sm mb-4';
 
 const PRODUCT_LINKS = [
-  { label: 'Coach', href: '/marketplace' },
+  { label: 'Coach', href: '/coaching' },
   { label: 'Personalized Practice', href: '/personalized-practice' },
 ];
 

@@ -306,9 +306,18 @@ function MentorshipPanel() {
     let alive = true;
     (async () => {
       try {
-        const res = await listMyBookings({ page: 0, size: 20 });
-        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        const normalized = (Array.isArray(content) ? content : []).map((b) => ({
+        // Omitting `status` returns only CONFIRMED + COMPLETED; the upcoming
+        // list below also surfaces PENDING (booked, awaiting payment), so that
+        // bucket is fetched explicitly and merged.
+        const unwrap = (res: unknown): Booking[] => {
+          const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+          return Array.isArray(content) ? content : [];
+        };
+        const [confirmed, pending] = await Promise.all([
+          listMyBookings({ page: 0, size: 20 }).then(unwrap).catch(() => [] as Booking[]),
+          listMyBookings({ page: 0, size: 20, status: 'PENDING' }).then(unwrap).catch(() => [] as Booking[]),
+        ]);
+        const normalized = [...confirmed, ...pending].map((b) => ({
           ...b,
           mentorName: b.mentorName || b.mentorRealName || 'Mentor',
         }));

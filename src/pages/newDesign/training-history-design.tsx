@@ -685,7 +685,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
     if (session.mentorId) {
       navigate('/mentor-details?mentorId=' + session.mentorId);
     } else {
-      navigate('/marketplace');
+      navigate('/coaching');
     }
   };
 
@@ -1477,9 +1477,18 @@ export function TrainingHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await listMyBookings({ page: 0, size: 100 });
-        const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
-        const mapped = mapBookingsToMentorSessions(Array.isArray(content) ? content : []);
+        // Omitting `status` returns only CONFIRMED + COMPLETED, so the
+        // awaiting-payment bucket has to be requested explicitly — this page
+        // renders a "Pending" state (and a Pending filter tab) for it.
+        const unwrap = (res: unknown): Booking[] => {
+          const content = (res as { data?: { data?: { content?: Booking[] } } })?.data?.data?.content ?? [];
+          return Array.isArray(content) ? content : [];
+        };
+        const [confirmed, pending] = await Promise.all([
+          listMyBookings({ page: 0, size: 100 }).then(unwrap).catch(() => [] as Booking[]),
+          listMyBookings({ page: 0, size: 100, status: 'PENDING' }).then(unwrap).catch(() => [] as Booking[]),
+        ]);
+        const mapped = mapBookingsToMentorSessions([...confirmed, ...pending]);
         if (!cancelled) {
           setMentorSessions(mapped);
           trackCompletedSessions(posthog, mapped);

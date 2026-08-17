@@ -37,6 +37,7 @@ import {
   updateBookingMentorNote,
   getBookingScriptUploadUrl,
   updateMyTopicPrice,
+  updateMyTopicContent,
   getMyMentorReviews,
   getMyMentorTransactions,
   getMyBlockDates,
@@ -45,7 +46,22 @@ import {
   getMyAdHocSlots,
   createMyAdHocSlot,
   deleteMyAdHocSlot,
+  updateMyMentorTimezone,
+  refreshMyAvailability,
 } from '@/services/MentorService';
+import {
+  SERVICE_TYPE_GROUPS,
+  DISCIPLINES,
+  DISCIPLINE_LABELS,
+  SERVICE_TYPE_LABELS,
+  SPECIAL_OFFER_ENABLED,
+  statusReasonLabel,
+  type Discipline,
+  LINKEDIN_HINT,
+  normalizeLinkedinUrl,
+  type PhotoStatus,
+  type ServiceType,
+} from '@/constants/mentorship';
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -74,6 +90,10 @@ type OfficeHourDto = { dayOfWeek: number; active: boolean; ranges: OfficeHourRan
 type MentorTopicDto = {
   id: string; title: string; description?: string;
   price30min?: number; price60min?: number; active?: boolean; mentorNote?: string;
+  // Special-offer ($1 intro) config. NOTE the read/write asymmetry: the
+  // response exposes special15/special30/specialCount, but the request writes
+  // them as a nested specialOffer.{price15,price30,count} object.
+  special15?: number | null; special30?: number | null; specialCount?: number | null;
 };
 type MentorReviewDto = {
   id: string; reviewerName: string; overallRating: number;
@@ -83,8 +103,21 @@ type MentorReviewDto = {
 type MentorProfileDto = {
   id: string; name: string;
   currentRole?: string; currentCompany?: string; avatarUrl?: string;
-  bio?: string; headline?: string; expertiseTags?: string[]; yearsOfExperience?: number;
-  careerBackground?: { company: string; role: string; startYear: number; endYear: number }[];
+  bio?: string; headline?: string; yearsOfExperience?: number;
+  // `services` + `disciplines` replaced the old free-text `expertiseTags`.
+  // Both must be non-empty for the mentor to go live — otherwise `status` is
+  // PENDING and `statusReason` explains which one is missing.
+  services?: ServiceType[]; disciplines?: Discipline[];
+  // `current: true` marks the present role — render "Present" and ignore
+  // endYear. At most one entry may be current (more than one → 400).
+  careerBackground?: { company: string; role: string; startYear: number | null; endYear: number | null; current?: boolean }[];
+  // Display-only badge ("this mentor conducts interviews"); not a listing gate.
+  isInterviewer?: boolean;
+  // Whether students may see this mentor's linkedinUrl. Defaults true.
+  showLinkedin?: boolean;
+  // Avatar moderation — must be PHOTO_APPROVED (with a resolvable avatar) for
+  // the mentor to be listed. Uploading or removing an avatar resets it.
+  photoStatus?: PhotoStatus;
   averageRating?: number; reviewCount?: number;
   topics?: MentorTopicDto[]; reviews?: MentorReviewDto[];
   hasSlotsThisWeek?: boolean; hasSlotsNextWeek?: boolean;
@@ -348,13 +381,20 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
 
   const todaySessions = bookings.filter(b => b.date === 'Today' || b.date === 'Tomorrow').slice(0, 3);
 
-  // Completion checklist reflects the real profile once it has loaded.
+  // Mirrors the backend's listing requirements, so the bar cannot read 100%
+  // while the mentor is still unlisted. A photo only counts once an admin has
+  // approved it, and services + discipline are both hard gates.
   const profileCompletion = [
-    { label: 'Profile photo', done: profile ? !!profile.avatarUrl : true },
-    { label: 'Bio added', done: profile ? !!profile.bio : true },
-    { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
-    { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null && t.price60min != null) : true },
-    { label: 'Verification submitted', done: profile ? profile.status !== 'PENDING' : true },
+    // `required` marks a hard listing gate — without it the mentor cannot go
+    // live. Bio is recommended but is not enforced by the backend.
+    { label: 'Profile photo approved', required: true, done: profile ? !!profile.avatarUrl && profile.photoStatus === 'PHOTO_APPROVED' : true },
+    { label: 'Bio added', required: false, done: profile ? !!profile.bio : true },
+    { label: 'Services & discipline', required: true, done: profile ? !!profile.services?.length && !!profile.disciplines?.length : true },
+    { label: 'Google Calendar connected', required: true, done: profile ? !!profile.calendarConnected : true },
+    { label: 'Weekly availability set', required: true, done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
+    { label: 'Session price set', required: true, done: profile ? !!profile.topics?.some(t => t.price30min != null && t.price60min != null) : true },
+    // The outcome of every gate above plus admin review — only ticks once live.
+    { label: 'Approved & listed', required: false, done: profile ? profile.status === 'APPROVED' : true },
   ];
   const doneCount = profileCompletion.filter(p => p.done).length;
   const pct = Math.round((doneCount / profileCompletion.length) * 100);
@@ -478,7 +518,10 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
                 ? <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)] shrink-0" />
                 : <Circle className="w-4 h-4 text-border shrink-0" />
               }
-              <span className={item.done ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
+              <span className={item.done ? 'text-foreground' : 'text-muted-foreground'}>
+                {item.label}
+                {item.required && <span className="text-destructive ml-0.5">*</span>}
+              </span>
             </div>
           ))}
         </div>
@@ -1236,7 +1279,11 @@ function AvailabilityPage() {
   const [vacationSaving, setVacationSaving] = useState(false);
   const [bufferTime, setBufferTime] = useState('15 min');
   const [maxWindow, setMaxWindow] = useState('4 weeks');
-  const [timezone, setTimezone] = useState('Pacific Time (US & Canada)');
+  // IANA zone id (e.g. "America/Los_Angeles") — that's what the API accepts and
+  // what `googleTimezone` returns. Empty until the profile loads.
+  const [timezone, setTimezone] = useState('');
+  const [tzSaving, setTzSaving] = useState(false);
+  const [refreshingAvailability, setRefreshingAvailability] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
   const [hoursToast, setHoursToast] = useState<{ ok: boolean; msg: string } | null>(null);
   // True when the weekly schedule has edits not yet pushed to office hours.
@@ -1354,6 +1401,49 @@ function AvailabilityPage() {
         setHoursToast({ ok: false, msg });
       })
       .finally(() => setVacationSaving(false));
+  };
+
+  // ── Timezone preference — PUT /mentorship/profile/timezone ──
+  const applyTimezone = (next: string) => {
+    if (!next || tzSaving || next === timezone) return;
+    const previous = timezone;
+    setTimezone(next); // optimistic
+    setTzSaving(true);
+    updateMyMentorTimezone(next)
+      .then((res: any) => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        setHoursToast({ ok: true, msg: 'Timezone updated.' });
+      })
+      .catch((err: any) => {
+        setTimezone(previous);
+        setHoursToast({ ok: false, msg: err?.response?.data?.message || 'Could not update timezone.' });
+      })
+      .finally(() => setTzSaving(false));
+  };
+
+  // ── Recompute this-week / next-week slot flags — POST /refresh-availability ──
+  // These flags drive the Availability filter in mentor discovery, so a mentor
+  // who just edited office hours can force them up to date instead of waiting.
+  const handleRefreshAvailability = () => {
+    if (refreshingAvailability) return;
+    setRefreshingAvailability(true);
+    refreshMyAvailability()
+      .then((res: any) => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        setHoursToast({ ok: true, msg: 'Availability refreshed.' });
+      })
+      .catch((err: any) => {
+        const unavailable = err?.response?.data?.errorCode === 'CALENDAR_UNAVAILABLE';
+        setHoursToast({
+          ok: false,
+          msg: unavailable
+            ? 'Google Calendar is temporarily unavailable — try again in a moment.'
+            : err?.response?.data?.message || 'Could not refresh availability.',
+        });
+      })
+      .finally(() => setRefreshingAvailability(false));
   };
 
   // Inline row editor
@@ -1620,6 +1710,14 @@ function AvailabilityPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {/* Recomputes the this-week / next-week flags students filter on. */}
+                <button
+                  onClick={handleRefreshAvailability}
+                  disabled={refreshingAvailability}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {refreshingAvailability ? 'Refreshing…' : 'Refresh availability'}
+                </button>
                 <button
                   onClick={handleSaveAvailability}
                   disabled={savingHours || !scheduleDirty}
@@ -1835,23 +1933,34 @@ function AvailabilityPage() {
             </div>
           </div>
 
-          {/* Booking Settings (read-only — managed by the platform / Google Calendar) */}
+          {/* Booking Settings — timezone is mentor-editable via
+              PUT /mentorship/profile/timezone. */}
           <div className="bg-card border border-border rounded-[var(--radius)] p-4 space-y-4">
             <h3 className="text-foreground text-sm">Booking Settings</h3>
-            {[
-              { label: 'Timezone', value: timezone, hint: 'From Google Calendar' },
-            ].map(s => (
-              <div key={s.label}>
-                <label className="text-xs text-muted-foreground">{s.label}</label>
-                <div
-                  className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 flex items-center justify-between gap-2"
-                  style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)', cursor: 'not-allowed' }}
-                >
-                  <span className="truncate">{s.value}</span>
-                  <span className="shrink-0" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>{s.hint}</span>
-                </div>
-              </div>
-            ))}
+            <div>
+              <label className="text-xs text-muted-foreground">Timezone</label>
+              <select
+                value={timezone}
+                disabled={tzSaving}
+                onChange={e => applyTimezone(e.target.value)}
+                className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 disabled:opacity-60"
+                style={{ background: 'var(--secondary)', color: 'var(--foreground)' }}
+              >
+                {!timezone && <option value="">Select a timezone…</option>}
+                {/* The saved zone may not be in the picker list (Google can
+                    return any IANA id) — keep it selectable rather than
+                    silently switching the mentor to another zone. */}
+                {timezone && !TIMEZONE_OPTIONS.includes(timezone) && (
+                  <option value={timezone}>{timezone}</option>
+                )}
+                {TIMEZONE_OPTIONS.map(tz => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+              <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                {tzSaving ? 'Saving…' : 'Used for your office hours and booking times.'}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -2167,6 +2276,11 @@ const FIXED_TOPIC_TITLE = 'Mentorship Session';
 const FIXED_TOPIC_DESCRIPTION =
   'A one-on-one mentorship session to discuss your goals, get tailored guidance, and ask questions.';
 
+// Backend floor for regular session prices ($25.00). Special-offer prices are a
+// separate column and are NOT subject to this minimum. Existing $10–24 topics
+// are grandfathered until the next price edit.
+const MIN_PRICE_CENTS = 2500;
+
 function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged: () => void }) {
   // A mentor has a single auto-created topic; the form only edits its prices via
   // PUT /mentorship/profile/topic/price (no topicId, no create/deactivate).
@@ -2176,7 +2290,10 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   const [price60, setPrice60] = useState('');
   const [status, setStatus] = useState<SaveStatus>(CLEAN_STATUS);
 
-  // Special Offer is UI-only for now (no backend) — local state, not persisted.
+  // Special Offer — PUT /mentorship/profile/topic { specialOffer }. Only sent
+  // when actually edited: omitting the nested object leaves the config
+  // untouched, so an untouched form can never clobber it.
+  const [specialDirty, setSpecialDirty] = useState(false);
   const [dealOn, setDealOn] = useState(false);
   const [deal15On, setDeal15On] = useState(true);
   const [deal15Price, setDeal15Price] = useState('');
@@ -2191,8 +2308,27 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   useEffect(() => {
     setPrice30(centsToInput(editingTopic?.price30min));
     setPrice60(centsToInput(editingTopic?.price60min));
+    // Seed the special-offer form from the response field names (special15 /
+    // special30 / specialCount); a null price means that duration isn't offered.
+    const s15 = editingTopic?.special15 ?? null;
+    const s30 = editingTopic?.special30 ?? null;
+    const count = editingTopic?.specialCount ?? 0;
+    setDeal15On(s15 != null);
+    setDeal30On(s30 != null);
+    setDeal15Price(s15 != null ? centsToInput(s15) : '');
+    setDeal30Price(s30 != null ? centsToInput(s30) : '');
+    setDealWeeklyLimit(count > 0 ? count : 3);
+    setDealOn(count > 0 && (s15 != null || s30 != null));
+    setSpecialDirty(false);
     setStatus(CLEAN_STATUS);
-  }, [editingTopic?.id, editingTopic?.price30min, editingTopic?.price60min]);
+  }, [
+    editingTopic?.id, editingTopic?.price30min, editingTopic?.price60min,
+    editingTopic?.special15, editingTopic?.special30, editingTopic?.specialCount,
+  ]);
+
+  // Any special-offer edit marks both the card dirty (to reveal Save) and the
+  // nested object as something we must actually transmit.
+  const markSpecial = () => { setSpecialDirty(true); markDirty(); };
 
   const markDirty = () => setStatus(s => ({ ...s, dirty: true, saved: false, error: null }));
 
@@ -2212,15 +2348,43 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
     // Pricing is required: both 30- and 60-minute prices must be set before a
     // mentor profile can go live (each duration is independently bookable).
     if (p30 === undefined || p60 === undefined) { setStatus(s => ({ ...s, error: 'Both 30- and 60-minute prices are required.' })); return; }
-    // Only send fields the mentor actually entered; an omitted price is left
-    // unchanged backend-side (a price, once set, cannot be cleared).
-    const payload: { price30min?: number; price60min?: number } = {};
-    if (p30 !== undefined) payload.price30min = p30;
-    if (p60 !== undefined) payload.price60min = p60;
+    if (p30 < MIN_PRICE_CENTS || p60 < MIN_PRICE_CENTS) {
+      setStatus(s => ({ ...s, error: `Session prices must be at least $${MIN_PRICE_CENTS / 100}.` }));
+      return;
+    }
+    // This endpoint is a FULL REPLACE, not a partial update: a field that is
+    // omitted or null CLEARS that duration's price (making it unbookable), so
+    // both must be sent on every save.
+    const payload = { price30min: p30, price60min: p60 };
+
+    // Special offer, only when touched. $1 minimum (100 cents); a disabled
+    // duration is sent as null, and count 0 pauses the whole offer.
+    let specialOffer: { price15: number | null; price30: number | null; count: number } | null = null;
+    if (specialDirty && SPECIAL_OFFER_ENABLED) {
+      const s15 = dealOn && deal15On ? dollarsToCents(deal15Price) : undefined;
+      const s30 = dealOn && deal30On ? dollarsToCents(deal30Price) : undefined;
+      if (s15 === null || s30 === null) { setStatus(s => ({ ...s, error: 'Special offer prices must be valid numbers.' })); return; }
+      if (dealOn && s15 === undefined && s30 === undefined) {
+        setStatus(s => ({ ...s, error: 'Enable at least one special-offer duration, or turn the offer off.' }));
+        return;
+      }
+      if ((s15 !== undefined && s15 < 100) || (s30 !== undefined && s30 < 100)) {
+        setStatus(s => ({ ...s, error: 'Special offer prices must be at least $1.' }));
+        return;
+      }
+      specialOffer = {
+        price15: s15 ?? null,
+        price30: s30 ?? null,
+        count: dealOn ? dealWeeklyLimit : 0,
+      };
+    }
+
     setStatus(s => ({ ...s, saving: true, error: null }));
     updateMyTopicPrice(payload)
+      .then(async () => { if (specialOffer) await updateMyTopicContent({ specialOffer }); })
       .then(() => {
         setStatus({ dirty: false, saving: false, saved: true, error: null });
+        setSpecialDirty(false);
         onChanged();
       })
       .catch((e: any) => setStatus(s => ({ ...s, saving: false, error: e?.response?.data?.message || 'Could not save your session prices.' })));
@@ -2271,7 +2435,11 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
       {/* Divider */}
       <div className="h-px" style={{ background: 'var(--border)' }} />
 
-      {/* Special Offer (UI-only) */}
+      {/* Special Offer. The form is always shown, but it only PERSISTS (PUT
+          /mentorship/profile/topic { specialOffer }) once SPECIAL_OFFER_ENABLED
+          is on — until then it behaves as the UI-only mock it has always been.
+          Persisting early would let an old backend charge regular price for a
+          $1 trial. */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -2279,7 +2447,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
             <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Give candidates a limited-time discounted or free intro slot.</p>
           </div>
           <button
-            onClick={() => setDealOn(!dealOn)}
+            onClick={() => { setDealOn(!dealOn); markSpecial(); }}
             className="relative rounded-full transition-colors shrink-0"
             style={{ width: 40, height: 22, background: dealOn ? 'var(--primary)' : 'var(--border)', border: 'none', cursor: 'pointer' }}
           >
@@ -2307,7 +2475,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
               >
                 <div className="flex items-center gap-2.5">
                   <button
-                    onClick={() => row.setOn(!row.on)}
+                    onClick={() => { row.setOn(!row.on); markSpecial(); }}
                     className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
                     style={{ background: row.on ? 'var(--primary)' : 'transparent', border: row.on ? '1.5px solid var(--primary)' : '1.5px solid var(--muted-foreground)', cursor: 'pointer' }}
                   >
@@ -2323,7 +2491,7 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
                         type="number"
                         min="1"
                         value={row.price}
-                        onChange={e => row.setPrice(e.target.value)}
+                        onChange={e => { row.setPrice(e.target.value); markSpecial(); }}
                         placeholder="1"
                         className="flex-1 px-3 py-2 text-sm bg-transparent text-foreground outline-none"
                       />
@@ -2338,13 +2506,13 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
               <label className="text-xs font-medium text-foreground mb-1 block">Max Special Offers per week</label>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setDealWeeklyLimit(Math.max(1, dealWeeklyLimit - 1))}
+                  onClick={() => { setDealWeeklyLimit(Math.max(1, dealWeeklyLimit - 1)); markSpecial(); }}
                   className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
                   style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
                 >−</button>
                 <span className="w-6 text-center text-sm font-medium text-foreground">{dealWeeklyLimit}</span>
                 <button
-                  onClick={() => setDealWeeklyLimit(Math.min(10, dealWeeklyLimit + 1))}
+                  onClick={() => { setDealWeeklyLimit(Math.min(10, dealWeeklyLimit + 1)); markSpecial(); }}
                   className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
                   style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
                 >+</button>
@@ -2364,17 +2532,22 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   );
 }
 
-// Grouped predefined service types shown as selectable chips (maps to expertiseTags).
-const SERVICE_TYPE_GROUPS = [
-  {
-    label: 'Job Search',
-    options: ['Mock Interview', 'Resume Review', 'Portfolio Review', 'Behavioral Coaching', 'Career Transition', 'OPT Job Search Strategy', 'Job Search Strategy'],
-  },
-  {
-    label: 'Offer & Career Development',
-    options: ['Offer Negotiation', 'Onboarding & First 90 Days', 'Career Growth & Promotion'],
-  },
-];
+// IANA zone ids for the timezone picker. Prefer the full runtime list so any
+// mentor can find their own zone; fall back to the common US/EU/APAC set on
+// browsers without Intl.supportedValuesOf (Safari < 17).
+const TIMEZONE_OPTIONS: string[] = (() => {
+  try {
+    const supported = (Intl as any)?.supportedValuesOf?.('timeZone');
+    if (Array.isArray(supported) && supported.length) return supported;
+  } catch { /* fall through to the static list */ }
+  return [
+    'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
+    'America/Toronto', 'America/Sao_Paulo', 'Europe/London', 'Europe/Dublin',
+    'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Amsterdam',
+    'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Shanghai',
+    'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Seoul', 'Australia/Sydney',
+  ];
+})();
 
 function ProfilePage() {
   const ctx = useMentorProfile();
@@ -2390,11 +2563,14 @@ function ProfilePage() {
   const [years, setYears] = useState('');
   // Per-section save state so each card saves on its own (no single sticky bar).
   const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
+  const [exp, setExp] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
   const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
-  // Service types map to expertiseTags (API). Specialty tags & experience are
-  // UI-only for now (no backend) — local state, not persisted.
-  const [services, setServices] = useState<string[]>(['Mock Interview', 'Resume Review']);
+  // Services + disciplines are both required for the mentor to be listed and
+  // bookable. Specialty tags & experience are UI-only for now (no backend) —
+  // local state, not persisted.
+  const [services, setServices] = useState<ServiceType[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [specialtyTags, setSpecialtyTags] = useState<string[]>([]);
   const [specialtyInput, setSpecialtyInput] = useState('');
   type ExpEntry = { id: string; title: string; company: string; startYear: string; endYear: string; isCurrent: boolean };
@@ -2446,7 +2622,8 @@ function ProfilePage() {
     if (profile.currentRole != null) setTitle(profile.currentRole);
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
-    if (Array.isArray(profile.expertiseTags)) setServices(profile.expertiseTags);
+    if (Array.isArray(profile.services)) setServices(profile.services);
+    if (Array.isArray(profile.disciplines)) setDisciplines(profile.disciplines);
     // Seed the (UI-only) experience list from the profile's career background.
     if (Array.isArray(profile.careerBackground)) {
       setExperiences(profile.careerBackground.map((c, i) => ({
@@ -2455,12 +2632,12 @@ function ProfilePage() {
         company: c.company ?? '',
         startYear: c.startYear != null ? String(c.startYear) : '',
         endYear: c.endYear != null ? String(c.endYear) : '',
-        isCurrent: c.endYear == null,
+        isCurrent: c.current ?? c.endYear == null,
       })));
     }
     if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
     if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
-    setBasic(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
+    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
   // Fall back to the signed-in account email when the profile has no work email.
@@ -2470,6 +2647,7 @@ function ProfilePage() {
   }, [user]);
 
   const markBasic = () => setBasic(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markExp = () => setExp(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markSvc = () => setSvc(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
 
@@ -2487,11 +2665,69 @@ function ProfilePage() {
       .catch((err: any) => set(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save. Please try again.' })));
   };
 
-  const saveBasic = () => saveSection({ bio, currentRole: title, currentCompany: company, yearsOfExperience: Number(years) || 0 }, setBasic);
-  const saveServices = () => saveSection({ expertiseTags: services }, setSvc);
-  // workEmail / linkedinUrl aren't in the documented schema yet — sent so they
-  // persist once the backend adds the fields (unknown fields are ignored).
-  const saveVerify = () => saveSection({ workEmail, linkedinUrl: linkedin }, setVerify, () => setEditingVerify(false));
+  // `realName` is what the Display Name input edits — omitting it meant the
+  // field appeared to save and then reverted on the next refetch.
+  const saveBasic = () => saveSection(
+    { realName: name, headline, bio, currentRole: title, currentCompany: company, yearsOfExperience: Number(years) || 0 },
+    setBasic,
+  );
+
+  // Experience maps to the profile's `careerBackground`. Entries missing a
+  // company or role would be dropped by the backend anyway, so they're filtered
+  // out here; "current" roles send a null endYear.
+  const saveExperience = () => {
+    // The backend rejects more than one `current: true` entry with a 400.
+    if (experiences.filter(e => e.isCurrent).length > 1) {
+      setExp(s => ({ ...s, saving: false, error: 'Only one role can be marked as current.' }));
+      return;
+    }
+    saveExperienceSection();
+  };
+
+  const saveExperienceSection = () => saveSection(
+    {
+      careerBackground: experiences
+        .filter(e => e.company.trim() && e.title.trim())
+        .map(e => ({
+          company: e.company.trim(),
+          role: e.title.trim(),
+          startYear: Number(e.startYear) || null,
+          endYear: e.isCurrent ? null : (Number(e.endYear) || null),
+          current: e.isCurrent,
+        })),
+    },
+    setExp,
+  );
+  // Both are listing requirements: an empty array is a valid "clear" but the
+  // backend then drops the mentor to PENDING, so block the save instead and
+  // reuse the wording the API returns in `statusReason`.
+  const saveServices = () => {
+    if (!services.length) {
+      setSvc(s => ({ ...s, saving: false, error: 'No service type selected — pick at least one to stay listed.' }));
+      return;
+    }
+    if (!disciplines.length) {
+      setSvc(s => ({ ...s, saving: false, error: 'No discipline selected — pick at least one to stay listed.' }));
+      return;
+    }
+    saveSection({ services, disciplines }, setSvc);
+  };
+  // The API only accepts personal /in/ profile links and 400s otherwise, so
+  // normalise up front and submit the canonical form.
+  const saveVerify = () => {
+    const trimmed = linkedin.trim();
+    const normalized = trimmed ? normalizeLinkedinUrl(trimmed) : '';
+    if (trimmed && !normalized) {
+      setVerify(s => ({ ...s, saving: false, error: LINKEDIN_HINT }));
+      return;
+    }
+    if (normalized && normalized !== linkedin) setLinkedin(normalized);
+    saveSection(
+      { workEmail, linkedinUrl: normalized || null },
+      setVerify,
+      () => setEditingVerify(false),
+    );
+  };
 
   // Re-seed from the approved profile values and drop the dirty flag.
   const cancelVerify = () => {
@@ -2501,9 +2737,15 @@ function ProfilePage() {
     setEditingVerify(false);
   };
 
-  // Service-type selection (saved to expertiseTags).
-  const toggleService = (s: string) => {
+  // Service-type selection (ServiceType[] on the profile).
+  const toggleService = (s: ServiceType) => {
     setServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+    markSvc();
+  };
+
+  // Discipline selection — saved together with services in the same PUT.
+  const toggleDiscipline = (d: Discipline) => {
+    setDisciplines(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
     markSvc();
   };
 
@@ -2521,18 +2763,28 @@ function ProfilePage() {
     }
   };
 
-  // Experience entries (UI-only, not persisted).
+  // Experience entries — persisted to `careerBackground` via saveExperience.
+  // Every mutation marks the section dirty so its Save button appears.
   const currentYear = new Date().getFullYear();
   const YEARS = Array.from({ length: currentYear - 1969 }, (_, i) => String(currentYear - i));
-  const updateExp = (id: string, patch: Partial<ExpEntry>) =>
+  const updateExp = (id: string, patch: Partial<ExpEntry>) => {
     setExperiences(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
-  const setCurrentRole = (id: string) =>
+    markExp();
+  };
+  const setCurrentRole = (id: string) => {
     setExperiences(prev => prev.map(e => e.id === id ? { ...e, isCurrent: true, endYear: '' } : { ...e, isCurrent: false }));
+    markExp();
+  };
   const addExp = () => {
     if (experiences.length >= 5) return;
     setExperiences(prev => [...prev, { id: `exp${Date.now()}`, title: '', company: '', startYear: '', endYear: '', isCurrent: false }]);
+    markExp();
   };
-  const deleteExp = (id: string) => { setExperiences(prev => prev.filter(e => e.id !== id)); setDeleteConfirmId(null); };
+  const deleteExp = (id: string) => {
+    setExperiences(prev => prev.filter(e => e.id !== id));
+    setDeleteConfirmId(null);
+    markExp();
+  };
   const onDragStart = (id: string) => setDraggedExpId(id);
   const onDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOverExpId(id); };
   const onDrop = (targetId: string) => {
@@ -2546,6 +2798,7 @@ function ProfilePage() {
       return arr;
     });
     setDraggedExpId(null); setDragOverExpId(null);
+    markExp();
   };
 
   // ── Google Calendar connect (same OAuth flow as the marketplace apply page) ──
@@ -2667,7 +2920,7 @@ function ProfilePage() {
           <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
 
-        {/* Experience (UI-only) */}
+        {/* Experience — PUT /mentorship/profile { careerBackground } */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div>
             <h3 className="text-foreground text-lg font-medium mb-1">Experience</h3>
@@ -2816,9 +3069,11 @@ function ProfilePage() {
             <Plus className="w-4 h-4" />
             Add experience
           </button>
+
+          <SectionSaveRow status={exp} onSave={saveExperience} />
         </div>
 
-        {/* Service Types (maps to expertiseTags) */}
+        {/* Service Types + Disciplines — PUT /mentorship/profile { services, disciplines } */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -2853,13 +3108,45 @@ function ProfilePage() {
                         }}
                       >
                         {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                        {opt}
+                        {SERVICE_TYPE_LABELS[opt]}
                       </button>
                     );
                   })}
                 </div>
               </div>
             ))}
+
+            {/* Discipline — required alongside services for the mentor to be
+                listed, and it backs the candidate-side Role / Industry filter. */}
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Discipline</p>
+              <div className="flex flex-wrap gap-2">
+                {DISCIPLINES.map(opt => {
+                  const selected = disciplines.includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      onClick={() => toggleDiscipline(opt)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: 'var(--space-1) var(--space-3)',
+                        borderRadius: 9999,
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                        background: selected ? 'var(--color-blue-600)' : 'transparent',
+                        color: selected ? '#fff' : 'var(--foreground)',
+                        border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      {DISCIPLINE_LABELS[opt]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Specialty tags (UI-only) */}
@@ -3053,88 +3340,6 @@ function ProfilePage() {
         </div>
       </div>
 
-      {/* Live Preview */}
-      <div className="w-72 border-l border-border bg-surface-0 self-start sticky top-0">
-        <div className="px-4 py-3 border-b border-border bg-card">
-          <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Marketplace Preview</span>
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="bg-card border border-border rounded-[var(--radius)] overflow-hidden shadow-sm">
-            <div className="h-16 bg-gradient-to-r from-primary/20 to-primary/5" />
-            <div className="px-4 pb-4 -mt-7">
-              <div className="flex items-end gap-3 mb-3">
-                {profile?.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={name} className="w-14 h-14 rounded-full border-2 border-card object-cover" />
-                ) : (
-                  <div className="w-14 h-14 rounded-full border-2 border-card bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
-                    {(name || 'M').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                {profile?.status === 'APPROVED' && (
-                  <div className="mb-1 flex items-center gap-1 text-xs text-[hsl(165,60%,30%)] bg-[hsl(165,82%,90%)] px-2 py-0.5 rounded-md">
-                    <ShieldCheck className="w-3 h-3" /> Verified
-                  </div>
-                )}
-              </div>
-              <div className="font-semibold text-foreground text-sm">{name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{title} · {company}</div>
-              <div className="flex items-center gap-1 mt-1.5">
-                <StarRating rating={Math.round(profile?.averageRating ?? 0)} />
-                <span className="text-xs text-muted-foreground">{profile?.averageRating ?? 0} ({profile?.reviewCount ?? 0})</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{headline}</p>
-              {/* Service Type chips */}
-              {services.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {services.map(s => (
-                    <span key={s} className="inline-flex items-center rounded-full text-[10px] font-medium" style={{ padding: '2px 8px', background: 'var(--color-blue-600)', color: '#fff' }}>{s}</span>
-                  ))}
-                </div>
-              )}
-              {/* Specialty Tags */}
-              {specialtyTags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {specialtyTags.map(t => (
-                    <span key={t} className="inline-flex items-center rounded-full text-[10px]" style={{ padding: '2px 8px', border: '1px solid var(--color-blue-300)', color: 'var(--color-blue-700)', background: 'transparent' }}>{t}</span>
-                  ))}
-                </div>
-              )}
-              {/* Experience timeline */}
-              {experiences.length > 0 && (
-                <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-                  <div className="text-[10px] font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</div>
-                  <div className="space-y-2.5">
-                    {experiences.map((exp, i) => (
-                      <div key={exp.id} className="flex items-start gap-2">
-                        <div className="flex flex-col items-center shrink-0" style={{ width: 16 }}>
-                          <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: 'hsl(43,96%,56%)', marginTop: 1 }}>
-                            <Briefcase style={{ width: 8, height: 8, color: '#fff' }} />
-                          </div>
-                          {i < experiences.length - 1 && (
-                            <div className="w-px flex-1 mt-1" style={{ background: 'var(--border)', minHeight: 14 }} />
-                          )}
-                        </div>
-                        <div className="pb-0.5">
-                          <div className="text-[11px] font-semibold" style={{ color: 'var(--foreground)', lineHeight: 1.3 }}>{exp.title || '—'}</div>
-                          <div className="text-[10px]" style={{ color: 'var(--muted-foreground)', lineHeight: 1.4 }}>
-                            {exp.company || '—'}{exp.startYear ? ` · ${exp.startYear} – ${exp.isCurrent ? 'Present' : (exp.endYear || '…')}` : ''}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <button className="mt-3 w-full py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                Book a session
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -3766,6 +3971,9 @@ function ProfileAndAvailabilityPage() {
   // Once the mentor is APPROVED they're already live, so the "complete your
   // profile" requirement notice no longer applies.
   const isApproved = ctx?.profile?.status === 'APPROVED';
+  // The API says WHICH requirement is missing — show it instead of leaving the
+  // mentor to guess from a generic "complete your profile" message.
+  const blockingReason = statusReasonLabel(ctx?.profile?.statusReason);
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Required notice — hidden once the mentor is approved/live. */}
@@ -3774,7 +3982,8 @@ function ProfileAndAvailabilityPage() {
           <div className="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-3 py-2">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700">
-              <span className="font-medium">Required.</span> Complete your profile and weekly availability before you can appear in the mentor marketplace.
+              <span className="font-medium">Required.</span>{' '}
+              {blockingReason || 'Complete your profile and weekly availability before you can appear in the mentor marketplace.'}
             </p>
           </div>
         </div>
@@ -4195,6 +4404,9 @@ export function MentorDashboardPage() {
   const showCompletionBanner =
     !completionDismissed && activePage !== 'profile' &&
     !!profile && profile.status !== 'APPROVED';
+  // Surface the server's own explanation (e.g. "No discipline selected") rather
+  // than a generic prompt the mentor cannot act on.
+  const completionReason = statusReasonLabel(profile?.statusReason);
 
   // Dual-role accounts (candidate + mentor) can hop back to the candidate
   // experience; we remember the choice so they land there next time too.
@@ -4379,7 +4591,7 @@ export function MentorDashboardPage() {
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
             <p className="flex-1 text-xs text-amber-700">
               <span className="font-medium">Your mentor profile isn't live yet.</span>{' '}
-              Complete your profile and weekly availability before you can appear in the mentor marketplace.
+              {completionReason || 'Complete your profile and weekly availability before you can appear in the mentor marketplace.'}
             </p>
             <button
               onClick={() => setActivePage('profile')}

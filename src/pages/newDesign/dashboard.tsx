@@ -199,7 +199,7 @@ const CAREER_STAGES: {
       { text: 'Get career strategy feedback', done: false },
     ],
     cta: 'Browse Mentors',
-    ctaHref: '/marketplace',
+    ctaHref: '/coaching',
   },
   {
     id: 'apply',
@@ -239,7 +239,7 @@ const CAREER_STAGES: {
       { text: 'Plan 90-day career roadmap', done: false },
     ],
     cta: 'Learn More',
-    ctaHref: '/marketplace',
+    ctaHref: '/coaching',
   },
 ];
 
@@ -276,7 +276,7 @@ const FOCUS_ACTIONS = [
     title: 'Book a mentor session',
     description: 'Priya Mehta has 4 slots this week. She specializes in PM interviews — your current target track.',
     cta: 'Book Session',
-    href: '/marketplace',
+    href: '/coaching',
     estimate: '45 min',
   },
   {
@@ -838,7 +838,7 @@ function SupportPanel() {
         'Your mock results show weak product sense — a focused coaching session closes this gap faster than solo practice.',
       availability: 'Next slot: Tomorrow, 10 AM',
       cta: 'Book Now',
-      ctaHref: '/marketplace',
+      ctaHref: '/coaching',
       accent: 'blue',
       isTop: true,
     },
@@ -850,7 +850,7 @@ function SupportPanel() {
         "You're entering the application stage — a strong resume review now gives you the highest ROI before you start applying.",
       availability: 'Response within 48h',
       cta: 'Request Review',
-      ctaHref: '/marketplace',
+      ctaHref: '/coaching',
       accent: 'violet',
     },
     {
@@ -861,7 +861,7 @@ function SupportPanel() {
         'Recommended as you approach Apply — strategic guidance now can sharpen your company targeting and outreach.',
       availability: 'On demand',
       cta: 'View Package',
-      ctaHref: '/marketplace',
+      ctaHref: '/coaching',
       accent: 'emerald',
     },
   ];
@@ -876,7 +876,7 @@ function SupportPanel() {
   const OTHER_HELP = [
     { icon: MessageSquare, label: 'Discord Office Hours', sub: 'Live Q&A, twice weekly',   href: '#' },
     { icon: Users,         label: 'Member Community',    sub: 'Ask peers and coaches',    href: '#' },
-    { icon: Search,        label: 'Browse All Mentors',  sub: '40+ verified experts',     href: '/marketplace' },
+    { icon: Search,        label: 'Browse All Mentors',  sub: '40+ verified experts',     href: '/coaching' },
     { icon: Mail,          label: 'Message Support',     sub: 'Response within 24h',      href: '#' },
   ];
 
@@ -2065,7 +2065,7 @@ function MentorshipSessions() {
           </div>
         </div>
 
-        <Link to="/marketplace">
+        <Link to="/coaching">
           <button className="w-full py-2 rounded-lg border border-slate-200 text-slate-600 text-[12.5px] font-medium hover:border-slate-300 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
             <Users className="w-3.5 h-3.5 text-slate-400" /> Browse More Mentors
           </button>

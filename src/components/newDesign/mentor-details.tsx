@@ -7,15 +7,25 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from './dashboard-layout';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
-import { getMentor, getMentorSlots, createBooking } from '../../services/MentorService';
+import { getMentor, getMentorSlots, getSpecialOfferSlots, createBooking } from '../../services/MentorService';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { EVENTS } from '@/constants/analyticsEvents';
+import {
+  SERVICE_TYPE_LABELS,
+  SPECIAL_OFFER_ENABLED,
+  serviceLabels,
+  type Discipline,
+  type ServiceType,
+} from '@/constants/mentorship';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Duration = '30min' | '1hr';
+
+// Server-side limit on the booking note (optional, 0–1000 characters).
+const NOTE_MAX_LENGTH = 1000;
 
 interface CoachingPlan {
   id: string;
@@ -47,9 +57,25 @@ interface MentorData {
   linkedinUrl?: string;
   bio: string;
   headline: string;
-  expertiseTags: string[];
+  // ServiceType[] / Discipline[] enum values — replaced the old expertiseTags.
+  services: ServiceType[];
+  disciplines: Discipline[];
   yearsOfExperience: number;
-  careerBackground: { company: string; role: string; startYear: number; endYear: number }[];
+  // `current: true` means present role — render "Present" and ignore endYear.
+  careerBackground: { company: string; role: string; startYear: number | null; endYear: number | null; current?: boolean }[];
+  // Display-only badge; not a listing requirement.
+  isInterviewer?: boolean;
+  // Special offer ($1 intro). `specialOfferConfigured` only means "configured
+  // and enabled" — it does NOT guarantee a booking will succeed, so the entry
+  // point also checks remaining quota and whether this student already used it.
+  specialOfferConfigured?: boolean;
+  specialPrice15?: number | null;
+  specialPrice30?: number | null;
+  specialRemainingThisWeek?: number | null;
+  specialAlreadyBooked?: boolean;
+  // The API returns linkedinUrl as null unless the mentor allows students to
+  // see it, so the existing `mentor.linkedinUrl &&` guard is the whole gate.
+  showLinkedin?: boolean;
   averageRating: number;
   reviewCount: number;
   topics: { id: string; title: string; description: string; price30min: number; price60min: number; active: boolean }[];
@@ -155,18 +181,33 @@ interface BookingModalProps {
   mentorName: string;
   mentorRole: string;
   mentorCompany: string;
-  services: string[];
+  // ServiceType enum values (not labels) — they are submitted verbatim as the
+  // booking's required `serviceTags`.
+  services: ServiceType[];
+  // Null when the mentor has no bookable special offer (or the feature is off).
+  specialOffer: { price15: number | null; price30: number | null } | null;
   onClose: () => void;
 }
 
-function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, services, onClose }: BookingModalProps) {
+function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, services, specialOffer, onClose }: BookingModalProps) {
   const posthog = usePostHog();
   const [step, setStep] = useState(1);
   const [duration, setDuration] = useState<Duration>('30min');
   // 'paid' | 'deal' — which plan type is selected on step 1
   const [planType, setPlanType] = useState<'paid' | 'deal'>('paid');
-  // Services the user wants help with (step "Notes"). Wired to the mentor's expertise tags.
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  // Special-offer trials are 15 or 30 minutes (regular sessions are 30 or 60),
+  // so the deal path tracks its own duration in minutes.
+  const [dealMinutes, setDealMinutes] = useState<15 | 30>(30);
+  // Declared early: the slot-fetching effect below branches on it.
+  const isDeal = planType === 'deal';
+  // Only when a REAL bookable trial exists do we switch to trial pricing,
+  // trial slots and the isSpecialOffer flag. Otherwise this card keeps its
+  // original placeholder behaviour: it books a regular session at regular
+  // price, exactly as it did before the special-offer work.
+  const useRealOffer = isDeal && !!specialOffer;
+  // Services the student wants help with — submitted as `serviceTags`, which the
+  // API requires (≥1, and a subset of the mentor's own services).
+  const [selectedServices, setSelectedServices] = useState<ServiceType[]>([]);
   const [timezone, setTimezone] = useState(defaultTimezone);
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -206,7 +247,12 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
     setSlots([]);
     setSelectedDay(null);
     setSelectedSlot(null);
-    getMentorSlots(mentorId, plan.id, duration === '30min' ? 30 : 60)
+    // Trials use their own slot endpoint — always 30-minute blocks, even for a
+    // 15-minute trial.
+    (useRealOffer
+      ? getSpecialOfferSlots(mentorId)
+      : getMentorSlots(mentorId, plan.id, duration === '30min' ? 30 : 60)
+    )
       .then((res: any) => {
         const data = res.data?.data ?? res.data ?? [];
         const list = Array.isArray(data) ? data : [];
@@ -220,7 +266,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
       })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [mentorId, plan.id, duration]);
+  }, [mentorId, plan.id, duration, useRealOffer]);
 
   // Days that have at least one slot (computed in the selected timezone)
   const availableDaysSet = useMemo(() => {
@@ -262,23 +308,33 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const isDeal = planType === 'deal';
-  // Special Offer config. NOTE: the mentor API has no discount/deal field, so these
-  // deal prices are placeholders and are NOT sent to the backend — createBooking still
-  // sends the real topicId + duration and the server computes the actual charge.
-  // TODO: wire real special-offer pricing once the backend exposes it.
+  // Trial durations are 15/30 with real prices from the mentor profile (a null
+  // price means that duration isn't offered). Without a real offer this falls
+  // back to the original placeholder 30-min/1-hour options.
   const DEAL = {
-    durations: [
-      { key: '30min' as Duration, label: '30 min', price: 25 },
-      { key: '1hr' as Duration, label: '1 hour', price: 40 },
-    ],
-    regularPrice30: plan.pricing['30min'], // used for strikethrough on 30-min option
+    durations: useRealOffer
+      ? ([
+          { minutes: 15 as const, label: '15 min', cents: specialOffer?.price15 ?? null },
+          { minutes: 30 as const, label: '30 min', cents: specialOffer?.price30 ?? null },
+        ]).filter(d => d.cents != null).map(d => ({ ...d, price: (d.cents as number) / 100 }))
+      : [
+          { minutes: 30 as const, label: '30 min', price: 25 },
+          { minutes: 60 as const, label: '1 hour', price: 40 },
+        ],
+    regularPrice30: plan.pricing['30min'], // used for strikethrough on the 30-min option
   };
-  const activeDealOption = DEAL.durations.find(d => d.key === duration) ?? DEAL.durations[0];
-  const price = isDeal ? activeDealOption.price : plan.pricing[duration];
+  // Which pill is active: trials track their own minutes, the placeholder path
+  // reuses the regular `duration` state as it always did.
+  const activeDealMinutes = useRealOffer ? dealMinutes : (duration === '30min' ? 30 : 60);
+  const activeDealOption = DEAL.durations.find(d => d.minutes === activeDealMinutes) ?? DEAL.durations[0];
+  const price = isDeal ? (activeDealOption?.price ?? 0) : plan.pricing[duration];
+  // Minutes actually submitted: 15/30 for a real trial, else 30/60 as before.
+  const bookedMinutes = useRealOffer
+    ? (activeDealOption?.minutes ?? 30)
+    : (duration === '30min' ? 30 : 60);
   const isSuccess = step === 6;
 
-  function toggleService(tag: string) {
+  function toggleService(tag: ServiceType) {
     setSelectedServices(prev =>
       prev.includes(tag) ? prev.filter(s => s !== tag) : [...prev, tag]
     );
@@ -303,7 +359,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
     step === 1 ? true :
     step === 2 ? selectedDay !== null :
     step === 3 ? selectedSlot !== null :
-    step === 4 ? (services.length === 0 || selectedServices.length > 0) && notes.trim().length > 0 :
+    step === 4 ? (services.length === 0 || selectedServices.length > 0) :
     true;
 
   async function handleContinue() {
@@ -311,8 +367,8 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
       if (step === 1) {
         // booking_plan_selected —— 学员在 Step 1 确认 plan 与时长
         safeCapture(posthog, EVENTS.BOOKING_PLAN_SELECTED, {
-          plan_type: 'regular', // Special Offer 未上线，暂固定 regular
-          duration: duration === '30min' ? 30 : 60,
+          plan_type: useRealOffer ? 'special_offer' : 'regular',
+          duration: bookedMinutes,
           price,
         });
       }
@@ -328,9 +384,12 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
     try {
       const res: any = await createBooking(mentorId, {
         topicId: plan.id,
-        durationMinutes: duration === '30min' ? 30 : 60,
+        durationMinutes: bookedMinutes,
         startTime: selectedSlot,
         note: notes || undefined,
+        // Required: ≥1 ServiceType, must be a subset of the mentor's services.
+        serviceTags: selectedServices,
+        ...(useRealOffer ? { isSpecialOffer: true } : {}),
       });
       const data = res.data?.data ?? res.data ?? {};
       if (data.checkoutUrl) {
@@ -338,9 +397,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
         safeCapture(posthog, EVENTS.SESSION_BOOKED, {
           mentor_id: mentorId,
           session_plan: plan.id,
-          plan_type: 'regular', // Special Offer 未上线，暂固定 regular
+          plan_type: useRealOffer ? 'special_offer' : 'regular',
           service_type: plan.name,
-          duration: duration === '30min' ? 30 : 60,
+          duration: bookedMinutes,
           amount: price,
         });
         window.location.href = data.checkoutUrl;
@@ -447,15 +506,19 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                 {/* Duration pills */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }} onClick={e => e.stopPropagation()}>
                   {DEAL.durations.map(opt => {
-                    const isActive = duration === opt.key && isDeal;
-                    const is30 = opt.key === '30min';
+                    const isActive = activeDealMinutes === opt.minutes && isDeal;
+                    const is30 = opt.minutes === 30;
                     const pctOff = is30 && DEAL.regularPrice30 > 0
                       ? Math.round((1 - opt.price / DEAL.regularPrice30) * 100)
                       : null;
                     return (
                       <button
-                        key={opt.key}
-                        onClick={() => { setPlanType('deal'); setDuration(opt.key); }}
+                        key={opt.minutes}
+                        onClick={() => {
+                          setPlanType('deal');
+                          if (useRealOffer || specialOffer) setDealMinutes(opt.minutes as 15 | 30);
+                          else setDuration(opt.minutes === 30 ? '30min' : '1hr');
+                        }}
                         style={{
                           display: 'flex', flexDirection: 'column', gap: 2, padding: '7px 12px',
                           borderRadius: '10px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
@@ -705,7 +768,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                             borderColor: active ? 'var(--primary)' : 'var(--border)',
                           }}
                         >
-                          {tag}
+                          {SERVICE_TYPE_LABELS[tag] ?? tag}
                         </button>
                       );
                     })}
@@ -717,19 +780,23 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                   <label className="text-sm font-medium text-foreground">
                     Notes for your mentor
                   </label>
-                  <span className="text-xs" style={{ color: 'var(--primary)' }}>Required</span>
+                  <span className="text-xs text-muted-foreground">Optional</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2.5 leading-relaxed">
                   Share your context, goals, and anything your mentor should know before the session.
                 </p>
                 <textarea
                   value={notes}
-                  onChange={e => setNotes(e.target.value)}
+                  onChange={e => setNotes(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+                  maxLength={NOTE_MAX_LENGTH}
                   placeholder="e.g. I'm preparing for a FAANG PM onsite and struggling with metric-definition questions. I have 2 practice sessions left before my actual interview on May 5th..."
                   rows={5}
                   className="w-full border border-border rounded-lg px-3 py-2.5 text-sm text-foreground bg-card placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors leading-relaxed"
                 />
-                <p className="text-xs text-muted-foreground mt-1.5">Please add a note so your mentor can prepare.</p>
+                <div className="flex items-center justify-between mt-1.5">
+                  <p className="text-xs text-muted-foreground">Adding a note helps your mentor prepare.</p>
+                  <span className="text-xs text-muted-foreground">{notes.length}/{NOTE_MAX_LENGTH}</span>
+                </div>
               </div>
             </div>
           )}
@@ -746,7 +813,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                   { label: 'Duration', value: duration === '30min' ? '30 minutes' : '1 hour' },
                   { label: 'Date',     value: formattedDate },
                   { label: 'Time',     value: selectedSlot ? formatSlotTime(selectedSlot) : '—' },
-                  { label: 'Services', value: selectedServices.join(', ') || '—' },
+                  { label: 'Services', value: selectedServices.map(t => SERVICE_TYPE_LABELS[t] ?? t).join(', ') || '—' },
                 ].map((row, i, arr) => (
                   <div key={row.label} className={`flex items-start justify-between gap-4 px-4 py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                     <span className="text-xs text-muted-foreground w-20 shrink-0">{row.label}</span>
@@ -893,6 +960,20 @@ export function MentorDetailsPage() {
     };
   }, [mentor]);
 
+  // A trial is only bookable when every gate passes: the feature is released,
+  // the mentor configured and enabled it, at least one duration has a price,
+  // quota remains this week, and this student hasn't already used theirs.
+  // `specialOfferConfigured` alone is explicitly not sufficient.
+  const bookableSpecialOffer = useMemo(() => {
+    if (!SPECIAL_OFFER_ENABLED || !mentor?.specialOfferConfigured) return null;
+    if (mentor.specialAlreadyBooked) return null;
+    if ((mentor.specialRemainingThisWeek ?? 0) <= 0) return null;
+    const price15 = mentor.specialPrice15 ?? null;
+    const price30 = mentor.specialPrice30 ?? null;
+    if (price15 == null && price30 == null) return null;
+    return { price15, price30 };
+  }, [mentor]);
+
   if (loading) {
     return (
       <DashboardLayout headerTitle="Mentor Profile">
@@ -912,7 +993,8 @@ export function MentorDetailsPage() {
           mentorName={mentor.name}
           mentorRole={mentor.currentRole}
           mentorCompany={mentor.currentCompany}
-          services={mentor.expertiseTags ?? []}
+          services={mentor.services ?? []}
+          specialOffer={bookableSpecialOffer}
           onClose={() => setActivePlan(null)}
         />
       )}
@@ -991,7 +1073,7 @@ export function MentorDetailsPage() {
             </div>
 
             {/* <div className="flex flex-wrap gap-2 mt-4">
-              {(mentor?.expertiseTags ?? []).map(tag => (
+              {serviceLabels(mentor?.services).map(tag => (
                 <span key={tag} className="px-2.5 py-1 rounded-md bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] border border-[color-mix(in_srgb,var(--primary)_20%,transparent)] text-primary text-xs font-medium">{tag}</span>
               ))}
             </div> */}
@@ -1009,7 +1091,7 @@ export function MentorDetailsPage() {
                       </div>
                       <div>
                         <p className="text-xs font-medium text-foreground">{exp.role}</p>
-                        <p className="text-xs text-muted-foreground">{exp.company} · {exp.startYear} – {exp.endYear || 'Present'}</p>
+                        <p className="text-xs text-muted-foreground">{exp.company} · {exp.startYear ?? '—'} – {exp.current ? 'Present' : (exp.endYear ?? 'Present')}</p>
                       </div>
                     </div>
                   ))}
@@ -1067,7 +1149,7 @@ export function MentorDetailsPage() {
                   >
                     {/* Service tag pills */}
                     <div className="flex flex-wrap gap-2">
-                      {(mentor?.expertiseTags ?? []).map(tag => (
+                      {serviceLabels(mentor?.services).map(tag => (
                         <span
                           key={tag}
                           className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium"

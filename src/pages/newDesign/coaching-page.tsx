@@ -10,6 +10,12 @@ import { hasMentorRole } from '@/components/mentor/dashboard-mode';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
+import {
+  DISCIPLINE_BY_LABEL,
+  serviceLabels,
+  type Discipline,
+  type ServiceType,
+} from '@/constants/mentorship';
 
 // SVG path data (inlined from the new design's MentorCard import).
 const cardSvg = {
@@ -44,7 +50,8 @@ interface ApiMentor {
   currentRole: string;
   currentCompany: string;
   avatarUrl: string;
-  expertiseTags: string[];
+  services: ServiceType[];
+  disciplines: Discipline[];
   priceFrom: number;
   averageRating: number | null;
   reviewCount: number;
@@ -69,7 +76,8 @@ function mapApiMentor(m: ApiMentor): Mentor {
     rating: m.averageRating ?? 0,
     reviews: m.reviewCount ?? 0,
     next: m.hasSlotsThisWeek ? 'This week' : m.hasSlotsNextWeek ? 'Next week' : 'Check',
-    tags: m.expertiseTags ?? [],
+    // `services` are ServiceType enum values — render the human labels.
+    tags: serviceLabels(m.services),
     quote: '',
     availability: m.hasSlotsThisWeek
       ? 'Available this week'
@@ -84,17 +92,20 @@ const COMPANY_COLORS: Record<string, string> = {
   Airbnb: '#FF5A5F', OpenAI: '#10A37F', Datadog: '#632CA6',
 };
 
-// ─── Filter / sort config (kept in sync with mentorship-marketplace.tsx) ──────
+// ─── Filter / sort config ─────────────────────────────────────────────────────
 
 const PRICE_TO_PARAMS: Record<string, { priceMin?: number; priceMax?: number }> = {
   '$0–$50':    { priceMin: 0,     priceMax: 5000 },
   '$50–$100':  { priceMin: 5000,  priceMax: 10000 },
   '$100+':     { priceMin: 10000 },
 };
-const AVAIL_TO_API: Record<string, string> = {
+// The API only documents THIS_WEEK / NEXT_WEEK. "Flexible" therefore sends no
+// availability constraint at all (i.e. mentors with any availability) rather
+// than an undocumented FLEXIBLE value that would 400 and blank the list.
+const AVAIL_TO_API: Record<string, string | undefined> = {
   'Has slots this week': 'THIS_WEEK',
   'Next week':           'NEXT_WEEK',
-  'Flexible':            'FLEXIBLE',
+  'Flexible':            undefined,
 };
 const RATING_TO_MIN: Record<string, number> = {
   '4.0+': 4.0, '4.5+': 4.5, '5.0 only': 5.0,
@@ -106,12 +117,19 @@ const SORT_TO_API: Record<string, { sortBy: string; sortDir: 'asc' | 'desc' }> =
   'Most reviewed':       { sortBy: 'review', sortDir: 'desc' },
 };
 
+// NOTE: the API also supports `services` (multi-select) and `yoeRange` filters.
+// They are deliberately NOT surfaced — adding dropdowns would change the UI.
+// See the UI/API mismatch list.
 const FILTERS = [
-  { id: 'role',         label: 'Role / Industry', options: ['Software Engineering', 'Product Management', 'Data Science', 'Design', 'Eng. Management'] },
+  { id: 'discipline',   label: 'Role / Industry', options: ['Software Engineering', 'Product Management', 'Data Science', 'Design', 'Eng. Management'] },
   { id: 'price',        label: 'Price Range',      options: ['$0–$50', '$50–$100', '$100+'] },
   { id: 'availability', label: 'Availability',     options: ['Has slots this week', 'Next week', 'Flexible'] },
   { id: 'rating',       label: 'Rating',           options: ['4.0+', '4.5+', '5.0 only'] },
 ] as const;
+
+const EMPTY_FILTERS: Record<string, string | null> = {
+  discipline: null, price: null, availability: null, rating: null,
+};
 
 const SORT_OPTIONS = ['Top rated', 'Price: Low to high', 'Price: High to low', 'Most reviewed'];
 
@@ -476,9 +494,7 @@ export function CoachingPage() {
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSort, setOpenSort] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string | null>>({
-    role: null, price: null, availability: null, rating: null,
-  });
+  const [filters, setFilters] = useState<Record<string, string | null>>(EMPTY_FILTERS);
   const [sortBy, setSortBy] = useState('Top rated');
   const sortRef = useRef<HTMLDivElement>(null);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -500,8 +516,13 @@ export function CoachingPage() {
   const fetchMentorList = useCallback(async () => {
     try {
       const params: Record<string, unknown> = { page: 0, size: 20 };
-      if (filters.role) params.role = filters.role;
-      if (filters.availability) params.availability = AVAIL_TO_API[filters.availability];
+      // UI labels are mapped back to the backend enums — the API 400s on
+      // anything outside the documented value sets.
+      if (filters.discipline) params.discipline = DISCIPLINE_BY_LABEL[filters.discipline];
+      if (filters.availability) {
+        const availability = AVAIL_TO_API[filters.availability];
+        if (availability) params.availability = availability;
+      }
       if (filters.rating) params.ratingMin = RATING_TO_MIN[filters.rating];
       if (filters.price) {
         const p = PRICE_TO_PARAMS[filters.price];
@@ -566,7 +587,7 @@ export function CoachingPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={() => {
-                  setFilters({ role: null, price: null, availability: null, rating: null });
+                  setFilters(EMPTY_FILTERS);
                   safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, { filter_name: 'all', values: [] });
                 }}
                 className="transition-colors hover:text-foreground"
