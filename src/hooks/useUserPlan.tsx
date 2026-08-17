@@ -40,7 +40,16 @@ interface UserPlanContextValue {
   planData: PlanUsageData;
   isLoading: boolean;
   error: string | null;
-  
+
+  // Raw subscription-record state, kept separate from `planData.currentPlan`.
+  // A user can have a row on the backend whose tier we render as Free — e.g. a
+  // legacy PREMIUM/STARTER row. Those users must NOT hit POST
+  // /payments/subscriptions (backend rejects: "already have a subscription");
+  // they go through the tier-change endpoint instead.
+  hasSubscriptionRecord: boolean;
+  subscriptionStatus: string | null;
+  isLegacyPlanRecord: boolean;
+
   // Plan check helpers — Free/Basic are low tier, Advanced/Flagship are premium.
   isPremium: boolean;      // Advanced or Flagship
   isFree: boolean;         // Free only
@@ -77,6 +86,48 @@ const defaultPlanData: PlanUsageData = {
   permanentCreditBalance: 0,
 };
 
+// Whether the backend holds a subscription row for this user, independent of
+// whether its tier maps to one of the current tiers.
+interface SubscriptionRecord {
+  exists: boolean;
+  status: string | null;   // lowercased backend status
+  isLegacy: boolean;       // row exists but tier isn't basic/advanced/flagship
+}
+
+const defaultSubscriptionRecord: SubscriptionRecord = {
+  exists: false,
+  status: null,
+  isLegacy: false,
+};
+
+const errorText = (err: unknown): string => {
+  const e = err as {
+    response?: { data?: { message?: string; errorCode?: string } };
+    message?: string;
+  };
+  return `${e?.response?.data?.message ?? ''} ${e?.response?.data?.errorCode ?? ''} ${e?.message ?? ''}`;
+};
+
+// Stripe/backend rejects a second POST /payments/subscriptions with a
+// "already has a subscription"-style message. Detect it so we can retry the
+// request as a tier change instead of dead-ending the user.
+const isAlreadySubscribedError = (err: unknown): boolean =>
+  /already\s+(has|have|had)?\s*(an?\s+)?(active\s+)?subscription|subscription[_\s-]*(already[_\s-]*)?exists|SUBSCRIPTION_EXISTS/i.test(
+    errorText(err),
+  );
+
+// The backend refuses tier AND billing-cycle changes on legacy plans:
+//   "Your current plan is no longer available for changes. Tier and billing
+//    cycle changes are disabled for legacy plans."
+// Combined with the already-subscribed guard on create, a legacy subscriber has
+// no self-serve path to a current plan — the row has to be migrated backend-side.
+const isLegacyPlanBlockedError = (err: unknown): boolean =>
+  /legacy plan|no longer available for changes/i.test(errorText(err));
+
+// Shown whenever we detect that dead end, instead of leaking the raw API error.
+export const LEGACY_PLAN_BLOCKED_MESSAGE =
+  'Your current plan is a legacy plan and can no longer be changed from here. Contact operations@screna.ai to move to a current plan.';
+
 // Create context
 const UserPlanContext = createContext<UserPlanContextValue | undefined>(undefined);
 
@@ -95,6 +146,9 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const prevBalanceRef = useRef<number | null>(null);
 
   const [planData, setPlanData] = useState<PlanUsageData>(defaultPlanData);
+  const [subscriptionRecord, setSubscriptionRecord] = useState<SubscriptionRecord>(
+    defaultSubscriptionRecord,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
@@ -125,6 +179,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     if (!isAuthenticated || isStaffRole(user?.roles, user?.role)) {
       setIsLoading(false);
       setPlanData(defaultPlanData);
+      setSubscriptionRecord(defaultSubscriptionRecord);
       return;
     }
 
@@ -144,6 +199,8 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       let cancelAtPeriodEnd = false;
       let hasPendingDowngrade = false;
       let currentPeriodEnd: string | null = null;
+      // True when the backend returned an actual subscription row (any tier).
+      let recordExists = false;
 
       if (subRes.status === 'fulfilled') {
         const body = (subRes.value?.data ?? null) as { data?: Record<string, unknown> } | null;
@@ -164,6 +221,9 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
           else tier = null;
 
           status = (data.status as string) ?? null;
+          // Any identifying field means a row exists — including legacy rows
+          // whose tier didn't match above and left `tier` null.
+          recordExists = Boolean(tierSource || data.status || data.id || data.currentPeriodEnd);
           cancelAtPeriodEnd = Boolean(data.cancelAtPeriodEnd);
           hasPendingDowngrade =
             Boolean(data.downgradePendingPlan) ||
@@ -187,6 +247,12 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       }
 
       const plan = tierToPlan(tier, status?.toLowerCase());
+
+      setSubscriptionRecord({
+        exists: recordExists,
+        status: status?.toLowerCase() ?? null,
+        isLegacy: recordExists && tier === null,
+      });
 
       setPlanData({
         currentPlan: plan,
@@ -227,6 +293,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     // If not authenticated, reset to defaults
     if (!isAuthenticated) {
       setPlanData(defaultPlanData);
+      setSubscriptionRecord(defaultSubscriptionRecord);
       setHasFetched(false);
       setIsLoading(false);
     }
@@ -250,13 +317,35 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
 
   // Change plan:
   //   Free                      → cancelSubscription (cancel at period end)
-  //   Basic/Advanced/Flagship   → changeTier for active subscribers
-  //                               (prorated up, scheduled down), otherwise
-  //                               createSubscription (Stripe Checkout).
+  //   Basic/Advanced/Flagship   → changeTier when the backend already holds a
+  //                               live subscription row (prorated up, scheduled
+  //                               down), otherwise createSubscription (Stripe
+  //                               Checkout).
+  //
+  // The branch keys off whether a *row exists*, not off `currentPlan`: a legacy
+  // PREMIUM/STARTER row renders as Free but still makes POST
+  // /payments/subscriptions fail with "already have a subscription". If the
+  // cached record is stale (changed in another tab, or backend cleanup landed
+  // mid-session) the POST error is caught and retried as a tier change.
+  //
+  // Legacy rows are a dead end on the backend today — create says "already have
+  // a subscription" and tier/billing-cycle changes are explicitly disabled — so
+  // we surface LEGACY_PLAN_BLOCKED_MESSAGE rather than firing doomed requests.
+  // Remove that guard once the backend migrates those rows to current tiers.
   const changePlan = useCallback(async (
     planType: PlanType,
   ): Promise<{ success: boolean; url?: string | null; message?: string }> => {
     setIsChangingPlan(true);
+
+    const reportLegacyBlocked = () => {
+      toast({
+        title: 'Plan change unavailable',
+        description: LEGACY_PLAN_BLOCKED_MESSAGE,
+        variant: 'destructive',
+      });
+      return { success: false, message: LEGACY_PLAN_BLOCKED_MESSAGE };
+    };
+
     try {
       // Downgrade to Free → cancel current subscription.
       if (planType === 'Free') {
@@ -270,7 +359,6 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       }
 
       const targetTier = planType.toLowerCase();
-      const currentlyMember = planData.currentPlan !== 'Free';
 
       if (currentlyMember) {
         // Active subscriber → change tier (prorated up, scheduled down).
@@ -291,17 +379,34 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         });
         await refreshPlan();
         return { success: true, url: null };
+      };
+
+      if (hasLiveSubscription) {
+        return await applyTierChange();
       }
 
-      // No active subscription → create one (billing is MONTHLY-only for now).
-      const res = await PaymentService.createSubscription(targetTier, 'monthly');
-      const url = res.data?.data?.url;
-      if (url) {
-        return { success: true, url };
+      // No live subscription → create one (billing is MONTHLY-only for now).
+      try {
+        const res = await PaymentService.createSubscription(targetTier, 'monthly');
+        const url = res.data?.data?.url;
+        if (url) {
+          return { success: true, url };
+        }
+        await refreshPlan();
+        return { success: true, url: null };
+      } catch (err) {
+        // Our record said "no subscription" but the backend disagrees — the
+        // only way forward is the tier-change endpoint.
+        if (!isAlreadySubscribedError(err)) throw err;
+        return await applyTierChange();
       }
-      await refreshPlan();
-      return { success: true, url: null };
     } catch (err: unknown) {
+      // The backend's own notion of "legacy" may be wider than ours (e.g. a
+      // current tier on a retired billing cycle), so honour its verdict too.
+      if (isLegacyPlanBlockedError(err)) {
+        console.error('Legacy plan blocked from changing tier:', err);
+        return reportLegacyBlocked();
+      }
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       const errorMessage = e?.response?.data?.message || e?.message || 'Failed to initiate plan change';
       console.error('Failed to change plan:', err);
@@ -314,7 +419,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     } finally {
       setIsChangingPlan(false);
     }
-  }, [toast, refreshPlan, planData.currentPlan]);
+  }, [toast, refreshPlan, planData.currentPlan, subscriptionRecord]);
 
   // Buy credits - returns Stripe URL
   const buyCredits = useCallback(async (numberOfCredits: number): Promise<string | null> => {
@@ -365,7 +470,11 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     planData,
     isLoading: effectiveIsLoading,
     error,
-    
+
+    hasSubscriptionRecord: subscriptionRecord.exists,
+    subscriptionStatus: subscriptionRecord.status,
+    isLegacyPlanRecord: subscriptionRecord.isLegacy,
+
     // Plan check helpers
     isPremium,
     isFree,

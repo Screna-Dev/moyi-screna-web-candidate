@@ -64,6 +64,23 @@ function PlanProbe() {
   );
 }
 
+// Probe exposing the raw subscription-record state + a changePlan trigger.
+let changePlanFn: ((plan: PlanType) => Promise<unknown>) | null = null;
+
+function RecordProbe() {
+  const { hasSubscriptionRecord, subscriptionStatus, isLegacyPlanRecord, isLoading, changePlan } =
+    useUserPlan();
+  changePlanFn = changePlan;
+  if (isLoading) return <div>loading</div>;
+  return (
+    <div>
+      <span data-testid="has-record">{String(hasSubscriptionRecord)}</span>
+      <span data-testid="legacy">{String(isLegacyPlanRecord)}</span>
+      <span data-testid="status">{String(subscriptionStatus)}</span>
+    </div>
+  );
+}
+
 const renderPlan = () =>
   render(
     <UserPlanProvider>
@@ -180,6 +197,20 @@ describe('useUserPlan tier mapping (BASIC | ADVANCED | FLAGSHIP)', () => {
     await waitFor(() => expect(screen.getByTestId('plan')).toHaveTextContent('Free'));
     expect(screen.getByTestId('premium')).toHaveTextContent('false');
     expect(screen.getByTestId('free')).toHaveTextContent('true');
+  });
+
+  it('exposes a legacy row as Free but flags the underlying subscription record', async () => {
+    mockGetSubscription.mockResolvedValue({
+      data: { data: { memberPlan: 'PREMIUM_MONTHLY', status: 'ACTIVE' } },
+    });
+    render(
+      <UserPlanProvider>
+        <RecordProbe />
+      </UserPlanProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('has-record')).toHaveTextContent('true'));
+    expect(screen.getByTestId('legacy')).toHaveTextContent('true');
+    expect(screen.getByTestId('status')).toHaveTextContent('active');
   });
 
   it('treats any unknown tier value as Free', async () => {

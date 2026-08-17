@@ -5,7 +5,7 @@ import { Menu, X, Loader2, LayoutDashboard, Settings, Coins, LogOut } from 'luci
 import { usePostHog } from 'posthog-js/react';
 import { BuyCreditsModal } from '@/components/newDesign/BuyCreditsModal';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserPlan } from '@/hooks/useUserPlan';
+import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 import { getPersonalInfo } from '@/services/ProfileServices';
@@ -593,7 +593,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, isLoading: isAuthLoading } = useAuth();
-  const { planData, isLoading: isPlanLoading } = useUserPlan();
+  const { planData, isLoading: isPlanLoading, changePlan } = useUserPlan();
   const { toast } = useToast();
   const posthog = usePostHog();
 
@@ -698,28 +698,24 @@ export function HomePage() {
       navigate('/settings?tab=billing');
       return;
     }
+    // Subscribers on a current tier manage prorated changes in Settings →
+    // Billing. Legacy rows (old PREMIUM/STARTER) render as Free here, so they
+    // fall through to changePlan() below, which detects the existing row and
+    // uses the tier-change endpoint instead of POSTing a second subscription.
+    if (planData.currentPlan !== 'Free') {
+      navigate('/settings?tab=billing');
+      return;
+    }
+
     setLoadingTier(plan.tier);
     try {
-      // Only an ACTIVE subscription on a current tier routes to Settings for a
-      // prorated tier change. Canceled/unpaid rows and legacy tiers that no
-      // longer exist (premium/starter) proceed to Stripe Checkout like a new
-      // subscriber — otherwise they'd bounce between Settings (which shows
-      // them as Free) and this page, never able to pay.
-      let hasActiveSubscription = false;
-      try {
-        const subRes = await PaymentService.getSubscription();
-        const sub = subRes?.data?.data ?? subRes?.data;
-        const tierStr = String(sub?.memberPlan ?? sub?.tier ?? sub?.plan ?? '').toLowerCase();
-        const status = String(sub?.status ?? '').toLowerCase();
-        const onCurrentTier = ['basic', 'advanced', 'flagship'].some((t) => tierStr.includes(t));
-        hasActiveSubscription = onCurrentTier && status !== 'canceled' && status !== 'unpaid';
-      } catch {
-        // 404 / no record → treat as a new subscriber.
-        hasActiveSubscription = false;
-      }
-
-      if (hasActiveSubscription) {
-        navigate('/settings?tab=billing');
+      // changePlan() owns the create-vs-change-tier decision (and its own error
+      // toast) using the subscription record fetched when the app loaded.
+      const planType = (plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()) as PlanType;
+      const result = await changePlan(planType);
+      if (!result.success) return;
+      if (result.url) {
+        window.location.href = result.url;
         return;
       }
 

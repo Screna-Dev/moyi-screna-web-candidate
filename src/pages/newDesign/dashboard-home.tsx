@@ -859,7 +859,7 @@ function MentorshipCard() {
 
   return (
     <Panel style={{ position: 'relative' }}>
-      <PanelHead title="Mentorship" linkLabel="Browse mentors" onLink={() => navigate('/marketplace')} />
+      <PanelHead title="Mentorship" linkLabel="Browse mentors" onLink={() => navigate('/coaching')} />
 
       <div>
         {/* Upcoming session */}
@@ -974,7 +974,7 @@ function MentorshipCard() {
               No upcoming sessions
             </div>
             <button
-              onClick={() => navigate('/marketplace')}
+              onClick={() => navigate('/coaching')}
               style={{
                 padding: '7px 14px', borderRadius: 8, border: 0,
                 background: T.blue500, color: '#fff',

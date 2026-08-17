@@ -3,7 +3,7 @@
 # Whitelist model: crawling is disallowed by default (Disallow: /), and only
 # the marketing/content pages below are opened back up. Everything behind the
 # login wall — /dashboard, /profile, /settings, /billing, /admin, /auth, the
-# interview and onboarding flows, /interview-insights, /marketplace — is
+# interview and onboarding flows, /interview-insights, /coaching — is
 # therefore blocked without needing its own rule.
 #
 # Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each

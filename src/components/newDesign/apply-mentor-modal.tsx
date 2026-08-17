@@ -3,13 +3,14 @@ import { Loader2, X, Check, ArrowRight, FileText, Upload, Clock } from 'lucide-r
 import { usePostHog } from 'posthog-js/react';
 import { applyMentor, getMyMentorProfile } from '../../services/MentorService';
 import { getProfile, uploadResumeAndWait, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '../../services/ProfileServices';
+import { LINKEDIN_HINT, normalizeLinkedinUrl } from '@/constants/mentorship';
 import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 import type { ProfileData } from '../../types/profile';
 
-// The mentor application now collects only identity essentials —
-// realName, workEmail, linkedinUrl — plus a resume. The resume uses a
+// The mentor application collects identity essentials — realName, workEmail,
+// linkedinUrl — plus a resume. The resume uses a
 // two-step flow: it must be stored via POST /profile/upload-resume before
 // POST /mentorship/apply is called (applying without a stored resume → 400).
 // Everything else (bio, headline, tags, office hours, topic pricing, calendar)
@@ -95,6 +96,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         if (resumePath) setHasStoredResume(true);
         if (sr?.profile) {
           setForm(f => ({
+            ...f,
             realName: f.realName || sr.profile.full_name || '',
             workEmail: f.workEmail || sr.profile.email || '',
             linkedinUrl: f.linkedinUrl || sr.links?.linkedin || '',
@@ -128,6 +130,10 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
     if (!form.realName.trim()) { setError('Enter your full name.'); return; }
     if (!form.workEmail.trim()) { setError('Enter your work email.'); return; }
     if (!form.linkedinUrl.trim()) { setError('Enter your LinkedIn profile URL.'); return; }
+    // The API only accepts personal /in/ profile links and 400s on anything
+    // else, so normalise here and submit the canonical form.
+    const linkedinUrl = normalizeLinkedinUrl(form.linkedinUrl);
+    if (!linkedinUrl) { setError(LINKEDIN_HINT); return; }
     if (!hasStoredResume && !resumeFile) { setError('Upload your resume to continue.'); return; }
 
     setSubmitting(true);
@@ -142,10 +148,14 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         setHasStoredResume(true);
         setResumeUploading(false);
       }
+      // NOTE: the API now REQUIRES currentRole / currentCompany /
+      // yearsOfExperience. There are no inputs for them in this design, so this
+      // request will 400 until the form gains those fields.
+      // See the UI/API mismatch list.
       await applyMentor({
         realName: form.realName.trim(),
         workEmail: form.workEmail.trim(),
-        linkedinUrl: form.linkedinUrl.trim(),
+        linkedinUrl,
       });
       // mentor_apply_submitted —— 申请提交成功（仅 API 成功后上报）
       safeCapture(posthog, EVENTS.MENTOR_APPLY_SUBMITTED);
