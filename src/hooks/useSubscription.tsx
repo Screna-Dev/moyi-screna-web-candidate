@@ -37,6 +37,13 @@ export interface CreditsData {
   resetDate: string | null;
 }
 
+// Result of a plan mutation. `url` is a Stripe-hosted page the caller must
+// redirect to for the change to take effect; null means it already applied.
+export interface ChangeResult {
+  ok: boolean;
+  url: string | null;
+}
+
 interface UseSubscriptionResult {
   subscription: SubscriptionData | null;
   credits: CreditsData;
@@ -45,8 +52,8 @@ interface UseSubscriptionResult {
   error: string | null;
   refresh: () => Promise<void>;
   subscribe: (plan: Tier, billingCycle: BillingCycle) => Promise<string | null>;
-  changeTier: (plan: Tier) => Promise<boolean>;
-  changeBillingCycle: (billingCycle: BillingCycle) => Promise<boolean>;
+  changeTier: (plan: Tier) => Promise<ChangeResult>;
+  changeBillingCycle: (billingCycle: BillingCycle) => Promise<ChangeResult>;
   cancelPendingDowngrade: () => Promise<boolean>;
   cancel: () => Promise<boolean>;
   resume: () => Promise<boolean>;
@@ -263,20 +270,27 @@ export function useSubscription(): UseSubscriptionResult {
     [toast, refresh],
   );
 
+  // Like `subscribe`, a tier change can come back with a Stripe URL the user
+  // must be sent to before the change is real (e.g. an upgrade that needs a
+  // fresh payment or 3DS confirmation). Callers MUST follow `url` when present;
+  // only a `url`-less success means the change already applied.
   const changeTierAction = useCallback(
-    async (plan: Tier): Promise<boolean> => {
+    async (plan: Tier): Promise<ChangeResult> => {
       setIsActing(true);
       try {
-        await PaymentService.changeTier(plan);
-        await refresh();
-        return true;
+        const res = await PaymentService.changeTier(plan);
+        const url = (unwrap(res) as { url?: string } | null)?.url ?? null;
+        // Don't refresh when redirecting — the change isn't applied until the
+        // user completes payment, and we're leaving the page anyway.
+        if (!url) await refresh();
+        return { ok: true, url };
       } catch (e) {
         toast({
           title: 'Plan change failed',
           description: errMsg(e, 'Unable to change tier'),
           variant: 'destructive',
         });
-        return false;
+        return { ok: false, url: null };
       } finally {
         setIsActing(false);
       }
@@ -284,20 +298,22 @@ export function useSubscription(): UseSubscriptionResult {
     [toast, refresh],
   );
 
+  // Same contract as changeTier — may return a URL to redirect to.
   const changeBillingCycleAction = useCallback(
-    async (billingCycle: BillingCycle): Promise<boolean> => {
+    async (billingCycle: BillingCycle): Promise<ChangeResult> => {
       setIsActing(true);
       try {
-        await PaymentService.changeBillingCycle(billingCycle);
-        await refresh();
-        return true;
+        const res = await PaymentService.changeBillingCycle(billingCycle);
+        const url = (unwrap(res) as { url?: string } | null)?.url ?? null;
+        if (!url) await refresh();
+        return { ok: true, url };
       } catch (e) {
         toast({
           title: 'Billing cycle change failed',
           description: errMsg(e, 'Unable to change billing cycle'),
           variant: 'destructive',
         });
-        return false;
+        return { ok: false, url: null };
       } finally {
         setIsActing(false);
       }

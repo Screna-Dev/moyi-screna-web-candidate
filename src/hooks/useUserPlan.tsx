@@ -271,7 +271,14 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
 
       if (currentlyMember) {
         // Active subscriber → change tier (prorated up, scheduled down).
-        await PaymentService.changeTier(targetTier);
+        // The response may carry a Stripe URL when the change needs payment;
+        // in that case nothing has applied yet — hand the URL to the caller to
+        // redirect, exactly like the create-subscription branch below.
+        const tierRes = await PaymentService.changeTier(targetTier);
+        const tierUrl = tierRes?.data?.data?.url ?? tierRes?.data?.url ?? null;
+        if (tierUrl) {
+          return { success: true, url: tierUrl };
+        }
         const upgrading = PLAN_ORDER[planType] > PLAN_ORDER[planData.currentPlan];
         toast({
           title: upgrading ? 'Plan Updated!' : 'Downgrade Scheduled',
