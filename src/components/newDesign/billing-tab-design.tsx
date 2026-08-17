@@ -130,7 +130,17 @@ function MembershipBanner({
 }
 
 // ─── Cancel Confirm Modal ───────────────────────────────────────────────────────
-function CancelConfirmModal({ onClose, accessEndsDate = 'Jul 24, 2026' }: { onClose: () => void; accessEndsDate?: string }) {
+function CancelConfirmModal({
+  onClose,
+  onConfirm,
+  isActing = false,
+  accessEndsDate = 'Jul 24, 2026',
+}: {
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+  isActing?: boolean;
+  accessEndsDate?: string;
+}) {
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
@@ -145,14 +155,23 @@ function CancelConfirmModal({ onClose, accessEndsDate = 'Jul 24, 2026' }: { onCl
       >
         <h3 className="text-foreground mb-2" style={{ fontSize: 16 }}>Cancel subscription?</h3>
         <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-          Your access continues until {accessEndsDate}. This action cannot be undone.
+          Your access continues until {accessEndsDate}. You can reactivate any time before then.
         </p>
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity"
+            disabled={isActing}
+            className="px-4 py-2 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             Keep subscription
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isActing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-destructive/50 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors disabled:opacity-60"
+          >
+            {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Cancel subscription
           </button>
         </div>
       </motion.div>
@@ -324,10 +343,12 @@ function StatusBadge({ status }: { status: 'Active' | 'Past Due' | 'Canceled' })
 }
 
 // ─── Billing Tab (main export) ──────────────────────────────────────────────────
-const PLANS = [
-  { id: 'basic',    name: 'Basic',    price: '$7.99/mo',  desc: 'billed monthly', badge: null },
-  { id: 'advanced', name: 'Advanced', price: '$29.99/mo', desc: 'billed monthly', badge: { text: 'Current', color: 'blue' as const } },
-  { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly', badge: null },
+// Tier options for the switch-plan panel. The "Current"/"Scheduled" badges are
+// derived per render from the live subscription — never hardcoded here.
+const PLAN_OPTIONS = [
+  { id: 'basic',    name: 'Basic',    price: '$7.99/mo',  desc: 'billed monthly' },
+  { id: 'advanced', name: 'Advanced', price: '$29.99/mo', desc: 'billed monthly' },
+  { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly' },
 ] as const;
 
 // plan_switch_confirmed 用：按 tier 排序判断 upgrade / downgrade。
@@ -338,28 +359,36 @@ const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
-  const { subscription } = useSubscription();
+  const { subscription, isActing, changeTier, cancel, resume } = useSubscription();
   const navigate = useNavigate();
   const posthog = usePostHog();
-
-  // Cancel/switch actions are still mock — real logic coming.
-  const isActing = false;
 
   // ── Plan state (real) ──
   // useSubscription normalizes unknown/legacy tiers (e.g. old PREMIUM/STARTER
   // rows) to null, so anything that isn't Basic/Advanced/Flagship shows as Free.
   const planState: PlanState =
     subscription && subscription.status !== 'canceled' ? subscription.plan : 'free';
+
+  // The 3-day refund window can't be derived yet: the backend returns no
+  // original-subscription date (`currentPeriodStart` resets on every renewal),
+  // so the refund_window UI below stays unreachable. Wire this to a real
+  // `subscribedAt` / `refundEligibleUntil` field when the API exposes one.
+  const isInRefundWindow = false;
+
   const cancelState: CancelState =
     subscription?.status === 'canceled'
       ? 'canceled'
       : subscription?.cancelAtPeriodEnd
         ? 'post_window'
-        : 'active';
+        : isInRefundWindow
+          ? 'refund_window'
+          : 'active';
 
-  const planName = planState === 'free'
-    ? 'Free'
-    : planState.charAt(0).toUpperCase() + planState.slice(1);
+  const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const planName = planState === 'free' ? 'Free' : titleCase(planState);
+  const pendingTierName = subscription?.downgradePendingTier
+    ? titleCase(subscription.downgradePendingTier)
+    : null;
   const cycleName = subscription
     ? subscription.billingCycle.charAt(0).toUpperCase() + subscription.billingCycle.slice(1)
     : 'Monthly';
@@ -376,6 +405,24 @@ export function BillingTab() {
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
   const [selectedPlan,    setSelectedPlan]    = useState<'basic' | 'advanced' | 'flagship'>('advanced');
+
+  // Preselect the tier the user is actually on once the subscription loads (and
+  // after any change), so the panel never opens on a stale selection.
+  useEffect(() => {
+    if (planState !== 'free') setSelectedPlan(planState);
+  }, [planState]);
+
+  // Badges come from live data: the tier in use, plus a scheduled downgrade
+  // target if one is pending.
+  const planOptions = PLAN_OPTIONS.map(plan => ({
+    ...plan,
+    badge:
+      plan.id === planState
+        ? { text: 'Current', color: 'blue' as const }
+        : plan.id === subscription?.downgradePendingTier
+          ? { text: 'Scheduled', color: 'green' as const }
+          : null,
+  }));
   const [cancelOpen,      setCancelOpen]      = useState(false);
   const [cancelReason,    setCancelReason]    = useState('');
   const [cancelComment,   setCancelComment]   = useState('');
@@ -523,30 +570,75 @@ export function BillingTab() {
     }
   };
 
-  // Switch-plan: mock — real logic coming.
+  // Switch plan → POST /payments/subscriptions/tier. Upgrades are prorated and
+  // immediate; downgrades are scheduled for the end of the current period.
+  // If the response carries a Stripe URL the change is NOT applied yet — the
+  // user has to complete payment there, same as the create-subscription flow.
   const handleConfirmSwitch = async () => {
-    // plan_switch_confirmed —— 用户确认切换 plan（真实切换逻辑接入后，应仅在 API 成功后上报）
+    if (selectedPlan === planState) {
+      setSwitchPlanOpen(false);
+      return;
+    }
+    const changeType = getChangeType(planState, selectedPlan);
+    const { ok, url } = await changeTier(selectedPlan);
+    if (!ok) return;
+
+    // plan_switch_confirmed —— 仅在 API 成功后上报。有 url 时也要在跳转前上报，
+    // 否则重定向会把事件丢掉。
     safeCapture(posthog, EVENTS.PLAN_SWITCH_CONFIRMED, {
       from_tier: planState,
       to_tier: selectedPlan,
       billing_cycle: subscription?.billingCycle ?? 'monthly',
-      change_type: getChangeType(planState, selectedPlan),
+      change_type: changeType,
+      requires_payment: Boolean(url),
     });
-    fireToast('Plan change saved');
+
+    if (url) {
+      window.location.href = url;
+      return;
+    }
+
+    fireToast(
+      changeType === 'upgrade'
+        ? 'Plan upgraded'
+        : 'Downgrade scheduled for the end of your billing period',
+    );
     setSwitchPlanOpen(false);
   };
 
-  // Cancellation: mock — real logic coming.
-  const handleSubmitCancellation = async () => {
-    // subscription_cancelled —— 取消流程完成。接入真实取消逻辑
-    // （useSubscription.cancel()）后，必须仅在 API 成功时上报。
+  // Cancel → POST /payments/subscriptions/cancel (takes effect at period end).
+  const handleCancelSubscription = async () => {
+    const ok = await cancel();
+    if (!ok) return;
+
+    // subscription_cancelled —— 仅在 API 成功后上报
     safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
       plan_tier: planState,
       days_since_subscribed: daysSinceSubscribed,
     });
+    setShowCancelModal(false);
+    setCancelOpen(false);
+    fireToast(`Subscription canceled · access continues until ${nextBillingDate}`);
+  };
+
+  // Refund-window variant: same API call, but keeps the inline confirmation
+  // panel open. The reason/comment fields are collected for the team to read —
+  // there is no endpoint to submit them to yet.
+  const handleSubmitCancellation = async () => {
+    const ok = await cancel();
+    if (!ok) return;
+    safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
+      plan_tier: planState,
+      days_since_subscribed: daysSinceSubscribed,
+      cancel_reason: cancelReason || null,
+    });
     setCancelSubmitted(true);
   };
+
+  // Reactivate → POST /payments/subscriptions/resume (undoes a pending cancel).
   const handleReactivate = async () => {
+    const ok = await resume();
+    if (!ok) return;
     fireToast('Subscription reactivated');
   };
 
@@ -568,7 +660,7 @@ export function BillingTab() {
   return (
     <div className="space-y-6">
       {/* ── Modals ── */}
-      <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} accessEndsDate={nextBillingDate} />}</AnimatePresence>
+      <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} onConfirm={handleCancelSubscription} isActing={isActing} accessEndsDate={nextBillingDate} />}</AnimatePresence>
       <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
       <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
       {toastMsg && <PaymentToast message={toastMsg} onDone={() => setToastMsg(null)} />}
@@ -620,6 +712,12 @@ export function BillingTab() {
                         ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
                         : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
                   </p>
+                  {/* A scheduled downgrade only takes effect at period end. */}
+                  {pendingTierName && !isCanceled && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Changing to {pendingTierName} on {nextBillingDate}
+                    </p>
+                  )}
                 </div>
                 {!isCanceled && (
                   <button
@@ -640,7 +738,7 @@ export function BillingTab() {
                     className="overflow-hidden"
                   >
                     <div className="mt-3 bg-secondary rounded-lg overflow-hidden border border-border/60">
-                      {PLANS.map(plan => (
+                      {planOptions.map(plan => (
                         <div
                           key={plan.id}
                           onClick={() => setSelectedPlan(plan.id)}
@@ -662,21 +760,30 @@ export function BillingTab() {
                           </div>
                         </div>
                       ))}
-                      <div className="flex gap-2 px-4 py-3 bg-card border-t border-border">
-                        <button
-                          onClick={handleConfirmSwitch}
-                          disabled={isActing}
-                          className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-                        >
-                          {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                          Confirm change
-                        </button>
-                        <button
-                          onClick={() => setSwitchPlanOpen(false)}
-                          className="px-4 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors"
-                        >
-                          Cancel
-                        </button>
+                      <div className="bg-card border-t border-border">
+                        {selectedPlan !== planState && (
+                          <p className="px-4 pt-3 text-[11px] text-muted-foreground leading-relaxed">
+                            {getChangeType(planState, selectedPlan) === 'upgrade'
+                              ? 'Upgrades apply immediately and are prorated against your current period.'
+                              : `Downgrades take effect ${nextBillingDate ? `on ${nextBillingDate}` : 'at the end of your billing period'} — you keep your current access until then.`}
+                          </p>
+                        )}
+                        <div className="flex gap-2 px-4 py-3">
+                          <button
+                            onClick={handleConfirmSwitch}
+                            disabled={isActing || selectedPlan === planState}
+                            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            Confirm change
+                          </button>
+                          <button
+                            onClick={() => setSwitchPlanOpen(false)}
+                            className="px-4 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -692,7 +799,7 @@ export function BillingTab() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">Need to make a change to your plan?</p>
                   <button
-                    onClick={() => { trackCancelClicked(); setCancelState('refund_window'); }}
+                    onClick={() => { trackCancelClicked(); setShowCancelModal(true); }}
                     className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors hover:underline underline-offset-2 ml-4"
                   >
                     Cancel subscription
@@ -789,19 +896,25 @@ export function BillingTab() {
                 </div>
               )}
 
-              {/* State: post_window — text link only */}
+              {/* State: post_window — cancellation is scheduled; resume undoes it.
+                  This is the only state where /subscriptions/resume applies: once
+                  the status is actually `canceled` the plan reads as Free and this
+                  whole module is hidden. */}
               {cancelState === 'post_window' && (
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground">
-                      The 3-day refund window has passed. Access continues until {nextBillingDate}.
+                    <p className="text-xs font-medium text-foreground">Your access ends {nextBillingDate}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      You can reactivate any time before then.
                     </p>
                   </div>
                   <button
-                    onClick={() => { trackCancelClicked(); setShowCancelModal(true); }}
-                    className="text-xs text-destructive/60 hover:text-destructive transition-colors hover:underline underline-offset-2 shrink-0 ml-4"
+                    onClick={handleReactivate}
+                    disabled={isActing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/40 text-xs font-medium text-primary hover:bg-primary/5 transition-colors shrink-0 ml-4 disabled:opacity-60"
                   >
-                    Cancel subscription
+                    {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                    Reactivate
                   </button>
                 </div>
               )}

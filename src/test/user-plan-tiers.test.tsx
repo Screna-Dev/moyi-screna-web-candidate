@@ -5,13 +5,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ─── Mocks ────────────────────────────────────────────────
 const mockGetSubscription = vi.fn();
 const mockGetCredits = vi.fn();
+const mockChangeTier = vi.fn();
+const mockCreateSubscription = vi.fn();
 
 vi.mock('@/services', () => ({
   PaymentService: {
     getSubscription: (...args: unknown[]) => mockGetSubscription(...args),
     getCredits: (...args: unknown[]) => mockGetCredits(...args),
-    createSubscription: vi.fn(),
-    changeTier: vi.fn(),
+    createSubscription: (...args: unknown[]) => mockCreateSubscription(...args),
+    changeTier: (...args: unknown[]) => mockChangeTier(...args),
     cancelSubscription: vi.fn(),
     createOneTimeSession: vi.fn(),
   },
@@ -32,7 +34,22 @@ vi.mock('posthog-js/react', () => ({
   usePostHog: () => null,
 }));
 
-import { UserPlanProvider, useUserPlan } from '@/hooks/useUserPlan';
+import { UserPlanProvider, useUserPlan, type PlanType } from '@/hooks/useUserPlan';
+
+// Probe exposing changePlan so the create-vs-change-tier routing (and the
+// payment URL each returns) can be asserted.
+let changePlanFn: ((plan: PlanType) => Promise<{
+  success: boolean;
+  url?: string | null;
+  message?: string;
+}>) | null = null;
+
+function ChangePlanProbe() {
+  const { changePlan, isLoading, planData } = useUserPlan();
+  changePlanFn = changePlan;
+  if (isLoading) return <div>loading</div>;
+  return <span data-testid="plan">{planData.currentPlan}</span>;
+}
 
 // Probe component exposing the resolved plan state.
 function PlanProbe() {
@@ -172,5 +189,57 @@ describe('useUserPlan tier mapping (BASIC | ADVANCED | FLAGSHIP)', () => {
     renderPlan();
     await waitFor(() => expect(screen.getByTestId('plan')).toHaveTextContent('Free'));
     expect(screen.getByTestId('premium')).toHaveTextContent('false');
+  });
+});
+
+describe('useUserPlan.changePlan — payment URL passthrough', () => {
+  const renderChangePlan = async (expectedPlan: string) => {
+    changePlanFn = null;
+    render(
+      <UserPlanProvider>
+        <ChangePlanProbe />
+      </UserPlanProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('plan')).toHaveTextContent(expectedPlan));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetCredits.mockResolvedValue(okCredits);
+  });
+
+  // Members go through /subscriptions/tier, which can also return a Stripe URL.
+  // Dropping it left useUpgradePrompt with nothing to redirect to.
+  it('returns the URL from a tier change so the caller can redirect', async () => {
+    mockGetSubscription.mockResolvedValue({
+      data: { data: { memberPlan: 'BASIC_MONTHLY', status: 'ACTIVE' } },
+    });
+    mockChangeTier.mockResolvedValue({ data: { data: { url: 'https://checkout/tier' } } });
+    await renderChangePlan('Basic');
+
+    const res = await changePlanFn!('Flagship');
+    expect(mockChangeTier).toHaveBeenCalledWith('flagship');
+    expect(res).toMatchObject({ success: true, url: 'https://checkout/tier' });
+  });
+
+  it('returns url:null when the tier change applied without payment', async () => {
+    mockGetSubscription.mockResolvedValue({
+      data: { data: { memberPlan: 'ADVANCED_MONTHLY', status: 'ACTIVE' } },
+    });
+    mockChangeTier.mockResolvedValue({ data: { data: {} } });
+    await renderChangePlan('Advanced');
+
+    const res = await changePlanFn!('Basic');
+    expect(res).toMatchObject({ success: true, url: null });
+  });
+
+  it('still returns the create-subscription URL for non-members', async () => {
+    mockGetSubscription.mockRejectedValue({ response: { status: 404 } });
+    mockCreateSubscription.mockResolvedValue({ data: { data: { url: 'https://checkout/new' } } });
+    await renderChangePlan('Free');
+
+    const res = await changePlanFn!('Advanced');
+    expect(mockCreateSubscription).toHaveBeenCalledWith('advanced', 'monthly');
+    expect(res).toMatchObject({ success: true, url: 'https://checkout/new' });
   });
 });
