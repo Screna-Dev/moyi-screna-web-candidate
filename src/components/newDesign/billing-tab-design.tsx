@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, CheckCircle2, Download, Info,
   Plus, X, Loader2, RotateCcw, Gift,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSubscription } from '@/hooks/useSubscription';
+import { useSubscription, hasEntitlement } from '@/hooks/useSubscription';
+import {
+  markPendingCheckout, readPendingCheckout, clearPendingCheckout,
+} from '@/utils/pendingCheckout';
 import { PaymentService } from '@/services';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import { usePostHog } from 'posthog-js/react';
@@ -434,6 +437,8 @@ const PLAN_OPTIONS = [
   { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly' },
 ] as const;
 
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
 // plan_switch_confirmed 用：按 tier 排序判断 upgrade / downgrade。
 const TIER_ORDER: Record<string, number> = { free: 0, basic: 1, advanced: 2, flagship: 3 };
 const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade' =>
@@ -442,8 +447,10 @@ const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     subscription, isActing, changeTier, cancel, resume, refresh, cancelPendingDowngrade,
+    waitForSubscription,
   } = useSubscription();
   const navigate = useNavigate();
   const posthog = usePostHog();
@@ -461,41 +468,52 @@ export function BillingTab() {
   }, []);
 
   // ── Plan state (real) ──
-  // useSubscription normalizes unknown/legacy tiers (e.g. old PREMIUM/STARTER
-  // rows) to null, so anything that isn't Basic/Advanced/Flagship shows as Free.
-  const planState: PlanState =
-    subscription && subscription.status !== 'canceled' ? subscription.plan : 'free';
+  // Entitlement follows the backend rule: ACTIVE or PAST_DUE. UNPAID/CANCELED
+  // have no benefits left, and INCOMPLETE never got a first payment.
+  const isEntitled = hasEntitlement(subscription);
+  // A legacy row (STARTER/PREMIUM) has no current tier but is still a live
+  // subscription the user must be able to cancel — see `isLegacySubscription`.
+  const planState: PlanState = isEntitled ? subscription?.plan ?? 'free' : 'free';
+  const isLegacySubscription = Boolean(subscription?.isLegacyPlan) && isEntitled;
+  const isPastDue = subscription?.status === 'past_due';
 
-  // Refund policy (premium-consent-modal §4.3): full refund within 3 calendar
-  // days of *any* payment, renewals included — so the window reopens every
-  // period and `currentPeriodStart` (which resets on renewal) is the anchor.
+  // Refund window anchors on `firstSubAt` — the *first ever* subscription — and
+  // the backend allows it only once, so renewals do NOT reopen it.
   //
-  // Inside the window, cancelling is immediate: access ends right away and the
-  // backend refunds in full via Stripe (no Ops review, no email — only the money
-  // takes 5–10 business days to settle). Outside it, cancelling just stops the
-  // renewal and access runs to the end of the period.
+  // ⚠️ `firstSubRefundUsed` is not exposed by the API, so a user who already
+  // refunded once and re-subscribed still looks eligible here. Copy therefore
+  // stays conditional ("if eligible") and the real outcome comes from polling
+  // after the call — see handleSubmitCancellation.
   const REFUND_WINDOW_DAYS = 3;
-  const paidAtMs = subscription?.currentPeriodStart
-    ? new Date(subscription.currentPeriodStart).getTime()
+  const firstSubMs = subscription?.firstSubAt
+    ? new Date(subscription.firstSubAt).getTime()
     : null;
-  const isInRefundWindow =
-    paidAtMs !== null &&
-    !Number.isNaN(paidAtMs) &&
-    Date.now() - paidAtMs <= REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const maybeInRefundWindow =
+    firstSubMs !== null &&
+    !Number.isNaN(firstSubMs) &&
+    Date.now() - firstSubMs <= REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   const cancelState: CancelState =
-    subscription?.status === 'canceled'
+    !subscription || subscription.status === 'canceled' || subscription.status === 'unpaid'
       ? 'canceled'
-      : subscription?.cancelAtPeriodEnd
+      : subscription.cancelAtPeriodEnd
         ? 'post_window'
-        : isInRefundWindow
+        : maybeInRefundWindow
           ? 'refund_window'
           : 'active';
 
   const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const planName = planState === 'free' ? 'Free' : titleCase(planState);
-  const cycleName = subscription
-    ? subscription.billingCycle.charAt(0).toUpperCase() + subscription.billingCycle.slice(1)
+  // Legacy rows show their backend name (e.g. "Premium") so the row isn't blank.
+  const legacyPlanName = subscription?.rawPlan
+    ? titleCase(subscription.rawPlan.split('_')[0].toLowerCase())
+    : 'Legacy';
+  const planName = isLegacySubscription
+    ? legacyPlanName
+    : planState === 'free'
+      ? 'Free'
+      : titleCase(planState);
+  const cycleName = subscription?.billingCycle
+    ? titleCase(subscription.billingCycle)
     : 'Monthly';
 
   // A scheduled downgrade can be a tier change, a billing-cycle change, or both
@@ -514,6 +532,9 @@ export function BillingTab() {
     subscription.downgradePendingCycle !== subscription.billingCycle
       ? titleCase(subscription.downgradePendingCycle)
       : null;
+  // A pending cancellation overrides a pending downgrade: the downgrade would
+  // only apply at the next renewal, and a canceled subscription has none.
+  const pendingCancelSupersedes = Boolean(subscription?.cancelAtPeriodEnd);
   const pendingChangeLabel =
     pendingTierName && pendingCycleName
       ? `${pendingTierName} · ${pendingCycleName} billing`
@@ -528,9 +549,12 @@ export function BillingTab() {
     ? formatAmountCents(subscription.nextBillingAmount, subscription.currency)
     : TIER_PRICE[planState] ?? '—';
 
-  // days_since_subscribed：后端未返回首次订阅日期（currentPeriodStart 只是本期起始，
-  // 续费后会重置，不能当起订日用），暂报 null。
-  const daysSinceSubscribed = null;
+  // days_since_subscribed：用 firstSubAt（首次订阅，续订不刷新）计算。
+  // 老数据可能为 null，此时仍然上报 null。
+  const daysSinceSubscribed =
+    firstSubMs !== null && !Number.isNaN(firstSubMs)
+      ? Math.floor((Date.now() - firstSubMs) / (24 * 60 * 60 * 1000))
+      : null;
 
   // ── Subscription UI ──
   const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
@@ -566,6 +590,9 @@ export function BillingTab() {
   });
   const [cancelOpen,      setCancelOpen]      = useState(false);
   const [cancelSubmitted, setCancelSubmitted] = useState(false);
+  // Which cancel path the backend actually took, learned by polling afterwards.
+  const [cancelOutcome, setCancelOutcome] =
+    useState<'refunded' | 'scheduled' | 'processing' | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
   // ── Credits (real API) ──
@@ -583,21 +610,26 @@ export function BillingTab() {
     resetDate: null,
   });
 
-  const fetchCredits = useCallback(async () => {
+  // Returns the permanent balance so the checkout-return poll can tell when a
+  // top-up has actually landed. `resetDate` isn't part of GET /payments/credits
+  // — it stays null until the API exposes one.
+  const fetchCredits = useCallback(async (): Promise<number | null> => {
     try {
       const res = await PaymentService.getCredits();
       const data = res.data?.data ?? res.data ?? {};
       const recurring = data.recurringCreditBalance ?? 0;
       const permanent = data.permanentCreditBalance ?? 0;
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return permanent;
       setCredits({
         recurringCreditBalance: recurring,
         permanentCreditBalance: permanent,
         totalBalance: data.totalBalance ?? (recurring + permanent),
         resetDate: data.resetDate ?? null,
       });
+      return permanent;
     } catch {
       /* keep defaults on failure */
+      return null;
     }
   }, []);
 
@@ -684,6 +716,82 @@ export function BillingTab() {
   // it may not exist yet when the tier call returns. Poll a few times, stopping
   // as soon as a new row shows up. Fire-and-forget: the immediate refresh has
   // already run, this only fills in a late invoice.
+  // ── Stripe Checkout return ──────────────────────────────────────────────
+  // Stripe sends the user back to this page for BOTH success and cancel, and a
+  // real payment only reaches our DB via webhook — so without this the user pays
+  // and lands on "Free". The marker is written before we hand them to Stripe.
+  const [checkoutPending, setCheckoutPending] = useState(false);
+  // Set when the user came back from Stripe without paying. Not an error — just
+  // say nothing was charged.
+  const [checkoutCancelled, setCheckoutCancelled] = useState(false);
+
+  useEffect(() => {
+    // `?checkout=success|cancelled` is the authoritative signal when the backend
+    // sends it; the sessionStorage marker is the fallback for today, when both
+    // Stripe URLs are identical. Read the param first and strip it so a refresh
+    // or a back-navigation doesn't replay the banner.
+    const param = searchParams.get('checkout');
+    if (param) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      setSearchParams(next, { replace: true });
+    }
+
+    if (param === 'cancelled') {
+      clearPendingCheckout();
+      setCheckoutCancelled(true);
+      return;
+    }
+
+    // Either the backend told us it succeeded, or we left a marker on the way out.
+    const pending = param === 'success'
+      ? readPendingCheckout() ?? { kind: 'subscription' as const, ts: Date.now() }
+      : readPendingCheckout();
+    if (!pending) return;
+
+    let cancelled = false;
+    setCheckoutPending(true);
+    (async () => {
+      try {
+        if (pending.kind === 'credits') {
+          // A top-up doesn't touch the subscription — re-read the balance until
+          // it moves (or we run out of attempts). Compare against the value the
+          // fetch returns, not component state, which is stale in this closure.
+          const before = await fetchCredits();
+          for (let attempt = 0; attempt < 10 && !cancelled; attempt++) {
+            await sleep(2000);
+            const now = await fetchCredits();
+            if (now !== null && before !== null && now !== before) break;
+          }
+        } else {
+          const settled = await waitForSubscription(s => hasEntitlement(s));
+          // payment_completed —— 客户端 best-effort（Stripe webhook 才是扣款事实
+          // 来源）。以前挂在 /payment-success 页面上，但 Stripe 从不回跳到那里，
+          // 所以这个事件实际从未上报过；现在挂在真正的回跳落地点。
+          if (settled) {
+            safeCapture(posthog, EVENTS.PAYMENT_COMPLETED, {
+              source: 'billing_checkout_return',
+              plan: settled.plan,
+            });
+          }
+        }
+      } catch {
+        /* fall through — the finally block still clears the pending state */
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          clearPendingCheckout();
+          setCheckoutPending(false);
+          await Promise.allSettled([fetchCredits(), fetchInvoices()]);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // Deliberately mount-only: the sessionStorage marker is the trigger, and
+    // re-running on every credits change would restart the poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pollForNewInvoice = useCallback(async (countBefore: number) => {
     for (let attempt = 0; attempt < 3; attempt++) {
       // Held in a ref so unmount clears it — a dangling timer kept firing after
@@ -707,7 +815,13 @@ export function BillingTab() {
     try {
       const res = await PaymentService.purchaseCustomPack(n);
       const url = res.data?.data?.url ?? res.data?.url;
-      if (url) { window.location.href = url; return; }
+      if (url) {
+        // Stripe returns to this page for success AND cancel — leave a marker so
+        // we know to wait for the webhook when they come back.
+        markPendingCheckout('credits', String(n));
+        window.location.href = url;
+        return;
+      }
       // Charged on the saved card — a credit pack also produces an invoice.
       const invoiceCountBefore = invoices.length;
       await refreshBilling();
@@ -758,10 +872,11 @@ export function BillingTab() {
     setShowSwitchConfirm(true);
   };
 
-  // Step 2 — POST /payments/subscriptions/tier. Upgrades are prorated and take
-  // effect immediately; downgrades are scheduled for the end of the period.
-  // If the response does carry a Stripe URL, nothing has applied yet and the
-  // user must be sent there instead.
+  // Step 2 — POST /payments/subscriptions/tier. The 200 only means Stripe
+  // accepted it: the row is updated later by webhook, and an upgrade can still
+  // fail at the card while returning 200. `changeTier` therefore polls; `settled`
+  // false means it hadn't landed before the timeout, which is "processing", NOT
+  // "failed".
   const handleConfirmSwitch = async () => {
     if (selectedPlan === planState) {
       setShowSwitchConfirm(false);
@@ -769,7 +884,8 @@ export function BillingTab() {
       return;
     }
     const changeType = getChangeType(planState, selectedPlan);
-    const { ok, url } = await changeTier(selectedPlan);
+    const invoiceCountBefore = invoices.length;
+    const { ok, url, settled } = await changeTier(selectedPlan);
     if (!ok) return;
 
     // plan_switch_confirmed —— 仅在 API 成功后上报。有 url 时也要在跳转前上报，
@@ -780,6 +896,7 @@ export function BillingTab() {
       billing_cycle: subscription?.billingCycle ?? 'monthly',
       change_type: changeType,
       requires_payment: Boolean(url),
+      settled,
     });
 
     if (url) {
@@ -787,58 +904,81 @@ export function BillingTab() {
       return;
     }
 
-    // An upgrade bills right away, so the subscription, credit allowance, usage
-    // ledger and invoice list can all have moved — refresh the whole tab, then
-    // keep watching for the invoice that Stripe delivers by webhook.
-    const invoiceCountBefore = invoices.length;
+    setShowSwitchConfirm(false);
+    setSwitchPlanOpen(false);
+
+    if (!settled) {
+      fireToast('Change submitted · still processing, refresh in a moment');
+      return;
+    }
+
+    // The change landed, so credits, usage and invoices may have moved too.
     await refreshBilling();
     if (changeType === 'upgrade') {
       void pollForNewInvoice(invoiceCountBefore);
     }
-
     fireToast(
       changeType === 'upgrade'
         ? `Upgraded to ${titleCase(selectedPlan)} · active now`
         : `Change to ${titleCase(selectedPlan)} scheduled for ${nextBillingDate}`,
     );
-    setShowSwitchConfirm(false);
-    setSwitchPlanOpen(false);
   };
 
-  // Cancel → POST /payments/subscriptions/cancel (takes effect at period end).
+  // Cancel → POST /payments/subscriptions/cancel. Two backend paths share this
+  // endpoint and return identical responses, so `cancel()` polls and reports
+  // which one actually ran via `refunded`.
   const handleCancelSubscription = async () => {
-    const ok = await cancel();
+    const { ok, settled, refunded } = await cancel();
     if (!ok) return;
 
     // subscription_cancelled —— 仅在 API 成功后上报
     safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
       plan_tier: planState,
       days_since_subscribed: daysSinceSubscribed,
+      refunded,
+      settled,
     });
     setShowCancelModal(false);
     setCancelOpen(false);
+
+    if (!settled) {
+      fireToast('Cancellation submitted · still processing, refresh in a moment');
+      return;
+    }
     await refreshBilling();
-    fireToast(`Subscription canceled · access continues until ${nextBillingDate}`);
+    fireToast(
+      refunded
+        ? `Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`
+        : `Subscription canceled · access continues until ${nextBillingDate}`,
+    );
   };
 
-  // Refund-window variant: same cancel endpoint, but inside 3 days the backend
-  // ends access immediately and refunds in full — no Ops review, no email, and
-  // only the money takes time to settle. No reason/comment is collected.
+  // Refund-window variant of the same call. We can't know in advance whether the
+  // refund path will run — `firstSubRefundUsed` isn't exposed — so the outcome
+  // comes from what the polling actually observed.
   //
-  // Because access ends at once, the refresh below can flip planState to Free
-  // and unmount this whole module, taking the inline confirmation with it — so
-  // the outcome also goes out as a toast, which lives outside the module.
+  // On the refund path access ends at once, which flips planState to Free and
+  // unmounts this whole module along with the inline confirmation, so the result
+  // also goes out as a toast (rendered above the isMember gate).
   const handleSubmitCancellation = async () => {
-    const ok = await cancel();
+    const { ok, settled, refunded } = await cancel();
     if (!ok) return;
     safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
       plan_tier: planState,
       days_since_subscribed: daysSinceSubscribed,
-      refunded: true,
+      refunded,
+      settled,
     });
     setCancelSubmitted(true);
-    fireToast(`Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`);
-    await refreshBilling();
+    setCancelOutcome(!settled ? 'processing' : refunded ? 'refunded' : 'scheduled');
+    fireToast(
+      !settled
+        ? 'Cancellation submitted · still processing, refresh in a moment'
+        : refunded
+          ? `Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`
+          : `Subscription canceled · access continues until ${nextBillingDate}`,
+    );
+    if (settled) await refreshBilling();
   };
 
   // Undo a scheduled downgrade (tier and/or cycle) before it lands →
@@ -855,8 +995,12 @@ export function BillingTab() {
 
   // Reactivate → POST /payments/subscriptions/resume (undoes a pending cancel).
   const handleReactivate = async () => {
-    const ok = await resume();
+    const { ok, settled } = await resume();
     if (!ok) return;
+    if (!settled) {
+      fireToast('Reactivation submitted · still processing, refresh in a moment');
+      return;
+    }
     await refreshBilling();
     fireToast('Subscription reactivated');
   };
@@ -869,9 +1013,31 @@ export function BillingTab() {
     });
   };
 
-  const isMember       = planState !== 'free';
+  // Legacy subscribers have planState 'free' (no current tier) but still own a
+  // live subscription — the module has to render so they can cancel it.
+  const isMember       = planState !== 'free' || isLegacySubscription;
   const isCanceled     = cancelState === 'canceled';
   const bannerCancelAtPeriod = isCanceled || cancelState === 'post_window';
+
+  // Reasons the backend rejects /tier outright — surface them instead of letting
+  // the user submit a request that always 400s.
+  const switchBlockedReason = isLegacySubscription
+    ? 'Your current plan is a legacy plan and can no longer be changed. Cancel it to move to a current plan.'
+    : subscription?.cancelAtPeriodEnd
+      ? 'Your subscription is scheduled to cancel. Reactivate it before changing plan.'
+      : pendingChangeLabel
+        ? 'A plan change is already scheduled. Cancel it before choosing a different plan.'
+        : isPastDue
+          ? 'Your last payment failed. Plan changes are unavailable until billing is up to date.'
+          : null;
+  const canSwitchPlan = !isCanceled && switchBlockedReason === null;
+
+  // If the subscription moves into a state the backend rejects changes in (another
+  // tab schedules a downgrade, a renewal fails), collapse an open panel instead of
+  // leaving a Confirm button that can only 400.
+  useEffect(() => {
+    if (!canSwitchPlan) setSwitchPlanOpen(false);
+  }, [canSwitchPlan]);
 
   // Credit balance = recurring credits + permanent credits.
   const creditBalance = credits.recurringCreditBalance + credits.permanentCreditBalance;
@@ -897,6 +1063,45 @@ export function BillingTab() {
       <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
       <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
       {toastMsg && <PaymentToast message={toastMsg} onDone={() => setToastMsg(null)} />}
+
+      {/* Came back from Stripe without paying. Deliberately neutral — backing
+          out of checkout is a normal choice, not a failure. */}
+      {checkoutCancelled && !checkoutPending && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-secondary px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Checkout canceled</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Nothing was charged and your plan is unchanged. You can pick a plan again whenever
+                you're ready.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCheckoutCancelled(false)}
+            aria-label="Dismiss"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Returned from Stripe Checkout — the webhook hasn't landed yet. Never
+          say "failed" here: the event is most likely still in the queue. */}
+      {checkoutPending && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-border bg-secondary px-4 py-3">
+          <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin text-muted-foreground" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Confirming your payment…</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              This usually takes a few seconds. If you closed the payment page without paying, nothing
+              was charged.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════════
           MODULE 1 — Membership Benefits Banner
@@ -936,19 +1141,35 @@ export function BillingTab() {
                     <span className="text-sm font-medium text-foreground">
                       {planName} plan · {nextBillingAmount}/mo · {cycleName}
                     </span>
-                    <StatusBadge status={isCanceled ? 'Canceled' : 'Active'} />
+                    <StatusBadge status={isCanceled ? 'Canceled' : isPastDue ? 'Past Due' : 'Active'} />
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {isCanceled
                       ? 'Your subscription has been canceled.'
-                      : cancelState === 'post_window'
-                        ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
-                        : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
+                      : isPastDue
+                        ? "We couldn't process your last payment. Update your payment method to keep your access."
+                        : cancelState === 'post_window'
+                          ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
+                          : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
                   </p>
-                  {/* A scheduled downgrade (tier and/or cycle) only takes
-                      effect at the end of the current period, and can be undone
-                      until then. */}
-                  {pendingChangeLabel && !isCanceled && (
+                  {/* A retired plan can only be canceled — every tier and
+                      billing-cycle change is rejected by the backend. */}
+                  {isLegacySubscription && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      This is a legacy plan. It can't be changed — cancel it to move to a current plan.
+                    </p>
+                  )}
+                  {/* A scheduled downgrade (tier and/or cycle) only takes effect
+                      at the end of the current period, and can be undone until
+                      then.
+                      Suppressed once a cancellation is scheduled: the downgrade
+                      lands at the next renewal, and after a cancellation there
+                      is no next renewal — so it can never apply. Showing both
+                      "access ends on X" and "changing to Y on X" is a
+                      contradiction, and the backend rejects
+                      cancel-pending-downgrade while a cancel is pending anyway
+                      (resume first). */}
+                  {pendingChangeLabel && !isCanceled && !pendingCancelSupersedes && (
                     <div className="flex items-center gap-2 flex-wrap mt-0.5">
                       <p className="text-xs text-muted-foreground">
                         Changing to {pendingChangeLabel} on {nextBillingDate}
@@ -967,7 +1188,9 @@ export function BillingTab() {
                 {!isCanceled && (
                   <button
                     onClick={() => setSwitchPlanOpen(v => !v)}
-                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors shrink-0 ml-4"
+                    disabled={!canSwitchPlan}
+                    title={switchBlockedReason ?? undefined}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors shrink-0 ml-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
                     Switch plan
                   </button>
@@ -1073,7 +1296,8 @@ export function BillingTab() {
                     <div>
                       <p className="text-xs font-medium text-destructive">Cancel subscription</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        You're within the 3-day refund window — cancel now for a full refund.
+                        You're within 3 days of your first subscription — you may be eligible for a
+                        full refund.
                       </p>
                     </div>
                     <button
@@ -1094,25 +1318,35 @@ export function BillingTab() {
                           <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
                             <div className="flex items-center gap-2 mb-1.5">
                               <CheckCircle2 className="w-3.5 h-3.5 text-foreground shrink-0" />
-                              <p className="text-xs font-medium text-foreground">Subscription canceled</p>
+                              <p className="text-xs font-medium text-foreground">
+                                {cancelOutcome === 'processing'
+                                  ? 'Cancellation submitted'
+                                  : 'Subscription canceled'}
+                              </p>
                             </div>
+                            {/* Which path ran is only knowable after polling. */}
                             <p className="text-xs text-muted-foreground leading-relaxed">
-                              A full refund of {nextBillingAmount} is on its way to your original payment
-                              method. Allow 5–10 business days for it to appear on your statement.
+                              {cancelOutcome === 'processing'
+                                ? "We're still confirming this with our payment provider. Refresh in a moment to see the final status."
+                                : cancelOutcome === 'refunded'
+                                  ? `A full refund of ${nextBillingAmount} is on its way to your original payment method. Allow 5–10 business days for it to appear on your statement.`
+                                  : `This subscription wasn't eligible for a refund, so your access continues until ${nextBillingDate} and won't renew.`}
                             </p>
                           </div>
                         ) : (
                           <div className="mt-3 bg-red-50 border border-red-100 rounded-lg p-4">
-                            <p className="text-xs font-medium text-red-600 mb-1">Cancel now with a full refund</p>
+                            <p className="text-xs font-medium text-red-600 mb-1">Cancel subscription</p>
                             <p className="text-xs text-red-500/80 mb-3">
-                              This takes effect immediately and can't be undone.
+                              This can't be undone.
                             </p>
                             <div className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 mb-3 border border-red-100">
                               <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                               <p className="text-xs text-muted-foreground leading-relaxed">
-                                Your access ends right away — not at the end of the period. A full refund of{' '}
-                                <span className="text-foreground font-medium">{nextBillingAmount}</span> goes back to
-                                your original payment method and takes 5–10 business days to appear.
+                                If this subscription qualifies for the 3-day refund, you'll get{' '}
+                                <span className="text-foreground font-medium">{nextBillingAmount}</span> back to your
+                                original payment method (5–10 business days) and access ends right away. Otherwise
+                                access continues until {nextBillingDate} and simply won't renew. We'll confirm which
+                                applies once the cancellation goes through.
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -1149,6 +1383,9 @@ export function BillingTab() {
                     <p className="text-xs font-medium text-foreground">Your access ends {nextBillingDate}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       You can reactivate any time before then.
+                      {/* Be explicit that resuming restores the queued downgrade —
+                          it isn't discarded, just unreachable while canceled. */}
+                      {pendingChangeLabel && ` Reactivating restores the scheduled change to ${pendingChangeLabel}.`}
                     </p>
                   </div>
                   <button

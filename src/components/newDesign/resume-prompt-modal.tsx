@@ -55,8 +55,6 @@ const EXCLUDED_EXACT = new Set([
   '/ai-mock',
   '/ai-mockwhite',
   '/evaluation',
-  '/payment-success',
-  '/premium-onboarding',
   // Pages that already put a resume uploader in front of the user — the modal
   // on top of one is the same ask twice.
   '/personalized-practice', // full-page gate in personalized-practice-design.tsx

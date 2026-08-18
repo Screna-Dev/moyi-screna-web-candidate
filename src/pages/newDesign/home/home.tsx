@@ -11,6 +11,7 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { getPersonalInfo } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
+import { markPendingCheckout } from '@/utils/pendingCheckout';
 import { useSeo, SITE_URL } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
 import { SOCIAL_PROFILE_URLS, SUPPORT_EMAIL } from '@/constants/site';
@@ -623,7 +624,7 @@ export function HomePage() {
     try {
       const res = await PaymentService.purchaseCustomPack(n);
       const url = res?.data?.data?.url ?? res?.data?.url;
-      if (url) { window.location.href = url; return; }
+      if (url) { markPendingCheckout('credits', String(n)); window.location.href = url; return; }
       toast({ title: 'Credits added', description: `${n} credits added to your balance.` });
     } catch (err) {
       const message =
@@ -725,6 +726,10 @@ export function HomePage() {
       const res = await PaymentService.createSubscription(plan.tier, 'MONTHLY');
       const url = res?.data?.data?.url ?? res?.data?.url;
       if (url) {
+        // Stripe returns to /settings?tab=billing for both success and cancel,
+        // and a real payment only lands via webhook — leave a marker so the
+        // billing page knows to wait instead of showing "Free".
+        markPendingCheckout('subscription', plan.tier);
         window.location.href = url;
       } else {
         // No Checkout URL (e.g. saved payment method) — subscription created directly.
