@@ -89,6 +89,20 @@ const openSwitchPanel = async (user: ReturnType<typeof userEvent.setup>) => {
   await screen.findByRole('button', { name: /Confirm change/ });
 };
 
+// Writes are applied asynchronously (webhook → SQS → worker), so the hook polls
+// GET until the new state appears. Mocks must therefore *change* what GET
+// returns once the write has been called, or the poll never settles.
+const changeTierLandsAs = (over: Record<string, unknown>) => {
+  let applied = false;
+  mockChangeTier.mockImplementation(async () => {
+    applied = true;
+    return { data: { data: {} } };
+  });
+  mockGetSubscription.mockImplementation(async () =>
+    subscriptionRes(applied ? over : {}),
+  );
+};
+
 // A tier row in the switch panel. The header text ("Basic plan · $7.99/mo ·
 // Monthly") lives in a single span, so an exact match only hits the row label.
 const tierRow = (name: string) => screen.getByText(name).parentElement!;
@@ -219,7 +233,7 @@ describe('BillingTab — switch plan wiring', () => {
   // showing pre-upgrade data.
   it('refetches every billing section after an upgrade applies', async () => {
     const user = userEvent.setup();
-    mockChangeTier.mockResolvedValue({ data: { data: {} } });
+    changeTierLandsAs({ memberPlan: 'FLAGSHIP_MONTHLY' });
     await renderBilling();
     await waitFor(() => expect(mockGetInvoices).toHaveBeenCalledTimes(1));
     const before = {
@@ -243,7 +257,7 @@ describe('BillingTab — switch plan wiring', () => {
 
   it('renders the invoice rows returned after the upgrade', async () => {
     const user = userEvent.setup();
-    mockChangeTier.mockResolvedValue({ data: { data: {} } });
+    changeTierLandsAs({ memberPlan: 'FLAGSHIP_MONTHLY' });
     await renderBilling();
     await waitFor(() => expect(screen.getByText('No invoices yet')).toBeInTheDocument());
 
@@ -346,9 +360,10 @@ describe('BillingTab — switch plan wiring', () => {
     expect(mockGetSubscription.mock.calls.length).toBeGreaterThan(1);
   });
 
-  // Re-requesting the downgrade that's already queued is meaningless, so the
-  // row is disabled and Confirm stays blocked.
-  it('disables the tier that is already scheduled', async () => {
+  // The backend rejects EVERY /tier call while a downgrade is pending — not just
+  // re-requesting the same one — so the whole entry point is closed off and the
+  // only way forward is undoing the scheduled change.
+  it('blocks plan switching entirely while a downgrade is scheduled', async () => {
     const user = userEvent.setup();
     mockGetSubscription.mockResolvedValue(
       subscriptionRes({ memberPlan: 'ADVANCED_MONTHLY', downgradePendingPlan: 'BASIC_MONTHLY' }),
@@ -359,20 +374,56 @@ describe('BillingTab — switch plan wiring', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByText(/Advanced plan/)).toBeInTheDocument());
-    await openSwitchPanel(user);
 
-    const scheduledRow = screen.getByRole('button', { name: /Basic/ });
-    expect(scheduledRow).toBeDisabled();
-    expect(screen.getByText(/already scheduled/)).toBeInTheDocument();
+    const switchButton = screen.getByRole('button', { name: 'Switch plan' });
+    expect(switchButton).toBeDisabled();
+    expect(switchButton).toHaveAttribute('title', expect.stringContaining('already scheduled'));
 
-    // Clicking it changes nothing and cannot reach the API.
-    await user.click(scheduledRow);
-    expect(screen.getByRole('button', { name: /Confirm change/ })).toBeDisabled();
+    await user.click(switchButton);
+    expect(screen.queryByRole('button', { name: /Confirm change/ })).not.toBeInTheDocument();
     expect(mockChangeTier).not.toHaveBeenCalled();
 
-    // A different tier is still selectable.
-    await user.click(screen.getByRole('button', { name: /Flagship/ }));
-    expect(screen.getByRole('button', { name: /Confirm change/ })).toBeEnabled();
+    // The undo is still available.
+    expect(screen.getByRole('button', { name: /Cancel change/ })).toBeEnabled();
+  });
+
+  // A cancellation supersedes a queued downgrade — the downgrade only lands at
+  // the next renewal, and a canceled subscription has none. Showing both would
+  // contradict itself, and cancel-pending-downgrade 400s while a cancel is
+  // pending (the user must resume first).
+  it('hides a scheduled downgrade once a cancellation is scheduled', async () => {
+    mockGetSubscription.mockResolvedValue(
+      subscriptionRes({
+        memberPlan: 'ADVANCED_MONTHLY',
+        downgradePendingPlan: 'BASIC_MONTHLY',
+        cancelAtPeriodEnd: true,
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Cancellation scheduled/)).toBeInTheDocument());
+
+    expect(screen.queryByText(/Changing to Basic on/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel change/ })).not.toBeInTheDocument();
+    // …but the user is told resuming brings it back.
+    expect(screen.getByText(/Reactivating restores the scheduled change to Basic/)).toBeInTheDocument();
+  });
+
+  it('blocks plan switching while a cancellation is scheduled', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes({ cancelAtPeriodEnd: true }));
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Cancellation scheduled/)).toBeInTheDocument());
+
+    const switchButton = screen.getByRole('button', { name: 'Switch plan' });
+    expect(switchButton).toBeDisabled();
+    expect(switchButton).toHaveAttribute('title', expect.stringContaining('Reactivate'));
   });
 
   it('shows no undo affordance when nothing is scheduled', async () => {
@@ -432,37 +483,66 @@ describe('BillingTab — cancel / reactivate wiring', () => {
 
   const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
 
-  // Within 3 days of the last payment, cancelling is immediate and fully
-  // refunded — no review, no email, only the settlement takes time.
-  it('cancels immediately with a full refund within 3 days of the last payment', async () => {
+  // The refund window is anchored on firstSubAt (first ever subscription) and is
+  // one-time, so renewals do NOT reopen it. Whether the refund actually applies
+  // is only knowable after the call, so the copy stays conditional.
+  it('offers the refund path within 3 days of the FIRST subscription', async () => {
     const user = userEvent.setup();
-    mockGetSubscription.mockResolvedValue(subscriptionRes({ currentPeriodStart: daysAgo(1) }));
+    let canceled = false;
+    mockCancelSubscription.mockImplementation(async () => {
+      canceled = true;
+      return { data: {} };
+    });
+    mockGetSubscription.mockImplementation(async () =>
+      subscriptionRes({
+        firstSubAt: daysAgo(1),
+        ...(canceled ? { status: 'CANCELED' } : {}),
+      }),
+    );
     render(
       <MemoryRouter>
         <BillingTab />
       </MemoryRouter>,
     );
     await waitFor(() =>
-      expect(screen.getByText(/within the 3-day refund window/)).toBeInTheDocument(),
+      expect(screen.getByText(/within 3 days of your first subscription/)).toBeInTheDocument(),
     );
 
     await user.click(screen.getByRole('button', { name: 'Cancel and refund' }));
-    expect(await screen.findByText('Cancel now with a full refund')).toBeInTheDocument();
     // No reason/comment form, and no promise of a review or an email.
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByText(/24 hours/)).not.toBeInTheDocument();
     expect(screen.queryByText(/email/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/access ends right away/)).toBeInTheDocument();
+    // Conditional, because firstSubRefundUsed isn't exposed.
+    expect(await screen.findByText(/If this subscription qualifies/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Confirm cancellation/ }));
     await waitFor(() => expect(mockCancelSubscription).toHaveBeenCalled());
-    expect(await screen.findByText('Subscription canceled')).toBeInTheDocument();
-    expect(screen.getByText(/5–10 business days/)).toBeInTheDocument();
+    // Polling saw status CANCELED → the refund path ran.
+    expect(await screen.findByText(/refund on its way/)).toBeInTheDocument();
   });
 
-  // Access ends at once, so the refreshed subscription reads as Free and the
-  // whole Subscription module unmounts — the outcome has to survive that.
+  // Renewals must NOT reopen the window: a long-time subscriber who just renewed
+  // has a recent currentPeriodStart but an old firstSubAt.
+  it('does not offer the refund path to a subscriber who merely renewed', async () => {
+    mockGetSubscription.mockResolvedValue(
+      subscriptionRes({ firstSubAt: daysAgo(200), currentPeriodStart: daysAgo(1) }),
+    );
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
+
+    expect(screen.queryByText(/first subscription/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel and refund' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeInTheDocument();
+  });
+
+  // When the refund path runs, access ends at once → the refreshed subscription
+  // reads as Free, unmounting the module and its inline confirmation.
   it('still reports the refund after immediate cancellation hides the module', async () => {
     const user = userEvent.setup();
     let canceled = false;
@@ -472,7 +552,7 @@ describe('BillingTab — cancel / reactivate wiring', () => {
     });
     mockGetSubscription.mockImplementation(async () =>
       subscriptionRes({
-        currentPeriodStart: daysAgo(1),
+        firstSubAt: daysAgo(1),
         ...(canceled ? { status: 'CANCELED' } : {}),
       }),
     );
@@ -493,7 +573,7 @@ describe('BillingTab — cancel / reactivate wiring', () => {
   });
 
   it('offers no refund once the 3-day window has passed', async () => {
-    mockGetSubscription.mockResolvedValue(subscriptionRes({ currentPeriodStart: daysAgo(10) }));
+    mockGetSubscription.mockResolvedValue(subscriptionRes({ firstSubAt: daysAgo(10) }));
     render(
       <MemoryRouter>
         <BillingTab />
@@ -509,7 +589,14 @@ describe('BillingTab — cancel / reactivate wiring', () => {
 
   it('reactivates a subscription that is pending cancellation', async () => {
     const user = userEvent.setup();
-    mockGetSubscription.mockResolvedValue(subscriptionRes({ cancelAtPeriodEnd: true }));
+    let resumed = false;
+    mockResumeSubscription.mockImplementation(async () => {
+      resumed = true;
+      return { data: {} };
+    });
+    mockGetSubscription.mockImplementation(async () =>
+      subscriptionRes({ cancelAtPeriodEnd: !resumed }),
+    );
     render(
       <MemoryRouter>
         <BillingTab />
@@ -519,5 +606,62 @@ describe('BillingTab — cancel / reactivate wiring', () => {
 
     await user.click(screen.getByRole('button', { name: /Reactivate/ }));
     await waitFor(() => expect(mockResumeSubscription).toHaveBeenCalled());
+    // Polling saw cancelAtPeriodEnd flip back to false.
+    expect(await screen.findByText('Subscription reactivated')).toBeInTheDocument();
+  });
+});
+
+describe('BillingTab — legacy plans and payment states', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetCredits.mockResolvedValue({
+      data: { data: { recurringCreditBalance: 10, permanentCreditBalance: 5 } },
+    });
+    mockGetCreditUsage.mockResolvedValue({ data: { data: { content: [], pageMeta: { last: true } } } });
+    mockGetInvoices.mockResolvedValue({ data: { data: { content: [] } } });
+    mockCancelSubscription.mockResolvedValue({ data: {} });
+  });
+
+  // A retired tier used to normalize to null, which hid the whole module — taking
+  // away the cancel button, the only action these users are still allowed.
+  it('lets a legacy subscriber see and cancel their plan', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes({ memberPlan: 'PREMIUM_MONTHLY' }));
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Premium plan/)).toBeInTheDocument());
+
+    expect(screen.getByText(/legacy plan/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Switch plan' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeEnabled();
+  });
+
+  // Entitlement is ACTIVE | PAST_DUE — a retrying renewal keeps access.
+  it('keeps a PAST_DUE subscriber as a member and warns them', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes({ status: 'PAST_DUE' }));
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
+
+    expect(screen.getByText('Past Due')).toBeInTheDocument();
+    expect(screen.getByText(/couldn't process your last payment/)).toBeInTheDocument();
+    // Plan changes are unavailable until billing recovers.
+    expect(screen.getByRole('button', { name: 'Switch plan' })).toBeDisabled();
+  });
+
+  it('treats UNPAID as no longer entitled', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes({ status: 'UNPAID' }));
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    // Module is hidden — no benefits left, so the upgrade banner takes over.
+    await waitFor(() => expect(screen.queryByText(/Basic plan/)).not.toBeInTheDocument());
   });
 });

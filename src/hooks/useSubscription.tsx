@@ -14,13 +14,21 @@ export type SubscriptionStatus =
 
 export interface SubscriptionData {
   id: string;
-  plan: Tier;
+  // null when the row is on a retired tier (STARTER / PREMIUM). The record still
+  // exists and can be canceled — it just has no current tier to render.
+  plan: Tier | null;
+  // Raw backend `memberPlan`, kept so legacy rows can still be named in the UI.
+  rawPlan: string | null;
+  isLegacyPlan: boolean;
   status: SubscriptionStatus;
-  billingCycle: BillingCycle;
+  billingCycle: BillingCycle | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   canceledAt: string | null;
+  // First-ever subscription date; not refreshed on re-subscribe. Anchors the
+  // 3-day refund window. Null on older rows.
+  firstSubAt: string | null;
   // Scheduled downgrade (tier or cycle). Backend field: `downgradePendingPlan`.
   // Stored here as separate normalized fields for the UI.
   downgradePendingTier?: Tier | null;
@@ -28,6 +36,16 @@ export interface SubscriptionData {
   nextBillingAmount?: number | null;
   currency?: string;
 }
+
+// Backend entitlement rule (EntitlementService): paid features stay on while
+// Stripe retries a failed renewal, so PAST_DUE still counts as entitled.
+export const ENTITLED_STATUSES: ReadonlySet<SubscriptionStatus> = new Set<SubscriptionStatus>([
+  'active',
+  'past_due',
+]);
+
+export const hasEntitlement = (sub: SubscriptionData | null): boolean =>
+  sub !== null && ENTITLED_STATUSES.has(sub.status);
 
 export interface CreditsData {
   recurringCreditBalance: number;
@@ -37,11 +55,30 @@ export interface CreditsData {
   resetDate: string | null;
 }
 
-// Result of a plan mutation. `url` is a Stripe-hosted page the caller must
-// redirect to for the change to take effect; null means it already applied.
+// Result of a plan mutation.
+//
+// Every write except cancel-pending-downgrade only *tells Stripe*; our own row
+// is updated later by webhook → SQS → worker. So a 200 means "accepted", not
+// "applied" — and for an upgrade it doesn't even mean the card cleared (the
+// backend uses PENDING_IF_INCOMPLETE). Each action therefore polls GET until the
+// expected state shows up:
+//   settled: true  → confirmed applied
+//   settled: false → still pending when we gave up waiting; show "processing",
+//                    never "failed" — the event is most likely still queued.
 export interface ChangeResult {
   ok: boolean;
+  settled: boolean;
   url: string | null;
+}
+
+// Cancel has two backend paths that return byte-identical responses, so the only
+// way to know which ran is to poll and look at the resulting state.
+export interface CancelResult {
+  ok: boolean;
+  settled: boolean;
+  // true  → immediate cancel + full refund (inside the one-time 3-day window)
+  // false → scheduled: access continues to the end of the period
+  refunded: boolean;
 }
 
 interface UseSubscriptionResult {
@@ -55,8 +92,14 @@ interface UseSubscriptionResult {
   changeTier: (plan: Tier) => Promise<ChangeResult>;
   changeBillingCycle: (billingCycle: BillingCycle) => Promise<ChangeResult>;
   cancelPendingDowngrade: () => Promise<boolean>;
-  cancel: () => Promise<boolean>;
-  resume: () => Promise<boolean>;
+  cancel: () => Promise<CancelResult>;
+  resume: () => Promise<ChangeResult>;
+  // Poll GET until `predicate` holds. Exposed for the Stripe Checkout return,
+  // where the caller waits for a brand-new subscription to appear.
+  waitForSubscription: (
+    predicate: (sub: SubscriptionData | null) => boolean,
+    opts?: { timeoutMs?: number; intervalMs?: number },
+  ) => Promise<SubscriptionData | null>;
 }
 
 const defaultCredits: CreditsData = {
@@ -109,10 +152,15 @@ interface RawSubscription {
   downgradePendingBillingCycle?: string | null;
   nextBillingAmount?: number | null;
   currency?: string;
+  firstSubAt?: string | null;
+  updatedAt?: string | null;
 }
 
 const TIER_VALUES: ReadonlySet<string> = new Set(['basic', 'advanced', 'flagship']);
 const CYCLE_VALUES: ReadonlySet<string> = new Set(['monthly', 'quarterly', 'annual']);
+// Retired tiers that only exist on pre-migration rows. The backend rejects every
+// tier/billing-cycle change on these, so the UI offers cancel only.
+const LEGACY_TIER_VALUES: ReadonlySet<string> = new Set(['starter', 'premium']);
 
 // Parse a combined "TIER_CYCLE" string (e.g. "ADVANCED_MONTHLY") into parts.
 // Also tolerates split-only values like just "ADVANCED" or "MONTHLY".
@@ -135,8 +183,7 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
 
   // Parse the combined memberPlan first, then fall back to split fields —
   // which may themselves hold a combined "TIER_CYCLE" value, so run them
-  // through the same parser. Unknown/legacy tiers (e.g. "PREMIUM", "STARTER")
-  // resolve to null → the whole subscription is treated as absent (Free).
+  // through the same parser.
   const fromCombined = parseMemberPlan(raw.memberPlan);
   const rawTier = raw.tier ?? raw.plan;
   const fromSplit = parseMemberPlan(typeof rawTier === 'string' ? rawTier : null);
@@ -145,8 +192,21 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
     fromCombined.cycle ?? fromSplit.cycle ?? toKnown<BillingCycle>(raw.billingCycle, CYCLE_VALUES);
   const status = toLower<SubscriptionStatus>(raw.status);
 
-  // Need at least tier + cycle + status to render a meaningful subscription.
-  if (!plan || !billingCycle || !status) return null;
+  // `status` is the only field that must be present — it's what makes this a
+  // record rather than the 400 "Subscription not found" that means Free.
+  //
+  // A retired tier (STARTER / PREMIUM) leaves `plan` null. It used to make this
+  // return null too, which hid the entire subscription — including the cancel
+  // button, the one action those users are still allowed. Keep the record and
+  // flag it instead.
+  if (!status) return null;
+
+  const rawPlanText = [raw.memberPlan, raw.tier, raw.plan]
+    .filter((v): v is string => typeof v === 'string')
+    .join(' ')
+    .toLowerCase();
+  const isLegacyPlan =
+    plan === null && [...LEGACY_TIER_VALUES].some(t => rawPlanText.includes(t));
 
   // Pending downgrade — also a combined value per backend convention.
   const pending = parseMemberPlan(raw.downgradePendingPlan);
@@ -158,19 +218,38 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
 
   return {
     // Backend doesn't include an id. Synthesize a stable key for React.
-    id: raw.id ?? `${plan}_${billingCycle}`,
+    id: raw.id ?? `${plan ?? 'legacy'}_${billingCycle ?? 'unknown'}`,
     plan,
+    rawPlan: raw.memberPlan ?? (typeof rawTier === 'string' ? rawTier : null),
+    isLegacyPlan,
     status,
     billingCycle,
     currentPeriodStart: raw.currentPeriodStart ?? null,
     currentPeriodEnd: raw.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: Boolean(raw.cancelAtPeriodEnd),
     canceledAt: raw.canceledAt ?? null,
+    firstSubAt: raw.firstSubAt ?? null,
     downgradePendingTier: pendingTierExplicit ?? pending.tier,
     downgradePendingCycle: pendingCycleExplicit ?? pending.cycle,
     nextBillingAmount: raw.nextBillingAmount ?? null,
     currency: raw.currency ?? 'usd',
   };
+};
+
+// ── Polling ─────────────────────────────────────────────────────────────────
+// Writes land asynchronously (Stripe → EventBridge → SQS → worker), so every
+// action confirms by re-reading GET until the expected state appears.
+const POLL_TIMEOUT_MS = 30_000;
+const POLL_INTERVAL_MS = 2_000;
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+// GET /payments/subscriptions answers 400 "Subscription not found" for users who
+// never subscribed. That is the Free state, not a failure.
+const isNotFoundError = (e: unknown): boolean => {
+  const err = e as { response?: { status?: number; data?: { message?: string } } };
+  const status = err?.response?.status;
+  return status === 404 || (status === 400 && /not found/i.test(err?.response?.data?.message ?? ''));
 };
 
 export function useSubscription(): UseSubscriptionResult {
@@ -204,33 +283,25 @@ export function useSubscription(): UseSubscriptionResult {
       if (subRes.status === 'fulfilled') {
         const raw = unwrap(subRes.value) as RawSubscription | null;
         setSubscription(normalizeSubscription(raw));
+      } else if (isNotFoundError(subRes.reason)) {
+        setSubscription(null);
       } else {
-        // Backend returns 400/404 with message "Subscription not found" for
-        // non-members. Treat both as a valid Free state, not an error.
-        const reason = subRes.reason as {
-          response?: { status?: number; data?: { message?: string; errorCode?: string } };
-        };
-        const httpStatus = reason?.response?.status;
-        const body = reason?.response?.data;
-        const isNotFound =
-          httpStatus === 404 ||
-          (httpStatus === 400 && /not found/i.test(body?.message ?? ''));
-        if (isNotFound) {
-          setSubscription(null);
-        } else {
-          setError(errMsg(subRes.reason, 'Failed to load subscription'));
-        }
+        setError(errMsg(subRes.reason, 'Failed to load subscription'));
       }
 
       if (credRes.status === 'fulfilled') {
         const c = unwrap(credRes.value) as Partial<CreditsData> | null;
         if (c) {
+          // Recurring can be negative (post-paid interview deductions), so this
+          // sum is allowed to go below zero — don't clamp it here.
+          const recurring = c.recurringCreditBalance ?? 0;
+          const permanent = c.permanentCreditBalance ?? 0;
           setCredits({
-            recurringCreditBalance: c.recurringCreditBalance ?? 0,
-            permanentCreditBalance: c.permanentCreditBalance ?? 0,
-            totalBalance:
-              c.totalBalance ??
-              (c.recurringCreditBalance ?? 0) + (c.permanentCreditBalance ?? 0),
+            recurringCreditBalance: recurring,
+            permanentCreditBalance: permanent,
+            totalBalance: c.totalBalance ?? recurring + permanent,
+            // Not returned by GET /payments/credits — kept for callers that
+            // still read them, always falsy until the API exposes them.
             monthlyAllowance: c.monthlyAllowance ?? 0,
             resetDate: c.resetDate ?? null,
           });
@@ -245,6 +316,36 @@ export function useSubscription(): UseSubscriptionResult {
     if (isAuthLoading) return;
     refresh();
   }, [isAuthLoading, isAuthenticated, refresh]);
+
+  // Re-read GET until `predicate` holds, publishing each read so the UI updates
+  // the moment the webhook lands. Returns the matching subscription, or null on
+  // timeout — the caller must treat that as "still processing", not "failed".
+  const waitForSubscription = useCallback(
+    async (
+      predicate: (sub: SubscriptionData | null) => boolean,
+      opts?: { timeoutMs?: number; intervalMs?: number },
+    ): Promise<SubscriptionData | null> => {
+      const timeoutMs = opts?.timeoutMs ?? POLL_TIMEOUT_MS;
+      const intervalMs = opts?.intervalMs ?? POLL_INTERVAL_MS;
+      const deadline = Date.now() + timeoutMs;
+
+      for (;;) {
+        let current: SubscriptionData | null = null;
+        try {
+          const res = await PaymentService.getSubscription();
+          current = normalizeSubscription(unwrap(res) as RawSubscription | null);
+        } catch (e) {
+          if (!isNotFoundError(e)) throw e;
+          current = null;
+        }
+        setSubscription(current);
+        if (predicate(current)) return current;
+        if (Date.now() + intervalMs >= deadline) return null;
+        await sleep(intervalMs);
+      }
+    },
+    [],
+  );
 
   const subscribe = useCallback(
     async (plan: Tier, billingCycle: BillingCycle): Promise<string | null> => {
@@ -270,57 +371,66 @@ export function useSubscription(): UseSubscriptionResult {
     [toast, refresh],
   );
 
-  // Like `subscribe`, a tier change can come back with a Stripe URL the user
-  // must be sent to before the change is real (e.g. an upgrade that needs a
-  // fresh payment or 3DS confirmation). Callers MUST follow `url` when present;
-  // only a `url`-less success means the change already applied.
+  // A tier change is accepted synchronously but applied asynchronously, and an
+  // upgrade can still fail at the card (backend uses PENDING_IF_INCOMPLETE and
+  // returns 200 either way). So don't trust the 200 — poll for the real state:
+  //   upgrade   → `plan` becomes the target
+  //   downgrade → `downgradePendingTier` becomes the target
+  // Whichever direction, one of the two ends the wait, so we accept either.
+  // (`url` is always null on this endpoint today; kept for forward safety.)
   const changeTierAction = useCallback(
     async (plan: Tier): Promise<ChangeResult> => {
       setIsActing(true);
       try {
         const res = await PaymentService.changeTier(plan);
         const url = (unwrap(res) as { url?: string } | null)?.url ?? null;
-        // Don't refresh when redirecting — the change isn't applied until the
-        // user completes payment, and we're leaving the page anyway.
-        if (!url) await refresh();
-        return { ok: true, url };
+        if (url) return { ok: true, settled: false, url };
+        const settled = await waitForSubscription(
+          s => s?.plan === plan || s?.downgradePendingTier === plan,
+        );
+        return { ok: true, settled: settled !== null, url: null };
       } catch (e) {
         toast({
           title: 'Plan change failed',
           description: errMsg(e, 'Unable to change tier'),
           variant: 'destructive',
         });
-        return { ok: false, url: null };
+        return { ok: false, settled: false, url: null };
       } finally {
         setIsActing(false);
       }
     },
-    [toast, refresh],
+    [toast, waitForSubscription],
   );
 
-  // Same contract as changeTier — may return a URL to redirect to.
+  // Same async contract as changeTier.
   const changeBillingCycleAction = useCallback(
     async (billingCycle: BillingCycle): Promise<ChangeResult> => {
       setIsActing(true);
       try {
         const res = await PaymentService.changeBillingCycle(billingCycle);
         const url = (unwrap(res) as { url?: string } | null)?.url ?? null;
-        if (!url) await refresh();
-        return { ok: true, url };
+        if (url) return { ok: true, settled: false, url };
+        const settled = await waitForSubscription(
+          s => s?.billingCycle === billingCycle || s?.downgradePendingCycle === billingCycle,
+        );
+        return { ok: true, settled: settled !== null, url: null };
       } catch (e) {
         toast({
           title: 'Billing cycle change failed',
           description: errMsg(e, 'Unable to change billing cycle'),
           variant: 'destructive',
         });
-        return { ok: false, url: null };
+        return { ok: false, settled: false, url: null };
       } finally {
         setIsActing(false);
       }
     },
-    [toast, refresh],
+    [toast, waitForSubscription],
   );
 
+  // The one write the backend commits before responding — a plain refresh is
+  // enough, no polling.
   const cancelPendingDowngradeAction = useCallback(async (): Promise<boolean> => {
     setIsActing(true);
     try {
@@ -339,41 +449,50 @@ export function useSubscription(): UseSubscriptionResult {
     }
   }, [toast, refresh]);
 
-  const cancelAction = useCallback(async (): Promise<boolean> => {
+  // Two backend paths, identical responses:
+  //   • inside the one-time 3-day window → refund + immediate end (status CANCELED)
+  //   • otherwise                        → cancelAtPeriodEnd = true
+  // Poll until either shows up and report which happened, so the UI can tell the
+  // user what actually occurred rather than guessing from a date.
+  const cancelAction = useCallback(async (): Promise<CancelResult> => {
     setIsActing(true);
     try {
       await PaymentService.cancelSubscription();
-      await refresh();
-      return true;
+      // A refunded cancellation ends the subscription outright (status CANCELED,
+      // the row still exists); the scheduled path leaves it ACTIVE with the flag.
+      const settled = await waitForSubscription(
+        s => s?.status === 'canceled' || s?.cancelAtPeriodEnd === true,
+      );
+      return { ok: true, settled: settled !== null, refunded: settled?.status === 'canceled' };
     } catch (e) {
       toast({
         title: 'Cancellation failed',
         description: errMsg(e, 'Unable to cancel subscription'),
         variant: 'destructive',
       });
-      return false;
+      return { ok: false, settled: false, refunded: false };
     } finally {
       setIsActing(false);
     }
-  }, [toast, refresh]);
+  }, [toast, waitForSubscription]);
 
-  const resumeAction = useCallback(async (): Promise<boolean> => {
+  const resumeAction = useCallback(async (): Promise<ChangeResult> => {
     setIsActing(true);
     try {
       await PaymentService.resumeSubscription();
-      await refresh();
-      return true;
+      const settled = await waitForSubscription(s => s !== null && !s.cancelAtPeriodEnd);
+      return { ok: true, settled: settled !== null, url: null };
     } catch (e) {
       toast({
         title: 'Resume failed',
         description: errMsg(e, 'Unable to resume subscription'),
         variant: 'destructive',
       });
-      return false;
+      return { ok: false, settled: false, url: null };
     } finally {
       setIsActing(false);
     }
-  }, [toast, refresh]);
+  }, [toast, waitForSubscription]);
 
   return {
     subscription,
@@ -388,6 +507,7 @@ export function useSubscription(): UseSubscriptionResult {
     cancelPendingDowngrade: cancelPendingDowngradeAction,
     cancel: cancelAction,
     resume: resumeAction,
+    waitForSubscription,
   };
 }
 

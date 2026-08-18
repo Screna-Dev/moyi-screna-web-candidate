@@ -53,8 +53,6 @@
     { "source": "/history", "destination": "/app.html" },
     { "source": "/settings", "destination": "/app.html" },
     { "source": "/billing", "destination": "/app.html" },
-    { "source": "/payment-success", "destination": "/app.html" },
-    { "source": "/premium-onboarding", "destination": "/app.html" },
 
     { "source": "/goal", "destination": "/app.html" },
     { "source": "/goal-upload", "destination": "/app.html" },

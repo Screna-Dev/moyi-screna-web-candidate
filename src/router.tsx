@@ -67,8 +67,6 @@ const MyContributionsPage = lazy(() => import('./pages/newDesign/my-contribution
 const ReferEarnPage = lazy(() => import('./pages/newDesign/refer-earn-design').then((m) => ({ default: m.ReferEarnPage })));
 const HistoryPage = lazy(() => import('./pages/newDesign/training-history-design').then((m) => ({ default: m.TrainingHistoryPage })));
 const SettingsPage = lazy(() => import('./pages/newDesign/settings-design').then((m) => ({ default: m.SettingsPage })));
-const PaymentSuccess = lazy(() => import('./pages/PaymentSuccess'));
-const PremiumOnboardingPage = lazy(() => import('./pages/PremiumOnboardingPage'));
 
 // Interview insights (login-walled)
 const InterviewInsightsPage = lazy(() => import('./pages/newDesign/interview-insights-design').then((m) => ({ default: m.InterviewInsightsPage })));
@@ -221,8 +219,6 @@ export const router = createBrowserRouter([
       // /billing is deprecated — billing now lives under Settings. Redirect old
       // links/bookmarks to the canonical location.
       { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
-      { path: '/payment-success', element: <PaymentSuccess /> },
-      { path: '/premium-onboarding', element: <PremiumOnboardingPage /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
       { path: '/interview-insights', element: <InterviewInsightsPage /> },

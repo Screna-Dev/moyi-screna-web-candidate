@@ -101,12 +101,15 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const [isBuyingCredits, setIsBuyingCredits] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
-  // Map a raw backend tier string → PlanType. No row / canceled → Free.
+  // Map a raw backend tier string → PlanType.
+  // Entitlement mirrors the backend rule (EntitlementService): only ACTIVE and
+  // PAST_DUE keep paid features — a failing renewal is still in its grace
+  // period, while UNPAID/CANCELED/INCOMPLETE have nothing left.
   const tierToPlan = (
     tier: string | null | undefined,
     status: string | null | undefined,
   ): PlanType => {
-    if (!tier || status === 'canceled' || status === 'unpaid') return 'Free';
+    if (!tier || !status || !['active', 'past_due'].includes(status)) return 'Free';
     const t = String(tier).toLowerCase();
     if (t === 'flagship') return 'Flagship';
     if (t === 'advanced') return 'Advanced';
