@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, isStaffRole } from '@/contexts/AuthContext';
@@ -258,6 +258,13 @@ export function useSubscription(): UseSubscriptionResult {
 
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [credits, setCredits] = useState<CreditsData>(defaultCredits);
+  // A poll can run for up to 30s; if the consumer unmounts before then we must
+  // stop, or it keeps hammering the API and writing to dead state.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [isActing, setIsActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,6 +337,7 @@ export function useSubscription(): UseSubscriptionResult {
       const deadline = Date.now() + timeoutMs;
 
       for (;;) {
+        if (!mountedRef.current) return null;
         let current: SubscriptionData | null = null;
         try {
           const res = await PaymentService.getSubscription();
@@ -338,6 +346,7 @@ export function useSubscription(): UseSubscriptionResult {
           if (!isNotFoundError(e)) throw e;
           current = null;
         }
+        if (!mountedRef.current) return null;
         setSubscription(current);
         if (predicate(current)) return current;
         if (Date.now() + intervalMs >= deadline) return null;

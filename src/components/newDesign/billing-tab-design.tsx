@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, CheckCircle2, Download, Info,
@@ -447,6 +447,7 @@ const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade
 export function BillingTab() {
   // ── Real data sources ──
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     subscription, isActing, changeTier, cancel, resume, refresh, cancelPendingDowngrade,
     waitForSubscription,
@@ -720,9 +721,32 @@ export function BillingTab() {
   // real payment only reaches our DB via webhook — so without this the user pays
   // and lands on "Free". The marker is written before we hand them to Stripe.
   const [checkoutPending, setCheckoutPending] = useState(false);
+  // Set when the user came back from Stripe without paying. Not an error — just
+  // say nothing was charged.
+  const [checkoutCancelled, setCheckoutCancelled] = useState(false);
 
   useEffect(() => {
-    const pending = readPendingCheckout();
+    // `?checkout=success|cancelled` is the authoritative signal when the backend
+    // sends it; the sessionStorage marker is the fallback for today, when both
+    // Stripe URLs are identical. Read the param first and strip it so a refresh
+    // or a back-navigation doesn't replay the banner.
+    const param = searchParams.get('checkout');
+    if (param) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('checkout');
+      setSearchParams(next, { replace: true });
+    }
+
+    if (param === 'cancelled') {
+      clearPendingCheckout();
+      setCheckoutCancelled(true);
+      return;
+    }
+
+    // Either the backend told us it succeeded, or we left a marker on the way out.
+    const pending = param === 'success'
+      ? readPendingCheckout() ?? { kind: 'subscription' as const, ts: Date.now() }
+      : readPendingCheckout();
     if (!pending) return;
 
     let cancelled = false;
@@ -1039,6 +1063,30 @@ export function BillingTab() {
       <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
       <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
       {toastMsg && <PaymentToast message={toastMsg} onDone={() => setToastMsg(null)} />}
+
+      {/* Came back from Stripe without paying. Deliberately neutral — backing
+          out of checkout is a normal choice, not a failure. */}
+      {checkoutCancelled && !checkoutPending && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-secondary px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Checkout canceled</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Nothing was charged and your plan is unchanged. You can pick a plan again whenever
+                you're ready.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setCheckoutCancelled(false)}
+            aria-label="Dismiss"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Returned from Stripe Checkout — the webhook hasn't landed yet. Never
           say "failed" here: the event is most likely still in the queue. */}

@@ -611,6 +611,69 @@ describe('BillingTab — cancel / reactivate wiring', () => {
   });
 });
 
+describe('BillingTab — Stripe Checkout return', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetCredits.mockResolvedValue({
+      data: { data: { recurringCreditBalance: 10, permanentCreditBalance: 5 } },
+    });
+    mockGetCreditUsage.mockResolvedValue({ data: { data: { content: [], pageMeta: { last: true } } } });
+    mockGetInvoices.mockResolvedValue({ data: { data: { content: [] } } });
+    sessionStorage.clear();
+  });
+
+  const renderAt = (search: string) =>
+    render(
+      <MemoryRouter initialEntries={[`/settings${search}`]}>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+
+  // ?checkout=success → wait for the webhook instead of telling a paying user
+  // they're on Free. The banner stays up while the subscription is still absent.
+  it('waits for the webhook when Stripe reports success', async () => {
+    mockGetSubscription.mockRejectedValue({
+      response: { status: 400, data: { message: 'Subscription not found' } },
+    });
+    const { unmount } = renderAt('?tab=billing&checkout=success');
+
+    expect(await screen.findByText('Confirming your payment…')).toBeInTheDocument();
+    expect(screen.queryByText(/Basic plan/)).not.toBeInTheDocument();
+    // The poll must stop with the component, not run on for its full 30s.
+    unmount();
+  });
+
+  it('clears the confirming banner once the subscription lands', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    renderAt('?tab=billing&checkout=success');
+
+    await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
+    expect(screen.queryByText('Confirming your payment…')).not.toBeInTheDocument();
+  });
+
+  // ?checkout=cancelled → neutral notice, no polling, no scary wording.
+  it('reports a cancelled checkout without claiming a failure', async () => {
+    mockGetSubscription.mockRejectedValue({
+      response: { status: 400, data: { message: 'Subscription not found' } },
+    });
+    renderAt('?tab=billing&checkout=cancelled');
+
+    expect(await screen.findByText('Checkout canceled')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was charged/)).toBeInTheDocument();
+    expect(screen.queryByText('Confirming your payment…')).not.toBeInTheDocument();
+    expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('shows neither banner on a normal visit', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    renderAt('?tab=billing');
+
+    await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
+    expect(screen.queryByText('Confirming your payment…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Checkout canceled')).not.toBeInTheDocument();
+  });
+});
+
 describe('BillingTab — legacy plans and payment states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
