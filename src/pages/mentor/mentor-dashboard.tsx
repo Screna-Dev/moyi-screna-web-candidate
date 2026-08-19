@@ -6,7 +6,7 @@ import {
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
   MoreHorizontal, Trash2, Eye, Video,
   CheckCircle, XCircle, RefreshCw, Paperclip,
-  Lock, Mail, Bell, Users, Gift, Briefcase,
+  Lock, Mail, Users, Gift, Briefcase,
   Link, Zap, LogOut,
   Camera, Circle, Minus, Clock,
 } from 'lucide-react';
@@ -1031,9 +1031,15 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     onFocusHandled?.();
   }, [focusBookingId, bookings, onFocusHandled]);
 
+  // Cancelling refunds the student in full, deletes the calendar event and
+  // emails them — so it always goes through a confirmation first.
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const confirmCancelBooking = bookings.find(b => b.id === confirmCancelId) ?? null;
+
   const handleCancel = (bookingId: string) => {
     if (cancellingId) return;
     setCancellingId(bookingId);
+    setConfirmCancelId(null);
     mentorCancelBooking(bookingId)
       .then(() => {
         // session_cancelled —— mentor 侧取消预约（仅 API 成功后上报）
@@ -1132,7 +1138,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
                         onReschedule={id => { setRescheduledIds(prev => new Set([...prev, id])); refetchBookings(); }}
                       />
                       <button
-                        onClick={e => { e.stopPropagation(); handleCancel(b.id); }}
+                        onClick={e => { e.stopPropagation(); setConfirmCancelId(b.id); }}
                         disabled={cancellingId === b.id}
                         className="px-3 py-1.5 text-xs border rounded-md transition-colors disabled:opacity-50"
                         style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)', background: 'transparent', cursor: cancellingId === b.id ? 'not-allowed' : 'pointer' }}
@@ -1260,6 +1266,69 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
           </div>
         </div>
       )}
+
+      {/* Cancel confirmation — the consequences are irreversible and affect the
+          student's money, so they're spelled out before the request fires. */}
+      {confirmCancelBooking && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={e => { if (e.target === e.currentTarget && !cancellingId) setConfirmCancelId(null); }}
+        >
+          <div
+            className="bg-card rounded-[var(--radius)] border border-border shadow-lg flex flex-col gap-5 w-full mx-4"
+            style={{ maxWidth: 460, padding: 'var(--space-6)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>
+                Cancel this session?
+              </h3>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', marginTop: 4 }}>
+                {confirmCancelBooking.memberName} · {confirmCancelBooking.date} at {confirmCancelBooking.time}
+              </p>
+            </div>
+
+            <ul className="flex flex-col gap-2" style={{ fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'hsl(0,72%,51%)' }} />
+                <span>The student is issued a <strong>full refund</strong>.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }} />
+                <span>The Google Calendar event is deleted.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }} />
+                <span>The student is notified by email.</span>
+              </li>
+            </ul>
+
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+              A session that has already started or passed can&apos;t be cancelled.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmCancelId(null)}
+                disabled={!!cancellingId}
+                className="px-3 py-2 text-sm rounded-[var(--radius-sm)] border border-input text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+              >
+                Keep session
+              </button>
+              <button
+                onClick={() => handleCancel(confirmCancelBooking.id)}
+                disabled={!!cancellingId}
+                className="px-3 py-2 text-sm rounded-[var(--radius-sm)] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'hsl(0,72%,51%)' }}
+              >
+                {cancellingId ? 'Cancelling…' : 'Cancel session'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -2565,14 +2634,13 @@ function ProfilePage() {
   const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
   const [exp, setExp] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
+  const [disc, setDisc] = useState<SaveStatus>(CLEAN_STATUS);
   const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
   // Services + disciplines are both required for the mentor to be listed and
   // bookable. Specialty tags & experience are UI-only for now (no backend) —
   // local state, not persisted.
   const [services, setServices] = useState<ServiceType[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
-  const [specialtyTags, setSpecialtyTags] = useState<string[]>([]);
-  const [specialtyInput, setSpecialtyInput] = useState('');
   type ExpEntry = { id: string; title: string; company: string; startYear: string; endYear: string; isCurrent: boolean };
   const [experiences, setExperiences] = useState<ExpEntry[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -2583,6 +2651,8 @@ function ProfilePage() {
   // Verification fields are already approved — editing them re-triggers review,
   // so they stay read-only behind an explicit "Edit" button (unlike other cards).
   const [editingVerify, setEditingVerify] = useState(false);
+  // Controls whether students see linkedinUrl. Defaults true server-side.
+  const [showLinkedin, setShowLinkedin] = useState(true);
 
   // Avatar upload — wires the existing Camera button to a hidden <input type="file">.
   const avatarFileRef = useRef<HTMLInputElement>(null);
@@ -2605,6 +2675,10 @@ function ProfilePage() {
         const updated = unwrapData<MentorProfileDto>(res);
         if (updated) ctx?.setProfile(updated);
         else ctx?.refetch();
+        // A new photo resets photoStatus to PHOTO_REVIEW and temporarily
+        // unlists an already-live mentor — say so rather than let them find out
+        // from a silent status change.
+        toast('Your photo needs to be re-reviewed. Your profile stays unlisted until an admin approves it.');
       })
       .catch(() => { /* swallow — no toast slot in this card */ })
       .finally(() => {
@@ -2637,7 +2711,8 @@ function ProfilePage() {
     }
     if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
     if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
-    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
+    if (profile.showLinkedin != null) setShowLinkedin(profile.showLinkedin);
+    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setDisc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
   // Fall back to the signed-in account email when the profile has no work email.
@@ -2649,6 +2724,7 @@ function ProfilePage() {
   const markBasic = () => setBasic(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markExp = () => setExp(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markSvc = () => setSvc(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markDisc = () => setDisc(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
 
   // PUT supports partial updates, so each section sends only its own fields.
@@ -2706,11 +2782,15 @@ function ProfilePage() {
       setSvc(s => ({ ...s, saving: false, error: 'No service type selected — pick at least one to stay listed.' }));
       return;
     }
+    saveSection({ services }, setSvc);
+  };
+
+  const saveDisciplines = () => {
     if (!disciplines.length) {
-      setSvc(s => ({ ...s, saving: false, error: 'No discipline selected — pick at least one to stay listed.' }));
+      setDisc(s => ({ ...s, saving: false, error: 'No discipline selected — pick at least one to stay listed.' }));
       return;
     }
-    saveSection({ services, disciplines }, setSvc);
+    saveSection({ disciplines }, setDisc);
   };
   // The API only accepts personal /in/ profile links and 400s otherwise, so
   // normalise up front and submit the canonical form.
@@ -2723,7 +2803,7 @@ function ProfilePage() {
     }
     if (normalized && normalized !== linkedin) setLinkedin(normalized);
     saveSection(
-      { workEmail, linkedinUrl: normalized || null },
+      { workEmail, linkedinUrl: normalized || null, showLinkedin },
       setVerify,
       () => setEditingVerify(false),
     );
@@ -2733,6 +2813,7 @@ function ProfilePage() {
   const cancelVerify = () => {
     setWorkEmail((profile as any)?.workEmail ?? (user as any)?.email ?? '');
     setLinkedin((profile as any)?.linkedinUrl ?? '');
+    setShowLinkedin(profile?.showLinkedin ?? true);
     setVerify(CLEAN_STATUS);
     setEditingVerify(false);
   };
@@ -2746,21 +2827,7 @@ function ProfilePage() {
   // Discipline selection — saved together with services in the same PUT.
   const toggleDiscipline = (d: Discipline) => {
     setDisciplines(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
-    markSvc();
-  };
-
-  // Specialty tags — free-text, max 4, 20 chars each (UI-only, not persisted).
-  const addSpecialtyTag = () => {
-    const val = specialtyInput.trim().slice(0, 20);
-    if (!val || specialtyTags.includes(val) || specialtyTags.length >= 4) return;
-    setSpecialtyTags([...specialtyTags, val]);
-    setSpecialtyInput('');
-  };
-  const handleSpecialtyKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); addSpecialtyTag(); }
-    if (e.key === 'Backspace' && specialtyInput === '' && specialtyTags.length > 0) {
-      setSpecialtyTags(specialtyTags.slice(0, -1));
-    }
+    markDisc();
   };
 
   // Experience entries — persisted to `careerBackground` via saveExperience.
@@ -2854,6 +2921,27 @@ function ProfilePage() {
     <div className="flex">
       {/* Edit panel */}
       <div className="flex-1 p-6 space-y-5 min-w-0">
+        {/* Photo moderation — an unapproved photo keeps the mentor unlisted,
+            so the reason is surfaced here rather than only in `statusReason`. */}
+        {profile?.photoStatus === 'PHOTO_REVIEW' && (
+          <div className="flex items-start gap-2 rounded-[var(--radius-sm)] px-3 py-2.5 bg-amber-50 border border-amber-200">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800">
+              <span className="font-medium">Profile photo pending review.</span> Your profile stays unlisted until an admin approves it.
+            </div>
+          </div>
+        )}
+        {profile?.photoStatus === 'PHOTO_REJECTED' && (
+          <div className="flex items-start gap-2 rounded-[var(--radius-sm)] px-3 py-2.5 bg-red-50 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-red-700">
+              <span className="font-medium">Profile photo rejected.</span> Upload a new one to get listed again.
+              {profile.statusReason && (
+                <span className="block mt-0.5">Reason: {statusReasonLabel(profile.statusReason)}</span>
+              )}
+            </div>
+          </div>
+        )}
         {/* Basic Info */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div className="flex items-center gap-4">
@@ -3118,64 +3206,50 @@ function ProfilePage() {
 
             {/* Discipline — required alongside services for the mentor to be
                 listed, and it backs the candidate-side Role / Industry filter. */}
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Discipline</p>
-              <div className="flex flex-wrap gap-2">
-                {DISCIPLINES.map(opt => {
-                  const selected = disciplines.includes(opt);
-                  return (
-                    <button
-                      key={opt}
-                      onClick={() => toggleDiscipline(opt)}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: 'var(--space-1) var(--space-3)',
-                        borderRadius: 9999,
-                        fontSize: 'var(--text-sm)',
-                        fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
-                        background: selected ? 'var(--color-blue-600)' : 'transparent',
-                        color: selected ? '#fff' : 'var(--foreground)',
-                        border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      {DISCIPLINE_LABELS[opt]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Specialty tags (UI-only) */}
-          <div>
-            <label className="text-sm font-medium text-foreground">Specialty Tags</label>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Add up to 4 short tags (max 20 chars) that describe your niche.</p>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              {specialtyTags.map(t => (
-                <span key={t} className="inline-flex items-center gap-1 rounded-full" style={{ padding: 'var(--space-1) var(--space-3)', border: '1px solid var(--color-blue-200)', color: 'var(--color-blue-700)', background: 'var(--color-blue-50)', fontSize: 'var(--text-sm)' }}>
-                  {t}
-                  <button onClick={() => setSpecialtyTags(specialtyTags.filter(x => x !== t))} className="rounded-full p-[2px]" style={{ color: 'var(--color-blue-500)', lineHeight: 0, background: 'none', border: 'none', cursor: 'pointer' }}>
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-              {specialtyTags.length < 4 && (
-                <input
-                  value={specialtyInput}
-                  onChange={e => setSpecialtyInput(e.target.value.slice(0, 20))}
-                  onKeyDown={handleSpecialtyKeyDown}
-                  placeholder="e.g. FAANG Prep"
-                  className="text-sm border border-dashed rounded-full px-3 py-1 outline-none focus:ring-1 focus:ring-ring"
-                  style={{ background: 'transparent', borderColor: 'var(--color-blue-300)', color: 'var(--foreground)', minWidth: 120 }}
-                />
-              )}
-            </div>
           </div>
 
           <SectionSaveRow status={svc} onSave={saveServices} />
+        </div>
+
+        {/* Discipline — its own section: a separate field on the profile, and
+            the one that backs the candidate-side Role / Industry filter. */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-foreground text-lg font-medium mb-1">Discipline<span className="text-destructive ml-0.5">*</span></h3>
+              <p className="text-sm text-muted-foreground">The field you work in. Candidates filter by this on the mentor marketplace.</p>
+            </div>
+            <span className="shrink-0 text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{disciplines.length} selected</span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {DISCIPLINES.map(opt => {
+              const selected = disciplines.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  onClick={() => toggleDiscipline(opt)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: 'var(--space-1) var(--space-3)',
+                    borderRadius: 9999,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                    background: selected ? 'var(--color-blue-600)' : 'transparent',
+                    color: selected ? '#fff' : 'var(--foreground)',
+                    border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  {DISCIPLINE_LABELS[opt]}
+                </button>
+              );
+            })}
+          </div>
+
+          <SectionSaveRow status={disc} onSave={saveDisciplines} />
         </div>
 
         {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
@@ -3265,6 +3339,36 @@ function ProfilePage() {
                 ) : (
                   <p className="mt-1 text-xs text-muted-foreground break-all">{linkedin || <span className="italic">Not provided</span>}</p>
                 )}
+                {/* Visibility only — students get linkedinUrl as null when this
+                    is off. Not a listing requirement. */}
+                {/* Custom control: the native checkbox rendered grey when
+                    ticked, which read as unselected. Uses the same green as the
+                    verified state elsewhere on this page. */}
+                <button
+                  type="button"
+                  onClick={() => { if (!editingVerify) return; setShowLinkedin(!showLinkedin); markVerify(); }}
+                  disabled={!editingVerify}
+                  aria-pressed={showLinkedin}
+                  className="mt-2 flex items-center gap-2 w-fit"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: editingVerify ? 'pointer' : 'default', opacity: editingVerify ? 1 : 0.75 }}
+                >
+                  <span
+                    className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                    style={{
+                      background: showLinkedin ? 'hsl(165,82%,90%)' : 'transparent',
+                      border: showLinkedin ? '1.5px solid hsl(165,82%,65%)' : '1.5px solid var(--muted-foreground)',
+                    }}
+                  >
+                    {showLinkedin && (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 5l2.5 2.5 3.5-4" stroke="hsl(165,60%,30%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="text-xs" style={{ color: showLinkedin ? 'hsl(165,60%,30%)' : 'var(--muted-foreground)' }}>
+                    Show my LinkedIn to students
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -4370,7 +4474,6 @@ export function MentorDashboardPage() {
   // Booking to auto-open in BookingsPage's detail drawer (set when navigating
   // there from another tab, e.g. the Overview "message" action).
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
-  const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const posthog = usePostHog();
@@ -4548,40 +4651,6 @@ export function MentorDashboardPage() {
               {profile?.status === 'PENDING' ? 'Pending Review' : profile?.status === 'REJECTED' ? 'Not Approved' : 'Suspended'}
             </div>
           )}
-
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setNotifOpen(!notifOpen)}
-              className="relative p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-[var(--radius)] shadow-lg z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">Notifications</span>
-                  <button className="text-xs text-primary hover:underline">Mark all read</button>
-                </div>
-                <div className="divide-y divide-border">
-                  {[
-                    { icon: CalendarCheck, text: 'New booking request from Priya Sharma', time: '30 min ago', color: 'text-primary' },
-                    { icon: MessageSquare, text: 'Marcus Lee sent you a message', time: '1 hour ago', color: 'text-primary' },
-                    { icon: Star, text: 'Aisha Williams left you a 5-star review', time: '2 hours ago', color: 'text-amber-500' },
-                  ].map((n, i) => (
-                    <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/40 cursor-pointer transition-colors">
-                      <n.icon className={`w-4 h-4 mt-0.5 shrink-0 ${n.color}`} />
-                      <div>
-                        <p className="text-sm text-foreground">{n.text}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{n.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
 
         </header>
 

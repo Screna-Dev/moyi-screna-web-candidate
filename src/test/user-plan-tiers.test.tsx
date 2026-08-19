@@ -65,8 +65,7 @@ function PlanProbe() {
 }
 
 // Probe exposing the raw subscription-record state + a changePlan trigger.
-let changePlanFn: ((plan: PlanType) => Promise<unknown>) | null = null;
-
+// Reuses the `changePlanFn` handle declared above.
 function RecordProbe() {
   const { hasSubscriptionRecord, subscriptionStatus, isLegacyPlanRecord, isLoading, changePlan } =
     useUserPlan();

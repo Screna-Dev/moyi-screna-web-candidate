@@ -336,16 +336,6 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     planType: PlanType,
   ): Promise<{ success: boolean; url?: string | null; message?: string }> => {
     setIsChangingPlan(true);
-
-    const reportLegacyBlocked = () => {
-      toast({
-        title: 'Plan change unavailable',
-        description: LEGACY_PLAN_BLOCKED_MESSAGE,
-        variant: 'destructive',
-      });
-      return { success: false, message: LEGACY_PLAN_BLOCKED_MESSAGE };
-    };
-
     try {
       // Downgrade to Free → cancel current subscription.
       if (planType === 'Free') {
@@ -359,6 +349,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
       }
 
       const targetTier = planType.toLowerCase();
+      const currentlyMember = planData.currentPlan !== 'Free';
 
       if (currentlyMember) {
         // Active subscriber → change tier (prorated up, scheduled down).
@@ -379,34 +370,17 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
         });
         await refreshPlan();
         return { success: true, url: null };
-      };
-
-      if (hasLiveSubscription) {
-        return await applyTierChange();
       }
 
-      // No live subscription → create one (billing is MONTHLY-only for now).
-      try {
-        const res = await PaymentService.createSubscription(targetTier, 'monthly');
-        const url = res.data?.data?.url;
-        if (url) {
-          return { success: true, url };
-        }
-        await refreshPlan();
-        return { success: true, url: null };
-      } catch (err) {
-        // Our record said "no subscription" but the backend disagrees — the
-        // only way forward is the tier-change endpoint.
-        if (!isAlreadySubscribedError(err)) throw err;
-        return await applyTierChange();
+      // No active subscription → create one (billing is MONTHLY-only for now).
+      const res = await PaymentService.createSubscription(targetTier, 'monthly');
+      const url = res.data?.data?.url;
+      if (url) {
+        return { success: true, url };
       }
+      await refreshPlan();
+      return { success: true, url: null };
     } catch (err: unknown) {
-      // The backend's own notion of "legacy" may be wider than ours (e.g. a
-      // current tier on a retired billing cycle), so honour its verdict too.
-      if (isLegacyPlanBlockedError(err)) {
-        console.error('Legacy plan blocked from changing tier:', err);
-        return reportLegacyBlocked();
-      }
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       const errorMessage = e?.response?.data?.message || e?.message || 'Failed to initiate plan change';
       console.error('Failed to change plan:', err);
@@ -419,7 +393,7 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     } finally {
       setIsChangingPlan(false);
     }
-  }, [toast, refreshPlan, planData.currentPlan, subscriptionRecord]);
+  }, [toast, refreshPlan, planData.currentPlan]);
 
   // Buy credits - returns Stripe URL
   const buyCredits = useCallback(async (numberOfCredits: number): Promise<string | null> => {

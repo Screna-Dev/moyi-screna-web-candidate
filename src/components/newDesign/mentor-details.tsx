@@ -27,6 +27,10 @@ type Duration = '30min' | '1hr';
 // Server-side limit on the booking note (optional, 0–1000 characters).
 const NOTE_MAX_LENGTH = 1000;
 
+// Cancelling more than 48h before the start time is refunded in full; inside
+// that window nothing is refunded.
+export const REFUND_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 interface CoachingPlan {
   id: string;
   name: string;
@@ -105,7 +109,7 @@ function topicToPlan(t: MentorData['topics'][0]): CoachingPlan {
 const FAQS = [
   { q: 'How do I book a session?', a: 'Choose a coaching plan, click Book, and follow the step-by-step flow to pick your duration, date, and time. You\'ll receive a calendar invite immediately after payment.' },
   { q: 'What happens after I book?', a: 'You\'ll be prompted to share your resume, target roles, and focus areas. Your mentor reviews these before the session.' },
-  { q: 'Can I cancel or reschedule?', a: 'Yes. You can reschedule or cancel up to 24 hours before your session for a full refund or credit.' },
+  { q: 'Can I cancel or reschedule?', a: 'Yes. Cancel more than 48 hours before your session for a full refund. Within 48 hours of the start time, cancellations are not refunded.' },
   { q: 'Will my session be recorded?', a: 'By default, sessions are not recorded. You can request a recording at the start of the call, or use Screna\'s AI note-taker if the mentor permits.' },
   { q: 'How does payment work?', a: 'Payments are processed securely via Stripe when you confirm your booking. The mentor receives the full amount — Screna does not take a commission.' },
   { q: 'What if my mentor doesn\'t show up?', a: 'In the rare event a mentor misses a session, you\'ll automatically receive a full refund and a priority booking token.' },
@@ -200,10 +204,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
   const [dealMinutes, setDealMinutes] = useState<15 | 30>(30);
   // Declared early: the slot-fetching effect below branches on it.
   const isDeal = planType === 'deal';
-  // Only when a REAL bookable trial exists do we switch to trial pricing,
-  // trial slots and the isSpecialOffer flag. Otherwise this card keeps its
-  // original placeholder behaviour: it books a regular session at regular
-  // price, exactly as it did before the special-offer work.
+  // The card is only rendered when `specialOffer` is non-null, so this is
+  // effectively "the trial plan is selected" — kept as an explicit guard so a
+  // trial can never be submitted without real pricing behind it.
   const useRealOffer = isDeal && !!specialOffer;
   // Services the student wants help with — submitted as `serviceTags`, which the
   // API requires (≥1, and a subset of the mentor's own services).
@@ -310,25 +313,18 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
 
   // Trial durations are 15/30 with real prices from the mentor profile (a null
   // price means that duration isn't offered). Without a real offer this falls
-  // back to the original placeholder 30-min/1-hour options.
+  // Real trial pricing only — a duration with a null price isn't offered.
   const DEAL = {
-    durations: useRealOffer
-      ? ([
-          { minutes: 15 as const, label: '15 min', cents: specialOffer?.price15 ?? null },
-          { minutes: 30 as const, label: '30 min', cents: specialOffer?.price30 ?? null },
-        ]).filter(d => d.cents != null).map(d => ({ ...d, price: (d.cents as number) / 100 }))
-      : [
-          { minutes: 30 as const, label: '30 min', price: 25 },
-          { minutes: 60 as const, label: '1 hour', price: 40 },
-        ],
+    durations: ([
+      { minutes: 15 as const, label: '15 min', cents: specialOffer?.price15 ?? null },
+      { minutes: 30 as const, label: '30 min', cents: specialOffer?.price30 ?? null },
+    ]).filter(d => d.cents != null).map(d => ({ ...d, price: (d.cents as number) / 100 })),
     regularPrice30: plan.pricing['30min'], // used for strikethrough on the 30-min option
   };
-  // Which pill is active: trials track their own minutes, the placeholder path
-  // reuses the regular `duration` state as it always did.
-  const activeDealMinutes = useRealOffer ? dealMinutes : (duration === '30min' ? 30 : 60);
+  const activeDealMinutes = dealMinutes;
   const activeDealOption = DEAL.durations.find(d => d.minutes === activeDealMinutes) ?? DEAL.durations[0];
   const price = isDeal ? (activeDealOption?.price ?? 0) : plan.pricing[duration];
-  // Minutes actually submitted: 15/30 for a real trial, else 30/60 as before.
+  // Minutes submitted: 15/30 for a trial, 30/60 for a regular session.
   const bookedMinutes = useRealOffer
     ? (activeDealOption?.minutes ?? 30)
     : (duration === '30min' ? 30 : 60);
@@ -475,7 +471,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
           {step === 1 && (
             <div className="flex flex-col gap-4">
 
-              {/* ── Special Offer card ── */}
+              {/* ── Special Offer card — only when the mentor actually has a
+                  bookable trial (configured, quota left, not already used) ── */}
+              {specialOffer && (
               <div
                 onClick={() => setPlanType('deal')}
                 className="rounded-xl p-4 flex flex-col gap-2 text-left transition-all"
@@ -514,11 +512,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                     return (
                       <button
                         key={opt.minutes}
-                        onClick={() => {
-                          setPlanType('deal');
-                          if (useRealOffer || specialOffer) setDealMinutes(opt.minutes as 15 | 30);
-                          else setDuration(opt.minutes === 30 ? '30min' : '1hr');
-                        }}
+                        onClick={() => { setPlanType('deal'); setDealMinutes(opt.minutes as 15 | 30); }}
                         style={{
                           display: 'flex', flexDirection: 'column', gap: 2, padding: '7px 12px',
                           borderRadius: '10px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
@@ -550,6 +544,7 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                   })}
                 </div>
               </div>
+              )}
 
               {/* ── Regular Coaching card ── */}
               <button
@@ -569,7 +564,25 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
+                {plan.description && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
+                )}
+                {/* The topic title is always the auto-created "Mentorship
+                    Session", so the mentor's actual service types are what
+                    tells the student what this booking covers. */}
+                {services.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5" style={{ marginTop: 2 }}>
+                    {services.map(t => (
+                      <span
+                        key={t}
+                        className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        style={{ background: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
+                      >
+                        {SERVICE_TYPE_LABELS[t] ?? t}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </button>
 
               {/* ── Duration selector — hidden when Deal selected ── */}
@@ -730,9 +743,9 @@ function BookingModal({ plan, mentorId, mentorName, mentorRole, mentorCompany, s
                     <span className="text-muted-foreground">Selected: </span>
                     <span className="font-medium text-foreground">{formatSlotTime(selectedSlot)} · {formattedDate}</span>
                   </div>
-                  {new Date(selectedSlot).getTime() - Date.now() < 24 * 60 * 60 * 1000 && (
+                  {new Date(selectedSlot).getTime() - Date.now() < REFUND_WINDOW_MS && (
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      💡 Friendly Reminder: This session starts within the next 24 hours. Please note that to respect the mentor's schedule, bookings made within this timeframe are non-refundable once confirmed.
+                      💡 Friendly Reminder: This session starts within the next 48 hours. Cancellations inside that window are not refunded, so please double-check the time before confirming.
                     </p>
                   )}
                 </>
