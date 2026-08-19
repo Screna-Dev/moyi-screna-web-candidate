@@ -30,6 +30,7 @@ import { SharePopover } from '@/components/newDesign/share-popover';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { RoleFilter, RoundFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
+import { readCompanyPostFilters, writeCompanyPostFilters } from '@/utils/companyPostFilters';
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -294,7 +295,15 @@ export function CompanyDetailPage() {
   const notesCount = profile?.postCount ?? 0;
   const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
-  const [activeSort, setActiveSort] = useState<SortOption>('Newest');
+  // ── Toolbar state (filters + sort + search), persisted per company ──
+  // Opening a post navigates away and unmounts this page, so the user's selections
+  // are restored from sessionStorage on the way back instead of resetting to
+  // defaults. They're dropped only when the user goes up a level to the companies
+  // directory, which clears them on mount (see utils/companyPostFilters).
+  const restored = useMemo(() => readCompanyPostFilters(companyId), [companyId]);
+  const isSortOption = (val: string): val is SortOption => (SORT_OPTIONS as readonly string[]).includes(val);
+
+  const [activeSort, setActiveSort] = useState<SortOption>(() => (isSortOption(restored.sort) ? restored.sort : 'Newest'));
   const [sortOpen, setSortOpen] = useState(false);
   // Soft-paywall modal for Free/Basic users when they apply a filter or sort.
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -312,8 +321,8 @@ export function CompanyDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upgradeOpen]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(restored.search);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(restored.search);
 
   // ── Filter options (from GET /community/posts/options) + applied selections.
   // Role and Round come from the options endpoint; Level and Time use fixed
@@ -321,12 +330,44 @@ export function CompanyDetailPage() {
   type OptionGroup = { category: string; options: string[] };
   const [roleGroups, setRoleGroups] = useState<OptionGroup[] | undefined>(undefined);
   const [roundGroups, setRoundGroups] = useState<OptionGroup[] | undefined>(undefined);
-  const [filterRole, setFilterRole] = useState('');
-  const [filterRound, setFilterRound] = useState('');
+  const [filterRole, setFilterRole] = useState(restored.role);
+  const [filterRound, setFilterRound] = useState(restored.round);
   // Level → search `level` param (raw label, matching create-post); Time →
   // search `time` param (via TIME_TO_API enum).
-  const [filterLevel, setFilterLevel] = useState('');
-  const [filterTime, setFilterTime] = useState('');
+  const [filterLevel, setFilterLevel] = useState(restored.level);
+  const [filterTime, setFilterTime] = useState(restored.time);
+
+  // Persist the toolbar on every change so the next mount (returning from a post,
+  // or a reload) picks the selections back up.
+  useEffect(() => {
+    writeCompanyPostFilters(companyId, {
+      role: filterRole,
+      round: filterRound,
+      level: filterLevel,
+      time: filterTime,
+      sort: activeSort,
+      search: searchQuery,
+    });
+  }, [companyId, filterRole, filterRound, filterLevel, filterTime, activeSort, searchQuery]);
+
+  // The filter popovers own their selection state internally and only read
+  // `initialSelected` at mount, so remount them (via this key) when the route
+  // switches to a different company in place — otherwise they'd keep showing the
+  // previous company's chips.
+  const seededCompanyId = useRef(companyId);
+  const [filterEpoch, setFilterEpoch] = useState(0);
+  useEffect(() => {
+    if (seededCompanyId.current === companyId) return;
+    seededCompanyId.current = companyId;
+    setFilterRole(restored.role);
+    setFilterRound(restored.round);
+    setFilterLevel(restored.level);
+    setFilterTime(restored.time);
+    setActiveSort(isSortOption(restored.sort) ? restored.sort : 'Newest');
+    setSearchQuery(restored.search);
+    setDebouncedSearchQuery(restored.search);
+    setFilterEpoch(e => e + 1);
+  }, [companyId, restored]);
 
   useEffect(() => {
     let cancelled = false;
@@ -657,10 +698,10 @@ export function CompanyDetailPage() {
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    <RoleFilter singleSelect groups={roleGroups} onApply={sel => setFilterRole(sel[0] || '')} />
-                    <RoundFilter singleSelect groups={roundGroups} onApply={sel => setFilterRound(sel[0] || '')} />
-                    <LevelFilter singleSelect onApply={sel => setFilterLevel(sel[0] || '')} />
-                    <TimeFilter singleSelect onApply={sel => setFilterTime(sel[0] || '')} />
+                    <RoleFilter key={`role-${filterEpoch}`} singleSelect groups={roleGroups} initialSelected={restored.role ? [restored.role] : undefined} onApply={sel => setFilterRole(sel[0] || '')} />
+                    <RoundFilter key={`round-${filterEpoch}`} singleSelect groups={roundGroups} initialSelected={restored.round ? [restored.round] : undefined} onApply={sel => setFilterRound(sel[0] || '')} />
+                    <LevelFilter key={`level-${filterEpoch}`} singleSelect initialSelected={restored.level ? [restored.level] : undefined} onApply={sel => setFilterLevel(sel[0] || '')} />
+                    <TimeFilter key={`time-${filterEpoch}`} singleSelect initialSelected={restored.time ? [restored.time] : undefined} onApply={sel => setFilterTime(sel[0] || '')} />
                   </div>
                   <div className="relative">
                     <button

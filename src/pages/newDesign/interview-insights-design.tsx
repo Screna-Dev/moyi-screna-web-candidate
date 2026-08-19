@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
+import { clearAllCompanyPostFilters } from "@/utils/companyPostFilters";
 import imgFaang from "@/assets/newDesign/cat-faang.png";
 import imgLargeEnt from "@/assets/newDesign/cat-large-ent.png";
 import imgMidSized from "@/assets/newDesign/cat-mid-sized.png";
@@ -199,6 +200,13 @@ export function InterviewInsightsPage() {
   useEffect(() => {
     safeCapture(posthog, EVENTS.INTERVIEW_NOTES_BROWSED, { view_type: 'by_company' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Company pages keep their filters/sort/search in sessionStorage so opening a
+  // post and coming back doesn't wipe them. Landing here — one level up from a
+  // company page — is the navigation that resets them.
+  useEffect(() => {
+    clearAllCompanyPostFilters();
   }, []);
 
   const [latest, setLatest] = useState<string[]>([]);

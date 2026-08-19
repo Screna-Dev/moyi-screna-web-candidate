@@ -146,10 +146,14 @@ const ROLE_GROUPS_FALLBACK = [
   { category: 'Business / Consulting', options: ['Business Analyst', 'Consultant'] },
 ];
 
-export function RoleFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+export function RoleFilter({ groups, onApply, singleSelect, initialSelected }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean; initialSelected?: string[] } = {}) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
+  // `initialSelected` seeds the applied selection once, at mount — it lets a page
+  // restore a previously applied filter (see utils/companyPostFilters) so the chip
+  // shows its count and reopening the popover keeps the boxes checked. Later
+  // changes to the prop are ignored; the popover owns the state from then on.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
+  const [tempSelected, setTempSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -341,10 +345,11 @@ const ROUND_GROUPS_FALLBACK = [
   { category: 'Final Stages', options: ['Executive / Final Round', 'Team Matching'] },
 ];
 
-export function RoundFilter({ groups, onApply, singleSelect }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+export function RoundFilter({ groups, onApply, singleSelect, initialSelected }: { groups?: { category: string; options: string[] }[]; onApply?: (selected: string[]) => void; singleSelect?: boolean; initialSelected?: string[] } = {}) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
+  // See RoleFilter — seeds the applied selection once, at mount.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
+  const [tempSelected, setTempSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -546,10 +551,11 @@ export function CategoryFilter({ groups, onApply, singleSelect }: { groups?: { c
 // ─── Level filter ──────────────────────────────────────────────────────────────
 const LEVEL_OPTIONS = ['Junior', 'Intermediate', 'Senior', 'Staff'];
 
-export function LevelFilter({ onApply, singleSelect }: { onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+export function LevelFilter({ onApply, singleSelect, initialSelected }: { onApply?: (selected: string[]) => void; singleSelect?: boolean; initialSelected?: string[] } = {}) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
+  // See RoleFilter — seeds the applied selection once, at mount.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
+  const [tempSelected, setTempSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -611,10 +617,11 @@ export function LevelFilter({ onApply, singleSelect }: { onApply?: (selected: st
 // ─── Time filter ──────────────────────────────────────────────────────────────
 const TIME_OPTIONS = ['Past week', 'Past month', 'Past 3 months', 'Past year'];
 
-export function TimeFilter({ onApply, singleSelect }: { onApply?: (selected: string[]) => void; singleSelect?: boolean } = {}) {
+export function TimeFilter({ onApply, singleSelect, initialSelected }: { onApply?: (selected: string[]) => void; singleSelect?: boolean; initialSelected?: string[] } = {}) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set());
+  // See RoleFilter — seeds the applied selection once, at mount.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
+  const [tempSelected, setTempSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [search, setSearch] = useState('');
 
   useEffect(() => {
