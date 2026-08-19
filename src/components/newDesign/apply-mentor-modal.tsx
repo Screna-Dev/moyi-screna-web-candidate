@@ -10,7 +10,10 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import type { ProfileData } from '../../types/profile';
 
 // The mentor application collects identity essentials — realName, workEmail,
-// linkedinUrl — plus a resume. The resume uses a
+// linkedinUrl, currentRole, currentCompany, yearsOfExperience, plus the
+// optional isInterviewer flag — and a resume.
+// Omitting any of the last three (or sending a blank) returns 400. The resume
+// uses a
 // two-step flow: it must be stored via POST /profile/upload-resume before
 // POST /mentorship/apply is called (applying without a stored resume → 400).
 // Everything else (bio, headline, tags, office hours, topic pricing, calendar)
@@ -20,6 +23,10 @@ const emptyForm = {
   realName: '',
   workEmail: '',
   linkedinUrl: '',
+  currentRole: '',
+  currentCompany: '',
+  yearsOfExperience: '',
+  isInterviewer: false,
 };
 
 export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -95,11 +102,16 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         const resumePath = body.resume_path;
         if (resumePath) setHasStoredResume(true);
         if (sr?.profile) {
+          // Most recent role from the parsed resume seeds the two required
+          // employment fields so the applicant isn't retyping them.
+          const latest = Array.isArray(sr.experience) ? sr.experience[0] : undefined;
           setForm(f => ({
             ...f,
             realName: f.realName || sr.profile.full_name || '',
             workEmail: f.workEmail || sr.profile.email || '',
             linkedinUrl: f.linkedinUrl || sr.links?.linkedin || '',
+            currentRole: f.currentRole || latest?.title || '',
+            currentCompany: f.currentCompany || latest?.company || '',
           }));
           setPrefilled(true);
         }
@@ -134,6 +146,15 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
     // else, so normalise here and submit the canonical form.
     const linkedinUrl = normalizeLinkedinUrl(form.linkedinUrl);
     if (!linkedinUrl) { setError(LINKEDIN_HINT); return; }
+    if (!form.currentRole.trim()) { setError('Enter your current job title.'); return; }
+    if (!form.currentCompany.trim()) { setError('Enter your current employer.'); return; }
+    // Required, non-negative integer — a blank or fractional value is a 400.
+    const yoeRaw = form.yearsOfExperience.trim();
+    const yoe = Number(yoeRaw);
+    if (!yoeRaw || !Number.isInteger(yoe) || yoe < 0) {
+      setError('Enter your years of experience as a whole number (0 or more).');
+      return;
+    }
     if (!hasStoredResume && !resumeFile) { setError('Upload your resume to continue.'); return; }
 
     setSubmitting(true);
@@ -148,14 +169,14 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         setHasStoredResume(true);
         setResumeUploading(false);
       }
-      // NOTE: the API now REQUIRES currentRole / currentCompany /
-      // yearsOfExperience. There are no inputs for them in this design, so this
-      // request will 400 until the form gains those fields.
-      // See the UI/API mismatch list.
       await applyMentor({
         realName: form.realName.trim(),
         workEmail: form.workEmail.trim(),
         linkedinUrl,
+        currentRole: form.currentRole.trim(),
+        currentCompany: form.currentCompany.trim(),
+        yearsOfExperience: yoe,
+        isInterviewer: form.isInterviewer,
       });
       // mentor_apply_submitted —— 申请提交成功（仅 API 成功后上报）
       safeCapture(posthog, EVENTS.MENTOR_APPLY_SUBMITTED);
@@ -169,7 +190,17 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
         setError(RESUME_UNREADABLE_MESSAGE);
         return;
       }
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      // Some endpoints return per-field failures in `data`
+      // (e.g. [{ property: 'workEmail', message: 'must be a well-formed email address' }]).
+      // Prefer that detail over the generic top-level "Validation Error".
+      const body = (err as { response?: { data?: { message?: string; data?: unknown } } })?.response?.data;
+      const details = Array.isArray(body?.data) ? body.data : null;
+      const fieldMsg = details
+        ?.map((d: { property?: string; message?: string }) =>
+          d?.message ? (d.property ? `${d.property}: ${d.message}` : d.message) : '')
+        .filter(Boolean)
+        .join(' · ');
+      const msg = fieldMsg || body?.message;
       if (msg?.toLowerCase().includes('already')) {
         // Application already exists (e.g. a concurrent submit, or the precall
         // was skipped) — surface the real status instead of a misleading
@@ -285,6 +316,7 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                   maxLength={255}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 />
+                <p className="text-[11px] text-muted-foreground mt-1">{LINKEDIN_HINT}</p>
               </div>
               <div>
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">LinkedIn URL <span className="text-destructive">*</span></p>
@@ -296,6 +328,58 @@ export function ApplyMentorModal({ open, onClose }: { open: boolean; onClose: ()
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
+
+              {/* Current employment — all three are required by the API.
+                  Role/company prefill from the parsed resume. */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Current title <span className="text-destructive">*</span></p>
+                  <input
+                    value={form.currentRole}
+                    onChange={e => setForm(f => ({ ...f, currentRole: e.target.value }))}
+                    placeholder="e.g. Senior Product Manager"
+                    maxLength={100}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Current company <span className="text-destructive">*</span></p>
+                  <input
+                    value={form.currentCompany}
+                    onChange={e => setForm(f => ({ ...f, currentCompany: e.target.value }))}
+                    placeholder="e.g. Google"
+                    maxLength={100}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5">Years of experience <span className="text-destructive">*</span></p>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.yearsOfExperience}
+                  onChange={e => setForm(f => ({ ...f, yearsOfExperience: e.target.value }))}
+                  placeholder="e.g. 8"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isInterviewer}
+                  onChange={e => setForm(f => ({ ...f, isInterviewer: e.target.checked }))}
+                  className="mt-0.5"
+                />
+                <span className="text-[13px] text-foreground leading-relaxed">
+                  I conduct interviews at my company
+                  <span className="block text-[11px] text-muted-foreground">
+                    Optional. Shown as a badge on your profile — it doesn&apos;t affect approval.
+                  </span>
+                </span>
+              </label>
 
               {/* Resume */}
               <div>

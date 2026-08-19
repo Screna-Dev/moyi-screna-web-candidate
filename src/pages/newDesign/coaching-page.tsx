@@ -174,10 +174,20 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
             <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '14px', lineHeight: '21px', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {mentor.name}
             </p>
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-              <span>{mentor.title}</span>
-              <span style={{ color: 'var(--border)' }}> · </span>
-              <span style={{ fontWeight: 500, color: 'var(--foreground)' }}>{mentor.company}</span>
+            {/* Role and company on their own lines: on one line a long role
+                pushed the company out of the clipped container, so it vanished
+                entirely. Each now truncates independently. */}
+            <p
+              title={mentor.title}
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {mentor.title}
+            </p>
+            <p
+              title={mentor.company}
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', fontWeight: 500, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {mentor.company}
             </p>
           </div>
 
@@ -294,6 +304,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
     </div>
   );
 }
+
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────
 

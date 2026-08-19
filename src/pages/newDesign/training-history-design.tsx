@@ -7,6 +7,7 @@ import {
   BookOpen, Star,
   Bot, Users, ExternalLink, MessageSquare,
   Lock, Sparkles, ArrowRight, MoreHorizontal, ChevronRight, Mail,
+  Loader2, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/newDesign/ui/sheet';
 import { getTrainingPlans } from '@/services/InterviewServices';
 import { listMyBookings, submitMentorReview, cancelBooking, rescheduleBooking, submitDispute, submitDisputeScreenshot, getMentor, getMentorSlots } from '@/services/MentorService';
+import { REFUND_WINDOW_MS } from '@/components/newDesign/mentor-details';
 import { usePostHog } from 'posthog-js/react';
 import type { PostHog } from 'posthog-js';
 import { safeCapture } from '@/utils/posthog';
@@ -487,6 +489,16 @@ function AIMockRow({ session, isLast }: { session: AIMockSession; isLast: boolea
 }
 
 // ─── Reschedule Modal ──────────────────────────────────
+// These flows finish with a full reload (the list is re-fetched on mount).
+// Force ?tab=mentor first, otherwise the reload drops the user back on AI Mock.
+function reloadOnMentorTab(delayMs = 0) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'mentor');
+  window.history.replaceState({}, '', url.toString());
+  if (delayMs > 0) setTimeout(() => window.location.reload(), delayMs);
+  else window.location.reload();
+}
+
 function RescheduleModal({ session, open, onOpenChange }: { session: MentorSession; open: boolean; onOpenChange: (v: boolean) => void }) {
   const posthog = usePostHog();
   const [loadingSlots, setLoadingSlots] = useState(true);
@@ -552,7 +564,7 @@ function RescheduleModal({ session, open, onOpenChange }: { session: MentorSessi
       await rescheduleBooking(session.id, selected);
       // session_rescheduled —— /history 页学员改期入口
       safeCapture(posthog, EVENTS.SESSION_RESCHEDULED, { initiated_by: 'learner' });
-      window.location.reload();
+      reloadOnMentorTab();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Could not reschedule to that time. Please pick another slot.');
@@ -640,15 +652,25 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
   const [issueSubmitting, setIssueSubmitting] = useState(false);
   const [acting, setActing] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  // Full refund only when cancelling more than 48h before the start time.
+  const msUntilStart = session.startAt ? new Date(session.startAt).getTime() - Date.now() : NaN;
+  const willRefund = !Number.isNaN(msUntilStart) && msUntilStart > REFUND_WINDOW_MS;
 
   const navigate = useNavigate();
 
   const handleCancel = async () => {
     if (acting) return;
-    if (!window.confirm('Are you sure you want to cancel this session?')) return;
     setActing(true);
     try {
-      await cancelBooking(session.id);
+      const res: any = await cancelBooking(session.id);
+      const outcome = res?.data?.data ?? res?.data ?? {};
+      const cents = Number(outcome?.refundAmountCents) || 0;
+      toast(
+        outcome?.refunded && cents > 0
+          ? `Session cancelled — $${(cents / 100).toFixed(2)} refunded.`
+          : 'Session cancelled. No refund was issued.',
+      );
       // session_cancelled —— /history 页学员取消入口（plan_type：Special Offer 未上线，固定 regular）
       const startMs = session.startAt ? new Date(session.startAt).getTime() : NaN;
       safeCapture(posthog, EVENTS.SESSION_CANCELLED, {
@@ -656,11 +678,13 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
         hours_before_session: Number.isNaN(startMs) ? null : Math.max(0, Math.round(((startMs - Date.now()) / 36e5) * 10) / 10),
         plan_type: 'regular',
       });
-      window.location.reload();
+      // Delay so the refund toast above stays readable before the reload.
+      reloadOnMentorTab(1600);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Failed to cancel the session. Please try again.');
       setActing(false);
+      setCancelOpen(false);
     }
   };
 
@@ -808,7 +832,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                 Reschedule
               </button>
               <button
-                onClick={handleCancel}
+                onClick={() => setCancelOpen(true)}
                 disabled={acting}
                 className="text-destructive hover:text-destructive/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ fontSize: '12px', fontWeight: 500 }}
@@ -834,7 +858,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                 Awaiting payment
               </span>
               <button
-                onClick={handleCancel}
+                onClick={() => setCancelOpen(true)}
                 disabled={acting}
                 className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ fontSize: '12px', fontWeight: 500 }}
@@ -1075,7 +1099,7 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
                           setSubmitted(true);
                           session.hasReview = true;
                           onReviewed(session.id);
-                          window.location.reload();
+                          reloadOnMentorTab();
                         } catch (err: unknown) {
                           const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
                           toast(msg ?? 'Failed to submit review. Please try again.');
@@ -1185,6 +1209,46 @@ function MentorRow({ session, isLast, onReviewed, reviewedSessions }: { session:
 
       {/* Reschedule Modal */}
       <RescheduleModal session={session} open={rescheduleOpen} onOpenChange={setRescheduleOpen} />
+
+      {/* Cancel confirmation — replaces the native window.confirm. */}
+      <Dialog open={cancelOpen} onOpenChange={(v) => { if (!acting) setCancelOpen(v); }}>
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Cancel this session?</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            {session.date} · {session.time}
+            {session.mentorName ? ` with ${session.mentorName}` : ''}.
+          </p>
+          <p className="text-sm" style={{ color: willRefund ? 'var(--foreground)' : 'hsl(0,72%,45%)' }}>
+            {willRefund
+              ? 'This is more than 48 hours before the session, so you will receive a full refund.'
+              : 'This is within 48 hours of the session, so no refund will be issued.'}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            The calendar invite is removed and your mentor is notified. A session
+            that has already started or passed can&apos;t be cancelled.
+          </p>
+
+          <DialogFooter className="mt-2 flex items-center justify-end gap-2">
+            <button
+              onClick={() => setCancelOpen(false)}
+              disabled={acting}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              Keep session
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={acting}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {acting ? 'Cancelling…' : 'Cancel session'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Report Issue Modal */}
       <Dialog open={issueModalOpen} onOpenChange={setIssueModalOpen}>
@@ -1433,7 +1497,7 @@ function EmptyState() {
 export function TrainingHistoryPage() {
   const navigate = useNavigate();
   const posthog = usePostHog();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab,        setActiveTab]        = useState<MainTab>(
     searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
   );
@@ -1444,12 +1508,22 @@ export function TrainingHistoryPage() {
 
   const [aiSessions,     setAiSessions]     = useState<AIMockSession[]>([]);
   const [mentorSessions, setMentorSessions] = useState<MentorSession[]>([]);
+  // Per-tab load state so an empty list can be told apart from "still loading"
+  // and from "the request failed".
+  const [aiLoading,      setAiLoading]      = useState(true);
+  const [aiError,        setAiError]        = useState<string | null>(null);
+  const [mentorLoading,  setMentorLoading]  = useState(true);
+  const [mentorError,    setMentorError]    = useState<string | null>(null);
+  const [reloadKey,      setReloadKey]      = useState(0);
+  const retry = () => setReloadKey(k => k + 1);
 
   // Mentor Sessions are available to all users — no plan gating.
   const isFree = false;
 
   useEffect(() => {
     let cancelled = false;
+    setAiLoading(true);
+    setAiError(null);
     (async () => {
       try {
         // Unified history: must explicitly request personal + quick, otherwise the
@@ -1466,15 +1540,23 @@ export function TrainingHistoryPage() {
           Array.isArray(body.data?.plans) ? body.data.plans :
           [];
         if (!cancelled) setAiSessions(mapPlansToAISessions(plans));
-      } catch {
-        if (!cancelled) setAiSessions([]);
+      } catch (e: any) {
+        console.error('[history] training plans failed', e?.response?.status, e?.response?.data ?? e);
+        if (!cancelled) {
+          setAiSessions([]);
+          setAiError(e?.response?.data?.message || 'Could not load your practice sessions.');
+        }
+      } finally {
+        if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
+    setMentorLoading(true);
+    setMentorError(null);
     (async () => {
       try {
         // Omitting `status` returns only CONFIRMED + COMPLETED, so the
@@ -1485,20 +1567,32 @@ export function TrainingHistoryPage() {
           return Array.isArray(content) ? content : [];
         };
         const [confirmed, pending] = await Promise.all([
-          listMyBookings({ page: 0, size: 100 }).then(unwrap).catch(() => [] as Booking[]),
-          listMyBookings({ page: 0, size: 100, status: 'PENDING' }).then(unwrap).catch(() => [] as Booking[]),
+          // The default bucket is this tab's content — if it fails, the page
+          // failed, so let it reject and surface an error state.
+          listMyBookings({ page: 0, size: 100 }).then(unwrap),
+          // The PENDING bucket is supplementary (and 400s on a backend without
+          // the `status` param), so a failure here just means no pending rows.
+          listMyBookings({ page: 0, size: 100, status: 'PENDING' })
+            .then(unwrap)
+            .catch((e) => { console.error('[bookings] PENDING bucket failed', e?.response?.status, e?.response?.data ?? e); return [] as Booking[]; }),
         ]);
         const mapped = mapBookingsToMentorSessions([...confirmed, ...pending]);
         if (!cancelled) {
           setMentorSessions(mapped);
           trackCompletedSessions(posthog, mapped);
         }
-      } catch {
-        if (!cancelled) setMentorSessions([]);
+      } catch (e: any) {
+        console.error('[bookings] default bucket failed', e?.response?.status, e?.response?.data ?? e);
+        if (!cancelled) {
+          setMentorSessions([]);
+          setMentorError(e?.response?.data?.message || 'Could not load your mentor sessions.');
+        }
+      } finally {
+        if (!cancelled) setMentorLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
   const filteredAI = useMemo(() => aiSessions.filter(s => {
     if (roleFilter !== 'all' && s.role !== roleFilter) return false;
@@ -1514,6 +1608,8 @@ export function TrainingHistoryPage() {
   const clearAIFilters = () => { setRoleFilter('all'); setTypeFilter('all'); };
 
   const displayList: TrainingEntry[] = activeTab === 'ai-mock' ? filteredAI : filteredMentor;
+  const listLoading = activeTab === 'ai-mock' ? aiLoading : mentorLoading;
+  const listError = activeTab === 'ai-mock' ? aiError : mentorError;
 
   const TABS: { id: MainTab; label: string; icon: any }[] = [
     { id: 'ai-mock', label: 'AI Mock',        icon: Bot   },
@@ -1536,7 +1632,14 @@ export function TrainingHistoryPage() {
             {TABS.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  // Mirror the tab into the URL: cancel / reschedule reload the
+                  // page, and without this the user is dropped back on AI Mock.
+                  const next = new URLSearchParams(searchParams);
+                  next.set('tab', tab.id);
+                  setSearchParams(next, { replace: true });
+                }}
                 className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm transition-all select-none ${
                   activeTab === tab.id
                     ? 'bg-muted text-foreground'
@@ -1591,7 +1694,7 @@ export function TrainingHistoryPage() {
         </div>
 
         {/* ── Session count — only when not locked ─── */}
-        {!(activeTab === 'mentor' && isFree) && (
+        {!(activeTab === 'mentor' && isFree) && !listLoading && !listError && (
           <p className="text-xs text-muted-foreground -mt-2">
             Showing <span className="font-medium text-foreground">{displayList.length}</span> session{displayList.length !== 1 ? 's' : ''}
           </p>
@@ -1602,7 +1705,25 @@ export function TrainingHistoryPage() {
           <MentorLockGate onUpgrade={() => navigate('/settings?tab=billing')} />
         ) : (
           <div className="bg-card rounded-2xl border border-border overflow-hidden">
-            {displayList.length === 0 ? <EmptyState /> : (
+            {listLoading ? (
+              <div className="py-16 text-center">
+                <Loader2 className="w-7 h-7 animate-spin text-muted-foreground mx-auto" />
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Loading {activeTab === 'ai-mock' ? 'practice sessions' : 'mentor sessions'}…
+                </p>
+              </div>
+            ) : listError ? (
+              <div className="py-16 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-3">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                </div>
+                <p className="text-sm font-medium text-foreground mb-1">Couldn&apos;t load your sessions</p>
+                <p className="text-xs text-muted-foreground mb-3">{listError}</p>
+                <button onClick={retry} className="text-sm font-medium text-primary hover:underline">
+                  Try again
+                </button>
+              </div>
+            ) : displayList.length === 0 ? <EmptyState /> : (
               // Wide data table: scroll horizontally on small screens so the
               // right-hand columns (date / status / actions) stay reachable
               // instead of being clipped off the edge.

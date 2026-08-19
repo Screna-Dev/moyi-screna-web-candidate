@@ -8,6 +8,7 @@ import { Modal } from "../ui/Modal";
 import { EmptyState } from "../ui/EmptyState";
 import { exportSessionReport, adminFinanceRows, markMentorPayoutsPaid } from "../../../../services/mentorshipAdminService";
 import { getMentorPaymentMethodAsAdmin } from "../../../../services/MentorService";
+import { apiErrorMessage } from "@/utils/apiError";
 
 // Derived row statuses from GET /mentorship/admin/finance, precedence high→low.
 type ApiStatus = "REFUNDED" | "DISPUTED" | "SETTLED" | "READY_TO_SETTLE" | "PENDING";
@@ -96,6 +97,16 @@ const mapFinanceRow = (item: any): LedgerRow => {
   };
 };
 
+// Export periods accepted by GET /admin/reports/sessions. All are UTC-based and
+// relative to now — there is no arbitrary date range.
+const EXPORT_PERIODS = [
+  { value: "DAY",   label: "Today" },
+  { value: "WEEK",  label: "This week" },
+  { value: "MONTH", label: "This month" },
+  { value: "YEAR",  label: "This year" },
+] as const;
+type ExportPeriod = (typeof EXPORT_PERIODS)[number]["value"];
+
 const COLUMNS = ["Mentor", "Session ID", "Student", "Date", "Gross", "Platform fee (5%)", "Mentor payout", "Stripe record", "Status", "Payout method", "Actions"];
 
 export function FinanceLedger() {
@@ -107,6 +118,8 @@ export function FinanceLedger() {
   const [hiddenCols, setHiddenCols] = useState<string[]>([]);
   const [kpiData, setKpiData] = useState({ grossCents: 0, feeCents: 0, unsettledCents: 0, pendingCount: 0, settledCents: 0, settledSessions: 0 });
   const [loadingPdf, setLoadingPdf] = useState<string | null>(null);
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("MONTH");
+  const [exporting, setExporting] = useState(false);
   // Per-mentor payment-method availability, prefetched so the Payout method
   // column can show "View PDF" vs "N/A" without the user having to click.
   //   undefined → still checking · false → no file on record · true → has a file
@@ -220,20 +233,27 @@ export function FinanceLedger() {
   };
 
   const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
     try {
-      const res = await exportSessionReport("MONTH");
+      const res = await exportSessionReport(exportPeriod);
       const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "session-report.xlsx";
+      // Name the file after the period so several exports don't overwrite
+      // each other in the downloads folder.
+      a.download = `session-report-${exportPeriod.toLowerCase()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast.success("Exporting to Excel...");
+      const label = EXPORT_PERIODS.find((p) => p.value === exportPeriod)?.label ?? exportPeriod;
+      toast.success(`Exported sessions for ${label.toLowerCase()}.`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to export report");
+      toast.error(apiErrorMessage(err, "Failed to export report"));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -342,11 +362,22 @@ export function FinanceLedger() {
                   <Check size={12} /> Settle {selected.length} selected
                 </button>
               )}
+              <select
+                value={exportPeriod}
+                onChange={(e) => setExportPeriod(e.target.value as ExportPeriod)}
+                title="Period covered by the exported report"
+                style={{ height: 28, padding: "0 8px", fontSize: 12, borderRadius: 6, border: `1px solid ${C.border}`, background: "white", color: C.text, cursor: "pointer", fontFamily: "'Inter', sans-serif", outline: "none" }}
+              >
+                {EXPORT_PERIODS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
               <button
                 onClick={handleExport}
-                style={secondaryBtn}
+                disabled={exporting}
+                style={{ ...secondaryBtn, opacity: exporting ? 0.5 : 1, cursor: exporting ? "not-allowed" : "pointer" }}
               >
-                <Download size={12} /> Export Excel
+                <Download size={12} /> {exporting ? "Exporting…" : "Export Excel"}
               </button>
             </div>
           }

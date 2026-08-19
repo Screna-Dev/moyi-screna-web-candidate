@@ -314,8 +314,12 @@ function MentorshipPanel() {
           return Array.isArray(content) ? content : [];
         };
         const [confirmed, pending] = await Promise.all([
-          listMyBookings({ page: 0, size: 20 }).then(unwrap).catch(() => [] as Booking[]),
-          listMyBookings({ page: 0, size: 20, status: 'PENDING' }).then(unwrap).catch(() => [] as Booking[]),
+          listMyBookings({ page: 0, size: 20 })
+            .then(unwrap)
+            .catch((e) => { console.error('[bookings] default bucket failed', e?.response?.status, e?.response?.data ?? e); return [] as Booking[]; }),
+          listMyBookings({ page: 0, size: 20, status: 'PENDING' })
+            .then(unwrap)
+            .catch((e) => { console.error('[bookings] PENDING bucket failed', e?.response?.status, e?.response?.data ?? e); return [] as Booking[]; }),
         ]);
         const normalized = [...confirmed, ...pending].map((b) => ({
           ...b,

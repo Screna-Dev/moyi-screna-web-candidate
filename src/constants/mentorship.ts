@@ -137,7 +137,7 @@ export function statusReasonLabel(reason: string | null | undefined): string {
 //
 // Both call sites are fully implemented and gated on this flag. Flip it to true
 // once the backend rollout is verified.
-export const SPECIAL_OFFER_ENABLED = false;
+export const SPECIAL_OFFER_ENABLED = true;
 
 // A special-offer slot is always a 30-minute block, even for a 15-minute trial.
 export const SPECIAL_OFFER_SLOT_MINUTES = 30;
