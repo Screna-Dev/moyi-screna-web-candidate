@@ -31,6 +31,8 @@ import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { RoleFilter, RoundFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
 import { readCompanyPostFilters, writeCompanyPostFilters } from '@/utils/companyPostFilters';
+import { CompanyMockLauncher } from '@/components/newDesign/interview-insights/quick-mock';
+import { mostCommonRole } from '@/utils/quickMockDefaults';
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -396,6 +398,11 @@ export function CompanyDetailPage() {
   // posts on screen. Append fetches ("load more") don't set this.
   const [isReloading, setIsReloading] = useState(false);
 
+  // The role the Quick Mock CTA falls back to when the user's resume yields none
+  // (spec: "兜底：该公司最常见岗位"). There's no role-breakdown endpoint, so it's
+  // read off the posts already loaded for this company.
+  const commonRole = useMemo(() => mostCommonRole(posts.map((p) => p.role)), [posts]);
+
   // interview_notes_browsed —— 进入公司详情页（每次进入上报一次）。
   // view_type 映射：'all' = 本页（单公司下的平铺面经列表），'by_company' = 列表页的公司分组网格。
   useEffect(() => {
@@ -599,7 +606,7 @@ export function CompanyDetailPage() {
           </Link>
 
           {/* ── Header ── */}
-          <header className="mb-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <header className="mb-10 flex flex-col gap-6 min-[900px]:flex-row min-[900px]:items-start min-[900px]:justify-between">
             <div className="flex gap-5">
               <CompanyLogo company={company.name} className="!w-16 !h-16 !text-2xl" />
               <div className="flex flex-col justify-center">
@@ -647,17 +654,27 @@ export function CompanyDetailPage() {
               </div>
             </div>
 
-            {/* CTA — reuses the shared Button, consistent with the listing page */}
-            <Link
-              to={isAuthenticated ? '/add-experience' : '/auth'}
-              state={{ from: { pathname: `/interview-insights/${companyId}` } }}
-              className="shrink-0"
-            >
-              <Button className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
-                <Plus className="w-4 h-4" />
-                Share Your Experience
-              </Button>
-            </Link>
+            {/* CTAs — one-click company mock above the share button. Spec §5:
+                below 900px the two buttons stack full-width. */}
+            <div className="shrink-0 flex flex-col gap-2.5 w-full min-[900px]:w-auto" style={{ minWidth: 232 }}>
+              {isAuthenticated && (
+                <CompanyMockLauncher
+                  company={company.name}
+                  companyId={companyId}
+                  fallbackRole={commonRole ?? undefined}
+                />
+              )}
+              <Link
+                to={isAuthenticated ? '/add-experience' : '/auth'}
+                state={{ from: { pathname: `/interview-insights/${companyId}` } }}
+                className="shrink-0"
+              >
+                <Button className="w-full bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
+                  <Plus className="w-4 h-4" />
+                  Share Your Experience
+                </Button>
+              </Link>
+            </div>
           </header>
 
           {/* ── Layout Grid ── */}

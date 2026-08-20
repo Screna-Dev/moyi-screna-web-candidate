@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { getProfile, getProfilePreferences, saveProfilePreferences, uploadResumeAndWait, getPersonalInfo, uploadAvatar, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '../../services/ProfileServices';
 import { useSubscription } from '@/hooks/useSubscription';
 import { WidePageContainer } from './dashboard-page';
+import { getPostOptions } from '../../services/CommunityService';
 import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
 import { resumeFileName } from '@/utils/resumeFile';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
@@ -23,7 +24,11 @@ type UserData = {
 
 // ── Static data ──────────────────────────────────────────────────────────────
 
-const PROFILE_ROLE_CATEGORIES = [
+// Role vocabulary. The live list comes from GET /community/posts/options — the
+// same source the interview-notes filters and Quick Mock use, so a role picked
+// here actually matches the question bank. This array is only the fallback until
+// that request resolves (or if it fails).
+const FALLBACK_ROLE_CATEGORIES = [
   { id: 'product', label: 'Product', roles: [
     { id: 'pm',  label: 'Product Manager'           },
     { id: 'apm', label: 'Associate Product Manager' },
@@ -48,6 +53,12 @@ const PROFILE_ROLE_CATEGORIES = [
     { id: 'uxr', label: 'UX Researcher'    },
   ]},
 ];
+
+type RoleCategory = { id: string; label: string; roles: { id: string; label: string }[] };
+
+// Stable option id from a label, so selections survive re-fetches.
+const roleOptionId = (label: string) =>
+  label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 
 const COMPANY_SUGGESTIONS = [
@@ -133,6 +144,34 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [customRoles, setCustomRoles] = useState<string[]>([]);
   const [roleQuery, setRoleQuery] = useState('');
+
+  // Live role vocabulary from GET /community/posts/options; the hardcoded list is
+  // only shown until this resolves. `roleOptionsSettled` gates the seeding of the
+  // user's saved selections below.
+  const [roleCategories, setRoleCategories] = useState<RoleCategory[]>(FALLBACK_ROLE_CATEGORIES);
+  const [roleOptionsSettled, setRoleOptionsSettled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    type Group = { category: string; options: string[] };
+    getPostOptions()
+      .then((res: { data?: { data?: { roles?: Group[] } } & { roles?: Group[] } }) => {
+        if (cancelled) return;
+        const data = res?.data?.data ?? res?.data;
+        const groups: Group[] = Array.isArray(data?.roles) ? data.roles : [];
+        const mapped = groups
+          .map(g => ({
+            id: roleOptionId(g.category),
+            label: g.category,
+            roles: (g.options ?? []).map(o => ({ id: roleOptionId(o), label: o })),
+          }))
+          .filter(c => c.roles.length > 0);
+        if (mapped.length) setRoleCategories(mapped);
+      })
+      .catch(() => { /* keep the fallback list */ })
+      .finally(() => { if (!cancelled) setRoleOptionsSettled(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Profile preferences (kept for merging on save) ──
   const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
@@ -243,18 +282,9 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     getProfilePreferences().then((res: { data: { data?: UserPreferences } }) => {
       const data = (res.data?.data ?? res.data) as UserPreferences;
       setUserPrefs(data);
-      if (data?.target_roles?.length) {
-        const allRoles = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles);
-        const ids: string[] = [];
-        const customs: string[] = [];
-        for (const label of data.target_roles) {
-          const match = allRoles.find(r => r.label.toLowerCase() === label.toLowerCase());
-          if (match) ids.push(match.id);
-          else customs.push(label);
-        }
-        if (ids.length) setSelectedRoleIds(ids);
-        if (customs.length) setCustomRoles(customs);
-      }
+      // target_roles are mapped to option ids in a separate effect — it has to
+      // wait for the live role list, or roles that exist only there would be
+      // misfiled as custom entries.
       if (data?.target_companies) setSpecificCompanies(data.target_companies);
       if (data?.company_size_categories) {
         setSelectedCategories(
@@ -278,17 +308,38 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     return () => { if (resumeTimerRef.current) clearInterval(resumeTimerRef.current); };
   }, [fetchResume]);
 
+  // Seed the editor from the saved target_roles once the real role list is in:
+  // labels that exist in the vocabulary become selected options, the rest become
+  // custom entries. Runs once — after that the user's edits own this state.
+  const seededRoles = useRef(false);
+  useEffect(() => {
+    if (seededRoles.current || !roleOptionsSettled) return;
+    const labels = userPrefs?.target_roles;
+    if (!labels?.length) return;
+    seededRoles.current = true;
+    const allRoles = roleCategories.flatMap(c => c.roles);
+    const ids: string[] = [];
+    const customs: string[] = [];
+    for (const label of labels) {
+      const match = allRoles.find(r => r.label.toLowerCase() === label.toLowerCase());
+      if (match) ids.push(match.id);
+      else customs.push(label);
+    }
+    if (ids.length) setSelectedRoleIds(ids);
+    if (customs.length) setCustomRoles(customs);
+  }, [roleOptionsSettled, roleCategories, userPrefs]);
+
   const filteredRoleCategories = useMemo(() => {
     const q = roleQuery.trim().toLowerCase();
-    if (!q) return PROFILE_ROLE_CATEGORIES;
-    return PROFILE_ROLE_CATEGORIES
+    if (!q) return roleCategories;
+    return roleCategories
       .map(cat => ({ ...cat, roles: cat.roles.filter(r => r.label.toLowerCase().includes(q)) }))
       .filter(cat => cat.roles.length > 0);
-  }, [roleQuery]);
+  }, [roleQuery, roleCategories]);
 
   // Labels of the currently selected options in the edit UI (used when saving)
   const selectedRoleLabels = [
-    ...PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles)
+    ...roleCategories.flatMap(c => c.roles)
       .filter(r => selectedRoleIds.includes(r.id))
       .map(r => r.label),
     ...customRoles,
@@ -305,7 +356,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
     if (trimmed.length < 2) return;
     const lower = trimmed.toLowerCase();
     // Skip if it matches an existing predefined role — toggle that instead
-    const match = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).find(
+    const match = roleCategories.flatMap(c => c.roles).find(
       r => r.label.toLowerCase() === lower,
     );
     if (match) {
@@ -688,7 +739,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
               {(() => {
                 const q = roleQuery.trim();
                 if (!q) return null;
-                const allLabels = PROFILE_ROLE_CATEGORIES.flatMap(c => c.roles).map(r => r.label.toLowerCase());
+                const allLabels = roleCategories.flatMap(c => c.roles).map(r => r.label.toLowerCase());
                 const inPredefined = allLabels.includes(q.toLowerCase());
                 const inCustom = customRoles.some(r => r.toLowerCase() === q.toLowerCase());
                 if (inPredefined || inCustom) return null;
