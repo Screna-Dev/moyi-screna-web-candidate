@@ -2635,12 +2635,16 @@ function ProfilePage() {
   const [exp, setExp] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
   const [disc, setDisc] = useState<SaveStatus>(CLEAN_STATUS);
+  const [topic, setTopic] = useState<SaveStatus>(CLEAN_STATUS);
   const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
   // Services + disciplines are both required for the mentor to be listed and
   // bookable. Specialty tags & experience are UI-only for now (no backend) —
   // local state, not persisted.
   const [services, setServices] = useState<ServiceType[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  // Topic title — PUT /mentorship/profile/topic. The backend defaults it to
+  // FIXED_TOPIC_TITLE when one was never set.
+  const [topicTitle, setTopicTitle] = useState('');
   type ExpEntry = { id: string; title: string; company: string; startYear: string; endYear: string; isCurrent: boolean };
   const [experiences, setExperiences] = useState<ExpEntry[]>([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -2696,6 +2700,8 @@ function ProfilePage() {
     if (profile.currentRole != null) setTitle(profile.currentRole);
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
+    const activeTopic = profile.topics?.find(t => t.active) ?? profile.topics?.[0];
+    if (activeTopic?.title != null) setTopicTitle(activeTopic.title);
     if (Array.isArray(profile.services)) setServices(profile.services);
     if (Array.isArray(profile.disciplines)) setDisciplines(profile.disciplines);
     // Seed the (UI-only) experience list from the profile's career background.
@@ -2712,7 +2718,7 @@ function ProfilePage() {
     if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
     if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
     if (profile.showLinkedin != null) setShowLinkedin(profile.showLinkedin);
-    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setDisc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
+    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setDisc(CLEAN_STATUS); setTopic(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
   // Fall back to the signed-in account email when the profile has no work email.
@@ -2725,6 +2731,7 @@ function ProfilePage() {
   const markExp = () => setExp(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markSvc = () => setSvc(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markDisc = () => setDisc(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markTopic = () => setTopic(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
 
   // PUT supports partial updates, so each section sends only its own fields.
@@ -2783,6 +2790,22 @@ function ProfilePage() {
       return;
     }
     saveSection({ services }, setSvc);
+  };
+
+  const saveTopicTitle = () => {
+    const title = topicTitle.trim();
+    if (!title) {
+      setTopic(s => ({ ...s, saving: false, error: 'Enter a session title.' }));
+      return;
+    }
+    setTopic(s => ({ ...s, saving: true, error: null }));
+    updateMyTopicContent({ title })
+      .then(() => {
+        setTopic({ dirty: false, saving: false, saved: true, error: null });
+        setTimeout(() => setTopic(s => ({ ...s, saved: false })), 2500);
+        ctx?.refetch();
+      })
+      .catch((err: any) => setTopic(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save the session title.' })));
   };
 
   const saveDisciplines = () => {
@@ -3159,6 +3182,26 @@ function ProfilePage() {
           </button>
 
           <SectionSaveRow status={exp} onSave={saveExperience} />
+        </div>
+
+        {/* Session title — PUT /mentorship/profile/topic. Sits above Service
+            Types because the services describe what this session covers. */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div>
+            <h3 className="text-foreground text-lg font-medium mb-1">Session Title</h3>
+            <p className="text-sm text-muted-foreground">The name students see for your bookable session.</p>
+          </div>
+          <input
+            value={topicTitle}
+            maxLength={120}
+            onChange={e => { setTopicTitle(e.target.value); markTopic(); }}
+            placeholder={FIXED_TOPIC_TITLE}
+            className="w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+          />
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            Defaults to &ldquo;{FIXED_TOPIC_TITLE}&rdquo; if you never set one.
+          </p>
+          <SectionSaveRow status={topic} onSave={saveTopicTitle} />
         </div>
 
         {/* Service Types + Disciplines — PUT /mentorship/profile { services, disciplines } */}
