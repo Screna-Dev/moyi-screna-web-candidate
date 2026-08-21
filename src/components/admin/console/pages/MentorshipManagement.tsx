@@ -138,7 +138,10 @@ type Mentor = {
   offerings: ServiceOffering[];
   // Raw bookable topics — kept so price edits can PUT each real topic by id,
   // regardless of whether its title maps to a known service type.
-  topics: { id: string; price30min: number; price60min: number }[];
+  topics: { id: string; title: string; price30min: number; price60min: number }[];
+  // Title of the mentor's bookable topic. The backend defaults it to
+  // "Mentorship Session" when one was never set.
+  topicTitle?: string;
   reviews: Review[];
   // ── Application / profile fields with no backend endpoint yet. Rendered as
   //    placeholders ("—" / empty states) until the API exposes them. ──
@@ -147,7 +150,7 @@ type Mentor = {
   appYoe?: number;
   conductsInterviews?: boolean;
   resumeFile?: string;
-  specialDeal?: { price15: number; price30: number; weeklyLimit: number; dealsBooked: number };
+  specialDeal?: { price15: number | null; price30: number | null; weeklyLimit: number; remainingThisWeek: number | null };
   experience?: { id: string; title: string; company: string; years: string }[];
 };
 
@@ -228,9 +231,11 @@ function mapApiMentor(api: any): Mentor {
       .filter((t) => t?.id)
       .map((t) => ({
         id: String(t.id),
+        title: t?.title || "",
         price30min: Number(t?.price30min) || 0,
         price60min: Number(t?.price60min) || 0,
       })),
+    topicTitle: (activeTopics[0]?.title ?? apiTopics[0]?.title) || "",
     reviews: Array.isArray(api?.reviews)
       ? api.reviews.map((r: any, i: number) => ({
           id: r?.id || String(i),
@@ -241,6 +246,40 @@ function mapApiMentor(api: any): Mentor {
           sessionType: r?.topicTitle || r?.sessionType || "",
         }))
       : [],
+
+    // ── Fields the render code already had, but the mapper never filled in.
+    //    They were placeholders from before the API exposed them. ──
+    appTitle: api?.currentRole || "",
+    appCompany: api?.currentCompany || "",
+    appYoe: api?.yearsOfExperience ?? undefined,
+    conductsInterviews: api?.isInterviewer ?? undefined,
+
+    // Work history comes from `careerBackground`; `current` means present role.
+    experience: Array.isArray(api?.careerBackground)
+      ? api.careerBackground.map((c: any, i: number) => ({
+          id: String(i),
+          title: c?.role || "—",
+          company: c?.company || "—",
+          years: [c?.startYear, c?.current ? "Present" : c?.endYear]
+            .filter((v) => v != null && v !== "")
+            .join(" – ") || "—",
+        }))
+      : [],
+
+    // Special offer lives on the topic (special15 / special30 / specialCount in
+    // cents / count). Only report it as configured when a price is actually set.
+    specialDeal: (() => {
+      const t = activeTopics.find((x) => x?.special15 != null || x?.special30 != null)
+        ?? apiTopics.find((x) => x?.special15 != null || x?.special30 != null);
+      if (!t) return undefined;
+      return {
+        price15: t.special15 != null ? Number(t.special15) / 100 : null,
+        price30: t.special30 != null ? Number(t.special30) / 100 : null,
+        weeklyLimit: Number(t.specialCount) || 0,
+        // Admin detail carries the live remaining quota for the week.
+        remainingThisWeek: api?.specialRemainingThisWeek ?? null,
+      };
+    })(),
   };
 }
 
@@ -1338,10 +1377,17 @@ function MentorDirectory() {
       //    send values that clear it.
       const price30min = Math.round((Number(form.rate30) || 0) * 100);
       const price60min = Math.round((Number(form.rate60) || 0) * 100);
-      const pricePayload: { price30min?: number; price60min?: number } = {};
+      const pricePayload: { price30min?: number; price60min?: number; title?: string } = {};
       if (price30min >= MIN_PRICE_CENTS) pricePayload.price30min = price30min;
       if (price60min >= MIN_PRICE_CENTS) pricePayload.price60min = price60min;
-      if (pricePayload.price30min || pricePayload.price60min) {
+      // This endpoint is a partial update, so only send the title when it
+      // actually changed — otherwise leave it untouched.
+      const titleChanged =
+        (form.topicTitle ?? "").trim() !== (selected?.topicTitle ?? "").trim();
+      if (titleChanged && (form.topicTitle ?? "").trim()) {
+        pricePayload.title = (form.topicTitle ?? "").trim();
+      }
+      if (pricePayload.price30min || pricePayload.price60min || pricePayload.title) {
         // The edit form doesn't reliably carry the topic list, so fetch the
         // mentor's real topics (a single auto-created "Mentorship Session") and
         // PUT the new prices to each one by id.
@@ -1465,7 +1511,7 @@ function MentorDirectory() {
                             <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
                               <span style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</span>
                               {m.specialDeal && (
-                                <span title={`Special Deal: 15 min · $${m.specialDeal.price15} / 30 min · $${m.specialDeal.price30} · max ${m.specialDeal.weeklyLimit}/week`} style={{ fontSize: 11, color: "#7C3AED", cursor: "help" }}>✦</span>
+                                <span title={`Special offer — 15 min: ${m.specialDeal.price15 != null ? "$" + m.specialDeal.price15.toFixed(2) : "n/a"} · 30 min: ${m.specialDeal.price30 != null ? "$" + m.specialDeal.price30.toFixed(2) : "n/a"} · max ${m.specialDeal.weeklyLimit}/week`} style={{ fontSize: 11, color: "#7C3AED", cursor: "help" }}>✦</span>
                               )}
                             </div>
                             {m.rate60 > 0 && (
@@ -1741,6 +1787,14 @@ function MentorDirectory() {
                   }}
                 />
 
+                {/* ── Bookable topic — above Service Types, since the services
+                       describe what this session covers ── */}
+                <DrawerDivider />
+                <DrawerField
+                  label="Session title"
+                  value={selected.topicTitle || <span style={{ color: C.textMuted, fontStyle: "italic" }}>Not set</span>}
+                />
+
                 {/* ── Service Types ── */}
                 <DrawerDivider />
                 <ServiceTypesBlock services={selected.services} disciplines={selected.disciplines} />
@@ -1761,7 +1815,7 @@ function MentorDirectory() {
                     dropped `expertiseTags` for the closed services/disciplines
                     enums, both of which ServiceTypesBlock above now renders. */}
 
-                {/* ── Special Offer — placeholder until the backend exposes special-deal pricing ── */}
+                {/* ── Special Offer — read-only; the mentor configures it in their dashboard ── */}
                 <DrawerDivider />
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Special Offer</div>
                 {selected.specialDeal ? (
@@ -1772,10 +1826,10 @@ function MentorDirectory() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       {[
-                        { label: "15 min session", value: `$${selected.specialDeal.price15}` },
-                        { label: "30 min session", value: `$${selected.specialDeal.price30}` },
+                        { label: "15 min session", value: selected.specialDeal.price15 != null ? `$${selected.specialDeal.price15.toFixed(2)}` : "Not offered" },
+                        { label: "30 min session", value: selected.specialDeal.price30 != null ? `$${selected.specialDeal.price30.toFixed(2)}` : "Not offered" },
                         { label: "Weekly limit",   value: `${selected.specialDeal.weeklyLimit}` },
-                        { label: "Deals booked",   value: `${selected.specialDeal.dealsBooked}` },
+                        { label: "Remaining this week", value: selected.specialDeal.remainingThisWeek != null ? `${selected.specialDeal.remainingThisWeek}` : "—" },
                       ].map((row) => (
                         <div key={row.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                           <span style={{ color: "#6d28d9" }}>{row.label}</span>
@@ -1837,6 +1891,20 @@ function MentorDirectory() {
                </div>
             </div>
             
+            <div>
+              <label style={labelStyle}>Session title</label>
+              <input
+                style={inputStyle}
+                maxLength={120}
+                placeholder="Mentorship Session"
+                value={editForm.topicTitle ?? ""}
+                onChange={(e) => setEditForm(prev => prev ? ({ ...prev, topicTitle: e.target.value }) : prev)}
+              />
+              <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 4 }}>
+                Shown to students on the mentor's public profile. Leave unchanged to keep the current title.
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 10 }}>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/30 min)</label>
