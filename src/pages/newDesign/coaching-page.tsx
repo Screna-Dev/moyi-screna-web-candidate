@@ -10,6 +10,12 @@ import { hasMentorRole } from '@/components/mentor/dashboard-mode';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
+import {
+  DISCIPLINE_BY_LABEL,
+  serviceLabels,
+  type Discipline,
+  type ServiceType,
+} from '@/constants/mentorship';
 
 // SVG path data (inlined from the new design's MentorCard import).
 const cardSvg = {
@@ -44,7 +50,8 @@ interface ApiMentor {
   currentRole: string;
   currentCompany: string;
   avatarUrl: string;
-  expertiseTags: string[];
+  services: ServiceType[];
+  disciplines: Discipline[];
   priceFrom: number;
   averageRating: number | null;
   reviewCount: number;
@@ -69,7 +76,8 @@ function mapApiMentor(m: ApiMentor): Mentor {
     rating: m.averageRating ?? 0,
     reviews: m.reviewCount ?? 0,
     next: m.hasSlotsThisWeek ? 'This week' : m.hasSlotsNextWeek ? 'Next week' : 'Check',
-    tags: m.expertiseTags ?? [],
+    // `services` are ServiceType enum values — render the human labels.
+    tags: serviceLabels(m.services),
     quote: '',
     availability: m.hasSlotsThisWeek
       ? 'Available this week'
@@ -84,17 +92,20 @@ const COMPANY_COLORS: Record<string, string> = {
   Airbnb: '#FF5A5F', OpenAI: '#10A37F', Datadog: '#632CA6',
 };
 
-// ─── Filter / sort config (kept in sync with mentorship-marketplace.tsx) ──────
+// ─── Filter / sort config ─────────────────────────────────────────────────────
 
 const PRICE_TO_PARAMS: Record<string, { priceMin?: number; priceMax?: number }> = {
   '$0–$50':    { priceMin: 0,     priceMax: 5000 },
   '$50–$100':  { priceMin: 5000,  priceMax: 10000 },
   '$100+':     { priceMin: 10000 },
 };
-const AVAIL_TO_API: Record<string, string> = {
+// The API only documents THIS_WEEK / NEXT_WEEK. "Flexible" therefore sends no
+// availability constraint at all (i.e. mentors with any availability) rather
+// than an undocumented FLEXIBLE value that would 400 and blank the list.
+const AVAIL_TO_API: Record<string, string | undefined> = {
   'Has slots this week': 'THIS_WEEK',
   'Next week':           'NEXT_WEEK',
-  'Flexible':            'FLEXIBLE',
+  'Flexible':            undefined,
 };
 const RATING_TO_MIN: Record<string, number> = {
   '4.0+': 4.0, '4.5+': 4.5, '5.0 only': 5.0,
@@ -106,12 +117,19 @@ const SORT_TO_API: Record<string, { sortBy: string; sortDir: 'asc' | 'desc' }> =
   'Most reviewed':       { sortBy: 'review', sortDir: 'desc' },
 };
 
+// NOTE: the API also supports `services` (multi-select) and `yoeRange` filters.
+// They are deliberately NOT surfaced — adding dropdowns would change the UI.
+// See the UI/API mismatch list.
 const FILTERS = [
-  { id: 'role',         label: 'Role / Industry', options: ['Software Engineering', 'Product Management', 'Data Science', 'Design', 'Eng. Management'] },
+  { id: 'discipline',   label: 'Role / Industry', options: ['Software Engineering', 'Product Management', 'Data Science', 'Design', 'Eng. Management'] },
   { id: 'price',        label: 'Price Range',      options: ['$0–$50', '$50–$100', '$100+'] },
   { id: 'availability', label: 'Availability',     options: ['Has slots this week', 'Next week', 'Flexible'] },
   { id: 'rating',       label: 'Rating',           options: ['4.0+', '4.5+', '5.0 only'] },
 ] as const;
+
+const EMPTY_FILTERS: Record<string, string | null> = {
+  discipline: null, price: null, availability: null, rating: null,
+};
 
 const SORT_OPTIONS = ['Top rated', 'Price: Low to high', 'Price: High to low', 'Most reviewed'];
 
@@ -156,10 +174,20 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
             <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '14px', lineHeight: '21px', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {mentor.name}
             </p>
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-              <span>{mentor.title}</span>
-              <span style={{ color: 'var(--border)' }}> · </span>
-              <span style={{ fontWeight: 500, color: 'var(--foreground)' }}>{mentor.company}</span>
+            {/* Role and company on their own lines: on one line a long role
+                pushed the company out of the clipped container, so it vanished
+                entirely. Each now truncates independently. */}
+            <p
+              title={mentor.title}
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', color: 'var(--muted-foreground)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {mentor.title}
+            </p>
+            <p
+              title={mentor.company}
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', lineHeight: '18px', fontWeight: 500, color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {mentor.company}
             </p>
           </div>
 
@@ -221,7 +249,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
           {mentor.tags.map(tag => (
             <div
               key={tag}
-              style={{ background: 'var(--secondary)', borderRadius: '6px', padding: '2px 8px', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'var(--secondary)', borderRadius: '8px', padding: '2px 8px', display: 'flex', alignItems: 'center' }}
             >
               <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '11px', lineHeight: '16.5px', color: 'var(--secondary-foreground)', whiteSpace: 'nowrap' }}>
                 {tag}
@@ -260,7 +288,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
         <button
           onClick={onBook}
           className="relative w-full transition-opacity hover:opacity-90"
-          style={{ height: '40px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)', borderRadius: 'var(--radius)', fontFamily: 'var(--font-sans)' }}
+          style={{ height: '40px', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', borderRadius: '12px', fontFamily: 'var(--font-sans)' }}
         >
           <span style={{ fontWeight: 600, fontSize: '13px', lineHeight: '18px', color: 'var(--primary)' }}>
             Book a Session
@@ -276,6 +304,7 @@ function MentorCard({ mentor, onBook }: { mentor: Mentor; onBook: () => void }) 
     </div>
   );
 }
+
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────
 
@@ -476,9 +505,7 @@ export function CoachingPage() {
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openSort, setOpenSort] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string | null>>({
-    role: null, price: null, availability: null, rating: null,
-  });
+  const [filters, setFilters] = useState<Record<string, string | null>>(EMPTY_FILTERS);
   const [sortBy, setSortBy] = useState('Top rated');
   const sortRef = useRef<HTMLDivElement>(null);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -500,8 +527,13 @@ export function CoachingPage() {
   const fetchMentorList = useCallback(async () => {
     try {
       const params: Record<string, unknown> = { page: 0, size: 20 };
-      if (filters.role) params.role = filters.role;
-      if (filters.availability) params.availability = AVAIL_TO_API[filters.availability];
+      // UI labels are mapped back to the backend enums — the API 400s on
+      // anything outside the documented value sets.
+      if (filters.discipline) params.discipline = DISCIPLINE_BY_LABEL[filters.discipline];
+      if (filters.availability) {
+        const availability = AVAIL_TO_API[filters.availability];
+        if (availability) params.availability = availability;
+      }
       if (filters.rating) params.ratingMin = RATING_TO_MIN[filters.rating];
       if (filters.price) {
         const p = PRICE_TO_PARAMS[filters.price];
@@ -549,15 +581,8 @@ export function CoachingPage() {
         {/* ── Hero banner (Apply to Become a Mentor lives here) ── */}
         <HeroBanner onApply={() => setIsBecomeMentorOpen(true)} isAlreadyMentor={isAlreadyMentor} />
 
-        {/* ── Available count ── */}
-        <div className="flex items-start justify-between" style={{ marginBottom: '16px' }}>
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--muted-foreground)' }}>
-            {mentors.length} verified mentors available for 1:1 sessions
-          </p>
-        </div>
-
         {/* ── Filter bar ── */}
-        <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '32px' }}>
+        <div className="flex items-center justify-between flex-wrap gap-2" style={{ marginBottom: '16px' }}>
           <div className="flex items-center flex-wrap gap-2">
             {FILTERS.map((filter) => (
               <FilterDropdown
@@ -573,7 +598,7 @@ export function CoachingPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={() => {
-                  setFilters({ role: null, price: null, availability: null, rating: null });
+                  setFilters(EMPTY_FILTERS);
                   safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, { filter_name: 'all', values: [] });
                 }}
                 className="transition-colors hover:text-foreground"
@@ -617,6 +642,15 @@ export function CoachingPage() {
           </div>
         </div>
 
+        {/* ── Results counter ── */}
+        <div className="flex items-start justify-between" style={{ marginBottom: '24px' }}>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: '#667085' }}>
+            {mentors.length === 0
+              ? 'No mentors match your filters — try adjusting them'
+              : `${mentors.length} verified mentor${mentors.length !== 1 ? 's' : ''} available for 1:1 sessions`}
+          </p>
+        </div>
+
         {/* ── Mentor grid ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
           {mentors.map(mentor => (
@@ -627,6 +661,22 @@ export function CoachingPage() {
             />
           ))}
         </div>
+
+        {/* ── Low-results nudge banner ── */}
+        {mentors.length > 0 && mentors.length <= 2 && (
+          <div style={{ marginTop: '24px', padding: '12px 20px', background: '#f8fafc', border: '1px solid #e1e4ea', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: '#5a6172' }}>
+              Can't find the right mentor? Tell us what you need
+            </span>
+            <button
+              onClick={() => navigate('/contact')}
+              className="transition-opacity hover:opacity-80"
+              style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600, color: '#3c77f6', whiteSpace: 'nowrap' }}
+            >
+              Let us know →
+            </button>
+          </div>
+        )}
 
       </WidePageContainer>
 

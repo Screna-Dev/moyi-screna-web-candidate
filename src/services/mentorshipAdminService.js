@@ -4,8 +4,25 @@ const BASE = '/mentorship/admin';
 
 // ─── Mentors ────────────────────────────────────────────────────────────────
 
+// params may include `photoStatus` (PhotoStatus) to pull the moderation queue,
+// e.g. { photoStatus: 'PHOTO_REVIEW' }. When set, only admin-approved,
+// non-suspended, non-rejected mentors are returned, ANDed with reviewState.
 export const listMentors = (params = {}) =>
   API.get(`${BASE}/mentors`, { params });
+
+// ─── Avatar moderation (PR-6) ───────────────────────────────────────────────
+// An approved photo is the 7th listing requirement. Approving may flip the
+// mentor PENDING → APPROVED if every other gate is already satisfied.
+// 400 when there is no resolvable avatar, or the mentor is SUSPENDED/REJECTED,
+// or their application hasn't been approved yet.
+export const approveMentorPhoto = (mentorId) =>
+  API.patch(`${BASE}/mentors/${mentorId}/photo/approve`);
+
+// `reason` is required (≤1000 chars). It becomes the mentor's `statusReason`,
+// is shown to them, and is included in their notification email. The file is
+// NOT deleted — the mentor can view it and upload a replacement.
+export const rejectMentorPhoto = (mentorId, reason) =>
+  API.patch(`${BASE}/mentors/${mentorId}/photo/reject`, { reason });
 
 export const getMentor = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}`);
@@ -64,6 +81,20 @@ export const deleteMentorTopic = (mentorId, topicId) =>
 // PENDING = eligible-to-settle set (matches markMentorPayoutsPaid); PAID = history.
 export const adminPayoutSummary = (params = {}) =>
   API.get(`${BASE}/payouts`, { params });
+
+// Per-session PAYMENT ledger rows (NOT aggregated per mentor — the client
+// groups if it wants to). One row per session/payment:
+//   { ledgerId, bookingId, mentorId, mentorName, studentName, studentEmail,
+//     sessionStartTime, grossCents, platformFeeCents, mentorPayoutCents,
+//     stripePaymentIntentId, status, eligible }
+// Amounts are cents. Ordered by sessionStartTime desc.
+// `status` is derived, precedence high→low: REFUNDED > DISPUTED > SETTLED >
+// READY_TO_SETTLE (ended >7 days ago, no pending dispute/refund/cancellation)
+// > PENDING. Only READY_TO_SETTLE rows have `eligible: true` and can settle.
+// params: { status?, mentorId?, from?, to?, page?, size? } — size 1–100
+// (default 20). NOTE from/to filter the ledger's createdAt, NOT the session date.
+export const adminFinanceRows = (params = {}) =>
+  API.get(`${BASE}/finance`, { params });
 
 export const listMentorPayouts = (mentorId) =>
   API.get(`${BASE}/mentors/${mentorId}/payouts`);

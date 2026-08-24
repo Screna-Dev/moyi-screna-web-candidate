@@ -165,7 +165,7 @@ describe('robots.txt', () => {
     '/billing',
     '/admin',
     '/interview-insights',
-    '/marketplace',
+    '/coaching',
     '/mock-interview',
     '/onboarding-flow',
   ])('keeps the app route %s out of the index', (p) => {

@@ -75,8 +75,6 @@ const ExperienceDetailPage = lazy(() => import('./pages/newDesign/experience-det
 
 // Mentorship
 const MentorshipPage = lazy(() => import('./components/newDesign/mentorship').then((m) => ({ default: m.MentorshipPage })));
-const MentorshipMarketplacePage = lazy(() => import('./components/newDesign/mentorship-marketplace').then((m) => ({ default: m.MentorshipMarketplacePage })));
-const MentorMarketplaceListPage = lazy(() => import('./components/newDesign/mentor-marketplace-list').then((m) => ({ default: m.MentorMarketplaceListPage })));
 const MentorDetailsPage = lazy(() => import('./components/newDesign/mentor-details').then((m) => ({ default: m.MentorDetailsPage })));
 const GuestDashboardPage = lazy(() => import('./components/newDesign/guest-dashboard').then((m) => ({ default: m.GuestDashboardPage })));
 const MentorDashboardPage = lazy(() => import('./pages/mentor/mentor-dashboard').then((m) => ({ default: m.MentorDashboardPage })));
@@ -270,16 +268,6 @@ export const router = createBrowserRouter([
         {
           path: '/mentorship',
           element: <MentorshipPage />,
-          errorElement: <ErrorBoundary />,
-        },
-        {
-          path: '/marketplace',
-          element: <MentorshipMarketplacePage />,
-          errorElement: <ErrorBoundary />,
-        },
-        {
-          path: '/mentor-marketplace',
-          element: <MentorMarketplaceListPage />,
           errorElement: <ErrorBoundary />,
         },
         {

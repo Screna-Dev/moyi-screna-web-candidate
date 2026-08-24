@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
-import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock } from "lucide-react";
+import { Plus, Check, X, ExternalLink, Search, AlertTriangle, ToggleLeft, ToggleRight, Pencil, Settings, Copy, Star, Trash2, ShieldCheck, Mail, Link2, Lock, Link } from "lucide-react";
 import { C, badge, TH, TD, primaryBtn, secondaryBtn, ghostBtn, card } from "../ui/styles";
 import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
@@ -19,6 +19,8 @@ import {
   updateMentorTopic,
   listMentorTopics,
   updateMentorStatus,
+  approveMentorPhoto,
+  rejectMentorPhoto,
   setMentorIdentityVerification,
   getMentorResumeAsAdmin,
   listBookings,
@@ -29,6 +31,18 @@ import {
   deleteReview,
 } from "../../../../services/mentorshipAdminService";
 import { updateBookingMentorNote } from "../../../../services/MentorService";
+import { apiErrorMessage } from "@/utils/apiError";
+import {
+  DISCIPLINES,
+  DISCIPLINE_LABELS,
+  PHOTO_STATUS_LABELS,
+  SERVICE_TYPES,
+  SERVICE_TYPE_LABELS,
+  statusReasonLabel,
+  type Discipline,
+  type PhotoStatus,
+  type ServiceType,
+} from "@/constants/mentorship";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -45,6 +59,10 @@ const ALL_EXPERTISE_TAGS = [
 ];
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
+
+// Backend floor for regular session prices ($25.00). Special-offer prices are a
+// separate column and are not subject to it.
+const MIN_PRICE_CENTS = 2500;
 
 // Upper bounds for mentor pricing so an arbitrary number can't be entered.
 const MAX_RATE_30 = 1000; // $/30 min
@@ -89,11 +107,23 @@ type Mentor = {
   email?: string;
   password?: string;
   bio?: string;
+  // Short public tagline. Accepted by onboard and by the profile PUT.
+  headline?: string;
   timezone?: string;
-  expertiseTags: string[];
+  // Closed enums on the profile — replaced the old free-text expertiseTags.
+  // Both must be non-empty for the mentor to be listed and bookable.
+  services: ServiceType[];
+  disciplines: Discipline[];
+  // Avatar moderation — PHOTO_APPROVED (with a resolvable avatar) is the 7th
+  // listing requirement.
+  photoStatus?: PhotoStatus;
+  avatarUrl?: string;
+  // Display-only flags on the profile; neither gates approval.
+  showLinkedin?: boolean;
+  isInterviewer?: boolean;
   rate30: number;
   rate60: number;
-  status: "Pending" | "Active" | "Rejected" | "Suspend";
+  status: "Pending" | "Active" | "Rejected" | "Suspend" | "Waitlist";
   apiStatus?: ApiStatus;
   reviewStatus?: ReviewStatus;
   statusReason?: string;
@@ -108,9 +138,27 @@ type Mentor = {
   offerings: ServiceOffering[];
   // Raw bookable topics — kept so price edits can PUT each real topic by id,
   // regardless of whether its title maps to a known service type.
-  topics: { id: string; price30min: number; price60min: number }[];
+  topics: { id: string; title: string; price30min: number; price60min: number }[];
+  // Title of the mentor's bookable topic. The backend defaults it to
+  // "Mentorship Session" when one was never set.
+  topicTitle?: string;
   reviews: Review[];
+  // ── Application / profile fields with no backend endpoint yet. Rendered as
+  //    placeholders ("—" / empty states) until the API exposes them. ──
+  appTitle?: string;
+  appCompany?: string;
+  appYoe?: number;
+  conductsInterviews?: boolean;
+  resumeFile?: string;
+  specialDeal?: { price15: number | null; price30: number | null; weeklyLimit: number; remainingThisWeek: number | null };
+  experience?: { id: string; title: string; company: string; years: string }[];
 };
+
+// Mirrors the backend's own e-mail check so an obviously bad address is caught
+// before a round trip.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
+const MIN_PASSWORD_LENGTH = 8;
 
 // ─── API ↔ UI mappers ─────────────────────────────────────────────────────────
 
@@ -130,12 +178,12 @@ function mapApiMentor(api: any): Mentor {
   const rate30 = price30s.length ? Math.min(...price30s) / 100 : 0;
   const rate60 = price60s.length ? Math.min(...price60s) / 100 : 0;
 
-  // Service offerings are persisted on the profile's expertiseTags, so an
-  // offering is "enabled" when its service-type label is present there.
-  const expertiseTags: string[] = Array.isArray(api?.expertiseTags) ? api.expertiseTags : [];
+  // `offerings` is now purely the topic/pricing view: an offering is "enabled"
+  // when the mentor actually has a bookable topic with that title. What the
+  // mentor is discoverable *as* lives on `services`/`disciplines` instead.
   const offerings: ServiceOffering[] = ALL_SERVICE_TYPES.map((t) => {
     const matched = apiTopics.find((top) => (top?.title || "").toLowerCase() === t.label.toLowerCase());
-    const enabled = expertiseTags.some((tag) => (tag || "").toLowerCase() === t.label.toLowerCase());
+    const enabled = !!matched;
     return {
       typeId: t.id,
       enabled,
@@ -158,7 +206,12 @@ function mapApiMentor(api: any): Mentor {
     email: api?.email || api?.workEmail || "",
     bio: api?.bio || "",
     timezone: api?.googleTimezone || "",
-    expertiseTags,
+    services: Array.isArray(api?.services) ? api.services : [],
+    disciplines: Array.isArray(api?.disciplines) ? api.disciplines : [],
+    photoStatus: (api?.photoStatus as PhotoStatus) || undefined,
+    avatarUrl: api?.avatarUrl || "",
+    showLinkedin: api?.showLinkedin ?? true,
+    isInterviewer: !!api?.isInterviewer,
     rate30,
     rate60,
     status: STATUS_API_TO_UI[(api?.status as ApiStatus) || "PENDING"] || "Pending",
@@ -178,9 +231,11 @@ function mapApiMentor(api: any): Mentor {
       .filter((t) => t?.id)
       .map((t) => ({
         id: String(t.id),
+        title: t?.title || "",
         price30min: Number(t?.price30min) || 0,
         price60min: Number(t?.price60min) || 0,
       })),
+    topicTitle: (activeTopics[0]?.title ?? apiTopics[0]?.title) || "",
     reviews: Array.isArray(api?.reviews)
       ? api.reviews.map((r: any, i: number) => ({
           id: r?.id || String(i),
@@ -191,6 +246,40 @@ function mapApiMentor(api: any): Mentor {
           sessionType: r?.topicTitle || r?.sessionType || "",
         }))
       : [],
+
+    // ── Fields the render code already had, but the mapper never filled in.
+    //    They were placeholders from before the API exposed them. ──
+    appTitle: api?.currentRole || "",
+    appCompany: api?.currentCompany || "",
+    appYoe: api?.yearsOfExperience ?? undefined,
+    conductsInterviews: api?.isInterviewer ?? undefined,
+
+    // Work history comes from `careerBackground`; `current` means present role.
+    experience: Array.isArray(api?.careerBackground)
+      ? api.careerBackground.map((c: any, i: number) => ({
+          id: String(i),
+          title: c?.role || "—",
+          company: c?.company || "—",
+          years: [c?.startYear, c?.current ? "Present" : c?.endYear]
+            .filter((v) => v != null && v !== "")
+            .join(" – ") || "—",
+        }))
+      : [],
+
+    // Special offer lives on the topic (special15 / special30 / specialCount in
+    // cents / count). Only report it as configured when a price is actually set.
+    specialDeal: (() => {
+      const t = activeTopics.find((x) => x?.special15 != null || x?.special30 != null)
+        ?? apiTopics.find((x) => x?.special15 != null || x?.special30 != null);
+      if (!t) return undefined;
+      return {
+        price15: t.special15 != null ? Number(t.special15) / 100 : null,
+        price30: t.special30 != null ? Number(t.special30) / 100 : null,
+        weeklyLimit: Number(t.specialCount) || 0,
+        // Admin detail carries the live remaining quota for the week.
+        remainingThisWeek: api?.specialRemainingThisWeek ?? null,
+      };
+    })(),
   };
 }
 
@@ -208,6 +297,9 @@ type Session = {
   within48h: boolean;
   mentorNote?: string;
   studentNote?: string;
+  // No backend field yet — reserved so the Session Recording section can wire up
+  // once the API returns a recording link/file.
+  recording?: { type: "link" | "file"; label: string; url: string } | null;
 };
 
 function mapApiBooking(api: any): Session {
@@ -292,6 +384,9 @@ const sessionStatusVariant = (s: string): BadgeVariant =>
 const disputeVariant = (s: string): BadgeVariant =>
   s === "Open" ? "amber" : s === "Approved" ? "green" : s === "Rejected" ? "red" : "gray";
 
+const mentorStatusVariant = (s: string): BadgeVariant =>
+  s === "Active" ? "green" : s === "Rejected" ? "red" : s === "Suspend" ? "purple" : s === "Pending" ? "amber" : "gray";
+
 function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: `hsl(${(name.charCodeAt(0) * 17) % 360}, 55%, 68%)`, fontSize: size * 0.34, fontWeight: 700, color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -303,6 +398,11 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
 // Outline chip — used for expertise tags
 function ExpertiseChip({ label, small }: { label: string; small?: boolean }) {
   return <span style={{ display: "inline-flex", alignItems: "center", height: small ? 16 : 18, padding: `0 ${small ? 5 : 7}px`, borderRadius: 9999, fontSize: small ? 10 : 10.5, fontWeight: 500, background: "transparent", color: C.textMid, border: `1px solid ${C.border}`, whiteSpace: "nowrap" as const }}>{label}</span>;
+}
+
+// Filled chip — used for service types
+function ServiceChip({ label }: { label: string }) {
+  return <span style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 9999, fontSize: 10.5, fontWeight: 600, background: C.blueBg, color: C.blue, border: `1px solid ${C.blueBorder}`, whiteSpace: "nowrap" as const }}>{label}</span>;
 }
 
 // Toggle switch
@@ -465,7 +565,7 @@ function ManageReviews({ reviews: initialReviews }: { reviews: Review[] }) {
       setConfirmDeleteId(null);
       toast.success("Review removed");
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to remove review");
+      toast.error(apiErrorMessage(err, "Failed to remove review"));
     }
   };
 
@@ -593,6 +693,12 @@ function VerificationSection({
   const bothDone = mentor.emailVerified && !!mentor.linkedinUrl;
   const canConfirm = bothDone && !mentor.verified;
 
+  // Derive the mentor's company from their work-email domain as a fallback
+  // until the backend exposes an explicit company field.
+  const emailDomain = mentor.email ? mentor.email.split("@")[1]?.split(".")[0] : null;
+  const companyFromDomain = emailDomain ? emailDomain.charAt(0).toUpperCase() + emailDomain.slice(1) : null;
+  const displayCompany = mentor.appCompany || companyFromDomain;
+
   const rowStyle: React.CSSProperties = {
     display: "flex", alignItems: "flex-start", gap: 12,
     padding: "10px 12px", borderRadius: 6,
@@ -638,6 +744,9 @@ function VerificationSection({
               {mentor.emailVerified && checkIcon}
             </div>
             <div style={{ fontSize: 12, color: "#5a6172" }}>{mentor.email || "—"}</div>
+            {displayCompany && (
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Company: {displayCompany}</div>
+            )}
           </div>
         </div>
 
@@ -698,7 +807,7 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<Partial<Mentor>>({
-    name: "", email: "", password: "", bio: "", expertiseTags: [], rate30: 50, rate60: 100, unpaid: 0,
+    name: "", email: "", password: "", bio: "", headline: "", services: [], disciplines: [], rate30: 50, rate60: 100, unpaid: 0,
     offerings: ALL_SERVICE_TYPES.map(t => ({
       typeId: t.id,
       enabled: t.id === "mock-interview" || t.id === "resume-review",
@@ -709,39 +818,43 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
   const next = () => setStep(s => Math.min(s + 1, 4));
   const prev = () => setStep(s => Math.max(s - 1, 1));
 
+  // Step 1 gate: a well-formed address and a password long enough for the API.
+  const emailTouched = (form.email || "").length > 0;
+  const emailError = emailTouched && !isValidEmail(form.email || "");
+  const passwordTouched = (form.password || "").length > 0;
+  const passwordError = passwordTouched && (form.password || "").length < MIN_PASSWORD_LENGTH;
+  const step1Valid =
+    isValidEmail(form.email || "") && (form.password || "").length >= MIN_PASSWORD_LENGTH;
+
   const handleComplete = async () => {
     if (submitting) return;
+    if (!isValidEmail(form.email || "")) {
+      toast.error("Enter a well-formed email address.");
+      setStep(1);
+      return;
+    }
+    if ((form.password || "").length < MIN_PASSWORD_LENGTH) {
+      toast.error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      setStep(1);
+      return;
+    }
     setSubmitting(true);
     try {
-      const topics = (form.offerings || [])
-        .filter((o) => o.enabled)
-        .map((o) => {
-          const label = ALL_SERVICE_TYPES.find((t) => t.id === o.typeId)?.label || o.typeId;
-          return {
-            title: label,
-            description: o.description || "",
-            mentorNote: o.mentorNote || "",
-            price30min: Math.max(0, Math.round((Number(form.rate30) || 0) * 100)),
-            price60min: Math.max(0, Math.round((Number(form.rate60) || 0) * 100)),
-            bothPricesSet: true,
-          };
-        });
+      // NOTE: `topics` is deprecated and ignored by this endpoint — a default
+      // topic is created automatically. Session prices therefore CANNOT be set
+      // during onboarding; they're set afterwards on the mentor's topic.
       await onboardMentor({
         name: form.name || "",
         email: form.email || "",
         password: form.password || "",
         bio: form.bio || "",
-        headline: "",
-        expertiseTags: form.expertiseTags || [],
-        company: "",
-        title: "",
-        yearsOfExperience: 0,
-        topics,
+        headline: form.headline || "",
+        services: form.services || [],
       });
       toast.success("Mentor onboarded successfully");
       onComplete();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to onboard mentor");
+      toast.error(apiErrorMessage(err, "Failed to onboard mentor"));
     } finally {
       setSubmitting(false);
     }
@@ -764,10 +877,10 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           )}
           <div style={{ flex: 1 }} />
           {step < 4 ? (
-            <button 
-              onClick={next} 
-              disabled={step === 1 && (!form.email || !form.password)}
-              style={{ ...primaryBtn, width: 100, justifyContent: "center", opacity: (step === 1 && (!form.email || !form.password)) ? 0.5 : 1, cursor: (step === 1 && (!form.email || !form.password)) ? "not-allowed" : "pointer" }}
+            <button
+              onClick={next}
+              disabled={step === 1 && !step1Valid}
+              style={{ ...primaryBtn, width: 100, justifyContent: "center", opacity: (step === 1 && !step1Valid) ? 0.5 : 1, cursor: (step === 1 && !step1Valid) ? "not-allowed" : "pointer" }}
             >Next</button>
           ) : (
             <button onClick={handleComplete} disabled={submitting} style={{ ...primaryBtn, width: 140, justifyContent: "center", opacity: submitting ? 0.6 : 1, cursor: submitting ? "not-allowed" : "pointer" }}>{submitting ? "Sending..." : "Send Invitation"}</button>
@@ -787,11 +900,29 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Account Information</div>
           <div>
             <label style={labelStyle}>Email Address *</label>
-            <input placeholder="mentor@example.com" type="email" style={inputStyle} value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+            <input
+              placeholder="mentor@example.com"
+              type="email"
+              style={{ ...inputStyle, borderColor: emailError ? C.red : C.border }}
+              value={form.email}
+              onChange={e => setForm({...form, email: e.target.value})}
+            />
+            {emailError && (
+              <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>Enter a well-formed email address.</div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>Password *</label>
-            <input placeholder="Must be at least 8 characters" type="password" style={inputStyle} value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
+            <input
+              placeholder="Must be at least 8 characters"
+              type="password"
+              style={{ ...inputStyle, borderColor: passwordError ? C.red : C.border }}
+              value={form.password}
+              onChange={e => setForm({...form, password: e.target.value})}
+            />
+            {passwordError && (
+              <div style={{ fontSize: 11, color: C.red, marginTop: 4 }}>Password must be at least {MIN_PASSWORD_LENGTH} characters.</div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>Full Name</label>
@@ -804,49 +935,13 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Profile & Expertise</div>
           <div>
-            <label style={labelStyle}>Expertise Tags</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.bgSubtle, minHeight: 40, alignItems: "center" }}>
-              {(form.expertiseTags || []).map((tag) => (
-                <span
-                  key={tag}
-                  style={{
-                    display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px 0 8px", borderRadius: 9999,
-                    fontSize: 11, fontWeight: 600,
-                    border: `1px solid ${C.blueBorder}`,
-                    background: C.blueBg,
-                    color: C.blue,
-                    fontFamily: "'Inter', sans-serif",
-                    gap: 4
-                  }}
-                >
-                  {tag}
-                  <button
-                    onClick={() => setForm(prev => ({ ...prev, expertiseTags: prev.expertiseTags?.filter(t => t !== tag) }))}
-                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", color: C.blue }}
-                  >
-                    <X size={10} />
-                  </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                placeholder="Type tag and press Enter..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const val = e.currentTarget.value.trim();
-                    if (val && !form.expertiseTags?.includes(val)) {
-                      setForm(prev => ({ ...prev, expertiseTags: [...(prev.expertiseTags||[]), val] }));
-                    }
-                    e.currentTarget.value = '';
-                  }
-                }}
-                style={{
-                  flex: 1, minWidth: 150, border: "none", background: "transparent", outline: "none",
-                  fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text
-                }}
-              />
-            </div>
+            <label style={labelStyle}>Headline</label>
+            <input
+              style={inputStyle}
+              placeholder="e.g. Senior PM at Google · ex-Stripe"
+              value={form.headline || ""}
+              onChange={e => setForm({ ...form, headline: e.target.value })}
+            />
           </div>
           <div>
             <label style={labelStyle}>Short Bio</label>
@@ -868,23 +963,37 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
               <input type="number" min={0} max={MAX_RATE_60} style={inputStyle} value={form.rate60} onChange={e => setForm({...form, rate60: clampRate(Number(e.target.value), MAX_RATE_60)})} />
             </div>
           </div>
+
+          {/* Onboard accepts `services` only — `disciplines` cannot be set here
+              and must be chosen later via the profile update endpoint. */}
           <div>
-            <label style={labelStyle}>Initial Services</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {ALL_SERVICE_TYPES.map(stype => {
-                const offering = form.offerings?.find(o => o.typeId === stype.id);
-                const enabled = offering?.enabled || false;
+            <label style={labelStyle}>Service Types</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {SERVICE_TYPES.map((t) => {
+                const isSelected = (form.services || []).includes(t);
                 return (
-                  <div key={stype.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: `1px solid ${C.border}`, borderRadius: 8, background: C.bgSubtle }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{stype.label}</span>
-                    <Toggle checked={enabled} onChange={() => {
+                  <button
+                    key={t}
+                    onClick={(e) => {
+                      e.preventDefault();
                       setForm(prev => ({
                         ...prev,
-                        offerings: prev.offerings?.map(o => o.typeId === stype.id ? { ...o, enabled: !o.enabled } : o)
-                      }))
-                    }} />
-                  </div>
-                )
+                        services: (prev.services || []).includes(t)
+                          ? (prev.services || []).filter(x => x !== t)
+                          : [...(prev.services || []), t],
+                      }));
+                    }}
+                    style={{
+                      ...serviceTagStyle,
+                      background: isSelected ? C.blueBg : "white",
+                      border: `1px ${isSelected ? "solid" : "dashed"} ${isSelected ? C.blueBorder : C.border}`,
+                      color: isSelected ? C.blue : C.textMid,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isSelected ? <Check size={10} /> : <Plus size={10} style={{ color: C.textMuted }} />} {SERVICE_TYPE_LABELS[t]}
+                  </button>
+                );
               })}
             </div>
           </div>
@@ -925,6 +1034,186 @@ function AddMentorWizard({ open, onClose, onComplete }: { open: boolean; onClose
   );
 }
 
+// ─── Profile photo moderation ─────────────────────────────────────────────────
+
+// An approved photo is a listing requirement, so this is the only way a mentor
+// can go live. Approving may flip them PENDING → APPROVED when every other gate
+// is already met; rejecting unlists them until they upload a replacement.
+function PhotoModerationBlock({
+  mentor,
+  onDecision,
+}: {
+  mentor: Mentor;
+  onDecision: (updated: Mentor) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+
+  const status = mentor.photoStatus;
+  const badgeColors: Record<PhotoStatus, { background: string; color: string }> = {
+    PHOTO_REVIEW: { background: C.amberBg, color: C.amber },
+    PHOTO_APPROVED: { background: C.greenBg, color: C.green },
+    PHOTO_REJECTED: { background: C.redBg, color: C.red },
+  };
+  const canAct = !!mentor.avatarUrl;
+
+  const run = async (fn: () => Promise<any>, okMsg: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fn();
+      const updated = res?.data?.data ?? res?.data;
+      onDecision(updated ? mapApiMentor(updated) : mentor);
+      toast.success(okMsg);
+      setRejecting(false);
+      setReason("");
+    } catch (err: any) {
+      toast.error(apiErrorMessage(err, "Photo action failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>Profile Photo</div>
+        {status && (
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9999, ...badgeColors[status] }}>
+            {PHOTO_STATUS_LABELS[status]}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        {mentor.avatarUrl ? (
+          <img src={mentor.avatarUrl} alt="" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", border: `1px solid ${C.border}` }} />
+        ) : (
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: C.bgSubtle, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: C.textMuted }}>
+            None
+          </div>
+        )}
+        {status === "PHOTO_REJECTED" && mentor.statusReason && (
+          <span style={{ fontSize: 12, color: C.textMid }}>Reason: {statusReasonLabel(mentor.statusReason)}</span>
+        )}
+        {!canAct && (
+          <span style={{ fontSize: 12, color: C.textMuted }}>No photo uploaded yet — nothing to review.</span>
+        )}
+      </div>
+
+      {rejecting ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6, display: "block" }}>
+              Rejection reason <span style={{ color: C.red }}>*</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value.slice(0, 1000))}
+              placeholder="Why is this photo rejected? The mentor sees this, and it goes into their notification email."
+              style={{ width: "100%", minHeight: 60, padding: 8, background: C.bgSubtle, border: `1px solid ${reason.trim() ? C.border : C.redBorder}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", resize: "vertical", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 10.5, color: reason.trim() ? C.textMuted : C.red }}>
+                {reason.trim() ? "Sent to the mentor." : "Required — the API rejects an empty reason."}
+              </span>
+              <span style={{ fontSize: 10.5, color: C.textMuted }}>{reason.length}/1000</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={() => run(() => rejectMentorPhoto(mentor.id, reason.trim()), "Photo rejected")}
+              disabled={busy || !reason.trim()}
+              style={{ ...primaryBtn, background: C.red, borderColor: C.red, opacity: busy || !reason.trim() ? 0.4 : 1, cursor: busy || !reason.trim() ? "not-allowed" : "pointer" }}
+            >
+              Confirm reject
+            </button>
+            <button onClick={() => { setRejecting(false); setReason(""); }} style={{ fontSize: 12, color: C.textMid, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Inter', sans-serif" }}>
+              Cancel
+            </button>
+          </div>
+          <span style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.5 }}>
+            The uploaded file is kept, so the mentor can view it and upload a replacement.
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => run(() => approveMentorPhoto(mentor.id), "Photo approved")}
+            disabled={busy || !canAct || status === "PHOTO_APPROVED"}
+            style={{ ...primaryBtn, background: C.green, borderColor: C.green, opacity: busy || !canAct || status === "PHOTO_APPROVED" ? 0.4 : 1, cursor: busy || !canAct || status === "PHOTO_APPROVED" ? "not-allowed" : "pointer" }}
+          >
+            Approve photo
+          </button>
+          <button
+            onClick={() => setRejecting(true)}
+            disabled={busy || !canAct}
+            style={{ ...secondaryBtn, opacity: busy || !canAct ? 0.4 : 1, cursor: busy || !canAct ? "not-allowed" : "pointer" }}
+          >
+            Reject
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Mentor Directory ──────────────────────────────────────────────────────────
+
+// ─── Service Types Block (inline edit, inside Drawer) ─────────────────────────
+
+// Edits the two closed enums the backend filters and lists on. Both are sent
+// together as a whole-array replace (PUT /mentorship/admin/mentors/{id}/profile).
+// Read-only summary of the mentor's services + disciplines. Editing lives in
+// the Edit Profile form, which owns the profile PUT — two editors writing the
+// same whole-replace fields is how stale state silently wipes data.
+function ServiceTypesBlock({
+  services,
+  disciplines,
+}: {
+  services: ServiceType[];
+  disciplines: Discipline[];
+}) {
+  const warn = (text: string) => (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7 }}>
+      <AlertTriangle size={13} style={{ color: C.amber, flexShrink: 0, marginTop: 1 }} />
+      <span style={{ fontSize: 12, color: C.amber, lineHeight: 1.5 }}>{text}</span>
+    </div>
+  );
+  const heading: React.CSSProperties = {
+    fontSize: 11, fontWeight: 600, color: C.textSub,
+    textTransform: "uppercase" as const, letterSpacing: "0.06em",
+  };
+
+  return (
+    <div>
+      <div style={{ ...heading, marginBottom: 8 }}>Service Types</div>
+      {services.length === 0 ? (
+        warn("No service types selected — this mentor stays unlisted and won't appear in candidate filters.")
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {services.map((t) => (
+            <ServiceChip key={t} label={SERVICE_TYPE_LABELS[t]} />
+          ))}
+        </div>
+      )}
+
+      <div style={{ ...heading, margin: "14px 0 8px" }}>Disciplines</div>
+      {disciplines.length === 0 ? (
+        warn("No discipline selected — this mentor stays unlisted and won't appear in candidate filters.")
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {disciplines.map((d) => (
+            <ServiceChip key={d} label={DISCIPLINE_LABELS[d]} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── Mentor Directory ──────────────────────────────────────────────────────────
 
 function MentorDirectory() {
@@ -939,6 +1228,9 @@ function MentorDirectory() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [pendingDeny, setPendingDeny] = useState<Mentor | null>(null);
   const [denyReason, setDenyReason] = useState("");
+  const [denyOption, setDenyOption] = useState<"mismatch" | "waitlist" | "unverifiable" | "other">("mismatch");
+  // Mentor pending an approve-despite-no-calendar confirmation.
+  const [calPopoverMentor, setCalPopoverMentor] = useState<Mentor | null>(null);
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6, display: "block" };
   const inputStyle: React.CSSProperties = { width: "100%", height: 32, padding: "0 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", boxSizing: "border-box" };
@@ -954,12 +1246,15 @@ function MentorDirectory() {
         filters.status === "suspend"  ? "SUSPENDED" : undefined;
       const params: Record<string, any> = { page: 0, size: 100 };
       if (apiStatusFilter) params.status = apiStatusFilter;
+      // Photo review queue: admin-approved, non-suspended mentors awaiting a
+      // photo decision.
+      if (filters.status === "photo-review") params.photoStatus = "PHOTO_REVIEW";
       const res = await listMentors(params);
       const content = res?.data?.data?.content || [];
       setMentorList(content.map(mapApiMentor));
     } catch (err: any) {
       console.error("Failed to load mentors", err);
-      toast.error(err?.response?.data?.message || "Failed to load mentors");
+      toast.error(apiErrorMessage(err, "Failed to load mentors"));
     } finally {
       setLoading(false);
     }
@@ -967,8 +1262,20 @@ function MentorDirectory() {
 
   useEffect(() => { loadMentors(); }, [loadMentors]);
 
+  // Detect emails shared by more than one application (possible duplicates).
+  const emailCounts = mentorList.reduce((acc, m) => {
+    if (m.email) acc[m.email] = (acc[m.email] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const duplicateEmails = new Set(Object.keys(emailCounts).filter((e) => emailCounts[e] > 1));
+
   const filtered = mentorList.filter((m) => {
     if (search && !m.name.toLowerCase().includes(search.toLowerCase())) return false;
+    // Client-side-only filters (no dedicated backend status yet).
+    // "Missing services" now means the listing requirements aren't met: the
+    // backend keeps such a mentor unlisted regardless of approval status.
+    if (filters.status === "missing-services") return m.services.length === 0 || m.disciplines.length === 0;
+    if (filters.status === "waitlist") return m.status === "Waitlist";
     return true;
   });
 
@@ -1031,7 +1338,7 @@ function MentorDirectory() {
         });
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to approve mentor");
+      toast.error(apiErrorMessage(err, "Failed to approve mentor"));
     }
   };
 
@@ -1043,29 +1350,44 @@ function MentorDirectory() {
       setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, reviewStatus: "REJECTED" } : x));
       setSelected(null);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to deny mentor");
+      toast.error(apiErrorMessage(err, "Failed to deny mentor"));
     }
   };
 
   const saveProfile = async (form: Mentor) => {
     try {
-      // 1) Profile — real name + expertise tags (and bio/headline).
-      await updateMentorProfile(form.id, {
-        realName: form.name || "",
-        bio: form.bio || "",
-        headline: "",
-        expertiseTags: form.expertiseTags || [],
-      });
+      // 1) Profile — real name, services + disciplines (and bio/headline).
+      //    Both enum arrays are whole-array replaces.
+      // Identity strings must be non-blank WHEN PROVIDED, and any omitted field
+      // is left unchanged — so only send what actually has a value. `headline`
+      // isn't edited by this form and must not be sent, or it gets cleared.
+      const profilePayload: Record<string, unknown> = {
+        services: form.services || [],
+        disciplines: form.disciplines || [],
+      };
+      if (form.name?.trim()) profilePayload.realName = form.name.trim();
+      if (form.bio?.trim()) profilePayload.bio = form.bio.trim();
+      if (typeof form.showLinkedin === "boolean") profilePayload.showLinkedin = form.showLinkedin;
+      await updateMentorProfile(form.id, profilePayload);
 
       // 2) Topic prices — apply the edited rates (dollars → cents) to every
-      //    bookable topic. null/omitted leaves a price unchanged, and prices
-      //    must be ≥ 1000 cents, so only send values that clear that floor.
+      //    bookable topic. The admin topic endpoint keeps partial-update
+      //    semantics (unlike the mentor-facing one), so an omitted price is
+      //    left unchanged; but the $25.00 floor now applies here too, so only
+      //    send values that clear it.
       const price30min = Math.round((Number(form.rate30) || 0) * 100);
       const price60min = Math.round((Number(form.rate60) || 0) * 100);
-      const pricePayload: { price30min?: number; price60min?: number } = {};
-      if (price30min >= 1000) pricePayload.price30min = price30min;
-      if (price60min >= 1000) pricePayload.price60min = price60min;
-      if (pricePayload.price30min || pricePayload.price60min) {
+      const pricePayload: { price30min?: number; price60min?: number; title?: string } = {};
+      if (price30min >= MIN_PRICE_CENTS) pricePayload.price30min = price30min;
+      if (price60min >= MIN_PRICE_CENTS) pricePayload.price60min = price60min;
+      // This endpoint is a partial update, so only send the title when it
+      // actually changed — otherwise leave it untouched.
+      const titleChanged =
+        (form.topicTitle ?? "").trim() !== (selected?.topicTitle ?? "").trim();
+      if (titleChanged && (form.topicTitle ?? "").trim()) {
+        pricePayload.title = (form.topicTitle ?? "").trim();
+      }
+      if (pricePayload.price30min || pricePayload.price60min || pricePayload.title) {
         // The edit form doesn't reliably carry the topic list, so fetch the
         // mentor's real topics (a single auto-created "Mentorship Session") and
         // PUT the new prices to each one by id.
@@ -1086,11 +1408,13 @@ function MentorDirectory() {
       }
 
       // 3) Status change (if any).
-      const apiStatusFromUi: Record<Mentor["status"], ApiStatus> = {
+      const apiStatusFromUi: Record<Mentor["status"], ApiStatus | undefined> = {
         Pending: "PENDING",
         Active: "APPROVED",
         Rejected: "REJECTED",
         Suspend: "SUSPENDED",
+        // No backend status for Waitlist yet — leave unmapped so it is skipped.
+        Waitlist: undefined,
       };
       const targetApiStatus = apiStatusFromUi[form.status];
       if (form.apiStatus && targetApiStatus && targetApiStatus !== form.apiStatus) {
@@ -1114,7 +1438,7 @@ function MentorDirectory() {
       }
       setIsEditing(false);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to save profile");
+      toast.error(apiErrorMessage(err, "Failed to save profile"));
     }
   };
 
@@ -1132,7 +1456,7 @@ function MentorDirectory() {
       )}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <FilterBar
-          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "rejected", label: "Rejected" }, { value: "suspend", label: "Suspend" }] }]}
+          filters={[{ key: "status", label: "Status", options: [{ value: "all", label: "All" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "rejected", label: "Rejected" }, { value: "suspend", label: "Suspend" }, { value: "waitlist", label: "Waitlist" }, { value: "missing-services", label: "Missing service types" }, { value: "photo-review", label: "Photo review queue" }] }]}
           activeFilters={filters}
           onFilterChange={(k, v) => setFilters({ ...filters, [k]: v })}
           searchValue={search}
@@ -1152,13 +1476,14 @@ function MentorDirectory() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 2 }}>
                 <tr>
-                  {["Mentor", "Rate", "Status", "Calendar", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
+                  {["Mentor", "Rate", "Status", "Calendar", "Photo", "Sessions", "Revenue", "Unpaid", ""].map((h) => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m) => {
+                  const isDuplicate = !!(m.email && duplicateEmails.has(m.email));
                   return (
                     <tr
                       key={m.id}
@@ -1171,21 +1496,48 @@ function MentorDirectory() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Avatar name={m.name} size={26} />
                           <span style={{ fontWeight: 600, fontSize: 12 }}>{m.name}</span>
+                          {isDuplicate && (
+                            <span title="Possible duplicate application" style={{ color: C.textMuted, display: "flex", cursor: "help", flexShrink: 0 }}>
+                              <Link size={11} />
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</div>
-                        {m.rate60 > 0 && (
-                          <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-                            ${m.rate60.toFixed(2)}/1 hr
-                          </div>
+                        {m.rate30 === 0 || m.status === "Pending" ? (
+                          <span style={{ fontSize: 12, color: "#8A92A3" }}>Not set</span>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                              <span style={{ fontSize: 12 }}>${m.rate30.toFixed(2)}/30 min</span>
+                              {m.specialDeal && (
+                                <span title={`Special offer — 15 min: ${m.specialDeal.price15 != null ? "$" + m.specialDeal.price15.toFixed(2) : "n/a"} · 30 min: ${m.specialDeal.price30 != null ? "$" + m.specialDeal.price30.toFixed(2) : "n/a"} · max ${m.specialDeal.weeklyLimit}/week`} style={{ fontSize: 11, color: "#7C3AED", cursor: "help" }}>✦</span>
+                              )}
+                            </div>
+                            {m.rate60 > 0 && (
+                              <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
+                                ${m.rate60.toFixed(2)}/1 hr
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
-                      <td style={TD}><span style={badge(m.status === "Active" ? "green" : m.status === "Rejected" ? "red" : m.status === "Suspend" ? "purple" : m.status === "Pending" ? "amber" : "gray")}>{m.status}</span></td>
+                      <td style={TD}><span style={badge(mentorStatusVariant(m.status))}>{m.status}</span></td>
                       <td style={TD}>
                         {m.calConnected
                           ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.green }}><Check size={12} /> Connected</span>
                           : <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.red }}><X size={12} /> Not connected</span>}
+                      </td>
+                      <td style={TD}>
+                        {!m.avatarUrl ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.textMuted }}><X size={12} /> No photo</span>
+                        ) : m.photoStatus === "PHOTO_APPROVED" ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.green }}><Check size={12} /> Approved</span>
+                        ) : m.photoStatus === "PHOTO_REJECTED" ? (
+                          <span title={m.statusReason || undefined} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.red, cursor: m.statusReason ? "help" : undefined }}><X size={12} /> Rejected</span>
+                        ) : (
+                          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.amber }}><AlertTriangle size={12} /> Needs review</span>
+                        )}
                       </td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>{m.sessions}</td>
                       <td style={{ ...TD, fontFamily: "'JetBrains Mono', monospace" }}>${(m.revenue || 0).toLocaleString()}</td>
@@ -1197,7 +1549,9 @@ function MentorDirectory() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm(`Are you sure you want to approve ${m.name}?`)) {
+                                  if (!m.calConnected) {
+                                    setCalPopoverMentor(m);
+                                  } else {
                                     approveMentor(m);
                                   }
                                 }}
@@ -1251,7 +1605,10 @@ function MentorDirectory() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (selected && window.confirm(`Are you sure you want to approve ${selected.name}?`)) {
+                  if (!selected) return;
+                  if (!selected.calConnected) {
+                    setCalPopoverMentor(selected);
+                  } else {
                     approveMentor(selected);
                   }
                 }}
@@ -1327,8 +1684,19 @@ function MentorDirectory() {
                   </div>
                 </div>
                 <DrawerDivider />
+                <DrawerField label="Title & Company" value={selected.appTitle && selected.appCompany ? `${selected.appTitle} · ${selected.appCompany}` : "—"} />
                 <DrawerField label="Mentor Full Name" value={selected.name || <span style={{ color: C.textSub, fontStyle: "italic" }}>Not submitted</span>} />
                 <DrawerField label="Work Email" value={selected.email || <span style={{ color: C.textSub, fontStyle: "italic" }}>No email on file</span>} />
+                <DrawerField
+                  label="Conducts interviews"
+                  value={
+                    selected.conductsInterviews !== undefined
+                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: selected.conductsInterviews ? C.green : C.textMuted }}>
+                          {selected.conductsInterviews ? <><Check size={12} /> Yes</> : "No"}
+                        </span>
+                      : "—"
+                  }
+                />
                 <DrawerField
                   label="LinkedIn URL"
                   value={selected.linkedinUrl ? (
@@ -1358,11 +1726,37 @@ function MentorDirectory() {
               </div>
             ) : (
               <>
-                <DrawerField label="Rate (30 min)" value={`$${(selected.rate30 || 0).toFixed(2)}`} />
-                <DrawerField label="Rate (1 hr)" value={`$${(selected.rate60 || 0).toFixed(2)}`} />
+                <DrawerField label="Rate (30 min)" value={selected.rate30 ? `$${selected.rate30.toFixed(2)}` : "Not set"} />
+                <DrawerField label="Rate (1 hr)" value={selected.rate60 ? `$${selected.rate60.toFixed(2)}` : "Not set"} />
                 <DrawerField label="Unpaid Balance" value={`$${(selected.unpaid || 0).toLocaleString()}`} />
                 <DrawerField label="Sessions delivered"  value={String(selected.sessions || 0)} />
                 <DrawerField label="Total revenue"       value={`$${(selected.revenue || 0).toLocaleString()}`} />
+
+                {/* ── Application Info — placeholder rows until the backend exposes these fields ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Application Info</div>
+                <DrawerField label="Title & Company" value={selected.appTitle && selected.appCompany ? `${selected.appTitle} · ${selected.appCompany}` : "—"} />
+                <DrawerField label="Years of Experience" value={selected.appYoe !== undefined ? `${selected.appYoe} yrs` : "—"} />
+                <DrawerField
+                  label="Conducts interviews / hiring"
+                  value={
+                    selected.conductsInterviews !== undefined
+                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: selected.conductsInterviews ? C.green : C.textMuted }}>
+                          {selected.conductsInterviews ? <><Check size={12} /> Yes</> : "No"}
+                        </span>
+                      : "—"
+                  }
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0 4px" }}>
+                  <div style={{ fontSize: 11, color: C.textSub, minWidth: 110 }}>Resume</div>
+                  {selected.resumeUrl ? (
+                    <a href={selected.resumeUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: C.blue, textDecoration: "none", fontWeight: 500 }}>
+                      <ExternalLink size={12} style={{ flexShrink: 0 }} /> Download resume
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 12, color: C.textMuted }}>—</span>
+                  )}
+                </div>
 
                 <DrawerDivider />
 
@@ -1388,24 +1782,88 @@ function MentorDirectory() {
                       // Roll back the optimistic update if the request fails.
                       setMentorList((prev) => prev.map((m) => m.id === selected.id ? { ...m, verified: false } : m));
                       setSelected((prev) => prev && prev.id === selected.id ? { ...prev, verified: false } : prev);
-                      toast.error(err?.response?.data?.message || "Failed to set identity verification");
+                      toast.error(apiErrorMessage(err, "Failed to set identity verification"));
                     }
                   }}
                 />
 
+                {/* ── Bookable topic — above Service Types, since the services
+                       describe what this session covers ── */}
                 <DrawerDivider />
+                <DrawerField
+                  label="Session title"
+                  value={selected.topicTitle || <span style={{ color: C.textMuted, fontStyle: "italic" }}>Not set</span>}
+                />
 
-                {/* Expertise Tags */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                    Expertise Tags
+                {/* ── Service Types ── */}
+                <DrawerDivider />
+                <ServiceTypesBlock services={selected.services} disciplines={selected.disciplines} />
+
+                {/* Photo moderation — a listing requirement, so this is the
+                    only path a mentor has to going live. */}
+                <DrawerDivider />
+                <PhotoModerationBlock
+                  mentor={selected}
+                  onDecision={(updated) => {
+                    setSelected((prev) => (prev && prev.id === updated.id ? updated : prev));
+                    setMentorList((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+                    setEditForm((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+                  }}
+                />
+
+                {/* The free-text "Expertise Tags" block lived here. The backend
+                    dropped `expertiseTags` for the closed services/disciplines
+                    enums, both of which ServiceTypesBlock above now renders. */}
+
+                {/* ── Special Offer — read-only; the mentor configures it in their dashboard ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Special Offer</div>
+                {selected.specialDeal ? (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9" }}>✦</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#4c1d95" }}>Enabled</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {[
+                        { label: "15 min session", value: selected.specialDeal.price15 != null ? `$${selected.specialDeal.price15.toFixed(2)}` : "Not offered" },
+                        { label: "30 min session", value: selected.specialDeal.price30 != null ? `$${selected.specialDeal.price30.toFixed(2)}` : "Not offered" },
+                        { label: "Weekly limit",   value: `${selected.specialDeal.weeklyLimit}` },
+                        { label: "Remaining this week", value: selected.specialDeal.remainingThisWeek != null ? `${selected.specialDeal.remainingThisWeek}` : "—" },
+                      ].map((row) => (
+                        <div key={row.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                          <span style={{ color: "#6d28d9" }}>{row.label}</span>
+                          <span style={{ fontWeight: 600, color: "#4c1d95", fontFamily: "'JetBrains Mono', monospace" }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {selected.expertiseTags.length === 0
-                      ? <span style={{ fontSize: 12, color: C.textMuted }}>No expertise tags</span>
-                      : selected.expertiseTags.map((t) => <span key={t} style={serviceTagStyle}>{t}</span>)}
-                  </div>
-                </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>Not enabled</div>
+                )}
+
+                {/* ── Experience — placeholder until the backend exposes work history ── */}
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>Experience</div>
+                {selected.experience && selected.experience.length > 0 ? (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {selected.experience.map((exp) => (
+                        <div key={exp.id} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, padding: "8px 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7 }}>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{exp.title}</div>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>{exp.company} · {exp.years}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 7, lineHeight: 1.4 }}>
+                      Self-reported — spot-check against LinkedIn.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>No experience on file.</div>
+                )}
 
                 {/* Manage Reviews */}
                 <ManageReviews reviews={selected.reviews} />
@@ -1428,10 +1886,25 @@ function MentorDirectory() {
                    <option value="Active">Active</option>
                    <option value="Rejected">Rejected</option>
                    <option value="Suspend">Suspend</option>
+                   <option value="Waitlist">Waitlist</option>
                  </select>
                </div>
             </div>
             
+            <div>
+              <label style={labelStyle}>Session title</label>
+              <input
+                style={inputStyle}
+                maxLength={120}
+                placeholder="Mentorship Session"
+                value={editForm.topicTitle ?? ""}
+                onChange={(e) => setEditForm(prev => prev ? ({ ...prev, topicTitle: e.target.value }) : prev)}
+              />
+              <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 4 }}>
+                Shown to students on the mentor's public profile. Leave unchanged to keep the current title.
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 10 }}>
                <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Rate ($/30 min)</label>
@@ -1443,120 +1916,187 @@ function MentorDirectory() {
                </div>
             </div>
 
+            {/* Services + disciplines are closed enums now — free-text tags
+                can no longer be sent, so both are chip pickers. */}
             <div>
-              <label style={labelStyle}>Expertise tags</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.bgSubtle, minHeight: 40, alignItems: "center" }}>
-                {(editForm.expertiseTags || []).map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: "inline-flex", alignItems: "center", height: 22, padding: "0 6px 0 8px", borderRadius: 9999,
-                      fontSize: 11, fontWeight: 600,
-                      border: `1px solid ${C.blueBorder}`,
-                      background: C.blueBg,
-                      color: C.blue,
-                      fontFamily: "'Inter', sans-serif",
-                      gap: 4
-                    }}
-                  >
-                    {tag}
+              <label style={labelStyle}>Service types</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {SERVICE_TYPES.map((t) => {
+                  const isSelected = (editForm.services || []).includes(t);
+                  return (
                     <button
+                      key={t}
                       onClick={(e) => {
                         e.preventDefault();
-                        setEditForm(prev => prev ? ({ ...prev, expertiseTags: prev.expertiseTags.filter(t => t !== tag) }) : prev);
+                        setEditForm(prev => prev ? ({
+                          ...prev,
+                          services: prev.services.includes(t)
+                            ? prev.services.filter(x => x !== t)
+                            : [...prev.services, t],
+                        }) : prev);
                       }}
-                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", color: C.blue }}
+                      style={{
+                        ...serviceTagStyle,
+                        background: isSelected ? C.blueBg : "white",
+                        border: `1px ${isSelected ? "solid" : "dashed"} ${isSelected ? C.blueBorder : C.border}`,
+                        color: isSelected ? C.blue : C.textMid,
+                        cursor: "pointer",
+                      }}
                     >
-                      <X size={10} />
+                      {isSelected ? <Check size={10} /> : <Plus size={10} style={{ color: C.textMuted }} />} {SERVICE_TYPE_LABELS[t]}
                     </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  placeholder="Type tag and press Enter..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const val = e.currentTarget.value.trim();
-                      if (val && editForm && !editForm.expertiseTags.includes(val)) {
-                        setEditForm(prev => prev ? ({ ...prev, expertiseTags: [...prev.expertiseTags, val] }) : prev);
-                      }
-                      e.currentTarget.value = '';
-                    }
-                  }}
-                  style={{
-                    flex: 1, minWidth: 150, border: "none", background: "transparent", outline: "none",
-                    fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text
-                  }}
-                />
+                  );
+                })}
               </div>
-              {/* Suggestions — the platform service offerings, minus ones
-                  already selected. Click to add. */}
-              {(() => {
-                const selectedSet = new Set(editForm.expertiseTags || []);
-                const suggestions = ALL_SERVICE_TYPES.map((t) => t.label).filter((t) => !selectedSet.has(t));
-                if (!suggestions.length) return null;
-                return (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Suggestions</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {suggestions.map((t) => (
-                        <button
-                          key={t}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setEditForm(prev => prev && !prev.expertiseTags.includes(t) ? ({ ...prev, expertiseTags: [...prev.expertiseTags, t] }) : prev);
-                          }}
-                          style={{ ...serviceTagStyle, background: "white", border: `1px dashed ${C.border}`, color: C.textMid, cursor: "pointer" }}
-                        >
-                          <Plus size={10} style={{ color: C.textMuted }} /> {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
+
+            {/* Discipline is a separate field from services, and this form PUTs
+                the profile with whole-array replace — so it must be editable
+                here too, or saving would send back a stale value. */}
+            <div>
+              <label style={labelStyle}>Disciplines</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {DISCIPLINES.map((d) => {
+                  const isSelected = (editForm.disciplines || []).includes(d);
+                  return (
+                    <button
+                      key={d}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setEditForm(prev => prev ? ({
+                          ...prev,
+                          disciplines: prev.disciplines.includes(d)
+                            ? prev.disciplines.filter(x => x !== d)
+                            : [...prev.disciplines, d],
+                        }) : prev);
+                      }}
+                      style={{
+                        ...serviceTagStyle,
+                        background: isSelected ? C.blueBg : "white",
+                        border: `1px ${isSelected ? "solid" : "dashed"} ${isSelected ? C.blueBorder : C.border}`,
+                        color: isSelected ? C.blue : C.textMid,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isSelected ? <Check size={10} /> : <Plus size={10} style={{ color: C.textMuted }} />} {DISCIPLINE_LABELS[d]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Visibility of the mentor's LinkedIn to students. Display-only —
+                students receive linkedinUrl as null when this is off. */}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={editForm.showLinkedin !== false}
+                onChange={(e) => setEditForm(prev => prev ? ({ ...prev, showLinkedin: e.target.checked }) : prev)}
+              />
+              <span style={{ fontSize: 12, color: C.textMid }}>Show LinkedIn to students</span>
+            </label>
+
           </div>
         )}
       </Drawer>
 
-      {pendingDeny && (
+      {/* Calendar not connected — approve confirm */}
+      {calPopoverMentor && (
         <Modal
           open
-          onClose={() => { setPendingDeny(null); setDenyReason(""); }}
-          title={`Deny ${pendingDeny.name}?`}
-          width={420}
+          onClose={() => setCalPopoverMentor(null)}
+          title="Calendar not connected"
+          width={380}
           footer={
             <>
-              <button onClick={() => { setPendingDeny(null); setDenyReason(""); }} style={secondaryBtn}>Cancel</button>
+              <button onClick={() => setCalPopoverMentor(null)} style={secondaryBtn}>Cancel</button>
               <button
-                onClick={() => {
-                  const m = pendingDeny;
-                  const reason = denyReason;
-                  setPendingDeny(null);
-                  setDenyReason("");
-                  denyMentor(m, reason);
-                }}
-                style={{ ...primaryBtn, background: C.red, borderColor: C.red }}
+                onClick={() => { const m = calPopoverMentor; setCalPopoverMentor(null); approveMentor(m); }}
+                style={{ ...primaryBtn, background: C.green, borderColor: C.green }}
               >
-                Confirm deny
+                Confirm
               </button>
             </>
           }
         >
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
-            Denying this mentor will reject their application and remove the MENTOR role from their account. Provide an optional reason.
-          </div>
-          <textarea
-            autoFocus
-            value={denyReason}
-            onChange={(e) => setDenyReason(e.target.value)}
-            placeholder="Reason for denial (optional)"
-            style={{ width: "100%", height: 80, padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", resize: "none", outline: "none", boxSizing: "border-box" }}
-          />
+          <p style={{ fontSize: 13, color: C.text, lineHeight: 1.65, margin: 0 }}>
+            This mentor hasn&apos;t connected their calendar yet. Approve and follow up during onboarding?
+          </p>
         </Modal>
       )}
+
+      {/* Deny modal — preset reasons + optional Waitlist */}
+      {pendingDeny && (() => {
+        const isWaitlist = denyOption === "waitlist";
+        const radioOpts: { value: typeof denyOption; label: string }[] = [
+          { value: "mismatch",      label: "Background mismatch" },
+          { value: "waitlist",      label: "Insufficient experience — move to Waitlist" },
+          { value: "unverifiable",  label: "Unverifiable materials" },
+          { value: "other",         label: "Other" },
+        ];
+        const reasonForOption = (): string => {
+          if (denyOption === "mismatch") return "Background mismatch";
+          if (denyOption === "unverifiable") return "Unverifiable materials";
+          return denyReason;
+        };
+        const radioStyle = (active: boolean): React.CSSProperties => ({
+          display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 12px",
+          borderRadius: 8, cursor: "pointer", border: `1px solid ${active ? C.blue : C.border}`,
+          background: active ? C.blueBg : "white", marginBottom: 6,
+        });
+        const reset = () => { setPendingDeny(null); setDenyOption("mismatch"); setDenyReason(""); };
+        return (
+          <Modal
+            open
+            onClose={reset}
+            title={`Deny Application — ${pendingDeny.name}`}
+            width={420}
+            footer={
+              <>
+                <button onClick={reset} style={secondaryBtn}>Cancel</button>
+                <button
+                  onClick={() => {
+                    const m = pendingDeny!;
+                    if (isWaitlist) {
+                      // No backend status for Waitlist yet — reflect it locally only.
+                      setMentorList((prev) => prev.map((x) => x.id === m.id ? { ...x, status: "Waitlist" } : x));
+                      if (selected?.id === m.id) setSelected((prev) => prev ? { ...prev, status: "Waitlist" } : prev);
+                      toast.success(`${m.name} moved to Waitlist`);
+                      reset();
+                    } else {
+                      const reason = reasonForOption();
+                      reset();
+                      denyMentor(m, reason);
+                    }
+                  }}
+                  style={{ ...primaryBtn, background: isWaitlist ? C.amber : C.red, borderColor: isWaitlist ? C.amber : C.red }}
+                >
+                  {isWaitlist ? "Move to Waitlist" : "Confirm deny"}
+                </button>
+              </>
+            }
+          >
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 10 }}>Reason</div>
+            {radioOpts.map((opt) => (
+              <div key={opt.value} style={radioStyle(denyOption === opt.value)} onClick={() => setDenyOption(opt.value)}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${denyOption === opt.value ? C.blue : C.border}`, background: denyOption === opt.value ? C.blue : "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                  {denyOption === opt.value && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white" }} />}
+                </div>
+                <span style={{ fontSize: 13, color: denyOption === opt.value ? C.blue : C.text, fontWeight: denyOption === opt.value ? 500 : 400 }}>{opt.label}</span>
+              </div>
+            ))}
+            {denyOption === "other" && (
+              <textarea
+                autoFocus
+                value={denyReason}
+                onChange={(e) => setDenyReason(e.target.value)}
+                placeholder="Describe the reason..."
+                style={{ width: "100%", height: 72, padding: "8px 10px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, fontFamily: "'Inter', sans-serif", color: C.text, outline: "none", resize: "none", boxSizing: "border-box" as const, marginTop: 4 }}
+              />
+            )}
+          </Modal>
+        );
+      })()}
 
       {loading && (
         <div style={{ position: "absolute", inset: 0, display: "none" }} />
@@ -1591,7 +2131,7 @@ function SessionsTab() {
       setSessionList((prev) => prev.map((s) => s.id === selected.id ? { ...s, mentorNote: noteDraft } : s));
       setSelected((s) => s ? { ...s, mentorNote: noteDraft } : s);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update note");
+      toast.error(apiErrorMessage(err, "Failed to update note"));
     } finally {
       setSavingNote(false);
     }
@@ -1616,7 +2156,7 @@ function SessionsTab() {
       setSessionList(content.map(mapApiBooking));
     } catch (err: any) {
       console.error("Failed to load bookings", err);
-      toast.error(err?.response?.data?.message || "Failed to load sessions");
+      toast.error(apiErrorMessage(err, "Failed to load sessions"));
     } finally {
       setLoading(false);
     }
@@ -1637,7 +2177,7 @@ function SessionsTab() {
       await loadBookings();
       setSelected(null);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to cancel session");
+      toast.error(apiErrorMessage(err, "Failed to cancel session"));
     }
   };
 
@@ -1665,7 +2205,7 @@ function SessionsTab() {
       setRescheduleTarget(null);
       await loadBookings();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to reschedule");
+      toast.error(apiErrorMessage(err, "Failed to reschedule"));
     } finally {
       setRescheduling(false);
     }
@@ -1791,6 +2331,28 @@ function SessionsTab() {
               <div style={{ padding: "8px 10px", background: C.amberBg, border: `1px solid ${C.amberBorder}`, borderRadius: 7, fontSize: 11, color: C.amber, display: "flex", alignItems: "center", gap: 6 }}>
                 <AlertTriangle size={12} /> Request is within 48-hour window
               </div>
+            )}
+            {selected.status === "Completed" && (
+              <>
+                <DrawerDivider />
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Session Recording</div>
+                {selected.recording ? (
+                  <a
+                    href={selected.recording.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: C.bgSubtle, border: `1px solid ${C.border}`, borderRadius: 8, textDecoration: "none", color: C.blue, fontSize: 12, fontWeight: 500 }}
+                  >
+                    <ExternalLink size={13} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.recording.label}</span>
+                    <span style={{ fontSize: 10, color: C.textMuted, flexShrink: 0 }}>{selected.recording.type === "link" ? "Link" : "File"}</span>
+                  </a>
+                ) : (
+                  <div style={{ padding: "10px 12px", background: C.bgSubtle, border: `1px dashed ${C.border}`, borderRadius: 8, fontSize: 12, color: C.textMuted }}>
+                    No recording uploaded by mentor yet.
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1979,7 +2541,7 @@ function DisputesTab() {
       setList(content.map(mapApiDispute));
     } catch (err: any) {
       console.error("Failed to load disputes", err);
-      toast.error(err?.response?.data?.message || "Failed to load disputes");
+      toast.error(apiErrorMessage(err, "Failed to load disputes"));
     } finally {
       setLoading(false);
     }
@@ -2000,7 +2562,7 @@ function DisputesTab() {
       await loadDisputes();
       setSelected(null);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update dispute");
+      toast.error(apiErrorMessage(err, "Failed to update dispute"));
     }
   };
 
@@ -2252,12 +2814,37 @@ function ServiceTypesTab() {
 
 export function MentorshipManagement() {
   const [tab, setTab] = useState<TabId>("mentors");
+  const [counts, setCounts] = useState<{ mentors?: number; sessions?: number; disputes?: number }>({});
+
+  // Best-effort tab counts. Failures are swallowed — a missing count just hides
+  // the badge rather than surfacing an error.
+  useEffect(() => {
+    let cancelled = false;
+    const readTotal = (res: { data?: { data?: { totalElements?: number } } }): number | undefined => {
+      const t = res?.data?.data?.totalElements;
+      return typeof t === "number" ? t : undefined;
+    };
+    (async () => {
+      const [m, s, d] = await Promise.allSettled([
+        listMentors({ page: 0, size: 1 }),
+        listBookings({ page: 0, size: 1 }),
+        listDisputes({ page: 0, size: 1 }),
+      ]);
+      if (cancelled) return;
+      setCounts({
+        mentors: m.status === "fulfilled" ? readTotal(m.value) : undefined,
+        sessions: s.status === "fulfilled" ? readTotal(s.value) : undefined,
+        disputes: d.status === "fulfilled" ? readTotal(d.value) : undefined,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: "mentors",       label: "Mentor directory" },
-    { id: "sessions",      label: "Sessions" },
+    { id: "mentors",       label: "Mentor directory", count: counts.mentors },
+    { id: "sessions",      label: "Sessions", count: counts.sessions },
     { id: "reschedule",    label: "Reschedule / Cancel", count: reschedules.filter((r) => r.status === "Requested").length },
-    { id: "disputes",      label: "Disputes" },
+    { id: "disputes",      label: "Disputes", count: counts.disputes },
     { id: "service-types", label: "Service types" },
   ];
 

@@ -17,7 +17,7 @@ const SITE_URL = (process.env.VITE_SITE_URL || 'https://www.screna.ai').replace(
 // and with PRERENDER_STATIC in scripts/routes.mjs, which
 // src/test/vercel-routes.test.ts asserts is the identical set.)
 //
-// /interview-insights and /marketplace sit behind the login wall, so they are
+// /interview-insights and /coaching sit behind the login wall, so they are
 // deliberately absent: advertising them in the sitemap just accrues
 // "crawled - currently not indexed" entries.
 const STATIC_PATHS = [

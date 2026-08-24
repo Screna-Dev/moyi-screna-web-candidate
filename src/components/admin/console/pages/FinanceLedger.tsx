@@ -6,15 +6,27 @@ import type { BadgeVariant } from "../ui/styles";
 import { FilterBar } from "../ui/FilterBar";
 import { Modal } from "../ui/Modal";
 import { EmptyState } from "../ui/EmptyState";
-import { exportSessionReport, adminPayoutSummary, markMentorPayoutsPaid } from "../../../../services/mentorshipAdminService";
+import { exportSessionReport, adminFinanceRows, markMentorPayoutsPaid } from "../../../../services/mentorshipAdminService";
 import { getMentorPaymentMethodAsAdmin } from "../../../../services/MentorService";
+import { apiErrorMessage } from "@/utils/apiError";
 
-type Status = "Ready to settle" | "Settled" | "Disputed";
+// Derived row statuses from GET /mentorship/admin/finance, precedence high→low.
+type ApiStatus = "REFUNDED" | "DISPUTED" | "SETTLED" | "READY_TO_SETTLE" | "PENDING";
+type Status = "Ready to settle" | "Settled" | "Disputed" | "Refunded" | "Pending";
+
+const STATUS_FROM_API: Record<ApiStatus, Status> = {
+  REFUNDED: "Refunded",
+  DISPUTED: "Disputed",
+  SETTLED: "Settled",
+  READY_TO_SETTLE: "Ready to settle",
+  PENDING: "Pending",
+};
 
 const statusVariant = (s: Status | string): BadgeVariant =>
   s === "Settled"         ? "green" :
   s === "Ready to settle" ? "blue"  :
-  s === "Disputed"        ? "red"   : "amber";
+  s === "Disputed"        ? "red"   :
+  s === "Refunded"        ? "red"   : "amber";
 
 type LedgerRow = {
   id: string;
@@ -22,56 +34,78 @@ type LedgerRow = {
   mentor: string;
   sessionId: string;
   student: string;
+  studentEmail: string;
   date: string;
   gross: number;
   fee: number;
   payout: number;
   stripe: string;
   status: Status;
+  // Only READY_TO_SETTLE rows are settleable; the server is authoritative.
+  eligible: boolean;
 };
 
 // API amount fields are in cents; the ledger displays dollars.
 const centsToDollars = (c: unknown) => (Number(c) || 0) / 100;
 const fmtMoney = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
-// GET /mentorship/admin/payouts returns a per-mentor aggregation, so each ledger
-// row is one mentor's pending- or paid-payout total (not a single session). The
-// session-level columns predate this endpoint and have no per-mentor equivalent,
-// so they render as "—".
-// Pages through every result so an unfiltered view shows ALL mentors, not just
-// the first page (the API caps page size at 100).
-const fetchAllPayouts = async (params: Record<string, any>) => {
+// Safety net so a huge ledger can't page forever. If it trips we tell the user
+// rather than silently showing a truncated table.
+const MAX_ROWS = 2000;
+const PAGE_SIZE = 100; // API maximum
+
+// Pages through the finance ledger. Returns the rows plus whether more exist
+// beyond the cap.
+const fetchAllFinance = async (params: Record<string, any>) => {
   const all: any[] = [];
   let page = 0;
-  while (page < 1000) {
-    const res = await adminPayoutSummary({ ...params, page, size: 100 });
+  let truncated = false;
+  while (true) {
+    const res = await adminFinanceRows({ ...params, page, size: PAGE_SIZE });
     const data = res?.data?.data;
     const content: any[] = data?.content || [];
     all.push(...content);
     const meta = data?.pageMeta;
     if (!meta || meta.last || content.length === 0) break;
+    if (all.length >= MAX_ROWS) { truncated = true; break; }
     page += 1;
   }
-  return all;
+  return { rows: all, truncated };
 };
 
-const mapSummaryRow = (item: any, status: Status): LedgerRow => {
-  const gross = Number(item?.totalAmountCents) || 0;
-  const payout = Number(item?.totalPayoutCents) || 0;
+const mapFinanceRow = (item: any): LedgerRow => {
+  const gross = Number(item?.grossCents) || 0;
+  const fee = Number(item?.platformFeeCents) || 0;
+  const payout = Number(item?.mentorPayoutCents) || 0;
+  const start = item?.sessionStartTime ? new Date(item.sessionStartTime) : null;
   return {
-    id: `${item?.mentorId}::${status === "Settled" ? "PAID" : "PENDING"}`,
+    id: item?.ledgerId || item?.bookingId || "",
     mentorId: item?.mentorId || "",
     mentor: item?.mentorName || "—",
-    sessionId: "—",
-    student: "—",
-    date: "—",
+    sessionId: item?.bookingId || "—",
+    student: item?.studentName || "—",
+    studentEmail: item?.studentEmail || "",
+    date: start && !isNaN(start.getTime())
+      ? start.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—",
     gross: centsToDollars(gross),
-    fee: centsToDollars(gross - payout),
+    fee: centsToDollars(fee),
     payout: centsToDollars(payout),
-    stripe: "—",
-    status,
+    stripe: item?.stripePaymentIntentId || "—",
+    status: STATUS_FROM_API[item?.status as ApiStatus] ?? "Pending",
+    eligible: !!item?.eligible,
   };
 };
+
+// Export periods accepted by GET /admin/reports/sessions. All are UTC-based and
+// relative to now — there is no arbitrary date range.
+const EXPORT_PERIODS = [
+  { value: "DAY",   label: "Today" },
+  { value: "WEEK",  label: "This week" },
+  { value: "MONTH", label: "This month" },
+  { value: "YEAR",  label: "This year" },
+] as const;
+type ExportPeriod = (typeof EXPORT_PERIODS)[number]["value"];
 
 const COLUMNS = ["Mentor", "Session ID", "Student", "Date", "Gross", "Platform fee (5%)", "Mentor payout", "Stripe record", "Status", "Payout method", "Actions"];
 
@@ -84,6 +118,8 @@ export function FinanceLedger() {
   const [hiddenCols, setHiddenCols] = useState<string[]>([]);
   const [kpiData, setKpiData] = useState({ grossCents: 0, feeCents: 0, unsettledCents: 0, pendingCount: 0, settledCents: 0, settledSessions: 0 });
   const [loadingPdf, setLoadingPdf] = useState<string | null>(null);
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("MONTH");
+  const [exporting, setExporting] = useState(false);
   // Per-mentor payment-method availability, prefetched so the Payout method
   // column can show "View PDF" vs "N/A" without the user having to click.
   //   undefined → still checking · false → no file on record · true → has a file
@@ -94,28 +130,27 @@ export function FinanceLedger() {
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
       const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
-      // Table rows = ALL pending + ALL paid (no date filter), so the unfiltered
-      // view shows every payout. KPIs that read "this month" use month-scoped
-      // fetches separately.
-      const [pending, paidAll, paidMonth, monthAll] = await Promise.all([
-        fetchAllPayouts({ status: "PENDING" }),
-        fetchAllPayouts({ status: "PAID" }),
-        fetchAllPayouts({ status: "PAID", from: monthStart, to: nextMonth }),
-        fetchAllPayouts({ from: monthStart, to: nextMonth }),
+      // Table = every session row (status filtering happens server-side when the
+      // user picks one). KPIs scoped to "this month" are a separate fetch, since
+      // from/to filter the ledger's createdAt rather than the session date.
+      const [all, monthRows] = await Promise.all([
+        fetchAllFinance({}),
+        fetchAllFinance({ from: monthStart, to: nextMonth }),
       ]);
-      setRows([
-        ...pending.map((i) => mapSummaryRow(i, "Ready to settle")),
-        ...paidAll.map((i) => mapSummaryRow(i, "Settled")),
-      ]);
-      // Prefetch payment-method availability for every mentor in the ledger so
-      // the Payout method column reflects has-PDF / N/A up front. Existence only
-      // — the actual (short-lived presigned) URL is fetched fresh on click.
-      const mentorIds = Array.from(
-        new Set([...pending, ...paidAll].map((i) => i?.mentorId).filter(Boolean))
-      );
-      mentorIds.forEach((mentorId) => {
+      setRows(all.rows.map(mapFinanceRow));
+      if (all.truncated) {
+        toast.warning(`Showing the most recent ${MAX_ROWS} payment rows — narrow the filters to see older ones.`);
+      }
+      if (monthRows.truncated) {
+        toast.warning("This month's totals are based on a capped result set and may be understated.");
+      }
+
+      // Prefetch payment-method availability per mentor (existence only — the
+      // presigned URL itself is fetched fresh on click).
+      const mentorIds = Array.from(new Set(all.rows.map((i: any) => i?.mentorId).filter(Boolean)));
+      mentorIds.forEach((mentorId: any) => {
         getMentorPaymentMethodAsAdmin(mentorId)
-          .then((res) => {
+          .then((res: any) => {
             const url = res?.data?.data?.url || res?.data?.url || "";
             setPdfAvailable((prev) => ({ ...prev, [mentorId]: !!url }));
           })
@@ -124,16 +159,22 @@ export function FinanceLedger() {
             setPdfAvailable((prev) => ({ ...prev, [mentorId]: false }));
           });
       });
+
+      const sum = (list: any[], key: string) => list.reduce((t, i) => t + (Number(i?.[key]) || 0), 0);
+      // Unsettled = money owed but not yet paid out. Refunded and disputed rows
+      // are excluded: neither is a payable obligation.
+      const unsettled = all.rows.filter((i: any) => i?.status === "READY_TO_SETTLE" || i?.status === "PENDING");
+      const settledThisMonth = monthRows.rows.filter((i: any) => i?.status === "SETTLED");
       setKpiData({
-        grossCents: monthAll.reduce((s, i) => s + (Number(i?.totalAmountCents) || 0), 0),
-        feeCents: monthAll.reduce((s, i) => s + ((Number(i?.totalAmountCents) || 0) - (Number(i?.totalPayoutCents) || 0)), 0),
-        unsettledCents: pending.reduce((s, i) => s + (Number(i?.totalPayoutCents) || 0), 0),
-        pendingCount: pending.length,
-        settledCents: paidMonth.reduce((s, i) => s + (Number(i?.totalPayoutCents) || 0), 0),
-        settledSessions: paidMonth.reduce((s, i) => s + (Number(i?.recordCount) || 0), 0),
+        grossCents: sum(monthRows.rows, "grossCents"),
+        feeCents: sum(monthRows.rows, "platformFeeCents"),
+        unsettledCents: sum(unsettled, "mentorPayoutCents"),
+        pendingCount: new Set(unsettled.map((i: any) => i?.mentorId).filter(Boolean)).size,
+        settledCents: sum(settledThisMonth, "mentorPayoutCents"),
+        settledSessions: settledThisMonth.length,
       });
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to load payouts");
+      toast.error(err?.response?.data?.message || "Failed to load finance rows");
     }
   }, []);
 
@@ -149,10 +190,14 @@ export function FinanceLedger() {
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   const confirmSettle = async () => {
-    const targets = rows.filter((r) => selected.includes(r.id) && r.status === "Ready to settle");
+    const targets = rows.filter((r) => selected.includes(r.id) && r.eligible);
+    // The settle endpoint works per MENTOR, not per session: it marks every
+    // eligible payout for that mentor as paid. So dedupe to one call per
+    // mentor — and note the effect can be wider than the rows ticked.
+    const mentorIds = Array.from(new Set(targets.map((r) => r.mentorId).filter(Boolean)));
     try {
-      await Promise.all(targets.map((r) => markMentorPayoutsPaid(r.mentorId)));
-      toast.success(`${targets.length} payout${targets.length > 1 ? "s" : ""} marked as settled via ${payoutMethod}`);
+      await Promise.all(mentorIds.map((id) => markMentorPayoutsPaid(id)));
+      toast.success(`Settled all eligible payouts for ${mentorIds.length} mentor${mentorIds.length === 1 ? "" : "s"} via ${payoutMethod}`);
       setSelected([]);
       setShowModal(false);
       await loadPayouts();
@@ -188,20 +233,27 @@ export function FinanceLedger() {
   };
 
   const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
     try {
-      const res = await exportSessionReport("MONTH");
+      const res = await exportSessionReport(exportPeriod);
       const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "session-report.xlsx";
+      // Name the file after the period so several exports don't overwrite
+      // each other in the downloads folder.
+      a.download = `session-report-${exportPeriod.toLowerCase()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast.success("Exporting to Excel...");
+      const label = EXPORT_PERIODS.find((p) => p.value === exportPeriod)?.label ?? exportPeriod;
+      toast.success(`Exported sessions for ${label.toLowerCase()}.`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to export report");
+      toast.error(apiErrorMessage(err, "Failed to export report"));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -310,11 +362,22 @@ export function FinanceLedger() {
                   <Check size={12} /> Settle {selected.length} selected
                 </button>
               )}
+              <select
+                value={exportPeriod}
+                onChange={(e) => setExportPeriod(e.target.value as ExportPeriod)}
+                title="Period covered by the exported report"
+                style={{ height: 28, padding: "0 8px", fontSize: 12, borderRadius: 6, border: `1px solid ${C.border}`, background: "white", color: C.text, cursor: "pointer", fontFamily: "'Inter', sans-serif", outline: "none" }}
+              >
+                {EXPORT_PERIODS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
               <button
                 onClick={handleExport}
-                style={secondaryBtn}
+                disabled={exporting}
+                style={{ ...secondaryBtn, opacity: exporting ? 0.5 : 1, cursor: exporting ? "not-allowed" : "pointer" }}
               >
-                <Download size={12} /> Export Excel
+                <Download size={12} /> {exporting ? "Exporting…" : "Export Excel"}
               </button>
             </div>
           }
@@ -331,8 +394,8 @@ export function FinanceLedger() {
                   <th style={{ ...TH, width: 36, textAlign: "center" as const, padding: "0 12px" }}>
                     <input
                       type="checkbox"
-                      checked={selected.length > 0 && selected.length === filtered.filter((r) => r.status === "Ready to settle").length}
-                      onChange={(e) => setSelected(e.target.checked ? filtered.filter((r) => r.status === "Ready to settle").map((r) => r.id) : [])}
+                      checked={selected.length > 0 && selected.length === filtered.filter((r) => r.eligible).length}
+                      onChange={(e) => setSelected(e.target.checked ? filtered.filter((r) => r.eligible).map((r) => r.id) : [])}
                       style={{ cursor: "pointer" }}
                     />
                   </th>
@@ -353,9 +416,9 @@ export function FinanceLedger() {
                       <input
                         type="checkbox"
                         checked={selected.includes(row.id)}
-                        onChange={() => row.status === "Ready to settle" && toggle(row.id)}
-                        disabled={row.status !== "Ready to settle"}
-                        style={{ cursor: row.status === "Ready to settle" ? "pointer" : "not-allowed", opacity: row.status === "Ready to settle" ? 1 : 0.3 }}
+                        onChange={() => row.eligible && toggle(row.id)}
+                        disabled={!row.eligible}
+                        style={{ cursor: row.eligible ? "pointer" : "not-allowed", opacity: row.eligible ? 1 : 0.3 }}
                       />
                     </td>
                     {!hiddenCols.includes("Mentor")            && <td style={{ ...TD, fontWeight: 600 }}>{row.mentor}</td>}
