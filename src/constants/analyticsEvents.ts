@@ -38,6 +38,12 @@ export const EVENTS = {
   MOCK_ABANDONED: 'mock_abandoned',
   MOCK_REPORT_GENERATED: 'mock_report_generated',
   MOCK_NEW_TITLES: 'mock_new_titles',
+  // Quick Mock one-click redesign (spec §6). The launcher lives on the Questions
+  // surfaces now, so these track it separately from MOCK_STARTED (fired by /ai-mock).
+  MOCK_COMPANY_CTA_CLICKED: 'mock_company_cta_clicked',
+  QUICK_MOCK_STARTED: 'quick_mock_started',
+  QUICK_MOCK_SETTINGS_OPENED: 'quick_mock_settings_opened',
+  QUICK_MOCK_SETTINGS_CHANGED: 'quick_mock_settings_changed',
 
   // 02b — Interview PrepNotes（面经社区）
   INTERVIEW_NOTES_BROWSED: 'interview_notes_browsed',

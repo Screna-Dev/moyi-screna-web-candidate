@@ -11,7 +11,6 @@ import {
   User,
   ShieldCheck,
   Users,
-  Bot,
   Target,
   BookOpen,
   ChevronRight,
@@ -45,7 +44,9 @@ type UserData = {
 const sidebarLinks = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Questions', path: '/interview-insights' },
-  { icon: Bot, label: 'Quick Mock', path: '/quick-mock', ai: true },
+  // Quick Mock has no sidebar entry any more — it launches from the Questions
+  // directory and from a company page (see components/newDesign/interview-insights/quick-mock).
+  // The /quick-mock route is kept for existing links.
   { icon: Target, label: 'Practices', path: '/personalized-practice', ai: true },
   { icon: Users, label: 'Coaching', path: '/coaching' },
 ];
@@ -112,8 +113,12 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
   const isLinkActive = (path: string) => {
     if (path === '/coaching') return currentPath === '/coaching' || currentPath === '/marketplace' || currentPath === '/mentor-details';
-    if (path === '/interview-insights') return currentPath.startsWith('/interview-insights');
-    if (path === '/quick-mock') return currentPath === '/quick-mock' || currentPath.includes('mock-interview') || currentPath.includes('ai-mock');
+    // Quick Mock now lives under Questions, so its routes light up that entry.
+    if (path === '/interview-insights') {
+      return currentPath.startsWith('/interview-insights')
+        || currentPath === '/quick-mock'
+        || currentPath.includes('mock-interview');
+    }
     if (path === '/personalized-practice') return currentPath === '/personalized-practice';
     if (path === '/contributions') return currentPath === '/contributions' || currentPath === '/dashboard/contributions';
     return currentPath === path;

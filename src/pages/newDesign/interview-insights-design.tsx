@@ -13,6 +13,7 @@ import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
 import { clearAllCompanyPostFilters } from "@/utils/companyPostFilters";
+import { QuickMockWidget } from "@/components/newDesign/interview-insights/quick-mock";
 import imgFaang from "@/assets/newDesign/cat-faang.png";
 import imgLargeEnt from "@/assets/newDesign/cat-large-ent.png";
 import imgMidSized from "@/assets/newDesign/cat-mid-sized.png";
@@ -467,6 +468,9 @@ export function InterviewInsightsPage() {
           </div>
         </div>
       </section>
+
+      {/* ── Quick Mock launcher — the entry point moved here from /quick-mock ── */}
+      <QuickMockWidget />
 
       <div className="space-y-16">
           {/* Category Tiles */}
