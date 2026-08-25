@@ -477,28 +477,24 @@ export function BillingTab() {
   const isLegacySubscription = Boolean(subscription?.isLegacyPlan) && isEntitled;
   const isPastDue = subscription?.status === 'past_due';
 
-  // Refund window anchors on `firstSubAt` — the *first ever* subscription — and
-  // the backend allows it only once, so renewals do NOT reopen it.
-  //
-  // ⚠️ `firstSubRefundUsed` is not exposed by the API, so a user who already
-  // refunded once and re-subscribed still looks eligible here. Copy therefore
-  // stays conditional ("if eligible") and the real outcome comes from polling
-  // after the call — see handleSubmitCancellation.
-  const REFUND_WINDOW_DAYS = 3;
+  // Whether cancelling right now refunds is the backend's verdict (`refundOnCancel`),
+  // computed with the same rule /cancel applies — including the one-time-refund
+  // flag that is deliberately not exposed. We used to approximate this from
+  // `firstSubAt` + 3 days, which promised a refund to anyone who had already
+  // used theirs and re-subscribed.
+  // It is also false once a cancellation is already scheduled or the sub ended,
+  // which is exactly when this entry point shouldn't offer a refund anyway.
+  const willRefundOnCancel = Boolean(subscription?.refundOnCancel);
   const firstSubMs = subscription?.firstSubAt
     ? new Date(subscription.firstSubAt).getTime()
     : null;
-  const maybeInRefundWindow =
-    firstSubMs !== null &&
-    !Number.isNaN(firstSubMs) &&
-    Date.now() - firstSubMs <= REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   const cancelState: CancelState =
     !subscription || subscription.status === 'canceled' || subscription.status === 'unpaid'
       ? 'canceled'
       : subscription.cancelAtPeriodEnd
         ? 'post_window'
-        : maybeInRefundWindow
+        : willRefundOnCancel
           ? 'refund_window'
           : 'active';
 
