@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, CheckCircle2, Download, Info,
-  Plus, X, Loader2, RotateCcw, Gift,
+  Plus, X, Loader2, RotateCcw, Gift, CreditCard, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription, hasEntitlement } from '@/hooks/useSubscription';
 import {
   markPendingCheckout, readPendingCheckout, clearPendingCheckout,
+  type PendingCheckoutKind,
 } from '@/utils/pendingCheckout';
 import { PaymentService } from '@/services';
 import { BuyCreditsModal } from './BuyCreditsModal';
@@ -39,6 +40,16 @@ interface UsageTxn {
   sourceType: string;
   description: string;
   createdAt: string;
+}
+// GET /payments/payment-method (backend change C6). `status` is the backend's
+// verdict against the NEXT renewal date, not "today" — never recompute it from
+// expMonth/expYear here. `NONE` means no saved card, not an error.
+interface PaymentMethodData {
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  status: 'VALID' | 'EXPIRES_BEFORE_RENEWAL' | 'EXPIRED' | 'NONE';
 }
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type PlanState  = 'free' | 'basic' | 'advanced' | 'flagship';
@@ -476,6 +487,10 @@ export function BillingTab() {
   const planState: PlanState = isEntitled ? subscription?.plan ?? 'free' : 'free';
   const isLegacySubscription = Boolean(subscription?.isLegacyPlan) && isEntitled;
   const isPastDue = subscription?.status === 'past_due';
+  // Legacy subscribers have planState 'free' (no current tier) but still own a
+  // live subscription — the module (and the payment-method fetch below) has to
+  // run so they can cancel it / update their card.
+  const isMember = planState !== 'free' || isLegacySubscription;
 
   // Whether cancelling right now refunds is the backend's verdict (`refundOnCancel`),
   // computed with the same rule /cancel applies — including the one-time-refund
@@ -704,9 +719,53 @@ export function BillingTab() {
   // balance, the usage ledger AND the invoice list, so they refresh together —
   // refreshing only the subscription is what left the invoice table stale after
   // an upgrade.
+  //
+  // Payment method is deliberately NOT included here: per the API doc it's a
+  // live Stripe round-trip (slower than everything else) and must not be
+  // cached, so it gets its own effect/loading state below rather than being
+  // bundled into a Promise.allSettled that every other mutation waits on.
   const refreshBilling = useCallback(async () => {
     await Promise.allSettled([refresh(), fetchCredits(), fetchUsage(), fetchInvoices()]);
   }, [refresh, fetchCredits, fetchUsage, fetchInvoices]);
+
+  // ── Payment method (real API: GET /payments/payment-method) ──────────────
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodData | null>(null);
+  const [pmLoading, setPmLoading] = useState(true);
+  const [pmError, setPmError] = useState(false);
+  const [isRetryingPayment, setIsRetryingPayment] = useState(false);
+
+  const fetchPaymentMethod = useCallback(async (): Promise<PaymentMethodData | null> => {
+    try {
+      const res = await PaymentService.getPaymentMethod();
+      const data = res.data?.data ?? res.data ?? {};
+      const pm: PaymentMethodData = {
+        brand: data.brand ?? null,
+        last4: data.last4 ?? null,
+        expMonth: data.expMonth ?? null,
+        expYear: data.expYear ?? null,
+        status: data.status ?? 'NONE',
+      };
+      if (mountedRef.current) {
+        setPaymentMethod(pm);
+        setPmError(false);
+      }
+      return pm;
+    } catch {
+      if (mountedRef.current) setPmError(true);
+      return null;
+    } finally {
+      if (mountedRef.current) setPmLoading(false);
+    }
+  }, []);
+
+  // Free users and fully-ended subscriptions get no card section — matches
+  // where the Subscription module itself is gated (`isMember`), and avoids a
+  // Stripe round-trip nobody asked for. Legacy/PAST_DUE users, who most need
+  // this, are still members.
+  useEffect(() => {
+    if (isMember) fetchPaymentMethod();
+    else { setPaymentMethod(null); setPmLoading(false); }
+  }, [isMember, fetchPaymentMethod]);
 
   // An upgrade's invoice is created by Stripe and reaches our DB via webhook, so
   // it may not exist yet when the tier call returns. Poll a few times, stopping
@@ -717,36 +776,59 @@ export function BillingTab() {
   // real payment only reaches our DB via webhook — so without this the user pays
   // and lands on "Free". The marker is written before we hand them to Stripe.
   const [checkoutPending, setCheckoutPending] = useState(false);
+  // Which flow checkoutPending/checkoutCancelled is confirming — only affects copy.
+  const [checkoutPendingKind, setCheckoutPendingKind] = useState<PendingCheckoutKind | null>(null);
   // Set when the user came back from Stripe without paying. Not an error — just
   // say nothing was charged.
   const [checkoutCancelled, setCheckoutCancelled] = useState(false);
+  const [checkoutCancelledKind, setCheckoutCancelledKind] = useState<PendingCheckoutKind | null>(null);
 
   useEffect(() => {
-    // `?checkout=success|cancelled` is the authoritative signal when the backend
-    // sends it; the sessionStorage marker is the fallback for today, when both
-    // Stripe URLs are identical. Read the param first and strip it so a refresh
-    // or a back-navigation doesn't replay the banner.
+    // The backend's `?checkout=` value is authoritative — the sessionStorage
+    // marker is only a fallback for a lost/cross-device param. Two shapes:
+    //   'success' / 'cancelled'            — generic, kind unknown from the URL
+    //   'card_success' / 'card_cancelled'  — the setup-session return, which
+    //     shares the billing page URL with subscription/credits Checkout and
+    //     so needs its OWN value to avoid being misread as a subscription
+    //     result (see the `?? { kind: 'subscription', ... }` fallback below).
+    // Extend this map, not the branches beneath it, if more flows need their
+    // own outcome value.
+    const CHECKOUT_PARAMS: Record<string, { outcome: 'success' | 'cancelled'; kind: PendingCheckoutKind | null }> = {
+      success: { outcome: 'success', kind: null },
+      cancelled: { outcome: 'cancelled', kind: null },
+      card_success: { outcome: 'success', kind: 'card' },
+      card_cancelled: { outcome: 'cancelled', kind: 'card' },
+    };
+
     const param = searchParams.get('checkout');
     if (param) {
       const next = new URLSearchParams(searchParams);
       next.delete('checkout');
       setSearchParams(next, { replace: true });
     }
+    const urlSignal = param ? CHECKOUT_PARAMS[param] ?? null : null;
 
-    if (param === 'cancelled') {
+    // A sessionStorage marker, if one survived, always wins on WHICH flow this
+    // is (it alone carries `last4Before`/`target`) — the URL only supplies the
+    // outcome plus a kind to fall back on when the marker didn't survive.
+    const marker = readPendingCheckout();
+
+    if (urlSignal?.outcome === 'cancelled') {
       clearPendingCheckout();
       setCheckoutCancelled(true);
+      setCheckoutCancelledKind(marker?.kind ?? urlSignal.kind);
       return;
     }
 
-    // Either the backend told us it succeeded, or we left a marker on the way out.
-    const pending = param === 'success'
-      ? readPendingCheckout() ?? { kind: 'subscription' as const, ts: Date.now() }
-      : readPendingCheckout();
-    if (!pending) return;
+    // Success (per the URL), or no URL signal at all — fall back to the marker.
+    const pending = marker ?? (urlSignal?.outcome === 'success'
+      ? { kind: urlSignal.kind ?? 'subscription' as const, ts: Date.now() }
+      : null);
+    if (!pending) return; // ordinary visit — nothing to confirm
 
     let cancelled = false;
     setCheckoutPending(true);
+    setCheckoutPendingKind(pending.kind);
     (async () => {
       try {
         if (pending.kind === 'credits') {
@@ -758,6 +840,15 @@ export function BillingTab() {
             await sleep(2000);
             const now = await fetchCredits();
             if (now !== null && before !== null && now !== before) break;
+          }
+        } else if (pending.kind === 'card') {
+          // The setup-session page doesn't charge anything and has no
+          // subscription-side field to poll — a changed `last4` is the only
+          // signal that the new card actually landed as the default.
+          for (let attempt = 0; attempt < 10 && !cancelled; attempt++) {
+            const pm = await fetchPaymentMethod();
+            if (pm?.last4 && pm.last4 !== pending.last4Before) break;
+            await sleep(2000);
           }
         } else {
           const settled = await waitForSubscription(s => hasEntitlement(s));
@@ -777,7 +868,13 @@ export function BillingTab() {
         if (!cancelled && mountedRef.current) {
           clearPendingCheckout();
           setCheckoutPending(false);
-          await Promise.allSettled([fetchCredits(), fetchInvoices()]);
+          // A card update also triggers an automatic retry-payment on the
+          // backend, so the subscription/credits/invoices can all have moved.
+          await Promise.allSettled(
+            pending.kind === 'card'
+              ? [refresh(), fetchCredits(), fetchInvoices()]
+              : [fetchCredits(), fetchInvoices()],
+          );
         }
       }
     })();
@@ -1001,6 +1098,68 @@ export function BillingTab() {
     fireToast('Subscription reactivated');
   };
 
+  // Update/add card → POST /payments/payment-method/setup-session. Stripe's
+  // hosted page does the actual card entry and validation — we never see the
+  // card number, and the 200 here only means a checkout session was created,
+  // not that the card changed yet (that lands via webhook after the redirect).
+  const handleUpdatePaymentMethod = async () => {
+    try {
+      const res = await PaymentService.createPaymentMethodSetupSession();
+      const url = res.data?.data?.url ?? res.data?.url;
+      if (!url) {
+        fireToast('Unable to start card update. Please try again.');
+        return;
+      }
+      markPendingCheckout('card', undefined, paymentMethod?.last4 ?? null);
+      window.location.href = url;
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ?? 'Unable to start card update. Please try again.';
+      fireToast(message);
+    }
+  };
+
+  // Immediately re-attempts the subscription's open invoice against the
+  // current default card. Stripe's own dunning retries are day-scale, so this
+  // exists for "I just fixed my card, don't make me wait" (and for a fresh
+  // card that was itself declined).
+  const handleRetryPayment = async () => {
+    setIsRetryingPayment(true);
+    try {
+      const res = await PaymentService.retryPayment();
+      const data = res.data?.data ?? res.data ?? {};
+      const outcome: 'PAID' | 'DECLINED' | 'REQUIRES_ACTION' | 'NO_OPEN_INVOICE' = data.outcome;
+      switch (outcome) {
+        case 'PAID': {
+          const settled = await waitForSubscription(s => s?.status === 'active');
+          await refreshBilling();
+          fireToast(settled ? 'Payment succeeded · your subscription is active' : 'Payment submitted · still processing, refresh in a moment');
+          break;
+        }
+        case 'REQUIRES_ACTION':
+          // 3DS/SCA challenge — cannot be completed off Stripe's page.
+          if (data.hostedInvoiceUrl) window.location.href = data.hostedInvoiceUrl;
+          break;
+        case 'DECLINED':
+          fireToast('That card was declined. Please update your payment method.');
+          break;
+        case 'NO_OPEN_INVOICE':
+          fireToast("Nothing to retry — there's no open invoice.");
+          break;
+        default:
+          fireToast('Unable to retry payment. Please try again.');
+      }
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })
+          ?.response?.data?.message ?? 'Unable to retry payment. Please try again.';
+      fireToast(message);
+    } finally {
+      setIsRetryingPayment(false);
+    }
+  };
+
   // subscription_cancel_clicked —— 点击「Cancel subscription」入口
   const trackCancelClicked = () => {
     safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCEL_CLICKED, {
@@ -1009,9 +1168,6 @@ export function BillingTab() {
     });
   };
 
-  // Legacy subscribers have planState 'free' (no current tier) but still own a
-  // live subscription — the module has to render so they can cancel it.
-  const isMember       = planState !== 'free' || isLegacySubscription;
   const isCanceled     = cancelState === 'canceled';
   const bannerCancelAtPeriod = isCanceled || cancelState === 'post_window';
 
@@ -1067,15 +1223,18 @@ export function BillingTab() {
           <div className="flex items-start gap-2.5">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
             <div>
-              <p className="text-sm font-medium text-foreground">Checkout canceled</p>
+              <p className="text-sm font-medium text-foreground">
+                {checkoutCancelledKind === 'card' ? 'Card update canceled' : 'Checkout canceled'}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Nothing was charged and your plan is unchanged. You can pick a plan again whenever
-                you're ready.
+                {checkoutCancelledKind === 'card'
+                  ? "Nothing was saved and your payment method is unchanged. You can update it again whenever you're ready."
+                  : "Nothing was charged and your plan is unchanged. You can pick a plan again whenever you're ready."}
               </p>
             </div>
           </div>
           <button
-            onClick={() => setCheckoutCancelled(false)}
+            onClick={() => { setCheckoutCancelled(false); setCheckoutCancelledKind(null); }}
             aria-label="Dismiss"
             className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -1090,10 +1249,13 @@ export function BillingTab() {
         <div className="flex items-start gap-2.5 rounded-xl border border-border bg-secondary px-4 py-3">
           <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin text-muted-foreground" />
           <div>
-            <p className="text-sm font-medium text-foreground">Confirming your payment…</p>
+            <p className="text-sm font-medium text-foreground">
+              {checkoutPendingKind === 'card' ? 'Confirming your new card…' : 'Confirming your payment…'}
+            </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              This usually takes a few seconds. If you closed the payment page without paying, nothing
-              was charged.
+              {checkoutPendingKind === 'card'
+                ? "This usually takes a few seconds. If you closed the page without saving a card, nothing changed."
+                : 'This usually takes a few seconds. If you closed the payment page without paying, nothing was charged.'}
             </p>
           </div>
         </div>
@@ -1148,6 +1310,26 @@ export function BillingTab() {
                           ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
                           : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
                   </p>
+                  {/* Main entry point for C6: a failed renewal is the primary
+                      reason a user would ever need to touch their card. */}
+                  {isPastDue && (
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <button
+                        onClick={handleUpdatePaymentMethod}
+                        className="text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors"
+                      >
+                        Update payment method
+                      </button>
+                      <button
+                        onClick={handleRetryPayment}
+                        disabled={isRetryingPayment}
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors disabled:opacity-60"
+                      >
+                        {isRetryingPayment && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Retry payment
+                      </button>
+                    </div>
+                  )}
                   {/* A retired plan can only be canceled — every tier and
                       billing-cycle change is rejected by the backend. */}
                   {isLegacySubscription && (
@@ -1292,8 +1474,7 @@ export function BillingTab() {
                     <div>
                       <p className="text-xs font-medium text-destructive">Cancel subscription</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        You're within 3 days of your first subscription — you may be eligible for a
-                        full refund.
+                        You're eligible for a full refund.
                       </p>
                     </div>
                     <button
@@ -1338,11 +1519,11 @@ export function BillingTab() {
                             <div className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 mb-3 border border-red-100">
                               <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                               <p className="text-xs text-muted-foreground leading-relaxed">
-                                If this subscription qualifies for the 3-day refund, you'll get{' '}
-                                <span className="text-foreground font-medium">{nextBillingAmount}</span> back to your
-                                original payment method (5–10 business days) and access ends right away. Otherwise
-                                access continues until {nextBillingDate} and simply won't renew. We'll confirm which
-                                applies once the cancellation goes through.
+                                {/* refundOnCancel is the backend's live verdict (checked when this panel opened),
+                                    so the outcome can be stated as fact rather than hedged. */}
+                                You'll get <span className="text-foreground font-medium">{nextBillingAmount}</span>{' '}
+                                back to your original payment method (5–10 business days) and access ends right
+                                away.
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -1521,6 +1702,97 @@ export function BillingTab() {
           </div>
         </div>
       </div>
+
+      {/* ════════════════════════════════════════════════════
+          MODULE 4 — Payment Method (backend change C6)
+          Hidden entirely for free / never-subscribed / fully-ended users —
+          mirrors the Subscription module's `isMember` gate, and there is
+          nothing to show (`status` would be NONE for them anyway).
+          ════════════════════════════════════════════════════ */}
+      {isMember && (
+        <div>
+          <SectionLabel>Payment method</SectionLabel>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            {pmLoading ? (
+              <div className="flex items-center gap-2.5 px-5 py-4 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading payment method…
+              </div>
+            ) : pmError ? (
+              // This section calls Stripe directly and independently of the
+              // rest of the page — its own failure must not block anything
+              // else, and shouldn't look like a billing problem.
+              <div className="flex items-center justify-between px-5 py-4">
+                <p className="text-sm text-muted-foreground">Couldn't load your payment method.</p>
+                <button
+                  onClick={() => { setPmLoading(true); fetchPaymentMethod(); }}
+                  className="text-xs font-medium text-primary hover:underline underline-offset-2"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : !paymentMethod || paymentMethod.status === 'NONE' ? (
+              // NONE means no saved card (e.g. legacy row from before we
+              // collected one) — for a member this is unusual, so still offer
+              // a way to add one rather than showing nothing at all.
+              <div className="flex items-center justify-between px-5 py-4">
+                <p className="text-sm text-muted-foreground">No payment method on file.</p>
+                <button
+                  onClick={handleUpdatePaymentMethod}
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors"
+                >
+                  Add payment method
+                </button>
+              </div>
+            ) : (
+              <div className="px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-7 rounded-lg flex items-center justify-center shrink-0 bg-secondary border border-border">
+                      <CreditCard className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {paymentMethod.brand ? titleCase(paymentMethod.brand) : 'Card'} ending in {paymentMethod.last4}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Expires {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleUpdatePaymentMethod}
+                    className="text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors shrink-0 ml-4"
+                  >
+                    Update card
+                  </button>
+                </div>
+
+                {/* `status` is the backend's verdict against the NEXT renewal
+                    date, not "today" — a card expiring after the next renewal
+                    is VALID and shows nothing here. */}
+                {paymentMethod.status === 'EXPIRES_BEFORE_RENEWAL' && (
+                  <div className="flex items-start gap-2 mt-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-100">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      This card expires before your next renewal
+                      {nextBillingDate ? ` on ${nextBillingDate}` : ''} — update it to avoid a failed payment.
+                    </p>
+                  </div>
+                )}
+                {paymentMethod.status === 'EXPIRED' && (
+                  <div className="flex items-start gap-2 mt-3 px-3 py-2.5 rounded-lg bg-red-50 border border-red-100">
+                    <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700 leading-relaxed">
+                      This card has expired. Update your payment method to keep your subscription active.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════════
           MODULE 5 — Invoices

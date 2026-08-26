@@ -12,6 +12,9 @@ const mockResumeSubscription = vi.fn();
 const mockGetInvoices = vi.fn();
 const mockGetCreditUsage = vi.fn();
 const mockCancelPendingDowngrade = vi.fn();
+const mockGetPaymentMethod = vi.fn();
+const mockCreatePaymentMethodSetupSession = vi.fn();
+const mockRetryPayment = vi.fn();
 
 vi.mock('@/services', () => ({
   PaymentService: {
@@ -25,6 +28,9 @@ vi.mock('@/services', () => ({
     createSubscription: vi.fn(),
     getCreditUsage: (...a: unknown[]) => mockGetCreditUsage(...a),
     getInvoices: (...a: unknown[]) => mockGetInvoices(...a),
+    getPaymentMethod: (...a: unknown[]) => mockGetPaymentMethod(...a),
+    createPaymentMethodSetupSession: (...a: unknown[]) => mockCreatePaymentMethodSetupSession(...a),
+    retryPayment: (...a: unknown[]) => mockRetryPayment(...a),
     purchaseCustomPack: vi.fn(),
     redeemCode: vi.fn(),
   },
@@ -58,6 +64,13 @@ beforeEach(() => {
         assignedHref = v;
       },
     },
+  });
+  // Payment method is its own live Stripe round-trip (C6) and most describe
+  // blocks below aren't testing it, so give it a harmless default everywhere
+  // — otherwise every member-state test would hit the unmocked-call fallback
+  // (pmError=true, rendered but assertionless) instead of a deliberate state.
+  mockGetPaymentMethod.mockResolvedValue({
+    data: { data: { brand: null, last4: null, expMonth: null, expYear: null, status: 'NONE' } },
   });
 });
 
@@ -327,7 +340,14 @@ describe('BillingTab — switch plan wiring', () => {
   // downgrade is, and used to be invisible here.
   it('surfaces a scheduled billing-cycle downgrade', async () => {
     mockGetSubscription.mockResolvedValue(
-      subscriptionRes({ memberPlan: 'ADVANCED_QUARTERLY', downgradePendingCycle: 'MONTHLY' }),
+      subscriptionRes({
+        memberPlan: 'ADVANCED_QUARTERLY',
+        // C1: the backend now sends `tier`/`billingCycle` as authoritative
+        // first-class fields, so the current cycle has to be stated explicitly
+        // here rather than relying on it being parsed out of `memberPlan`.
+        billingCycle: 'QUARTERLY',
+        downgradePendingCycle: 'MONTHLY',
+      }),
     );
     render(
       <MemoryRouter>
@@ -435,6 +455,9 @@ describe('BillingTab — switch plan wiring', () => {
     mockGetSubscription.mockResolvedValue(
       subscriptionRes({
         memberPlan: 'FLAGSHIP_QUARTERLY',
+        // C1: explicit `billingCycle` is authoritative now, so it has to match
+        // the scenario (currently quarterly) rather than the fixture default.
+        billingCycle: 'QUARTERLY',
         downgradePendingPlan: 'BASIC_MONTHLY',
       }),
     );
@@ -483,19 +506,20 @@ describe('BillingTab — cancel / reactivate wiring', () => {
 
   const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
 
-  // The refund window is anchored on firstSubAt (first ever subscription) and is
-  // one-time, so renewals do NOT reopen it. Whether the refund actually applies
-  // is only knowable after the call, so the copy stays conditional.
-  it('offers the refund path within 3 days of the FIRST subscription', async () => {
+  // C5: `refundOnCancel` is the backend's live verdict — it already folds in
+  // firstSubAt, the 3-day window, AND the one-time-refund flag we can't see.
+  // The frontend just reads it; it no longer derives a window from dates.
+  it('offers the refund path when the backend says refundOnCancel is true', async () => {
     const user = userEvent.setup();
     let canceled = false;
     mockCancelSubscription.mockImplementation(async () => {
       canceled = true;
-      return { data: {} };
+      return { data: { data: { outcome: 'REFUNDED_IMMEDIATELY', effectiveAt: new Date().toISOString() } } };
     });
     mockGetSubscription.mockImplementation(async () =>
       subscriptionRes({
         firstSubAt: daysAgo(1),
+        refundOnCancel: true,
         ...(canceled ? { status: 'CANCELED' } : {}),
       }),
     );
@@ -505,7 +529,7 @@ describe('BillingTab — cancel / reactivate wiring', () => {
       </MemoryRouter>,
     );
     await waitFor(() =>
-      expect(screen.getByText(/within 3 days of your first subscription/)).toBeInTheDocument(),
+      expect(screen.getByText("You're eligible for a full refund.")).toBeInTheDocument(),
     );
 
     await user.click(screen.getByRole('button', { name: 'Cancel and refund' }));
@@ -514,20 +538,23 @@ describe('BillingTab — cancel / reactivate wiring', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByText(/24 hours/)).not.toBeInTheDocument();
     expect(screen.queryByText(/email/i)).not.toBeInTheDocument();
-    // Conditional, because firstSubRefundUsed isn't exposed.
-    expect(await screen.findByText(/If this subscription qualifies/)).toBeInTheDocument();
+    // refundOnCancel already answered this, so the copy states the outcome as
+    // fact rather than hedging ("if this subscription qualifies…").
+    expect(await screen.findByText(/You'll get/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Confirm cancellation/ }));
     await waitFor(() => expect(mockCancelSubscription).toHaveBeenCalled());
-    // Polling saw status CANCELED → the refund path ran.
+    // The response's own `outcome` says REFUNDED_IMMEDIATELY — no need to infer
+    // it from polling the resulting status.
     expect(await screen.findByText(/refund on its way/)).toBeInTheDocument();
   });
 
-  // Renewals must NOT reopen the window: a long-time subscriber who just renewed
-  // has a recent currentPeriodStart but an old firstSubAt.
-  it('does not offer the refund path to a subscriber who merely renewed', async () => {
+  // A user who has already used their one-time refund and re-subscribed still
+  // has a recent-ish firstSubAt-adjacent history, but the backend's verdict is
+  // what governs — not a date computed on the frontend.
+  it('does not offer the refund path when refundOnCancel is false', async () => {
     mockGetSubscription.mockResolvedValue(
-      subscriptionRes({ firstSubAt: daysAgo(200), currentPeriodStart: daysAgo(1) }),
+      subscriptionRes({ firstSubAt: daysAgo(1), refundOnCancel: false }),
     );
     render(
       <MemoryRouter>
@@ -536,7 +563,7 @@ describe('BillingTab — cancel / reactivate wiring', () => {
     );
     await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
 
-    expect(screen.queryByText(/first subscription/)).not.toBeInTheDocument();
+    expect(screen.queryByText("You're eligible for a full refund.")).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel and refund' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeInTheDocument();
   });
@@ -548,11 +575,12 @@ describe('BillingTab — cancel / reactivate wiring', () => {
     let canceled = false;
     mockCancelSubscription.mockImplementation(async () => {
       canceled = true;
-      return { data: {} };
+      return { data: { data: { outcome: 'REFUNDED_IMMEDIATELY', effectiveAt: new Date().toISOString() } } };
     });
     mockGetSubscription.mockImplementation(async () =>
       subscriptionRes({
         firstSubAt: daysAgo(1),
+        refundOnCancel: true,
         ...(canceled ? { status: 'CANCELED' } : {}),
       }),
     );
@@ -570,6 +598,37 @@ describe('BillingTab — cancel / reactivate wiring', () => {
     await waitFor(() => expect(screen.queryByText(/Basic plan/)).not.toBeInTheDocument());
     // …but the refund message is still on screen.
     expect(await screen.findByText(/refund on its way/)).toBeInTheDocument();
+  });
+
+  // Race: GET said 'active' (no pending cancel) when this render happened, but
+  // by the time /cancel is called — another tab, or a click just ahead of a
+  // refresh — one is already scheduled. The response's own `outcome` must win
+  // over what this render's state implies, and ALREADY_SCHEDULED is defined as
+  // a no-op, so it skips polling for a state change entirely.
+  it('reports ALREADY_SCHEDULED as scheduled without polling for a state change', async () => {
+    const user = userEvent.setup();
+    mockCancelSubscription.mockResolvedValue({
+      data: { data: { outcome: 'ALREADY_SCHEDULED', effectiveAt: '2026-09-17T00:00:00Z' } },
+    });
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Basic plan/)).toBeInTheDocument());
+
+    const callsBefore = mockGetSubscription.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Cancel subscription' }));
+    const heading = await screen.findByText('Cancel subscription?');
+    await user.click(within(heading.parentElement!).getByRole('button', { name: 'Cancel subscription' }));
+
+    await waitFor(() => expect(mockCancelSubscription).toHaveBeenCalled());
+    // refreshBilling() still does its usual one re-read; what ALREADY_SCHEDULED
+    // skips is the multi-attempt poll loop (2s per attempt, up to 30s) that the
+    // other two outcomes require to confirm the write landed. Exactly +1 here
+    // means no poll ran; if it had, this would need several more calls.
+    await waitFor(() => expect(mockGetSubscription.mock.calls.length).toBe(callsBefore + 1));
   });
 
   it('offers no refund once the 3-day window has passed', async () => {
@@ -664,6 +723,45 @@ describe('BillingTab — Stripe Checkout return', () => {
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
   });
 
+  // setup-session (card update) shares this same billing-page URL with
+  // subscription/credits Checkout. Without its own `checkout` value, a lost
+  // sessionStorage marker (cross-device, private mode, TTL) would fall back to
+  // the generic 'success' → wrongly poll for subscription entitlement instead
+  // of a new card. `card_success`/`card_cancelled` close that gap.
+  it('treats card_success as the card flow even with no sessionStorage marker', async () => {
+    // Every mock here resolves instantly, so — same lesson as the payment-method
+    // describe block below — asserting the transient banner races the poll to
+    // completion. Freeze the fetch so "which banner" is actually observable.
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    mockGetPaymentMethod.mockImplementation(() => new Promise(() => {}));
+    renderAt('?tab=billing&checkout=card_success');
+
+    expect(await screen.findByText('Confirming your new card…')).toBeInTheDocument();
+    // Never claims a subscription outcome — this was never a subscription flow.
+    expect(screen.queryByText('Confirming your payment…')).not.toBeInTheDocument();
+  });
+
+  it('resolves the card_success flow once the poll observes a card', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    mockGetPaymentMethod.mockResolvedValue({
+      data: { data: { brand: 'visa', last4: '4242', expMonth: 11, expYear: 2026, status: 'VALID' } },
+    });
+    renderAt('?tab=billing&checkout=card_success');
+
+    await waitFor(() => expect(screen.getByText('Visa ending in 4242')).toBeInTheDocument());
+    expect(screen.queryByText('Confirming your new card…')).not.toBeInTheDocument();
+  });
+
+  it('shows card-specific copy for card_cancelled, not the generic checkout banner', async () => {
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    renderAt('?tab=billing&checkout=card_cancelled');
+
+    expect(await screen.findByText('Card update canceled')).toBeInTheDocument();
+    expect(screen.getByText(/payment method is unchanged/)).toBeInTheDocument();
+    expect(screen.queryByText('Checkout canceled')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing was charged/)).not.toBeInTheDocument();
+  });
+
   it('shows neither banner on a normal visit', async () => {
     mockGetSubscription.mockResolvedValue(subscriptionRes());
     renderAt('?tab=billing');
@@ -726,5 +824,205 @@ describe('BillingTab — legacy plans and payment states', () => {
     );
     // Module is hidden — no benefits left, so the upgrade banner takes over.
     await waitFor(() => expect(screen.queryByText(/Basic plan/)).not.toBeInTheDocument());
+  });
+});
+
+describe('BillingTab — payment method (backend change C6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    mockGetCredits.mockResolvedValue({
+      data: { data: { recurringCreditBalance: 10, permanentCreditBalance: 5 } },
+    });
+    mockGetCreditUsage.mockResolvedValue({ data: { data: { content: [], pageMeta: { last: true } } } });
+    mockGetInvoices.mockResolvedValue({ data: { data: { content: [] } } });
+  });
+
+  const pmRes = (over: Record<string, unknown> = {}) => ({
+    data: {
+      data: { brand: 'visa', last4: '4242', expMonth: 11, expYear: 2026, status: 'VALID', ...over },
+    },
+  });
+
+  it('shows the saved card for a member with a valid one', async () => {
+    mockGetPaymentMethod.mockResolvedValue(pmRes());
+    await renderBilling();
+
+    expect(await screen.findByText('Visa ending in 4242')).toBeInTheDocument();
+    expect(screen.getByText('Expires 11/2026')).toBeInTheDocument();
+    // VALID means no renewal risk — no warning banner.
+    expect(screen.queryByText(/expires before your next renewal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/has expired/)).not.toBeInTheDocument();
+  });
+
+  // `status` is the backend's verdict against the NEXT renewal date, not
+  // "today" — the frontend must not recompute this from expMonth/expYear.
+  it('warns when the card expires before the next renewal', async () => {
+    mockGetPaymentMethod.mockResolvedValue(pmRes({ status: 'EXPIRES_BEFORE_RENEWAL' }));
+    await renderBilling();
+
+    expect(await screen.findByText(/expires before your next renewal/)).toBeInTheDocument();
+  });
+
+  it('warns when the card has already expired', async () => {
+    mockGetPaymentMethod.mockResolvedValue(pmRes({ status: 'EXPIRED' }));
+    await renderBilling();
+
+    expect(await screen.findByText(/This card has expired/)).toBeInTheDocument();
+  });
+
+  // NONE means no saved card — not an error, and not the same UI as VALID.
+  it('offers to add a card when none is on file', async () => {
+    mockGetPaymentMethod.mockResolvedValue(
+      pmRes({ brand: null, last4: null, expMonth: null, expYear: null, status: 'NONE' }),
+    );
+    await renderBilling();
+
+    expect(await screen.findByText('No payment method on file.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add payment method' })).toBeInTheDocument();
+  });
+
+  // Free / never-subscribed users get no card section at all, and — since this
+  // hits Stripe directly — no wasted call either.
+  it('hides the section entirely for a free user and never calls the API', async () => {
+    mockGetSubscription.mockRejectedValue({
+      response: { status: 400, data: { message: 'Subscription not found' } },
+    });
+    render(
+      <MemoryRouter>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/Upgrade to Member/)).toBeInTheDocument());
+
+    expect(screen.queryByText('Payment method')).not.toBeInTheDocument();
+    expect(mockGetPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it('redirects to the Stripe setup session when updating the card', async () => {
+    const user = userEvent.setup();
+    mockGetPaymentMethod.mockResolvedValue(pmRes());
+    mockCreatePaymentMethodSetupSession.mockResolvedValue({
+      data: { data: { url: 'https://checkout.stripe.com/setup-session-123' } },
+    });
+    await renderBilling();
+
+    await user.click(await screen.findByRole('button', { name: 'Update card' }));
+
+    await waitFor(() => expect(assignedHref).toBe('https://checkout.stripe.com/setup-session-123'));
+  });
+
+  it("surfaces a failure to start the card update without navigating anywhere", async () => {
+    const user = userEvent.setup();
+    mockGetPaymentMethod.mockResolvedValue(pmRes());
+    mockCreatePaymentMethodSetupSession.mockRejectedValue({
+      response: { data: { message: 'Something went wrong' } },
+    });
+    await renderBilling();
+
+    await user.click(await screen.findByRole('button', { name: 'Update card' }));
+
+    await waitFor(() => expect(screen.getByText('Something went wrong')).toBeInTheDocument());
+    expect(assignedHref).toBeNull();
+  });
+
+  describe('PAST_DUE recovery entry points', () => {
+    beforeEach(() => {
+      mockGetSubscription.mockResolvedValue(subscriptionRes({ status: 'PAST_DUE' }));
+      mockGetPaymentMethod.mockResolvedValue(pmRes({ status: 'EXPIRED' }));
+    });
+
+    it('offers both update and retry from the past-due banner', async () => {
+      await renderBilling();
+
+      expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry payment' })).toBeInTheDocument();
+    });
+
+    it('retries payment and reports success once the subscription settles', async () => {
+      const user = userEvent.setup();
+      let paid = false;
+      mockRetryPayment.mockImplementation(async () => {
+        paid = true;
+        return { data: { data: { outcome: 'PAID', hostedInvoiceUrl: null } } };
+      });
+      mockGetSubscription.mockImplementation(async () =>
+        subscriptionRes({ status: paid ? 'ACTIVE' : 'PAST_DUE' }),
+      );
+      await renderBilling();
+
+      await user.click(screen.getByRole('button', { name: 'Retry payment' }));
+
+      expect(await screen.findByText(/Payment succeeded/)).toBeInTheDocument();
+    });
+
+    it('sends the user to complete 3DS when the retry requires action', async () => {
+      const user = userEvent.setup();
+      mockRetryPayment.mockResolvedValue({
+        data: { data: { outcome: 'REQUIRES_ACTION', hostedInvoiceUrl: 'https://invoice.stripe.com/i/abc' } },
+      });
+      await renderBilling();
+
+      await user.click(screen.getByRole('button', { name: 'Retry payment' }));
+
+      await waitFor(() => expect(assignedHref).toBe('https://invoice.stripe.com/i/abc'));
+    });
+
+    it('tells the user to replace a card that was declined on retry', async () => {
+      const user = userEvent.setup();
+      mockRetryPayment.mockResolvedValue({
+        data: { data: { outcome: 'DECLINED', hostedInvoiceUrl: null } },
+      });
+      await renderBilling();
+
+      await user.click(screen.getByRole('button', { name: 'Retry payment' }));
+
+      expect(await screen.findByText(/declined/)).toBeInTheDocument();
+    });
+  });
+
+  // Setup-session has no subscription-side field to poll — a changed `last4`
+  // is the only signal the new card actually became the default.
+  //
+  // Split into two: with every mock resolving instantly, the confirming banner
+  // and the settled result can both land within the same microtask flush, so
+  // asserting "banner shown, THEN new card, THEN banner gone" in one test is
+  // racing the poll rather than testing it. Pin the transient state with a
+  // deliberately-unresolved fetch, and the end state separately.
+  it('shows a confirming banner while the card-update poll is in flight', async () => {
+    mockGetPaymentMethod.mockImplementation(() => new Promise(() => {})); // never resolves
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    sessionStorage.setItem(
+      'pendingCheckout',
+      JSON.stringify({ kind: 'card', last4Before: '4242', ts: Date.now() }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=billing']}>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Confirming your new card…')).toBeInTheDocument();
+  });
+
+  it('shows the new card and clears the banner once the poll resolves', async () => {
+    mockGetPaymentMethod.mockResolvedValue(pmRes({ last4: '9999' }));
+    // The setup-session return also triggers an automatic retry-payment on the
+    // backend, which can move the subscription — refreshBilling() re-reads it.
+    mockGetSubscription.mockResolvedValue(subscriptionRes());
+    sessionStorage.setItem(
+      'pendingCheckout',
+      JSON.stringify({ kind: 'card', last4Before: '4242', ts: Date.now() }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=billing']}>
+        <BillingTab />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Visa ending in 9999')).toBeInTheDocument());
+    expect(screen.queryByText('Confirming your new card…')).not.toBeInTheDocument();
   });
 });
