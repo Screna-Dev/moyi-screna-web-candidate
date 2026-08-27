@@ -356,7 +356,9 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
 /* ─────────────────────────────────────────────
    PAGE: OVERVIEW
 ───────────────────────────────────────────── */
-function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) => void; onOpenBooking: (bookingId: string) => void }) {
+// onOpenBooking is unused while the schedule's message action is hidden — kept on the
+// props so restoring that button needs no plumbing changes.
+function OverviewPage({ onNavigate }: { onNavigate: (id: NavId) => void; onOpenBooking: (bookingId: string) => void }) {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
 
@@ -378,6 +380,10 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
     { label: 'Average Rating', value: profile?.averageRating != null ? String(profile.averageRating) : '—', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
   ];
+  // Messages aren't readable by the candidate yet and pending requests are shown in
+  // the schedule below, so both cards stay out of the row.
+  const hiddenSummaryCards = ['Unread Messages', 'Pending Requests'];
+  const visibleSummaryCards = summaryCards.filter(c => !hiddenSummaryCards.includes(c.label));
 
   const todaySessions = bookings.filter(b => b.date === 'Today' || b.date === 'Tomorrow').slice(0, 3);
 
@@ -406,17 +412,16 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {summaryCards.map(c => (
-          (c.label === 'Unread Messages' || c.label === 'Pending Requests') ? null : (
-            <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
-              <div className={`w-8 h-8 rounded-md ${c.bg} flex items-center justify-center`}>
-                <c.icon className={`w-4 h-4 ${c.color}`} />
-              </div>
-              <div className="text-xl font-semibold text-foreground leading-none">{c.value}</div>
-              <div className="text-xs text-muted-foreground">{c.label}</div>
+      {/* One column per visible card, so the row always fills its width. */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleSummaryCards.length}, minmax(0, 1fr))` }}>
+        {visibleSummaryCards.map(c => (
+          <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
+            <div className={`w-8 h-8 rounded-md ${c.bg} flex items-center justify-center`}>
+              <c.icon className={`w-4 h-4 ${c.color}`} />
             </div>
-          )
+            <div className="text-xl font-semibold text-foreground leading-none">{c.value}</div>
+            <div className="text-xs text-muted-foreground">{c.label}</div>
+          </div>
         ))}
       </div>
 
@@ -450,12 +455,16 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
                     >
                       Join
                     </button>
+                    {/* Message action hidden: the mentor's note isn't surfaced to the
+                        candidate anywhere yet, so writing one goes nowhere. Restore once
+                        the candidate side can read it.
                     <button
                       onClick={() => onOpenBooking(s.id)}
                       className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </button>
+                    */}
                   </div>
                 </div>
               ))}
@@ -1243,12 +1252,16 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
             {selectedBooking.status === 'confirmed' && (
               <div className="space-y-2">
                 <button className="w-full py-2 text-sm bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors">Join Session</button>
+                {/* "Message Member" hidden: the mentor note it writes isn't readable by
+                    the candidate yet. Restore together with the Overview message icon
+                    once the candidate side displays it.
                 <button
                   onClick={() => setNoteOpen(v => !v)}
                   className="w-full py-2 text-sm border border-border rounded-[var(--radius-sm)] text-muted-foreground hover:bg-secondary transition-colors"
                 >
                   {noteOpen ? 'Hide Note' : 'Message Member'}
                 </button>
+                */}
               </div>
             )}
             {noteOpen && selectedBooking.status === 'confirmed' && (
