@@ -105,14 +105,51 @@ describe('vercel.json route coverage', () => {
 // earlier version had `Disallow: /interview`, which prefix-matched and so
 // silently blocked /interview-insights.
 //
-// The file has a single `User-agent: *` group, so every rule line applies.
-const robotsRules = readFileSync('public/robots.txt', 'utf8')
-  .split('\n')
-  .map((l) => l.replace(/#.*$/, '').trim())
-  .flatMap((l) => {
-    const m = l.match(/^(Allow|Disallow):\s*(\S*)$/i);
-    return m && m[2] ? [{ allow: m[1].toLowerCase() === 'allow', pattern: m[2] }] : [];
-  });
+// The file has two groups — the social preview crawlers and `*` — so rules
+// cannot be flattened into one list. RFC 9309 §2.2.1: a crawler obeys only the
+// most specific group matching its product token, ignoring every other group.
+// Flattening would make /experience look crawlable by Googlebot, which is the
+// one thing the split exists to prevent.
+type RobotsRule = { allow: boolean; pattern: string };
+type RobotsGroup = { agents: string[]; rules: RobotsRule[] };
+
+const robotsGroups = (() => {
+  const groups: RobotsGroup[] = [];
+  // Consecutive User-agent lines share one rule block; the first rule line
+  // after them closes the header and starts a new group on the next agent.
+  let current: RobotsGroup | undefined;
+  let inHeader = false;
+
+  for (const raw of readFileSync('public/robots.txt', 'utf8').split('\n')) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+
+    const agent = line.match(/^User-agent:\s*(\S+)$/i);
+    if (agent) {
+      if (!current || !inHeader) {
+        current = { agents: [], rules: [] };
+        groups.push(current);
+        inHeader = true;
+      }
+      current.agents.push(agent[1].toLowerCase());
+      continue;
+    }
+
+    const rule = line.match(/^(Allow|Disallow):\s*(\S*)$/i);
+    if (rule && rule[2] && current) {
+      inHeader = false;
+      current.rules.push({ allow: rule[1].toLowerCase() === 'allow', pattern: rule[2] });
+    }
+  }
+  return groups;
+})();
+
+// Exact product-token match wins over the `*` catch-all.
+const rulesFor = (ua: string): RobotsRule[] => {
+  const token = ua.toLowerCase();
+  const exact = robotsGroups.find((g) => g.agents.includes(token));
+  return (exact ?? robotsGroups.find((g) => g.agents.includes('*')))?.rules ?? [];
+};
 
 // A `$` suffix anchors the end of the path; `*` matches any run of characters.
 const robotsMatcher = (pattern: string) => {
@@ -122,9 +159,9 @@ const robotsMatcher = (pattern: string) => {
   return new RegExp('^' + escaped + (anchored ? '$' : ''));
 };
 
-const isCrawlable = (path: string) => {
+const isCrawlable = (path: string, ua = '*') => {
   let winner: { allow: boolean; length: number } | undefined;
-  for (const rule of robotsRules) {
+  for (const rule of rulesFor(ua)) {
     if (!robotsMatcher(rule.pattern).test(path)) continue;
     const length = rule.pattern.length;
     // Longest pattern wins; on a tie Allow wins.
@@ -136,9 +173,15 @@ const isCrawlable = (path: string) => {
 };
 
 describe('robots.txt', () => {
-  it('parses into rules', () => {
-    expect(robotsRules.length).toBeGreaterThan(5);
-    expect(robotsRules.some((r) => !r.allow && r.pattern === '/')).toBe(true);
+  it('parses into groups, each ending in the catch-all Disallow', () => {
+    expect(robotsGroups.length).toBe(2);
+    for (const g of robotsGroups) {
+      expect(g.rules.length).toBeGreaterThan(5);
+      expect(
+        g.rules.some((r) => !r.allow && r.pattern === '/'),
+        `group [${g.agents}] has no catch-all Disallow, so it opens the whole site`,
+      ).toBe(true);
+    }
   });
 
   it.each(PRERENDER_STATIC)('leaves the public route %s crawlable', (p) => {
@@ -170,5 +213,69 @@ describe('robots.txt', () => {
     '/onboarding-flow',
   ])('keeps the app route %s out of the index', (p) => {
     expect(isCrawlable(p), `robots.txt still allows crawling ${p}`).toBe(false);
+  });
+});
+
+// /experience/:id is served to social crawlers as a server-rendered Open Graph
+// document by middleware.ts, and to everyone else as the SPA route, whose post
+// data needs a bearer token. So it must be crawlable by exactly the first set
+// and no one else: blocked for LinkedIn means "Cannot display preview" on every
+// shared link, open to Googlebot means indexing a logged-out empty page.
+const socialAgents = robotsGroups.find((g) => !g.agents.includes('*'))!.agents;
+const EXPERIENCE_URL = '/experience/9dc86733-4682-4085-80a3-eb7629b87706';
+
+describe('robots.txt — /experience social previews', () => {
+  it.each(socialAgents)('lets %s fetch a shared experience', (ua) => {
+    expect(
+      isCrawlable(EXPERIENCE_URL, ua),
+      `${ua} is blocked from ${EXPERIENCE_URL} — link previews will fail`,
+    ).toBe(true);
+  });
+
+  // The og:image is absolute (https://www.screna.ai/og-image.png). Because the
+  // social group replaces `*` rather than extending it, forgetting the asset
+  // allows there yields a card with a broken image.
+  it.each(socialAgents)('lets %s fetch the og:image and rendering assets', (ua) => {
+    for (const p of ['/og-image.png', '/assets/index-abc123.css']) {
+      expect(isCrawlable(p, ua), `${ua} is blocked from ${p}`).toBe(true);
+    }
+  });
+
+  it.each(['Googlebot', 'bingbot', '*'])('keeps %s off the experience route', (ua) => {
+    expect(
+      isCrawlable(EXPERIENCE_URL, ua),
+      `${ua} can crawl ${EXPERIENCE_URL}, which renders empty without a login`,
+    ).toBe(false);
+  });
+
+  // "Allow: /experience" is a prefix rule. It must not be read as opening the
+  // authoring page, which is a different route that happens to contain the word.
+  it('does not open /add-experience to anyone', () => {
+    for (const ua of [...socialAgents, 'Googlebot', '*']) {
+      expect(isCrawlable('/add-experience', ua), `${ua} can crawl /add-experience`).toBe(false);
+    }
+  });
+
+  // The robots group and the middleware regex are two hand-maintained copies of
+  // the same list. If they drift, a bot gets the OG document but is forbidden to
+  // request it, or is allowed in and served the empty SPA.
+  it('matches the CRAWLER_UA list in middleware.ts', () => {
+    const src = readFileSync('middleware.ts', 'utf8');
+    const body = src.match(/const CRAWLER_UA\s*=\s*\n?\s*\/([^/]+)\/i/)![1];
+    const tokens = body.split('|').map((t: string) => t.toLowerCase());
+    expect(tokens.sort()).toEqual([...socialAgents].sort());
+  });
+
+  // Every path the general crawlers may read, the social crawlers may read too.
+  // Guards the copy-paste: a page added to `*` only would be unpreviewable.
+  it('never lets the * group outgrow the social group', () => {
+    const socialAllows = new Set(
+      robotsGroups.find((g) => !g.agents.includes('*'))!.rules.filter((r) => r.allow).map((r) => r.pattern),
+    );
+    const missing = robotsGroups
+      .find((g) => g.agents.includes('*'))!
+      .rules.filter((r) => r.allow && !socialAllows.has(r.pattern))
+      .map((r) => r.pattern);
+    expect(missing, `social crawlers are missing Allow rules present in *: ${missing}`).toEqual([]);
   });
 });
