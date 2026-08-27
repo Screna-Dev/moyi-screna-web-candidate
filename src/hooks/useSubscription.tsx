@@ -26,9 +26,15 @@ export interface SubscriptionData {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   canceledAt: string | null;
-  // First-ever subscription date; not refreshed on re-subscribe. Anchors the
-  // 3-day refund window. Null on older rows.
+  // First-ever subscription date; not refreshed on re-subscribe. Informational
+  // only — do NOT derive the refund window from it, use `refundOnCancel`.
   firstSubAt: string | null;
+  // Backend's verdict on what a cancel would do right now: true = immediate
+  // cancel + full refund, false = scheduled for period end. Computed with the
+  // same rule /cancel uses, including the one-time-refund check we can't see.
+  // Time-sensitive (flips when the window closes) — re-read before showing a
+  // confirmation.
+  refundOnCancel: boolean;
   // Scheduled downgrade (tier or cycle). Backend field: `downgradePendingPlan`.
   // Stored here as separate normalized fields for the UI.
   downgradePendingTier?: Tier | null;
@@ -71,13 +77,19 @@ export interface ChangeResult {
   url: string | null;
 }
 
-// Cancel has two backend paths that return byte-identical responses, so the only
-// way to know which ran is to poll and look at the resulting state.
+// /cancel now reports which of its two paths ran, so there's no need to infer it
+// from the resulting state.
+export type CancelOutcome =
+  | 'REFUNDED_IMMEDIATELY'    // ended now + full refund; credits reclaimed
+  | 'SCHEDULED_AT_PERIOD_END' // no refund; access until effectiveAt
+  | 'ALREADY_SCHEDULED';      // was already pending — no-op
+
 export interface CancelResult {
   ok: boolean;
   settled: boolean;
-  // true  → immediate cancel + full refund (inside the one-time 3-day window)
-  // false → scheduled: access continues to the end of the period
+  outcome: CancelOutcome | null;   // null only when the call itself failed
+  effectiveAt: string | null;
+  // Convenience mirror of outcome === 'REFUNDED_IMMEDIATELY'.
   refunded: boolean;
 }
 
@@ -90,7 +102,6 @@ interface UseSubscriptionResult {
   refresh: () => Promise<void>;
   subscribe: (plan: Tier, billingCycle: BillingCycle) => Promise<string | null>;
   changeTier: (plan: Tier) => Promise<ChangeResult>;
-  changeBillingCycle: (billingCycle: BillingCycle) => Promise<ChangeResult>;
   cancelPendingDowngrade: () => Promise<boolean>;
   cancel: () => Promise<CancelResult>;
   resume: () => Promise<ChangeResult>;
@@ -154,6 +165,7 @@ interface RawSubscription {
   currency?: string;
   firstSubAt?: string | null;
   updatedAt?: string | null;
+  refundOnCancel?: boolean;
 }
 
 const TIER_VALUES: ReadonlySet<string> = new Set(['basic', 'advanced', 'flagship']);
@@ -181,19 +193,24 @@ const parseMemberPlan = (
 const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | null => {
   if (!raw) return null;
 
-  // Parse the combined memberPlan first, then fall back to split fields —
-  // which may themselves hold a combined "TIER_CYCLE" value, so run them
-  // through the same parser.
-  const fromCombined = parseMemberPlan(raw.memberPlan);
+  // The backend now sends `tier` and `billingCycle` as first-class fields
+  // (change C1), so prefer those. `memberPlan` parsing stays as the fallback for
+  // rows/deploys that predate it, and because `memberPlan` is retained after a
+  // subscription ends — which is what names the plan in "your Advanced ended"
+  // copy, where `tier` has already been reset to FREE.
   const rawTier = raw.tier ?? raw.plan;
+  const fromCombined = parseMemberPlan(raw.memberPlan);
   const fromSplit = parseMemberPlan(typeof rawTier === 'string' ? rawTier : null);
-  const plan: Tier | null = fromCombined.tier ?? fromSplit.tier;
+  const explicitTier = toKnown<Tier>(raw.tier, TIER_VALUES);
+  const explicitCycle = toKnown<BillingCycle>(raw.billingCycle, CYCLE_VALUES);
+  const plan: Tier | null = explicitTier ?? fromCombined.tier ?? fromSplit.tier;
   const billingCycle: BillingCycle | null =
-    fromCombined.cycle ?? fromSplit.cycle ?? toKnown<BillingCycle>(raw.billingCycle, CYCLE_VALUES);
+    explicitCycle ?? fromCombined.cycle ?? fromSplit.cycle;
   const status = toLower<SubscriptionStatus>(raw.status);
 
-  // `status` is the only field that must be present — it's what makes this a
-  // record rather than the 400 "Subscription not found" that means Free.
+  // `status` is the only field that must be present — it's what marks this as a
+  // real record. Users who never subscribed come back as `status: null` (and
+  // `tier: "FREE"`) since change C1, and as a 400 before it; both land here.
   //
   // A retired tier (STARTER / PREMIUM) leaves `plan` null. It used to make this
   // return null too, which hid the entire subscription — including the cancel
@@ -229,6 +246,7 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
     cancelAtPeriodEnd: Boolean(raw.cancelAtPeriodEnd),
     canceledAt: raw.canceledAt ?? null,
     firstSubAt: raw.firstSubAt ?? null,
+    refundOnCancel: Boolean(raw.refundOnCancel),
     downgradePendingTier: pendingTierExplicit ?? pending.tier,
     downgradePendingCycle: pendingCycleExplicit ?? pending.cycle,
     nextBillingAmount: raw.nextBillingAmount ?? null,
@@ -412,31 +430,13 @@ export function useSubscription(): UseSubscriptionResult {
     [toast, waitForSubscription],
   );
 
-  // Same async contract as changeTier.
-  const changeBillingCycleAction = useCallback(
-    async (billingCycle: BillingCycle): Promise<ChangeResult> => {
-      setIsActing(true);
-      try {
-        const res = await PaymentService.changeBillingCycle(billingCycle);
-        const url = (unwrap(res) as { url?: string } | null)?.url ?? null;
-        if (url) return { ok: true, settled: false, url };
-        const settled = await waitForSubscription(
-          s => s?.billingCycle === billingCycle || s?.downgradePendingCycle === billingCycle,
-        );
-        return { ok: true, settled: settled !== null, url: null };
-      } catch (e) {
-        toast({
-          title: 'Billing cycle change failed',
-          description: errMsg(e, 'Unable to change billing cycle'),
-          variant: 'destructive',
-        });
-        return { ok: false, settled: false, url: null };
-      } finally {
-        setIsActing(false);
-      }
-    },
-    [toast, waitForSubscription],
-  );
+  // NOTE: there is deliberately no `changeBillingCycle` action here.
+  // POST /payments/subscriptions/billing-cycle was retired (backend change C4):
+  // the route is no longer registered and now answers 404. Current tiers only
+  // have MONTHLY pricing, so no request could ever have succeeded. The backend
+  // logic is kept for when quarterly pricing ships — re-add this action then,
+  // with the same async contract as changeTier (longer cycle = immediate +
+  // prorated, shorter = end of period).
 
   // The one write the backend commits before responding — a plain refresh is
   // enough, no polling.
@@ -458,28 +458,52 @@ export function useSubscription(): UseSubscriptionResult {
     }
   }, [toast, refresh]);
 
-  // Two backend paths, identical responses:
-  //   • inside the one-time 3-day window → refund + immediate end (status CANCELED)
-  //   • otherwise                        → cancelAtPeriodEnd = true
-  // Poll until either shows up and report which happened, so the UI can tell the
-  // user what actually occurred rather than guessing from a date.
+  // The response now states which path ran, so we read `outcome` instead of
+  // inferring it. Polling is still needed, but only to confirm the write landed:
+  //   REFUNDED_IMMEDIATELY    → status becomes CANCELED
+  //   SCHEDULED_AT_PERIOD_END → cancelAtPeriodEnd becomes true
+  //   ALREADY_SCHEDULED       → nothing changes, so don't wait at all
   const cancelAction = useCallback(async (): Promise<CancelResult> => {
     setIsActing(true);
     try {
-      await PaymentService.cancelSubscription();
-      // A refunded cancellation ends the subscription outright (status CANCELED,
-      // the row still exists); the scheduled path leaves it ACTIVE with the flag.
+      const res = await PaymentService.cancelSubscription();
+      const body = unwrap(res) as { outcome?: CancelOutcome; effectiveAt?: string | null } | null;
+      // Absent outcome = backend predates change C5; fall back to observing the
+      // state, which is what we used to do.
+      const outcome: CancelOutcome | null = body?.outcome ?? null;
+      const effectiveAt = body?.effectiveAt ?? null;
+
+      if (outcome === 'ALREADY_SCHEDULED') {
+        return { ok: true, settled: true, outcome, effectiveAt, refunded: false };
+      }
+
       const settled = await waitForSubscription(
-        s => s?.status === 'canceled' || s?.cancelAtPeriodEnd === true,
+        outcome === 'REFUNDED_IMMEDIATELY'
+          ? s => s?.status === 'canceled'
+          : outcome === 'SCHEDULED_AT_PERIOD_END'
+            ? s => s?.cancelAtPeriodEnd === true
+            : s => s?.status === 'canceled' || s?.cancelAtPeriodEnd === true,
       );
-      return { ok: true, settled: settled !== null, refunded: settled?.status === 'canceled' };
+      return {
+        ok: true,
+        settled: settled !== null,
+        outcome: outcome ?? (settled?.status === 'canceled'
+          ? 'REFUNDED_IMMEDIATELY'
+          : settled
+            ? 'SCHEDULED_AT_PERIOD_END'
+            : null),
+        effectiveAt: effectiveAt ?? settled?.currentPeriodEnd ?? null,
+        refunded: outcome
+          ? outcome === 'REFUNDED_IMMEDIATELY'
+          : settled?.status === 'canceled',
+      };
     } catch (e) {
       toast({
         title: 'Cancellation failed',
         description: errMsg(e, 'Unable to cancel subscription'),
         variant: 'destructive',
       });
-      return { ok: false, settled: false, refunded: false };
+      return { ok: false, settled: false, outcome: null, effectiveAt: null, refunded: false };
     } finally {
       setIsActing(false);
     }
@@ -512,7 +536,6 @@ export function useSubscription(): UseSubscriptionResult {
     refresh,
     subscribe,
     changeTier: changeTierAction,
-    changeBillingCycle: changeBillingCycleAction,
     cancelPendingDowngrade: cancelPendingDowngradeAction,
     cancel: cancelAction,
     resume: resumeAction,
