@@ -158,47 +158,52 @@ function pageWindow(current: number, total: number): (number | 'gap')[] {
 function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
 
-  const btn = (disabled: boolean, active = false) => ({
-    minWidth: '36px',
-    height: '36px',
-    padding: '0 8px',
+  // Borderless: numbers sit as bare text, the active page gets a soft circle.
+  const cell = {
+    width: '32px',
+    height: '32px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '8px',
-    border: `1px solid ${active ? '#3c77f6' : '#e1e4ea'}`,
-    background: active ? '#3c77f6' : '#ffffff',
-    color: active ? '#ffffff' : '#344054',
+    borderRadius: '9999px',
     fontFamily: 'var(--font-sans)',
     fontSize: '13px',
-    fontWeight: active ? 600 : 500,
-    opacity: disabled ? 0.4 : 1,
-    cursor: disabled ? 'not-allowed' : 'pointer',
+  };
+
+  const arrow = (disabled: boolean) => ({
+    ...cell,
+    color: disabled ? '#c3c8d2' : '#667085',
+    cursor: disabled ? 'default' : 'pointer',
   });
 
   return (
-    <nav aria-label="Mentor list pages" className="flex items-center justify-center" style={{ marginTop: '32px', gap: '6px', flexWrap: 'wrap' }}>
+    <nav aria-label="Mentor list pages" className="flex items-center justify-center" style={{ marginTop: '32px', gap: '2px', flexWrap: 'wrap' }}>
       <button
         onClick={() => onChange(page - 1)}
         disabled={page === 0}
         aria-label="Previous page"
-        className="transition-colors"
-        style={btn(page === 0)}
+        className={page === 0 ? '' : 'transition-colors hover:text-foreground'}
+        style={arrow(page === 0)}
       >
         <ChevronLeft style={{ width: '16px', height: '16px' }} />
       </button>
 
       {pageWindow(page, totalPages).map((p, i) =>
         p === 'gap' ? (
-          <span key={`gap-${i}`} style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: '#98a2b3', padding: '0 2px' }}>…</span>
+          <span key={`gap-${i}`} style={{ ...cell, width: '20px', color: '#98a2b3' }}>…</span>
         ) : (
           <button
             key={p}
             onClick={() => onChange(p)}
             aria-current={p === page ? 'page' : undefined}
             aria-label={`Page ${p + 1}`}
-            className="transition-colors"
-            style={btn(false, p === page)}
+            className={p === page ? '' : 'transition-colors hover:bg-secondary'}
+            style={{
+              ...cell,
+              background: p === page ? 'color-mix(in srgb, #3c77f6 10%, transparent)' : 'transparent',
+              color: p === page ? '#3c77f6' : '#667085',
+              fontWeight: p === page ? 600 : 400,
+            }}
           >
             {p + 1}
           </button>
@@ -209,8 +214,8 @@ function Pagination({ page, totalPages, onChange }: { page: number; totalPages: 
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages - 1}
         aria-label="Next page"
-        className="transition-colors"
-        style={btn(page >= totalPages - 1)}
+        className={page >= totalPages - 1 ? '' : 'transition-colors hover:text-foreground'}
+        style={arrow(page >= totalPages - 1)}
       >
         <ChevronRight style={{ width: '16px', height: '16px' }} />
       </button>
