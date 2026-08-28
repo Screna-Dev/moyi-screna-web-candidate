@@ -896,7 +896,7 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
                       key: 'min' as const,
                     },
                     {
-                      placeholder: 'AM',
+                      placeholder: 'AM/PM',
                       options: [{ label: 'AM', value: 'AM' }, { label: 'PM', value: 'PM' }],
                       key: 'ampm' as const,
                     },
@@ -3822,7 +3822,7 @@ function EarningsPage() {
         </div>
 
         {/* Tab bar — pill style */}
-        <div className="flex items-center gap-[4px]">
+        {/* <div className="flex items-center gap-[4px]">
           {(['Cash', 'Credits'] as const).map(t => (
             <button
               key={t}
@@ -3841,7 +3841,7 @@ function EarningsPage() {
               {t === 'Credits' ? 'Referral Credits' : t}
             </button>
           ))}
-        </div>
+        </div> */}
 
         {/* ── Cash earnings ── */}
         {eTab === 'Cash' && (
@@ -4515,7 +4515,7 @@ const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: nu
   { id: 'profile',      label: 'Profile & Availability', icon: User, required: true },
   { id: 'reviews',      label: 'Reviews',      icon: Star },
   { id: 'earnings',     label: 'Earnings',     icon: DollarSign },
-  { id: 'referral',     label: 'Referral',     icon: Gift },
+  // { id: 'referral',     label: 'Referral',     icon: Gift },
 ];
 
 /* ─────────────────────────────────────────────
