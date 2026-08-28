@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router';
-import { ChevronDown, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Check, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { WidePageContainer } from '@/components/newDesign/dashboard-page';
 import { getMentors } from '@/services/MentorService';
@@ -132,6 +132,91 @@ const EMPTY_FILTERS: Record<string, string | null> = {
 };
 
 const SORT_OPTIONS = ['Top rated', 'Price: Low to high', 'Price: High to low', 'Most reviewed'];
+
+const PAGE_SIZE = 12;
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+// Page numbers to render for `total` pages while sitting on `current` (0-based),
+// collapsing the far side to an ellipsis: 1 … 4 [5] 6 … 20.
+function pageWindow(current: number, total: number): (number | 'gap')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const pages = new Set<number>([0, total - 1, current]);
+  for (const p of [current - 1, current + 1]) if (p > 0 && p < total - 1) pages.add(p);
+  // Keep the strip a constant width when the cursor sits at either end.
+  if (current <= 2) [1, 2, 3].forEach(p => pages.add(p));
+  if (current >= total - 3) [total - 2, total - 3, total - 4].forEach(p => pages.add(p));
+  const sorted = [...pages].filter(p => p >= 0 && p < total).sort((a, b) => a - b);
+  const out: (number | 'gap')[] = [];
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1] > 1) out.push('gap');
+    out.push(p);
+  });
+  return out;
+}
+
+function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+
+  const btn = (disabled: boolean, active = false) => ({
+    minWidth: '36px',
+    height: '36px',
+    padding: '0 8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '8px',
+    border: `1px solid ${active ? '#3c77f6' : '#e1e4ea'}`,
+    background: active ? '#3c77f6' : '#ffffff',
+    color: active ? '#ffffff' : '#344054',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '13px',
+    fontWeight: active ? 600 : 500,
+    opacity: disabled ? 0.4 : 1,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  });
+
+  return (
+    <nav aria-label="Mentor list pages" className="flex items-center justify-center" style={{ marginTop: '32px', gap: '6px', flexWrap: 'wrap' }}>
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 0}
+        aria-label="Previous page"
+        className="transition-colors"
+        style={btn(page === 0)}
+      >
+        <ChevronLeft style={{ width: '16px', height: '16px' }} />
+      </button>
+
+      {pageWindow(page, totalPages).map((p, i) =>
+        p === 'gap' ? (
+          <span key={`gap-${i}`} style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: '#98a2b3', padding: '0 2px' }}>…</span>
+        ) : (
+          <button
+            key={p}
+            onClick={() => onChange(p)}
+            aria-current={p === page ? 'page' : undefined}
+            aria-label={`Page ${p + 1}`}
+            className="transition-colors"
+            style={btn(false, p === page)}
+          >
+            {p + 1}
+          </button>
+        )
+      )}
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages - 1}
+        aria-label="Next page"
+        className="transition-colors"
+        style={btn(page >= totalPages - 1)}
+      >
+        <ChevronRight style={{ width: '16px', height: '16px' }} />
+      </button>
+    </nav>
+  );
+}
 
 // ─── Mentor card ─────────────────────────────────────────────────────────────
 
@@ -500,6 +585,9 @@ export function CoachingPage() {
   const posthog = usePostHog();
   const { user } = useAuth();
   const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalMentors, setTotalMentors] = useState(0);
   const [isBecomeMentorOpen, setIsBecomeMentorOpen] = useState(false);
   const isAlreadyMentor = hasMentorRole(user);
 
@@ -518,6 +606,7 @@ export function CoachingPage() {
   // coaching_filter_applied —— 用户应用 / 更改 / 清除某个筛选
   const applyFilter = (filterId: string, val: string | null) => {
     setFilters((p) => ({ ...p, [filterId]: val }));
+    setPage(0);
     safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, {
       filter_name: filterId,
       values: val ? [val] : [],
@@ -526,7 +615,7 @@ export function CoachingPage() {
 
   const fetchMentorList = useCallback(async () => {
     try {
-      const params: Record<string, unknown> = { page: 0, size: 20 };
+      const params: Record<string, unknown> = { page, size: PAGE_SIZE };
       // UI labels are mapped back to the backend enums — the API 400s on
       // anything outside the documented value sets.
       if (filters.discipline) params.discipline = DISCIPLINE_BY_LABEL[filters.discipline];
@@ -546,20 +635,33 @@ export function CoachingPage() {
         params.sortDir = sort.sortDir;
       }
       const res = await getMentors(params);
-      const list = res.data?.data?.content ?? res.data?.content ?? res.data?.data ?? res.data ?? [];
-      return Array.isArray(list) ? list.map(mapApiMentor) : [];
+      // Spring page envelope; falls back to a bare array (single page) if the
+      // backend ever returns one.
+      const body = res.data?.data ?? res.data ?? {};
+      const list = body?.content ?? (Array.isArray(body) ? body : []);
+      const items = Array.isArray(list) ? list.map(mapApiMentor) : [];
+      const total = typeof body?.totalElements === 'number' ? body.totalElements : items.length;
+      const pages = typeof body?.totalPages === 'number'
+        ? body.totalPages
+        : Math.max(1, Math.ceil(total / PAGE_SIZE));
+      return { items, total, pages };
     } catch {
-      return [];
+      return { items: [], total: 0, pages: 1 };
     }
-  }, [filters, sortBy]);
+  }, [filters, sortBy, page]);
 
   useEffect(() => {
     let active = true;
-    fetchMentorList().then((list) => {
+    fetchMentorList().then(({ items, total, pages }) => {
       if (!active) return;
-      setMentors(list);
+      setMentors(items);
+      setTotalMentors(total);
+      setTotalPages(Math.max(1, pages));
+      // A filter change can shrink the result set below the current page —
+      // fall back to the last page that still exists.
+      if (pages > 0 && page > pages - 1) setPage(pages - 1);
       // coaching_filter_empty_result —— 筛选组合无结果（默认未筛选状态不上报）
-      if (list.length === 0 && Object.values(filters).some(Boolean)) {
+      if (total === 0 && Object.values(filters).some(Boolean)) {
         safeCapture(posthog, EVENTS.COACHING_FILTER_EMPTY_RESULT, { filters });
       }
     });
@@ -599,6 +701,7 @@ export function CoachingPage() {
               <button
                 onClick={() => {
                   setFilters(EMPTY_FILTERS);
+                  setPage(0);
                   safeCapture(posthog, EVENTS.COACHING_FILTER_APPLIED, { filter_name: 'all', values: [] });
                 }}
                 className="transition-colors hover:text-foreground"
@@ -628,7 +731,7 @@ export function CoachingPage() {
                   return (
                     <button
                       key={opt}
-                      onClick={() => { setSortBy(opt); setOpenSort(false); }}
+                      onClick={() => { setSortBy(opt); setPage(0); setOpenSort(false); }}
                       className="w-full flex items-center justify-between transition-colors hover:bg-secondary"
                       style={{ padding: '8px 14px', fontFamily: 'var(--font-sans)', fontSize: '13px', color: active ? 'var(--primary)' : 'var(--foreground)', background: active ? 'color-mix(in srgb, var(--primary) 6%, transparent)' : 'transparent' }}
                     >
@@ -645,9 +748,10 @@ export function CoachingPage() {
         {/* ── Results counter ── */}
         <div className="flex items-start justify-between" style={{ marginBottom: '24px' }}>
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: '#667085' }}>
-            {mentors.length === 0
+            {totalMentors === 0
               ? 'No mentors match your filters — try adjusting them'
-              : `${mentors.length} verified mentor${mentors.length !== 1 ? 's' : ''} available for 1:1 sessions`}
+              : `${totalMentors} verified mentor${totalMentors !== 1 ? 's' : ''} available for 1:1 sessions`}
+            {totalPages > 1 && ` · showing ${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + mentors.length}`}
           </p>
         </div>
 
@@ -662,8 +766,18 @@ export function CoachingPage() {
           ))}
         </div>
 
+        {/* ── Pagination ── */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onChange={(p) => {
+            setPage(p);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+
         {/* ── Low-results nudge banner ── */}
-        {mentors.length > 0 && mentors.length <= 2 && (
+        {totalMentors > 0 && totalMentors <= 2 && (
           <div style={{ marginTop: '24px', padding: '12px 20px', background: '#f8fafc', border: '1px solid #e1e4ea', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
             <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: '#5a6172' }}>
               Can't find the right mentor? Tell us what you need
