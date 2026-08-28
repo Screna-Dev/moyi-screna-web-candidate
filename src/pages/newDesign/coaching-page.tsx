@@ -635,16 +635,22 @@ export function CoachingPage() {
         params.sortDir = sort.sortDir;
       }
       const res = await getMentors(params);
-      // Spring page envelope; falls back to a bare array (single page) if the
-      // backend ever returns one.
       const body = res.data?.data ?? res.data ?? {};
       const list = body?.content ?? (Array.isArray(body) ? body : []);
       const items = Array.isArray(list) ? list.map(mapApiMentor) : [];
-      const total = typeof body?.totalElements === 'number' ? body.totalElements : items.length;
-      const pages = typeof body?.totalPages === 'number'
-        ? body.totalPages
-        : Math.max(1, Math.ceil(total / PAGE_SIZE));
-      return { items, total, pages };
+
+      // This backend nests page counts under `pageMeta` (see UsersList /
+      // OpsManager); flat Spring fields are the fallback for endpoints that
+      // don't wrap. If neither is present and the page came back full, assume
+      // there is at least one more page so the pager still works.
+      const meta = body?.pageMeta ?? body ?? {};
+      const total = typeof meta.totalElements === 'number' ? meta.totalElements : undefined;
+      const pages = typeof meta.totalPages === 'number'
+        ? meta.totalPages
+        : total !== undefined
+          ? Math.max(1, Math.ceil(total / PAGE_SIZE))
+          : items.length < PAGE_SIZE ? page + 1 : page + 2;
+      return { items, total: total ?? page * PAGE_SIZE + items.length, pages };
     } catch {
       return { items: [], total: 0, pages: 1 };
     }
