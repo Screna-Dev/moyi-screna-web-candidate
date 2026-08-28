@@ -4,11 +4,11 @@ import {
   LayoutDashboard, CalendarCheck, MessageSquare, User,
   ShieldCheck, Star, DollarSign, Search, ChevronRight,
   ChevronDown, Plus, X, AlertCircle, Upload, Send,
-  MoreHorizontal, Edit3, Trash2, Eye, Video,
-  CheckCircle, RefreshCw, Paperclip,
-  Lock, Mail,
+  MoreHorizontal, Trash2, Eye, Video,
+  CheckCircle, XCircle, RefreshCw, Paperclip,
+  Lock, Mail, Users, Gift, Briefcase,
   Link, Zap, LogOut,
-  Camera, Circle, Minus,
+  Camera, Circle, Minus, Clock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
@@ -37,6 +37,7 @@ import {
   updateBookingMentorNote,
   getBookingScriptUploadUrl,
   updateMyTopicPrice,
+  updateMyTopicContent,
   getMyMentorReviews,
   getMyMentorTransactions,
   getMyBlockDates,
@@ -45,12 +46,27 @@ import {
   getMyAdHocSlots,
   createMyAdHocSlot,
   deleteMyAdHocSlot,
+  updateMyMentorTimezone,
+  refreshMyAvailability,
 } from '@/services/MentorService';
+import {
+  SERVICE_TYPE_GROUPS,
+  DISCIPLINES,
+  DISCIPLINE_LABELS,
+  SERVICE_TYPE_LABELS,
+  SPECIAL_OFFER_ENABLED,
+  statusReasonLabel,
+  type Discipline,
+  LINKEDIN_HINT,
+  normalizeLinkedinUrl,
+  type PhotoStatus,
+  type ServiceType,
+} from '@/constants/mentorship';
 
 /* ─────────────────────────────────────────────
    TYPES
 ───────────────────────────────────────────── */
-type NavId = 'overview' | 'bookings' | 'messages' | 'profile' | 'reviews' | 'earnings';
+type NavId = 'overview' | 'bookings' | 'messages' | 'profile' | 'reviews' | 'earnings' | 'referral';
 type Override = {
   id: string;
   date: string;        // YYYY-MM-DD
@@ -74,6 +90,10 @@ type OfficeHourDto = { dayOfWeek: number; active: boolean; ranges: OfficeHourRan
 type MentorTopicDto = {
   id: string; title: string; description?: string;
   price30min?: number; price60min?: number; active?: boolean; mentorNote?: string;
+  // Special-offer ($1 intro) config. NOTE the read/write asymmetry: the
+  // response exposes special15/special30/specialCount, but the request writes
+  // them as a nested specialOffer.{price15,price30,count} object.
+  special15?: number | null; special30?: number | null; specialCount?: number | null;
 };
 type MentorReviewDto = {
   id: string; reviewerName: string; overallRating: number;
@@ -83,8 +103,21 @@ type MentorReviewDto = {
 type MentorProfileDto = {
   id: string; name: string;
   currentRole?: string; currentCompany?: string; avatarUrl?: string;
-  bio?: string; headline?: string; expertiseTags?: string[]; yearsOfExperience?: number;
-  careerBackground?: { company: string; role: string; startYear: number; endYear: number }[];
+  bio?: string; headline?: string; yearsOfExperience?: number;
+  // `services` + `disciplines` replaced the old free-text `expertiseTags`.
+  // Both must be non-empty for the mentor to go live — otherwise `status` is
+  // PENDING and `statusReason` explains which one is missing.
+  services?: ServiceType[]; disciplines?: Discipline[];
+  // `current: true` marks the present role — render "Present" and ignore
+  // endYear. At most one entry may be current (more than one → 400).
+  careerBackground?: { company: string; role: string; startYear: number | null; endYear: number | null; current?: boolean }[];
+  // Display-only badge ("this mentor conducts interviews"); not a listing gate.
+  isInterviewer?: boolean;
+  // Whether students may see this mentor's linkedinUrl. Defaults true.
+  showLinkedin?: boolean;
+  // Avatar moderation — must be PHOTO_APPROVED (with a resolvable avatar) for
+  // the mentor to be listed. Uploading or removing an avatar resets it.
+  photoStatus?: PhotoStatus;
   averageRating?: number; reviewCount?: number;
   topics?: MentorTopicDto[]; reviews?: MentorReviewDto[];
   hasSlotsThisWeek?: boolean; hasSlotsNextWeek?: boolean;
@@ -265,22 +298,29 @@ function useMyMentorBookings() {
 /* ─────────────────────────────────────────────
    STATUS BADGE
 ───────────────────────────────────────────── */
+// New design conveys booking status inline (via action buttons / right-side text)
+// rather than a coloured pill, so the badge renders nothing.
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    confirmed:  { label: 'Confirmed',  cls: 'bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)]' },
-    pending:    { label: 'Pending',    cls: 'bg-[hsl(38,92%,90%)] text-[hsl(38,70%,30%)]' },
-    completed:  { label: 'Completed', cls: 'bg-[hsl(220,18%,94%)] text-[hsl(222,12%,40%)]' },
-    cancelled:  { label: 'Cancelled', cls: 'bg-[hsl(0,60%,93%)] text-[hsl(0,60%,40%)]' },
-    awaiting_reschedule: { label: 'Awaiting Approval', cls: 'bg-[hsl(258,80%,93%)] text-[hsl(258,60%,40%)]' },
-    upcoming: { label: 'Upcoming', cls: 'bg-[hsl(210,80%,93%)] text-[hsl(210,60%,35%)]' },
-    verified:   { label: 'Verified',  cls: 'bg-[hsl(165,82%,90%)] text-[hsl(165,82%,25%)]' },
-    under_review: { label: 'Under Review', cls: 'bg-[hsl(38,92%,90%)] text-[hsl(38,70%,30%)]' },
-    not_submitted: { label: 'Not Submitted', cls: 'bg-[hsl(220,18%,94%)] text-[hsl(222,12%,40%)]' },
-    rejected:   { label: 'Rejected',  cls: 'bg-[hsl(0,60%,93%)] text-[hsl(0,60%,40%)]' },
-  };
-  const { label, cls } = map[status] ?? { label: status, cls: 'bg-secondary text-muted-foreground' };
+  void status;
+  return null;
+}
+
+function FreeEvalPill() {
   return (
-    null
+    <span
+      className="inline-flex items-center gap-1 rounded-full shrink-0"
+      style={{
+        padding: '2px 8px',
+        background: 'var(--color-blue-50)',
+        border: '1px solid var(--color-blue-200)',
+        color: 'var(--color-blue-700)',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 'var(--font-weight-medium)',
+      }}
+    >
+      <Zap className="w-3 h-3" />
+      Special Offer
+    </span>
   );
 }
 
@@ -316,7 +356,9 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
 /* ─────────────────────────────────────────────
    PAGE: OVERVIEW
 ───────────────────────────────────────────── */
-function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) => void; onOpenBooking: (bookingId: string) => void }) {
+// onOpenBooking is unused while the schedule's message action is hidden — kept on the
+// props so restoring that button needs no plumbing changes.
+function OverviewPage({ onNavigate }: { onNavigate: (id: NavId) => void; onOpenBooking: (bookingId: string) => void }) {
   const ctx = useMentorProfile();
   const profile = ctx?.profile;
 
@@ -333,20 +375,32 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
 
   const summaryCards = [
     { label: 'Upcoming Sessions', value: String(upcomingBookings.length), icon: CalendarCheck, color: 'text-primary', bg: 'bg-primary/8' },
+    { label: 'Pending Requests', value: String(bookings.filter(b => b.status === 'pending').length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Unread Messages', value: '3', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/8' },
     { label: 'Average Rating', value: profile?.averageRating != null ? String(profile.averageRating) : '—', icon: Star, color: 'text-amber-500', bg: 'bg-amber-50' },
     { label: 'Verification', value: verificationLabel, icon: ShieldCheck, color: 'text-[hsl(165,60%,35%)]', bg: 'bg-[hsl(165,82%,90%)]' },
   ];
+  // Messages aren't readable by the candidate yet and pending requests are shown in
+  // the schedule below, so both cards stay out of the row.
+  const hiddenSummaryCards = ['Unread Messages', 'Pending Requests'];
+  const visibleSummaryCards = summaryCards.filter(c => !hiddenSummaryCards.includes(c.label));
 
   const todaySessions = bookings.filter(b => b.date === 'Today' || b.date === 'Tomorrow').slice(0, 3);
 
-  // Completion checklist reflects the real profile once it has loaded.
+  // Mirrors the backend's listing requirements, so the bar cannot read 100%
+  // while the mentor is still unlisted. A photo only counts once an admin has
+  // approved it, and services + discipline are both hard gates.
   const profileCompletion = [
-    { label: 'Profile photo', done: profile ? !!profile.avatarUrl : true },
-    { label: 'Bio added', done: profile ? !!profile.bio : true },
-    { label: 'Weekly availability set', done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
-    { label: 'Session price set', done: profile ? !!profile.topics?.some(t => t.price30min != null && t.price60min != null) : true },
-    { label: 'Verification submitted', done: profile ? profile.status !== 'PENDING' : true },
+    // `required` marks a hard listing gate — without it the mentor cannot go
+    // live. Bio is recommended but is not enforced by the backend.
+    { label: 'Profile photo approved', required: true, done: profile ? !!profile.avatarUrl && profile.photoStatus === 'PHOTO_APPROVED' : true },
+    { label: 'Bio added', required: false, done: profile ? !!profile.bio : true },
+    { label: 'Services & discipline', required: true, done: profile ? !!profile.services?.length && !!profile.disciplines?.length : true },
+    { label: 'Google Calendar connected', required: true, done: profile ? !!profile.calendarConnected : true },
+    { label: 'Weekly availability set', required: true, done: profile ? !!profile.officeHours?.some(d => d.active && d.ranges?.length) : true },
+    { label: 'Session price set', required: true, done: profile ? !!profile.topics?.some(t => t.price30min != null && t.price60min != null) : true },
+    // The outcome of every gate above plus admin review — only ticks once live.
+    { label: 'Approved & listed', required: false, done: profile ? profile.status === 'APPROVED' : true },
   ];
   const doneCount = profileCompletion.filter(p => p.done).length;
   const pct = Math.round((doneCount / profileCompletion.length) * 100);
@@ -358,17 +412,16 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        {summaryCards.map(c => (
-          c.label === 'Unread Messages' ? null : (
-            <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
-              <div className={`w-8 h-8 rounded-md ${c.bg} flex items-center justify-center`}>
-                <c.icon className={`w-4 h-4 ${c.color}`} />
-              </div>
-              <div className="text-xl font-semibold text-foreground leading-none">{c.value}</div>
-              <div className="text-xs text-muted-foreground">{c.label}</div>
+      {/* One column per visible card, so the row always fills its width. */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleSummaryCards.length}, minmax(0, 1fr))` }}>
+        {visibleSummaryCards.map(c => (
+          <div key={c.label} className="bg-card border border-border rounded-[var(--radius)] p-4 flex flex-col gap-2">
+            <div className={`w-8 h-8 rounded-md ${c.bg} flex items-center justify-center`}>
+              <c.icon className={`w-4 h-4 ${c.color}`} />
             </div>
-          )
+            <div className="text-xl font-semibold text-foreground leading-none">{c.value}</div>
+            <div className="text-xs text-muted-foreground">{c.label}</div>
+          </div>
         ))}
       </div>
 
@@ -402,12 +455,16 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
                     >
                       Join
                     </button>
+                    {/* Message action hidden: the mentor's note isn't surfaced to the
+                        candidate anywhere yet, so writing one goes nowhere. Restore once
+                        the candidate side can read it.
                     <button
                       onClick={() => onOpenBooking(s.id)}
                       className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </button>
+                    */}
                   </div>
                 </div>
               ))}
@@ -470,7 +527,10 @@ function OverviewPage({ onNavigate, onOpenBooking }: { onNavigate: (id: NavId) =
                 ? <CheckCircle className="w-4 h-4 text-[hsl(165,60%,35%)] shrink-0" />
                 : <Circle className="w-4 h-4 text-border shrink-0" />
               }
-              <span className={item.done ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
+              <span className={item.done ? 'text-foreground' : 'text-muted-foreground'}>
+                {item.label}
+                {item.required && <span className="text-destructive ml-0.5">*</span>}
+              </span>
             </div>
           ))}
         </div>
@@ -836,7 +896,7 @@ function RescheduleButton({ bookingId, onReschedule }: { bookingId: string; onRe
                       key: 'min' as const,
                     },
                     {
-                      placeholder: 'AM',
+                      placeholder: 'AM/PM',
                       options: [{ label: 'AM', value: 'AM' }, { label: 'PM', value: 'PM' }],
                       key: 'ampm' as const,
                     },
@@ -980,9 +1040,15 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     onFocusHandled?.();
   }, [focusBookingId, bookings, onFocusHandled]);
 
+  // Cancelling refunds the student in full, deletes the calendar event and
+  // emails them — so it always goes through a confirmation first.
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const confirmCancelBooking = bookings.find(b => b.id === confirmCancelId) ?? null;
+
   const handleCancel = (bookingId: string) => {
     if (cancellingId) return;
     setCancellingId(bookingId);
+    setConfirmCancelId(null);
     mentorCancelBooking(bookingId)
       .then(() => {
         // session_cancelled —— mentor 侧取消预约（仅 API 成功后上报）
@@ -1013,34 +1079,21 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
     <div className="flex-1 flex overflow-hidden">
       <div className={`flex flex-col overflow-hidden transition-all ${selectedBooking ? 'flex-1' : 'flex-1'}`}>
         {/* Tabs */}
-        <div className="px-6 pt-6">
+        <div className="px-6 pt-6 bg-card">
           <div className="flex items-center gap-[4px]">
             {tabs.map(t => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors capitalize"
-                style={{
-                  background: activeTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
-                  color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: activeTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
+                className={`px-4 py-2 text-sm rounded-t-md capitalize transition-colors ${
+                  activeTab === t
+                    ? 'text-primary border-b-2 border-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                style={{ whiteSpace: 'nowrap' }}
               >
                 {t}
-                <span
-                  className="rounded-full flex items-center justify-center"
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    padding: '1px 6px',
-                    background: activeTab === t ? 'var(--color-gray-200, #d8dbe2)' : 'var(--secondary)',
-                    color: activeTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
-                    fontWeight: 'var(--font-weight-medium)',
-                  }}
-                >
+                <span className="ml-1.5 text-xs bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5">
                   {t === 'all' ? bookings.length : t === 'upcoming' ? bookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length : bookings.filter(b => b.status === t).length}
                 </span>
               </button>
@@ -1064,6 +1117,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-foreground">{b.memberName}</span>
                     <StatusBadge status={completedIds.has(b.id) ? 'completed' : rescheduledIds.has(b.id) ? 'awaiting_reschedule' : cancelledIds.has(b.id) ? 'cancelled' : (b.status === 'pending' || b.status === 'confirmed') ? 'upcoming' : b.status} />
+                    {(b as any).isFreeEval && <FreeEvalPill />}
                   </div>
                   <div className="flex items-center flex-wrap gap-[var(--space-1)] mt-0.5 px-[0px] py-[6px]">
                     {(Array.isArray(b.sessionType) ? b.sessionType : [b.sessionType]).map((plan: string) => (
@@ -1093,7 +1147,7 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
                         onReschedule={id => { setRescheduledIds(prev => new Set([...prev, id])); refetchBookings(); }}
                       />
                       <button
-                        onClick={e => { e.stopPropagation(); handleCancel(b.id); }}
+                        onClick={e => { e.stopPropagation(); setConfirmCancelId(b.id); }}
                         disabled={cancellingId === b.id}
                         className="px-3 py-1.5 text-xs border rounded-md transition-colors disabled:opacity-50"
                         style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)', background: 'transparent', cursor: cancellingId === b.id ? 'not-allowed' : 'pointer' }}
@@ -1198,12 +1252,16 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
             {selectedBooking.status === 'confirmed' && (
               <div className="space-y-2">
                 <button className="w-full py-2 text-sm bg-primary text-primary-foreground rounded-[var(--radius-sm)] hover:bg-primary/90 transition-colors">Join Session</button>
+                {/* "Message Member" hidden: the mentor note it writes isn't readable by
+                    the candidate yet. Restore together with the Overview message icon
+                    once the candidate side displays it.
                 <button
                   onClick={() => setNoteOpen(v => !v)}
                   className="w-full py-2 text-sm border border-border rounded-[var(--radius-sm)] text-muted-foreground hover:bg-secondary transition-colors"
                 >
                   {noteOpen ? 'Hide Note' : 'Message Member'}
                 </button>
+                */}
               </div>
             )}
             {noteOpen && selectedBooking.status === 'confirmed' && (
@@ -1221,6 +1279,69 @@ function BookingsPage({ focusBookingId, onFocusHandled }: { focusBookingId?: str
           </div>
         </div>
       )}
+
+      {/* Cancel confirmation — the consequences are irreversible and affect the
+          student's money, so they're spelled out before the request fires. */}
+      {confirmCancelBooking && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={e => { if (e.target === e.currentTarget && !cancellingId) setConfirmCancelId(null); }}
+        >
+          <div
+            className="bg-card rounded-[var(--radius)] border border-border shadow-lg flex flex-col gap-5 w-full mx-4"
+            style={{ maxWidth: 460, padding: 'var(--space-6)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>
+                Cancel this session?
+              </h3>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', marginTop: 4 }}>
+                {confirmCancelBooking.memberName} · {confirmCancelBooking.date} at {confirmCancelBooking.time}
+              </p>
+            </div>
+
+            <ul className="flex flex-col gap-2" style={{ fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'hsl(0,72%,51%)' }} />
+                <span>The student is issued a <strong>full refund</strong>.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }} />
+                <span>The Google Calendar event is deleted.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }} />
+                <span>The student is notified by email.</span>
+              </li>
+            </ul>
+
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+              A session that has already started or passed can&apos;t be cancelled.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmCancelId(null)}
+                disabled={!!cancellingId}
+                className="px-3 py-2 text-sm rounded-[var(--radius-sm)] border border-input text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+              >
+                Keep session
+              </button>
+              <button
+                onClick={() => handleCancel(confirmCancelBooking.id)}
+                disabled={!!cancellingId}
+                className="px-3 py-2 text-sm rounded-[var(--radius-sm)] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'hsl(0,72%,51%)' }}
+              >
+                {cancellingId ? 'Cancelling…' : 'Cancel session'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1240,7 +1361,11 @@ function AvailabilityPage() {
   const [vacationSaving, setVacationSaving] = useState(false);
   const [bufferTime, setBufferTime] = useState('15 min');
   const [maxWindow, setMaxWindow] = useState('4 weeks');
-  const [timezone, setTimezone] = useState('Pacific Time (US & Canada)');
+  // IANA zone id (e.g. "America/Los_Angeles") — that's what the API accepts and
+  // what `googleTimezone` returns. Empty until the profile loads.
+  const [timezone, setTimezone] = useState('');
+  const [tzSaving, setTzSaving] = useState(false);
+  const [refreshingAvailability, setRefreshingAvailability] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
   const [hoursToast, setHoursToast] = useState<{ ok: boolean; msg: string } | null>(null);
   // True when the weekly schedule has edits not yet pushed to office hours.
@@ -1358,6 +1483,49 @@ function AvailabilityPage() {
         setHoursToast({ ok: false, msg });
       })
       .finally(() => setVacationSaving(false));
+  };
+
+  // ── Timezone preference — PUT /mentorship/profile/timezone ──
+  const applyTimezone = (next: string) => {
+    if (!next || tzSaving || next === timezone) return;
+    const previous = timezone;
+    setTimezone(next); // optimistic
+    setTzSaving(true);
+    updateMyMentorTimezone(next)
+      .then((res: any) => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        setHoursToast({ ok: true, msg: 'Timezone updated.' });
+      })
+      .catch((err: any) => {
+        setTimezone(previous);
+        setHoursToast({ ok: false, msg: err?.response?.data?.message || 'Could not update timezone.' });
+      })
+      .finally(() => setTzSaving(false));
+  };
+
+  // ── Recompute this-week / next-week slot flags — POST /refresh-availability ──
+  // These flags drive the Availability filter in mentor discovery, so a mentor
+  // who just edited office hours can force them up to date instead of waiting.
+  const handleRefreshAvailability = () => {
+    if (refreshingAvailability) return;
+    setRefreshingAvailability(true);
+    refreshMyAvailability()
+      .then((res: any) => {
+        const updated = unwrapData<MentorProfileDto>(res);
+        if (updated) ctx?.setProfile(updated);
+        setHoursToast({ ok: true, msg: 'Availability refreshed.' });
+      })
+      .catch((err: any) => {
+        const unavailable = err?.response?.data?.errorCode === 'CALENDAR_UNAVAILABLE';
+        setHoursToast({
+          ok: false,
+          msg: unavailable
+            ? 'Google Calendar is temporarily unavailable — try again in a moment.'
+            : err?.response?.data?.message || 'Could not refresh availability.',
+        });
+      })
+      .finally(() => setRefreshingAvailability(false));
   };
 
   // Inline row editor
@@ -1624,6 +1792,14 @@ function AvailabilityPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {/* Recomputes the this-week / next-week flags students filter on. */}
+                <button
+                  onClick={handleRefreshAvailability}
+                  disabled={refreshingAvailability}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {refreshingAvailability ? 'Refreshing…' : 'Refresh availability'}
+                </button>
                 <button
                   onClick={handleSaveAvailability}
                   disabled={savingHours || !scheduleDirty}
@@ -1839,23 +2015,34 @@ function AvailabilityPage() {
             </div>
           </div>
 
-          {/* Booking Settings (read-only — managed by the platform / Google Calendar) */}
+          {/* Booking Settings — timezone is mentor-editable via
+              PUT /mentorship/profile/timezone. */}
           <div className="bg-card border border-border rounded-[var(--radius)] p-4 space-y-4">
             <h3 className="text-foreground text-sm">Booking Settings</h3>
-            {[
-              { label: 'Timezone', value: timezone, hint: 'From Google Calendar' },
-            ].map(s => (
-              <div key={s.label}>
-                <label className="text-xs text-muted-foreground">{s.label}</label>
-                <div
-                  className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 flex items-center justify-between gap-2"
-                  style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)', cursor: 'not-allowed' }}
-                >
-                  <span className="truncate">{s.value}</span>
-                  <span className="shrink-0" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>{s.hint}</span>
-                </div>
-              </div>
-            ))}
+            <div>
+              <label className="text-xs text-muted-foreground">Timezone</label>
+              <select
+                value={timezone}
+                disabled={tzSaving}
+                onChange={e => applyTimezone(e.target.value)}
+                className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 disabled:opacity-60"
+                style={{ background: 'var(--secondary)', color: 'var(--foreground)' }}
+              >
+                {!timezone && <option value="">Select a timezone…</option>}
+                {/* The saved zone may not be in the picker list (Google can
+                    return any IANA id) — keep it selectable rather than
+                    silently switching the mentor to another zone. */}
+                {timezone && !TIMEZONE_OPTIONS.includes(timezone) && (
+                  <option value={timezone}>{timezone}</option>
+                )}
+                {TIMEZONE_OPTIONS.map(tz => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+              <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                {tzSaving ? 'Saving…' : 'Used for your office hours and booking times.'}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -2171,6 +2358,11 @@ const FIXED_TOPIC_TITLE = 'Mentorship Session';
 const FIXED_TOPIC_DESCRIPTION =
   'A one-on-one mentorship session to discuss your goals, get tailored guidance, and ask questions.';
 
+// Backend floor for regular session prices ($25.00). Special-offer prices are a
+// separate column and are NOT subject to this minimum. Existing $10–24 topics
+// are grandfathered until the next price edit.
+const MIN_PRICE_CENTS = 2500;
+
 function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged: () => void }) {
   // A mentor has a single auto-created topic; the form only edits its prices via
   // PUT /mentorship/profile/topic/price (no topicId, no create/deactivate).
@@ -2180,6 +2372,17 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   const [price60, setPrice60] = useState('');
   const [status, setStatus] = useState<SaveStatus>(CLEAN_STATUS);
 
+  // Special Offer — PUT /mentorship/profile/topic { specialOffer }. Only sent
+  // when actually edited: omitting the nested object leaves the config
+  // untouched, so an untouched form can never clobber it.
+  const [specialDirty, setSpecialDirty] = useState(false);
+  const [dealOn, setDealOn] = useState(false);
+  const [deal15On, setDeal15On] = useState(true);
+  const [deal15Price, setDeal15Price] = useState('');
+  const [deal30On, setDeal30On] = useState(true);
+  const [deal30Price, setDeal30Price] = useState('');
+  const [dealWeeklyLimit, setDealWeeklyLimit] = useState(3);
+
   const centsToInput = (c?: number) =>
     typeof c === 'number' ? (c / 100).toFixed(2) : '';
 
@@ -2187,8 +2390,27 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
   useEffect(() => {
     setPrice30(centsToInput(editingTopic?.price30min));
     setPrice60(centsToInput(editingTopic?.price60min));
+    // Seed the special-offer form from the response field names (special15 /
+    // special30 / specialCount); a null price means that duration isn't offered.
+    const s15 = editingTopic?.special15 ?? null;
+    const s30 = editingTopic?.special30 ?? null;
+    const count = editingTopic?.specialCount ?? 0;
+    setDeal15On(s15 != null);
+    setDeal30On(s30 != null);
+    setDeal15Price(s15 != null ? centsToInput(s15) : '');
+    setDeal30Price(s30 != null ? centsToInput(s30) : '');
+    setDealWeeklyLimit(count > 0 ? count : 3);
+    setDealOn(count > 0 && (s15 != null || s30 != null));
+    setSpecialDirty(false);
     setStatus(CLEAN_STATUS);
-  }, [editingTopic?.id, editingTopic?.price30min, editingTopic?.price60min]);
+  }, [
+    editingTopic?.id, editingTopic?.price30min, editingTopic?.price60min,
+    editingTopic?.special15, editingTopic?.special30, editingTopic?.specialCount,
+  ]);
+
+  // Any special-offer edit marks both the card dirty (to reveal Save) and the
+  // nested object as something we must actually transmit.
+  const markSpecial = () => { setSpecialDirty(true); markDirty(); };
 
   const markDirty = () => setStatus(s => ({ ...s, dirty: true, saved: false, error: null }));
 
@@ -2208,65 +2430,206 @@ function TopicsCard({ topics, onChanged }: { topics: MentorTopicDto[]; onChanged
     // Pricing is required: both 30- and 60-minute prices must be set before a
     // mentor profile can go live (each duration is independently bookable).
     if (p30 === undefined || p60 === undefined) { setStatus(s => ({ ...s, error: 'Both 30- and 60-minute prices are required.' })); return; }
-    // Only send fields the mentor actually entered; an omitted price is left
-    // unchanged backend-side (a price, once set, cannot be cleared).
-    const payload: { price30min?: number; price60min?: number } = {};
-    if (p30 !== undefined) payload.price30min = p30;
-    if (p60 !== undefined) payload.price60min = p60;
+    if (p30 < MIN_PRICE_CENTS || p60 < MIN_PRICE_CENTS) {
+      setStatus(s => ({ ...s, error: `Session prices must be at least $${MIN_PRICE_CENTS / 100}.` }));
+      return;
+    }
+    // This endpoint is a FULL REPLACE, not a partial update: a field that is
+    // omitted or null CLEARS that duration's price (making it unbookable), so
+    // both must be sent on every save.
+    const payload = { price30min: p30, price60min: p60 };
+
+    // Special offer, only when touched. $1 minimum (100 cents); a disabled
+    // duration is sent as null, and count 0 pauses the whole offer.
+    let specialOffer: { price15: number | null; price30: number | null; count: number } | null = null;
+    if (specialDirty && SPECIAL_OFFER_ENABLED) {
+      const s15 = dealOn && deal15On ? dollarsToCents(deal15Price) : undefined;
+      const s30 = dealOn && deal30On ? dollarsToCents(deal30Price) : undefined;
+      if (s15 === null || s30 === null) { setStatus(s => ({ ...s, error: 'Special offer prices must be valid numbers.' })); return; }
+      if (dealOn && s15 === undefined && s30 === undefined) {
+        setStatus(s => ({ ...s, error: 'Enable at least one special-offer duration, or turn the offer off.' }));
+        return;
+      }
+      if ((s15 !== undefined && s15 < 100) || (s30 !== undefined && s30 < 100)) {
+        setStatus(s => ({ ...s, error: 'Special offer prices must be at least $1.' }));
+        return;
+      }
+      specialOffer = {
+        price15: s15 ?? null,
+        price30: s30 ?? null,
+        count: dealOn ? dealWeeklyLimit : 0,
+      };
+    }
+
     setStatus(s => ({ ...s, saving: true, error: null }));
     updateMyTopicPrice(payload)
+      .then(async () => { if (specialOffer) await updateMyTopicContent({ specialOffer }); })
       .then(() => {
         setStatus({ dirty: false, saving: false, saved: true, error: null });
+        setSpecialDirty(false);
         onChanged();
       })
       .catch((e: any) => setStatus(s => ({ ...s, saving: false, error: e?.response?.data?.message || 'Could not save your session prices.' })));
   };
 
   return (
-    <div className="bg-card border border-border rounded-[var(--radius)] p-5">
-      <div className="mb-4">
-        <h3 className="text-foreground text-lg font-medium mb-1">Mentorship Session</h3>
-        <p className="text-sm text-muted-foreground">
-          Set your 30- and 60-minute session prices. Both are required before your
-          profile can go live.
-        </p>
+    <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-5">
+      <div>
+        <h3 className="text-foreground text-lg font-medium mb-1">Session Pricing</h3>
+        <p className="text-sm text-muted-foreground">Set your 30- and 60-minute session prices. Both are required before your profile can go live.</p>
       </div>
 
-      {/* Pricing form — single always-active offering */}
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground">Price 30 min (USD)<span className="text-destructive ml-0.5">*</span></label>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">$</span>
-              <input
-                value={price30}
-                onChange={e => { setPrice30(e.target.value); markDirty(); }}
-                placeholder="50.00"
-                inputMode="decimal"
-                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-              />
+      {/* 30 min / 60 min inputs */}
+      <div className="grid grid-cols-2 gap-4">
+        {([
+          { label: '30-min session', value: price30, set: setPrice30 },
+          { label: '60-min session', value: price60, set: setPrice60 },
+        ] as const).map(tier => {
+          const tooLow = tier.value !== '' && parseFloat(tier.value) < 25;
+          return (
+            <div key={tier.label}>
+              <label className="text-xs text-muted-foreground">{tier.label}<span className="text-destructive ml-0.5">*</span></label>
+              <div className="mt-1 flex items-center border border-input rounded-[var(--radius-sm)] overflow-hidden bg-input-background focus-within:ring-1 focus-within:ring-ring">
+                <span className="px-3 py-2 text-sm text-muted-foreground border-r border-input bg-secondary">$</span>
+                <input
+                  type="number"
+                  min="25"
+                  value={tier.value}
+                  onChange={e => { tier.set(e.target.value); markDirty(); }}
+                  placeholder="—"
+                  className="flex-1 px-3 py-2 text-sm bg-transparent text-foreground outline-none"
+                />
+              </div>
+              {!tier.value && (
+                <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>Not set — this duration won't appear on your booking page.</p>
+              )}
+              {tooLow && (
+                <p className="mt-1 text-xs flex items-center gap-1" style={{ color: 'hsl(0,72%,51%)' }}>
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Minimum price is $25.
+                </p>
+              )}
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Price 60 min (USD)<span className="text-destructive ml-0.5">*</span></label>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">$</span>
-              <input
-                value={price60}
-                onChange={e => { setPrice60(e.target.value); markDirty(); }}
-                placeholder="90.00"
-                inputMode="decimal"
-                className="flex-1 text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-        </div>
-        <SectionSaveRow status={status} onSave={handleSave} />
+          );
+        })}
       </div>
+
+      {/* Divider */}
+      <div className="h-px" style={{ background: 'var(--border)' }} />
+
+      {/* Special Offer. The form is always shown, but it only PERSISTS (PUT
+          /mentorship/profile/topic { specialOffer }) once SPECIAL_OFFER_ENABLED
+          is on — until then it behaves as the UI-only mock it has always been.
+          Persisting early would let an old backend charge regular price for a
+          $1 trial. */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-foreground">Offer a Special Offer</div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Give candidates a limited-time discounted or free intro slot.</p>
+          </div>
+          <button
+            onClick={() => { setDealOn(!dealOn); markSpecial(); }}
+            className="relative rounded-full transition-colors shrink-0"
+            style={{ width: 40, height: 22, background: dealOn ? 'var(--primary)' : 'var(--border)', border: 'none', cursor: 'pointer' }}
+          >
+            <span className="absolute rounded-full bg-white shadow transition-all" style={{ width: 16, height: 16, top: 3, left: dealOn ? 21 : 3 }} />
+          </button>
+        </div>
+
+        {!dealOn && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" stroke="var(--muted-foreground)" strokeWidth="1.2"/><path d="M7 6.5v3M7 4.5v.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Enable to offer a discounted slot that candidates can book once.</p>
+          </div>
+        )}
+
+        {dealOn && (
+          <div className="space-y-3">
+            {([
+              { label: '15 minutes', on: deal15On, setOn: setDeal15On, price: deal15Price, setPrice: setDeal15Price },
+              { label: '30 minutes', on: deal30On, setOn: setDeal30On, price: deal30Price, setPrice: setDeal30Price },
+            ] as const).map(row => (
+              <div
+                key={row.label}
+                className="rounded-[var(--radius-sm)] border p-3 space-y-2.5 transition-colors"
+                style={{ borderColor: 'var(--border)', background: row.on ? 'var(--card)' : 'var(--secondary)', opacity: row.on ? 1 : 0.7 }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => { row.setOn(!row.on); markSpecial(); }}
+                    className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                    style={{ background: row.on ? 'var(--primary)' : 'transparent', border: row.on ? '1.5px solid var(--primary)' : '1.5px solid var(--muted-foreground)', cursor: 'pointer' }}
+                  >
+                    {row.on && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                  <span className="text-sm font-medium text-foreground">{row.label}</span>
+                </div>
+                {row.on && (
+                  <div>
+                    <div className="flex items-center border border-input rounded-[var(--radius-sm)] overflow-hidden bg-input-background focus-within:ring-1 focus-within:ring-ring">
+                      <span className="px-3 py-2 text-sm text-muted-foreground border-r border-input bg-secondary">$</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.price}
+                        onChange={e => { row.setPrice(e.target.value); markSpecial(); }}
+                        placeholder="1"
+                        className="flex-1 px-3 py-2 text-sm bg-transparent text-foreground outline-none"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>Minimum $1 — set below your regular price to make it a Special Offer.</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="pt-1">
+              <label className="text-xs font-medium text-foreground mb-1 block">Max Special Offers per week</label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setDealWeeklyLimit(Math.max(1, dealWeeklyLimit - 1)); markSpecial(); }}
+                  className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
+                  style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
+                >−</button>
+                <span className="w-6 text-center text-sm font-medium text-foreground">{dealWeeklyLimit}</span>
+                <button
+                  onClick={() => { setDealWeeklyLimit(Math.min(10, dealWeeklyLimit + 1)); markSpecial(); }}
+                  className="w-8 h-8 rounded-[var(--radius-sm)] border border-border flex items-center justify-center transition-colors hover:bg-secondary"
+                  style={{ background: 'var(--card)', fontSize: 'var(--text-base)', color: 'var(--foreground)', cursor: 'pointer' }}
+                >+</button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+              <svg className="shrink-0 mt-px" width="14" height="14" fill="none" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" stroke="var(--muted-foreground)" strokeWidth="1.2"/><path d="M7 6.5v3M7 4.5v.5" stroke="var(--muted-foreground)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Each candidate can book your Special Offer once, and one Special Offer per week platform-wide.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <SectionSaveRow status={status} onSave={handleSave} />
     </div>
   );
 }
+
+// IANA zone ids for the timezone picker. Prefer the full runtime list so any
+// mentor can find their own zone; fall back to the common US/EU/APAC set on
+// browsers without Intl.supportedValuesOf (Safari < 17).
+const TIMEZONE_OPTIONS: string[] = (() => {
+  try {
+    const supported = (Intl as any)?.supportedValuesOf?.('timeZone');
+    if (Array.isArray(supported) && supported.length) return supported;
+  } catch { /* fall through to the static list */ }
+  return [
+    'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
+    'America/Toronto', 'America/Sao_Paulo', 'Europe/London', 'Europe/Dublin',
+    'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Amsterdam',
+    'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Shanghai',
+    'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Seoul', 'Australia/Sydney',
+  ];
+})();
 
 function ProfilePage() {
   const ctx = useMentorProfile();
@@ -2282,22 +2645,31 @@ function ProfilePage() {
   const [years, setYears] = useState('');
   // Per-section save state so each card saves on its own (no single sticky bar).
   const [basic, setBasic] = useState<SaveStatus>(CLEAN_STATUS);
+  const [exp, setExp] = useState<SaveStatus>(CLEAN_STATUS);
   const [svc, setSvc] = useState<SaveStatus>(CLEAN_STATUS);
+  const [disc, setDisc] = useState<SaveStatus>(CLEAN_STATUS);
+  const [topic, setTopic] = useState<SaveStatus>(CLEAN_STATUS);
   const [verify, setVerify] = useState<SaveStatus>(CLEAN_STATUS);
-  const [services, setServices] = useState([
-    'Mock Interview',
-    'Resume Review',
-    'Career Coaching'
-  ]);
-  const [newService, setNewService] = useState('');
-  const [isAddingService, setIsAddingService] = useState(false);
-  const [editingService, setEditingService] = useState<string | null>(null);
-  const [editServiceValue, setEditServiceValue] = useState('');
+  // Services + disciplines are both required for the mentor to be listed and
+  // bookable. Specialty tags & experience are UI-only for now (no backend) —
+  // local state, not persisted.
+  const [services, setServices] = useState<ServiceType[]>([]);
+  const [disciplines, setDisciplines] = useState<Discipline[]>([]);
+  // Topic title — PUT /mentorship/profile/topic. The backend defaults it to
+  // FIXED_TOPIC_TITLE when one was never set.
+  const [topicTitle, setTopicTitle] = useState('');
+  type ExpEntry = { id: string; title: string; company: string; startYear: string; endYear: string; isCurrent: boolean };
+  const [experiences, setExperiences] = useState<ExpEntry[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [draggedExpId, setDraggedExpId] = useState<string | null>(null);
+  const [dragOverExpId, setDragOverExpId] = useState<string | null>(null);
   const [workEmail, setWorkEmail] = useState('');
   const [linkedin, setLinkedin] = useState('');
   // Verification fields are already approved — editing them re-triggers review,
   // so they stay read-only behind an explicit "Edit" button (unlike other cards).
   const [editingVerify, setEditingVerify] = useState(false);
+  // Controls whether students see linkedinUrl. Defaults true server-side.
+  const [showLinkedin, setShowLinkedin] = useState(true);
 
   // Avatar upload — wires the existing Camera button to a hidden <input type="file">.
   const avatarFileRef = useRef<HTMLInputElement>(null);
@@ -2320,6 +2692,10 @@ function ProfilePage() {
         const updated = unwrapData<MentorProfileDto>(res);
         if (updated) ctx?.setProfile(updated);
         else ctx?.refetch();
+        // A new photo resets photoStatus to PHOTO_REVIEW and temporarily
+        // unlists an already-live mentor — say so rather than let them find out
+        // from a silent status change.
+        toast('Your photo needs to be re-reviewed. Your profile stays unlisted until an admin approves it.');
       })
       .catch(() => { /* swallow — no toast slot in this card */ })
       .finally(() => {
@@ -2337,10 +2713,25 @@ function ProfilePage() {
     if (profile.currentRole != null) setTitle(profile.currentRole);
     if (profile.currentCompany != null) setCompany(profile.currentCompany);
     if (profile.yearsOfExperience != null) setYears(String(profile.yearsOfExperience));
-    if (Array.isArray(profile.expertiseTags)) setServices(profile.expertiseTags);
+    const activeTopic = profile.topics?.find(t => t.active) ?? profile.topics?.[0];
+    if (activeTopic?.title != null) setTopicTitle(activeTopic.title);
+    if (Array.isArray(profile.services)) setServices(profile.services);
+    if (Array.isArray(profile.disciplines)) setDisciplines(profile.disciplines);
+    // Seed the (UI-only) experience list from the profile's career background.
+    if (Array.isArray(profile.careerBackground)) {
+      setExperiences(profile.careerBackground.map((c, i) => ({
+        id: `exp-seed-${i}`,
+        title: c.role ?? '',
+        company: c.company ?? '',
+        startYear: c.startYear != null ? String(c.startYear) : '',
+        endYear: c.endYear != null ? String(c.endYear) : '',
+        isCurrent: c.current ?? c.endYear == null,
+      })));
+    }
     if ((profile as any).linkedinUrl != null) setLinkedin((profile as any).linkedinUrl);
     if ((profile as any).workEmail != null) setWorkEmail((profile as any).workEmail);
-    setBasic(CLEAN_STATUS); setSvc(CLEAN_STATUS); setVerify(CLEAN_STATUS);
+    if (profile.showLinkedin != null) setShowLinkedin(profile.showLinkedin);
+    setBasic(CLEAN_STATUS); setExp(CLEAN_STATUS); setSvc(CLEAN_STATUS); setDisc(CLEAN_STATUS); setTopic(CLEAN_STATUS); setVerify(CLEAN_STATUS);
   }, [profile]);
 
   // Fall back to the signed-in account email when the profile has no work email.
@@ -2350,7 +2741,10 @@ function ProfilePage() {
   }, [user]);
 
   const markBasic = () => setBasic(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markExp = () => setExp(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markSvc = () => setSvc(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markDisc = () => setDisc(s => ({ ...s, dirty: true, saved: false, error: null }));
+  const markTopic = () => setTopic(s => ({ ...s, dirty: true, saved: false, error: null }));
   const markVerify = () => setVerify(s => ({ ...s, dirty: true, saved: false, error: null }));
 
   // PUT supports partial updates, so each section sends only its own fields.
@@ -2367,48 +2761,147 @@ function ProfilePage() {
       .catch((err: any) => set(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save. Please try again.' })));
   };
 
-  const saveBasic = () => saveSection({ bio, currentRole: title, currentCompany: company, yearsOfExperience: Number(years) || 0 }, setBasic);
-  const saveServices = () => saveSection({ expertiseTags: services }, setSvc);
-  // workEmail / linkedinUrl aren't in the documented schema yet — sent so they
-  // persist once the backend adds the fields (unknown fields are ignored).
-  const saveVerify = () => saveSection({ workEmail, linkedinUrl: linkedin }, setVerify, () => setEditingVerify(false));
+  // `realName` is what the Display Name input edits — omitting it meant the
+  // field appeared to save and then reverted on the next refetch.
+  const saveBasic = () => saveSection(
+    { realName: name, headline, bio, currentRole: title, currentCompany: company, yearsOfExperience: Number(years) || 0 },
+    setBasic,
+  );
+
+  // Experience maps to the profile's `careerBackground`. Entries missing a
+  // company or role would be dropped by the backend anyway, so they're filtered
+  // out here; "current" roles send a null endYear.
+  const saveExperience = () => {
+    // The backend rejects more than one `current: true` entry with a 400.
+    if (experiences.filter(e => e.isCurrent).length > 1) {
+      setExp(s => ({ ...s, saving: false, error: 'Only one role can be marked as current.' }));
+      return;
+    }
+    saveExperienceSection();
+  };
+
+  const saveExperienceSection = () => saveSection(
+    {
+      careerBackground: experiences
+        .filter(e => e.company.trim() && e.title.trim())
+        .map(e => ({
+          company: e.company.trim(),
+          role: e.title.trim(),
+          startYear: Number(e.startYear) || null,
+          endYear: e.isCurrent ? null : (Number(e.endYear) || null),
+          current: e.isCurrent,
+        })),
+    },
+    setExp,
+  );
+  // Both are listing requirements: an empty array is a valid "clear" but the
+  // backend then drops the mentor to PENDING, so block the save instead and
+  // reuse the wording the API returns in `statusReason`.
+  const saveServices = () => {
+    if (!services.length) {
+      setSvc(s => ({ ...s, saving: false, error: 'No service type selected — pick at least one to stay listed.' }));
+      return;
+    }
+    saveSection({ services }, setSvc);
+  };
+
+  const saveTopicTitle = () => {
+    const title = topicTitle.trim();
+    if (!title) {
+      setTopic(s => ({ ...s, saving: false, error: 'Enter a session title.' }));
+      return;
+    }
+    setTopic(s => ({ ...s, saving: true, error: null }));
+    updateMyTopicContent({ title })
+      .then(() => {
+        setTopic({ dirty: false, saving: false, saved: true, error: null });
+        setTimeout(() => setTopic(s => ({ ...s, saved: false })), 2500);
+        ctx?.refetch();
+      })
+      .catch((err: any) => setTopic(s => ({ ...s, saving: false, error: err?.response?.data?.message || 'Could not save the session title.' })));
+  };
+
+  const saveDisciplines = () => {
+    if (!disciplines.length) {
+      setDisc(s => ({ ...s, saving: false, error: 'No discipline selected — pick at least one to stay listed.' }));
+      return;
+    }
+    saveSection({ disciplines }, setDisc);
+  };
+  // The API only accepts personal /in/ profile links and 400s otherwise, so
+  // normalise up front and submit the canonical form.
+  const saveVerify = () => {
+    const trimmed = linkedin.trim();
+    const normalized = trimmed ? normalizeLinkedinUrl(trimmed) : '';
+    if (trimmed && !normalized) {
+      setVerify(s => ({ ...s, saving: false, error: LINKEDIN_HINT }));
+      return;
+    }
+    if (normalized && normalized !== linkedin) setLinkedin(normalized);
+    saveSection(
+      { workEmail, linkedinUrl: normalized || null, showLinkedin },
+      setVerify,
+      () => setEditingVerify(false),
+    );
+  };
 
   // Re-seed from the approved profile values and drop the dirty flag.
   const cancelVerify = () => {
     setWorkEmail((profile as any)?.workEmail ?? (user as any)?.email ?? '');
     setLinkedin((profile as any)?.linkedinUrl ?? '');
+    setShowLinkedin(profile?.showLinkedin ?? true);
     setVerify(CLEAN_STATUS);
     setEditingVerify(false);
   };
 
-  const handleAddService = () => {
-    if (newService.trim() && !services.includes(newService.trim())) {
-      setServices([...services, newService.trim()]);
-      setNewService('');
-      setIsAddingService(false);
-      markSvc();
-    }
-  };
-
-  const handleRemoveService = (tagToRemove: string) => {
-    setServices(services.filter(s => s !== tagToRemove));
-    if (editingService === tagToRemove) {
-      setEditingService(null);
-      setEditServiceValue('');
-    }
+  // Service-type selection (ServiceType[] on the profile).
+  const toggleService = (s: ServiceType) => {
+    setServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
     markSvc();
   };
 
-  const handleSaveEditService = (oldTag: string) => {
-    const trimmed = editServiceValue.trim();
-    if (trimmed && trimmed !== oldTag) {
-      if (!services.includes(trimmed)) {
-        setServices(services.map(s => s === oldTag ? trimmed : s));
-        markSvc();
-      }
-    }
-    setEditingService(null);
-    setEditServiceValue('');
+  // Discipline selection — saved together with services in the same PUT.
+  const toggleDiscipline = (d: Discipline) => {
+    setDisciplines(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+    markDisc();
+  };
+
+  // Experience entries — persisted to `careerBackground` via saveExperience.
+  // Every mutation marks the section dirty so its Save button appears.
+  const currentYear = new Date().getFullYear();
+  const YEARS = Array.from({ length: currentYear - 1969 }, (_, i) => String(currentYear - i));
+  const updateExp = (id: string, patch: Partial<ExpEntry>) => {
+    setExperiences(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+    markExp();
+  };
+  const setCurrentRole = (id: string) => {
+    setExperiences(prev => prev.map(e => e.id === id ? { ...e, isCurrent: true, endYear: '' } : { ...e, isCurrent: false }));
+    markExp();
+  };
+  const addExp = () => {
+    if (experiences.length >= 5) return;
+    setExperiences(prev => [...prev, { id: `exp${Date.now()}`, title: '', company: '', startYear: '', endYear: '', isCurrent: false }]);
+    markExp();
+  };
+  const deleteExp = (id: string) => {
+    setExperiences(prev => prev.filter(e => e.id !== id));
+    setDeleteConfirmId(null);
+    markExp();
+  };
+  const onDragStart = (id: string) => setDraggedExpId(id);
+  const onDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOverExpId(id); };
+  const onDrop = (targetId: string) => {
+    if (!draggedExpId || draggedExpId === targetId) { setDraggedExpId(null); setDragOverExpId(null); return; }
+    setExperiences(prev => {
+      const arr = [...prev];
+      const fromIdx = arr.findIndex(e => e.id === draggedExpId);
+      const toIdx = arr.findIndex(e => e.id === targetId);
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, item);
+      return arr;
+    });
+    setDraggedExpId(null); setDragOverExpId(null);
+    markExp();
   };
 
   // ── Google Calendar connect (same OAuth flow as the marketplace apply page) ──
@@ -2464,6 +2957,27 @@ function ProfilePage() {
     <div className="flex">
       {/* Edit panel */}
       <div className="flex-1 p-6 space-y-5 min-w-0">
+        {/* Photo moderation — an unapproved photo keeps the mentor unlisted,
+            so the reason is surfaced here rather than only in `statusReason`. */}
+        {profile?.photoStatus === 'PHOTO_REVIEW' && (
+          <div className="flex items-start gap-2 rounded-[var(--radius-sm)] px-3 py-2.5 bg-amber-50 border border-amber-200">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800">
+              <span className="font-medium">Profile photo pending review.</span> Your profile stays unlisted until an admin approves it.
+            </div>
+          </div>
+        )}
+        {profile?.photoStatus === 'PHOTO_REJECTED' && (
+          <div className="flex items-start gap-2 rounded-[var(--radius-sm)] px-3 py-2.5 bg-red-50 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-red-700">
+              <span className="font-medium">Profile photo rejected.</span> Upload a new one to get listed again.
+              {profile.statusReason && (
+                <span className="block mt-0.5">Reason: {statusReasonLabel(profile.statusReason)}</span>
+              )}
+            </div>
+          </div>
+        )}
         {/* Basic Info */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
           <div className="flex items-center gap-4">
@@ -2517,178 +3031,285 @@ function ProfilePage() {
           <div>
             <label className="text-xs text-muted-foreground">Bio<span className="text-destructive ml-0.5">*</span></label>
             <textarea value={bio} rows={4} onChange={e => { setBio(e.target.value); markBasic(); }} className="mt-1 w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs" style={{ color: bio.trim().split(/\s+/).filter(Boolean).length >= 300 ? 'hsl(142,63%,35%)' : 'var(--muted-foreground)' }}>
+                {bio.trim().split(/\s+/).filter(Boolean).length >= 300 ? '✓ Great length' : 'Recommend more than 300 words'}
+              </p>
+              <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                {bio.trim().split(/\s+/).filter(Boolean).length} words
+              </span>
+            </div>
           </div>
 
           <SectionSaveRow status={basic} onSave={saveBasic} />
         </div>
 
-        {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
-        <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
-
-        {/* Coaching Plans */}
-        <div className="bg-card border border-border rounded-[var(--radius)] p-5">
-          <div className="mb-4">
-            <h3 className="text-foreground text-lg font-medium mb-1">Coaching Plans</h3>
-            <p className="text-sm text-muted-foreground">Define the services you provide as a mentor.</p>
+        {/* Experience — PUT /mentorship/profile { careerBackground } */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div>
+            <h3 className="text-foreground text-lg font-medium mb-1">Experience</h3>
+            <p className="text-sm text-muted-foreground">Shown on your public profile — most recent first.</p>
           </div>
 
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">Services I Provide<span className="text-destructive ml-0.5">*</span></label>
-            <div className="flex flex-wrap items-center gap-[var(--space-2)] mt-[var(--space-2)]">
-              {services.map(s => (
-                editingService === s ? (
-                  <div
-                    key={s}
-                    className="flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-sm)] shadow-sm transition-all"
-                    style={{ background: 'var(--color-blue-50)', border: '1px solid var(--color-blue-300)' }}
-                  >
-                    <input
-                      autoFocus
-                      value={editServiceValue}
-                      onChange={e => setEditServiceValue(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleSaveEditService(s);
-                        if (e.key === 'Escape') { setEditingService(null); setEditServiceValue(''); }
-                      }}
-                      placeholder="Service name"
-                      className="w-36 rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] outline-none focus:ring-1"
-                      style={{
-                        fontSize: 'var(--text-sm)',
-                        background: 'var(--input-background)',
-                        border: '1px solid var(--color-blue-300)',
-                        color: 'var(--foreground)',
-                        // @ts-ignore
-                        '--tw-ring-color': 'var(--color-blue-500)',
-                      }}
-                    />
-                    <button
-                      onClick={() => handleSaveEditService(s)}
-                      className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                      style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--color-blue-500)', color: '#fff', border: 'none' }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => { setEditingService(null); setEditServiceValue(''); }}
-                      className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                      style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'transparent', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    key={s}
-                    className="group inline-flex items-center gap-[var(--space-1)] rounded-full transition-colors"
-                    style={{
-                      padding: 'var(--space-1) var(--space-3)',
-                      background: 'var(--color-blue-50)',
-                      border: '1px solid var(--color-blue-200)',
-                      color: 'var(--color-blue-700)',
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-blue-100)';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-blue-300)';
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-blue-50)';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-blue-200)';
-                    }}
-                  >
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)' }}>{s}</span>
-                    <button
-                      onClick={() => { setEditingService(s); setEditServiceValue(s); }}
-                      title="Edit service"
-                      className="rounded-full p-[2px] transition-colors hover:bg-[var(--color-blue-200)]"
-                      style={{ color: 'var(--color-blue-500)', lineHeight: 0 }}
-                    >
-                      <Edit3 size={12} />
-                    </button>
-                    <button
-                      onClick={() => handleRemoveService(s)}
-                      title="Remove service"
-                      className="rounded-full p-[2px] transition-colors hover:bg-[var(--color-blue-200)]"
-                      style={{ color: 'var(--color-blue-500)', lineHeight: 0 }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                )
-              ))}
-
-              {isAddingService ? (
-                <div
-                  className="flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-sm)] shadow-sm transition-all"
-                  style={{ background: 'var(--color-blue-50)', border: '1px solid var(--color-blue-300)' }}
-                >
-                  <input
-                    autoFocus
-                    value={newService}
-                    onChange={e => setNewService(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleAddService();
-                      if (e.key === 'Escape') { setIsAddingService(false); setNewService(''); }
-                    }}
-                    placeholder="e.g. System Design Mock"
-                    className="w-40 rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] outline-none focus:ring-1"
-                    style={{
-                      fontSize: 'var(--text-sm)',
-                      background: 'var(--input-background)',
-                      border: '1px solid var(--color-blue-300)',
-                      color: 'var(--foreground)',
-                      // @ts-ignore
-                      '--tw-ring-color': 'var(--color-blue-500)',
-                    }}
-                  />
-                  <button
-                    onClick={handleAddService}
-                    className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                    style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--color-blue-500)', color: '#fff', border: 'none' }}
-                  >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => { setIsAddingService(false); setNewService(''); }}
-                    className="rounded-[var(--radius-sm)] px-[var(--space-2)] py-[var(--space-1)] transition-colors"
-                    style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'transparent', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setIsAddingService(true)}
-                  className="inline-flex items-center gap-[var(--space-1)] rounded-full transition-colors"
-                  style={{
-                    padding: 'var(--space-1) var(--space-3)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-weight-medium)',
-                    background: 'transparent',
-                    border: '1px dashed var(--color-blue-300)',
-                    color: 'var(--color-blue-600)',
-                  }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = 'var(--color-blue-50)';
-                    el.style.borderColor = 'var(--color-blue-500)';
-                    el.style.color = 'var(--color-blue-700)';
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.background = 'transparent';
-                    el.style.borderColor = 'var(--color-blue-300)';
-                    el.style.color = 'var(--color-blue-600)';
-                  }}
-                >
-                  <Plus size={14} />
-                  Add Service
-                </button>
-              )}
+          {experiences.length === 0 && (
+            <div className="flex flex-col items-center gap-3 py-6 rounded-[var(--radius-sm)]" style={{ background: 'var(--secondary)' }}>
+              <Briefcase className="w-8 h-8" style={{ color: 'var(--muted-foreground)' }} />
+              <p className="text-sm text-center" style={{ color: 'var(--muted-foreground)' }}>Add your work experience so candidates can see your background.</p>
             </div>
+          )}
+
+          {experiences.length > 0 && (
+            <div className="space-y-2">
+              {experiences.map(exp => {
+                const yearErr = exp.startYear && exp.endYear && !exp.isCurrent && parseInt(exp.endYear) < parseInt(exp.startYear);
+                const isDragOver = dragOverExpId === exp.id && draggedExpId !== exp.id;
+                return (
+                  <div
+                    key={exp.id}
+                    draggable
+                    onDragStart={() => onDragStart(exp.id)}
+                    onDragOver={e => onDragOver(e, exp.id)}
+                    onDrop={() => onDrop(exp.id)}
+                    onDragEnd={() => { setDraggedExpId(null); setDragOverExpId(null); }}
+                    className="rounded-[var(--radius-sm)] border p-3 transition-all"
+                    style={{
+                      borderColor: isDragOver ? 'var(--primary)' : 'var(--border)',
+                      background: draggedExpId === exp.id ? 'var(--secondary)' : 'var(--card)',
+                      opacity: draggedExpId === exp.id ? 0.5 : 1,
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="mt-2 cursor-grab active:cursor-grabbing shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                          <circle cx="4" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/>
+                          <circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/>
+                          <circle cx="4" cy="10.5" r="1.2"/><circle cx="10" cy="10.5" r="1.2"/>
+                        </svg>
+                      </div>
+
+                      <div className="flex-1 space-y-2.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Title <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <input
+                              value={exp.title}
+                              onChange={e => updateExp(exp.id, { title: e.target.value })}
+                              placeholder="e.g. Senior Product Manager"
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Company <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <input
+                              value={exp.company}
+                              onChange={e => updateExp(exp.id, { company: e.target.value })}
+                              placeholder="e.g. Google"
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Start year <span style={{ color: 'hsl(0,72%,51%)' }}>*</span></label>
+                            <select
+                              value={exp.startYear}
+                              onChange={e => updateExp(exp.id, { startYear: e.target.value })}
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">Year</option>
+                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">End year</label>
+                            <select
+                              value={exp.isCurrent ? 'Present' : exp.endYear}
+                              disabled={exp.isCurrent}
+                              onChange={e => updateExp(exp.id, { endYear: e.target.value === 'Present' ? '' : e.target.value })}
+                              className="mt-0.5 w-full text-sm border border-input rounded-[var(--radius-sm)] px-2.5 py-1.5 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+                            >
+                              <option value="Present">Present</option>
+                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        <label className="flex items-center gap-2 cursor-pointer w-fit">
+                          <button
+                            onClick={() => exp.isCurrent ? updateExp(exp.id, { isCurrent: false }) : setCurrentRole(exp.id)}
+                            className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                            style={{ background: exp.isCurrent ? 'var(--primary)' : 'transparent', border: exp.isCurrent ? '1.5px solid var(--primary)' : '1.5px solid var(--muted-foreground)', cursor: 'pointer' }}
+                          >
+                            {exp.isCurrent && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </button>
+                          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>This is my current role</span>
+                        </label>
+
+                        {yearErr && (
+                          <p className="text-xs flex items-center gap-1" style={{ color: 'hsl(0,72%,51%)' }}>
+                            <AlertCircle className="w-3 h-3 shrink-0" />End year cannot be earlier than start year.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 mt-0.5">
+                        {deleteConfirmId === exp.id ? (
+                          <div className="flex flex-col items-end gap-1.5">
+                            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Remove this experience?</span>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => deleteExp(exp.id)} className="px-2 py-0.5 text-xs rounded-md" style={{ background: 'hsl(0,72%,51%)', color: '#fff', border: 'none', cursor: 'pointer' }}>Confirm</button>
+                              <button onClick={() => setDeleteConfirmId(null)} className="px-2 py-0.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)', background: 'transparent', color: 'var(--foreground)', cursor: 'pointer' }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmId(exp.id)}
+                            className="p-1.5 rounded-md transition-colors hover:bg-secondary"
+                            style={{ color: 'var(--muted-foreground)', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <button
+            onClick={addExp}
+            disabled={experiences.length >= 5}
+            className="flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed w-fit"
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: experiences.length >= 5 ? 'var(--muted-foreground)' : 'var(--primary)',
+              background: 'none', border: 'none', cursor: experiences.length >= 5 ? 'not-allowed' : 'pointer',
+              opacity: experiences.length >= 5 ? 0.5 : 1,
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            Add experience
+          </button>
+
+          <SectionSaveRow status={exp} onSave={saveExperience} />
+        </div>
+
+        {/* Session title — PUT /mentorship/profile/topic. Sits above Service
+            Types because the services describe what this session covers. */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div>
+            <h3 className="text-foreground text-lg font-medium mb-1">Session Title</h3>
+            <p className="text-sm text-muted-foreground">The name students see for your bookable session.</p>
+          </div>
+          <input
+            value={topicTitle}
+            maxLength={120}
+            onChange={e => { setTopicTitle(e.target.value); markTopic(); }}
+            placeholder={FIXED_TOPIC_TITLE}
+            className="w-full text-sm border border-input rounded-[var(--radius-sm)] px-3 py-2 bg-input-background text-foreground outline-none focus:ring-1 focus:ring-ring"
+          />
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            Defaults to &ldquo;{FIXED_TOPIC_TITLE}&rdquo; if you never set one.
+          </p>
+          <SectionSaveRow status={topic} onSave={saveTopicTitle} />
+        </div>
+
+        {/* Service Types + Disciplines — PUT /mentorship/profile { services, disciplines } */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-foreground text-lg font-medium mb-1">Service Types<span className="text-destructive ml-0.5">*</span></h3>
+              <p className="text-sm text-muted-foreground">These help us categorize you so candidates can find you faster through search and filters.</p>
+            </div>
+            <span className="shrink-0 text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{services.length} selected</span>
+          </div>
+
+          <div className="space-y-4">
+            {SERVICE_TYPE_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.label}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.options.map(opt => {
+                    const selected = services.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => toggleService(opt)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: 'var(--space-1) var(--space-3)',
+                          borderRadius: 9999,
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                          background: selected ? 'var(--color-blue-600)' : 'transparent',
+                          color: selected ? '#fff' : 'var(--foreground)',
+                          border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        {SERVICE_TYPE_LABELS[opt]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Discipline — required alongside services for the mentor to be
+                listed, and it backs the candidate-side Role / Industry filter. */}
           </div>
 
           <SectionSaveRow status={svc} onSave={saveServices} />
         </div>
+
+        {/* Discipline — its own section: a separate field on the profile, and
+            the one that backs the candidate-side Role / Industry filter. */}
+        <div className="bg-card border border-border rounded-[var(--radius)] p-5 space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-foreground text-lg font-medium mb-1">Discipline<span className="text-destructive ml-0.5">*</span></h3>
+              <p className="text-sm text-muted-foreground">The field you work in. Candidates filter by this on the mentor marketplace.</p>
+            </div>
+            <span className="shrink-0 text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{disciplines.length} selected</span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {DISCIPLINES.map(opt => {
+              const selected = disciplines.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  onClick={() => toggleDiscipline(opt)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: 'var(--space-1) var(--space-3)',
+                    borderRadius: 9999,
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: selected ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                    background: selected ? 'var(--color-blue-600)' : 'transparent',
+                    color: selected ? '#fff' : 'var(--foreground)',
+                    border: selected ? '1px solid var(--color-blue-600)' : '1px solid var(--border)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  {DISCIPLINE_LABELS[opt]}
+                </button>
+              );
+            })}
+          </div>
+
+          <SectionSaveRow status={disc} onSave={saveDisciplines} />
+        </div>
+
+        {/* Mentorship Session pricing — PUT /mentorship/profile/topic/price */}
+        <TopicsCard topics={profile?.topics ?? []} onChanged={() => ctx?.refetch()} />
 
         {/* Verification Section */}
         <div className="bg-card border border-border rounded-[var(--radius)] p-5">
@@ -2774,6 +3395,36 @@ function ProfilePage() {
                 ) : (
                   <p className="mt-1 text-xs text-muted-foreground break-all">{linkedin || <span className="italic">Not provided</span>}</p>
                 )}
+                {/* Visibility only — students get linkedinUrl as null when this
+                    is off. Not a listing requirement. */}
+                {/* Custom control: the native checkbox rendered grey when
+                    ticked, which read as unselected. Uses the same green as the
+                    verified state elsewhere on this page. */}
+                <button
+                  type="button"
+                  onClick={() => { if (!editingVerify) return; setShowLinkedin(!showLinkedin); markVerify(); }}
+                  disabled={!editingVerify}
+                  aria-pressed={showLinkedin}
+                  className="mt-2 flex items-center gap-2 w-fit"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: editingVerify ? 'pointer' : 'default', opacity: editingVerify ? 1 : 0.75 }}
+                >
+                  <span
+                    className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
+                    style={{
+                      background: showLinkedin ? 'hsl(165,82%,90%)' : 'transparent',
+                      border: showLinkedin ? '1.5px solid hsl(165,82%,65%)' : '1.5px solid var(--muted-foreground)',
+                    }}
+                  >
+                    {showLinkedin && (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 5l2.5 2.5 3.5-4" stroke="hsl(165,60%,30%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="text-xs" style={{ color: showLinkedin ? 'hsl(165,60%,30%)' : 'var(--muted-foreground)' }}>
+                    Show my LinkedIn to students
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -2849,51 +3500,6 @@ function ProfilePage() {
         </div>
       </div>
 
-      {/* Live Preview */}
-      <div className="w-72 border-l border-border bg-surface-0 self-start sticky top-0">
-        <div className="px-4 py-3 border-b border-border bg-card">
-          <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Marketplace Preview</span>
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="bg-card border border-border rounded-[var(--radius)] overflow-hidden shadow-sm">
-            <div className="h-16 bg-gradient-to-r from-primary/20 to-primary/5" />
-            <div className="px-4 pb-4 -mt-7">
-              <div className="flex items-end gap-3 mb-3">
-                {profile?.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={name} className="w-14 h-14 rounded-full border-2 border-card object-cover" />
-                ) : (
-                  <div className="w-14 h-14 rounded-full border-2 border-card bg-primary/10 flex items-center justify-center text-primary text-sm font-medium">
-                    {(name || 'M').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                {profile?.status === 'APPROVED' && (
-                  <div className="mb-1 flex items-center gap-1 text-xs text-[hsl(165,60%,30%)] bg-[hsl(165,82%,90%)] px-2 py-0.5 rounded-md">
-                    <ShieldCheck className="w-3 h-3" /> Verified
-                  </div>
-                )}
-              </div>
-              <div className="font-semibold text-foreground text-sm">{name}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{title} · {company}</div>
-              <div className="flex items-center gap-1 mt-1.5">
-                <StarRating rating={Math.round(profile?.averageRating ?? 0)} />
-                <span className="text-xs text-muted-foreground">{profile?.averageRating ?? 0} ({profile?.reviewCount ?? 0})</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{headline}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {services.slice(0, 3).map(t => (
-                  <span key={t} className="text-[11px] bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">{t}</span>
-                ))}
-              </div>
-              <button className="mt-3 w-full py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                Book a session
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -3124,7 +3730,45 @@ function EarningsStatusBadge({ status }: { status: string }) {
   );
 }
 
+// Referral-credit ledger has no backend yet — static sample rows for the Credits tab.
+const CREDIT_TRANSACTIONS = [
+  { id: 'c1', date: 'Jun 3, 2025',  description: 'Google SWE referral — Emily Zhang accepted',  credits: 100,   status: 'Confirmed' },
+  { id: 'c2', date: 'May 28, 2025', description: 'Meta PM referral — slot 1 of 3',               credits: 200,   status: 'Escrow' },
+  { id: 'c3', date: 'May 20, 2025', description: 'Stripe Backend referral — in progress',        credits: 150,   status: 'Escrow' },
+  { id: 'c4', date: 'May 15, 2025', description: 'Airbnb Frontend referral — completed',         credits: 80,    status: 'Confirmed' },
+  { id: 'c5', date: 'May 1, 2025',  description: 'Redeemed as cash',                             credits: -1200, status: 'Redeemed' },
+  { id: 'c6', date: 'Apr 22, 2025', description: 'Figma Design Engineer referral — accepted',    credits: 180,   status: 'Confirmed' },
+];
+
+function CreditStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    'Escrow':    { bg: 'var(--color-blue-50)',  color: 'var(--color-blue-700)' },
+    'Confirmed': { bg: 'hsl(142 71% 93%)',      color: 'hsl(142 63% 26%)' },
+    'Redeemed':  { bg: 'var(--surface-2)',       color: 'var(--muted-foreground)' },
+  };
+  const s = map[status] ?? { bg: 'var(--surface-2)', color: 'var(--muted-foreground)' };
+  return (
+    <span
+      className="inline-flex items-center rounded-[var(--radius-sm)] whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: s.bg, color: s.color }}
+    >
+      {status}
+    </span>
+  );
+}
+
 function EarningsPage() {
+  // Cash tab is API-backed; the Credits tab is static (no referral-credit API yet).
+  const [eTab, setETab] = useState<'Cash' | 'Credits'>('Cash');
+
+  // Referral-credit figures (static until the backend exists).
+  const creditBalance = 2480;
+  const estCashValue = (creditBalance / 12).toFixed(2);
+  const completedReferrals = 7;
+  const eligRefCount = completedReferrals >= 5;
+  const eligBalance = creditBalance >= 1000;
+  const canRedeem = eligRefCount && eligBalance;
+
   // GET /mentorship/profile/earnings → { availableCents, pendingCents, lifetimeCents }.
   const [earningTotals, setEarningTotals] = useState<{ available: number; pending: number; lifetime: number } | null>(null);
   const [earningsLoading, setEarningsLoading] = useState(true);
@@ -3174,10 +3818,33 @@ function EarningsPage() {
         {/* Page header */}
         <div>
           <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>Earnings</h2>
-          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income</p>
+          <p className="mt-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Track your session income and redeem referral credits</p>
         </div>
 
+        {/* Tab bar — pill style */}
+        {/* <div className="flex items-center gap-[4px]">
+          {(['Cash', 'Credits'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setETab(t)}
+              className="flex items-center gap-[8px] px-[14px] py-[8px] rounded-[16px] transition-colors"
+              style={{
+                background: eTab === t ? 'var(--color-gray-100, #edeff2)' : 'transparent',
+                color: eTab === t ? 'var(--foreground)' : 'var(--muted-foreground)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: eTab === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                border: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t === 'Credits' ? 'Referral Credits' : t}
+            </button>
+          ))}
+        </div> */}
+
         {/* ── Cash earnings ── */}
+        {eTab === 'Cash' && (
         <div className="space-y-5">
 
             {/* Stat cards */}
@@ -3237,6 +3904,88 @@ function EarningsPage() {
               </tbody>
             </table>
         </div>
+        )}
+
+        {/* ── Referral credits (static) ── */}
+        {eTab === 'Credits' && (
+          <div className="space-y-5">
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Credit Balance</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>{creditBalance.toLocaleString()}</div>
+              </div>
+              <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Est. Cash Value</div>
+                <div className="mt-2" style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>${estCashValue}</div>
+                <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>at 12 cr = $1</div>
+              </div>
+            </div>
+
+            {/* Redeem section */}
+            <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Redeem Credits</div>
+              <div className="space-y-2.5 mb-4">
+                {[
+                  { label: `Completed ≥ 5 referrals this month (${completedReferrals} completed)`, met: eligRefCount },
+                  { label: 'Credit balance ≥ 1,000', met: eligBalance },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2.5">
+                    {item.met
+                      ? <CheckCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(142 63% 38%)' }} />
+                      : <XCircle className="w-4 h-4 shrink-0" style={{ color: 'hsl(0 65% 50%)' }} />
+                    }
+                    <span style={{ fontSize: 'var(--text-sm)', color: item.met ? 'var(--foreground)' : 'var(--muted-foreground)', lineHeight: 1.8 }}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mb-4" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                Exchange rate: 12 credits = $1. Redeemed credits are added to your Cash &gt; Available balance in the next monthly payout cycle.
+              </p>
+              <button
+                disabled={!canRedeem}
+                style={{
+                  width: '100%', padding: '9px 16px',
+                  fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)',
+                  background: 'var(--primary)', color: 'var(--primary-foreground)',
+                  border: 'none', borderRadius: 'var(--radius-sm)',
+                  opacity: canRedeem ? 1 : 0.5,
+                  cursor: canRedeem ? 'pointer' : 'not-allowed',
+                  transition: 'opacity var(--transition-base)',
+                }}
+              >
+                Redeem as cash
+              </button>
+            </div>
+
+            {/* Credit transaction table */}
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Date', 'Description', 'Credits', 'Status'].map(col => (
+                    <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CREDIT_TRANSACTIONS.map((row, i) => (
+                  <tr key={row.id} style={{ borderBottom: i < CREDIT_TRANSACTIONS.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{row.date}</td>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', color: 'var(--foreground)' }}>{row.description}</td>
+                    <td style={{ padding: '12px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', whiteSpace: 'nowrap', color: row.credits < 0 ? 'hsl(0 65% 48%)' : 'hsl(142 63% 30%)' }}>
+                      {row.credits > 0 ? '+' : ''}{row.credits}
+                    </td>
+                    <td style={{ padding: '12px' }}><CreditStatusBadge status={row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+          </div>
+        )}
 
       </div>
     </div>
@@ -3382,6 +4131,9 @@ function ProfileAndAvailabilityPage() {
   // Once the mentor is APPROVED they're already live, so the "complete your
   // profile" requirement notice no longer applies.
   const isApproved = ctx?.profile?.status === 'APPROVED';
+  // The API says WHICH requirement is missing — show it instead of leaving the
+  // mentor to guess from a generic "complete your profile" message.
+  const blockingReason = statusReasonLabel(ctx?.profile?.statusReason);
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Required notice — hidden once the mentor is approved/live. */}
@@ -3390,7 +4142,8 @@ function ProfileAndAvailabilityPage() {
           <div className="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-3 py-2">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700">
-              <span className="font-medium">Required.</span> Complete your profile and weekly availability before you can appear in the mentor marketplace.
+              <span className="font-medium">Required.</span>{' '}
+              {blockingReason || 'Complete your profile and weekly availability before you can appear in the mentor marketplace.'}
             </p>
           </div>
         </div>
@@ -3406,6 +4159,353 @@ function ProfileAndAvailabilityPage() {
 }
 
 /* ─────────────────────────────────────────────
+   REFERRAL PAGE (内推) — no backend yet; static sample content.
+───────────────────────────────────────────── */
+type ROpportunity = {
+  id: string; company: string; role: string;
+  type: 'Submission' | 'Interview Guarantee';
+  status: 'Open' | 'Processing' | 'Complete';
+  location: string; salary: string; credits: number;
+  slotsUsed: number; slotsTotal: number; minMins: number; applicants: number;
+};
+type RApplicant = {
+  id: string; oppId: string; name: string; initials: string;
+  qualified: boolean; trainingMins: number; mockScore: number;
+};
+
+const R_OPPS: ROpportunity[] = [
+  { id: 'o1', company: 'Google',    role: 'Software Engineer',      type: 'Submission',           status: 'Open',       location: 'San Francisco, CA', salary: '$180k–$220k', credits: 100, slotsUsed: 2, slotsTotal: 5, minMins: 300, applicants: 3 },
+  { id: 'o2', company: 'Meta',      role: 'Product Manager',        type: 'Interview Guarantee',  status: 'Processing', location: 'Remote',            salary: '$160k–$200k', credits: 200, slotsUsed: 3, slotsTotal: 3, minMins: 500, applicants: 3 },
+  { id: 'o3', company: 'Stripe',    role: 'Backend Engineer',       type: 'Submission',           status: 'Open',       location: 'New York, NY',      salary: '$190k–$230k', credits: 150, slotsUsed: 1, slotsTotal: 4, minMins: 400, applicants: 2 },
+  { id: 'o4', company: 'Airbnb',    role: 'Frontend Engineer',      type: 'Submission',           status: 'Complete',   location: 'San Francisco, CA', salary: '$170k–$210k', credits: 80,  slotsUsed: 5, slotsTotal: 5, minMins: 200, applicants: 0 },
+  { id: 'o5', company: 'Figma',     role: 'Design Engineer',        type: 'Interview Guarantee',  status: 'Open',       location: 'San Francisco, CA', salary: '$165k–$195k', credits: 180, slotsUsed: 0, slotsTotal: 3, minMins: 350, applicants: 1 },
+];
+
+const R_APPLICANTS: RApplicant[] = [
+  { id: 'a1', oppId: 'o1', name: 'Emily Zhang',  initials: 'EZ', qualified: true,  trainingMins: 420, mockScore: 92 },
+  { id: 'a2', oppId: 'o1', name: 'Marcus Liu',   initials: 'ML', qualified: false, trainingMins: 180, mockScore: 65 },
+  { id: 'a3', oppId: 'o1', name: 'Lisa Park',    initials: 'LP', qualified: true,  trainingMins: 380, mockScore: 88 },
+  { id: 'a4', oppId: 'o3', name: 'Aisha Kumar',  initials: 'AK', qualified: true,  trainingMins: 510, mockScore: 95 },
+  { id: 'a5', oppId: 'o3', name: 'Kevin Li',     initials: 'KL', qualified: false, trainingMins: 90,  mockScore: 58 },
+];
+
+function TypeBadge({ type }: { type: string }) {
+  const isIG = type === 'Interview Guarantee';
+  return (
+    <span className="inline-flex items-center rounded-full whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)',
+        background: isIG ? 'hsl(260 80% 95%)' : 'var(--color-blue-50)',
+        color:      isIG ? 'hsl(260 60% 40%)' : 'var(--color-blue-700)',
+        border:     isIG ? '1px solid hsl(260 60% 82%)' : '1px solid var(--color-blue-200)' }}>
+      {type}
+    </span>
+  );
+}
+
+function OppStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    'Open':       { bg: 'hsl(142 71% 93%)',  color: 'hsl(142 63% 26%)' },
+    'Processing': { bg: 'var(--color-blue-50)', color: 'var(--color-blue-700)' },
+    'Complete':   { bg: 'var(--surface-2)',   color: 'var(--muted-foreground)' },
+    'On Hold':    { bg: 'hsl(38 92% 92%)',    color: 'hsl(38 70% 30%)' },
+  };
+  const s = map[status] ?? { bg: 'var(--surface-2)', color: 'var(--muted-foreground)' };
+  return (
+    <span className="inline-flex items-center rounded-[var(--radius-sm)] whitespace-nowrap"
+      style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: s.bg, color: s.color }}>
+      {status}
+    </span>
+  );
+}
+
+function ReferralPage() {
+  type SubTab = 'Opportunities' | 'Pending Applications' | 'Post Opportunity';
+  const [sub, setSub] = useState<SubTab>('Opportunities');
+
+  const [form, setForm] = useState({ company: '', role: '', location: '', salary: '', type: 'Submission', credits: '0', slots: '', minMins: '' });
+  const setF = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const pendingCount = R_APPLICANTS.length;
+  const tabs: SubTab[] = ['Opportunities', 'Pending Applications', 'Post Opportunity'];
+  const oppIds = [...new Set(R_APPLICANTS.map(a => a.oppId))];
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+    fontSize: 'var(--text-sm)', color: 'var(--foreground)',
+    background: 'var(--input-background)', border: '1px solid var(--border)',
+    outline: 'none', transition: 'border-color var(--transition-base)',
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 space-y-5">
+
+        {/* Page header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>Referral</h2>
+            <p className="mt-0.5" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted-foreground)' }}>Publish referral opportunities, review applicants, track progress</p>
+          </div>
+          <button
+            onClick={() => setSub('Post Opportunity')}
+            className="flex items-center gap-2 rounded-[var(--radius-sm)] transition-colors"
+            style={{ padding: '8px 16px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none' }}
+          >
+            <Plus className="w-4 h-4" />
+            Post opportunity
+          </button>
+        </div>
+
+        {/* Sub-tabs — underline style */}
+        <div className="flex items-center" style={{ borderBottom: '1px solid var(--border)' }}>
+          {tabs.map(t => (
+            <button
+              key={t}
+              onClick={() => setSub(t)}
+              className="flex items-center gap-1.5 transition-colors"
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: sub === t ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
+                color: sub === t ? 'var(--primary)' : 'var(--muted-foreground)',
+                paddingBottom: 10, paddingTop: 4, paddingLeft: 4, paddingRight: 4,
+                marginRight: 24, background: 'none',
+                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                borderBottom: sub === t ? '2px solid var(--primary)' : '2px solid transparent',
+                marginBottom: -1, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {t}
+              {t === 'Pending Applications' && pendingCount > 0 && (
+                <span className="rounded-full flex items-center justify-center"
+                  style={{ minWidth: 16, height: 16, padding: '0 4px', fontSize: 10, fontWeight: 'var(--font-weight-semibold)', background: 'hsl(0 72% 51%)', color: 'var(--primary-foreground)' }}>
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Opportunities panel ── */}
+        {sub === 'Opportunities' && (
+          <div className="space-y-5">
+            {/* Stat cards */}
+            <div className="grid grid-cols-4 gap-4">
+              {[
+                { label: 'Active',                    value: R_OPPS.filter(o => o.status !== 'Complete').length },
+                { label: 'Pending Applications',      value: pendingCount },
+                { label: 'Completed this month',      value: R_OPPS.filter(o => o.status === 'Complete').length },
+                { label: 'Credits earned this month', value: '1,240' },
+              ].map(c => (
+                <div key={c.label} className="rounded-[var(--radius)] p-4" style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{c.label}</div>
+                  <div className="mt-2" style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--foreground)' }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Section header */}
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>My opportunities</div>
+
+            {/* Opportunity cards */}
+            <div className="space-y-3">
+              {R_OPPS.map(opp => (
+                <div key={opp.id} className="rounded-[var(--radius)] p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>
+                        {opp.company} — {opp.role}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <TypeBadge type={opp.type} />
+                        <OppStatusBadge status={opp.status} />
+                      </div>
+                      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                        <span>{opp.location}</span>
+                        <span>·</span>
+                        <span>{opp.salary}</span>
+                        <span>·</span>
+                        <span>{opp.credits} cr</span>
+                        <span>·</span>
+                        <span>{opp.slotsUsed} / {opp.slotsTotal} slots</span>
+                        <span>·</span>
+                        <span>≥ {opp.minMins} min / 7 days</span>
+                        {opp.status === 'Processing' && <><span>·</span><span style={{ color: 'hsl(0 65% 48%)' }}>4 days left</span></>}
+                        {opp.status === 'Complete' && <><span>·</span><span>Auto-confirms in 3 days</span></>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {opp.status === 'Open' && (
+                        <>
+                          <button
+                            onClick={() => setSub('Pending Applications')}
+                            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] transition-colors"
+                            style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                            <Users className="w-3.5 h-3.5" />{opp.applicants} applications
+                          </button>
+                          <button className="rounded-[var(--radius-sm)] p-1.5 transition-colors"
+                            style={{ color: 'var(--muted-foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                      {opp.status === 'Processing' && (
+                        <button className="flex items-center gap-1.5 rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none' }}>
+                          <Upload className="w-3.5 h-3.5" />Upload screenshot
+                        </button>
+                      )}
+                      {opp.status === 'Complete' && (
+                        <button disabled className="flex items-center gap-1.5 rounded-[var(--radius-sm)]"
+                          style={{ padding: '6px 12px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', background: 'transparent', border: '1px solid var(--border)', opacity: 0.5, cursor: 'not-allowed' }}>
+                          Awaiting confirmation
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Pending Applications panel ── */}
+        {sub === 'Pending Applications' && (
+          <div className="space-y-4">
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pending applications</div>
+            {oppIds.map(oid => {
+              const opp = R_OPPS.find(o => o.id === oid);
+              const apps = R_APPLICANTS.filter(a => a.oppId === oid);
+              if (!opp) return null;
+              return (
+                <div key={oid} className="rounded-[var(--radius)] overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  {/* Group header */}
+                  <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-0)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>{opp.company} — {opp.role}</span>
+                    <TypeBadge type={opp.type} />
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>{opp.credits} cr · {opp.slotsUsed}/{opp.slotsTotal} slots</span>
+                  </div>
+                  {/* Applicant rows */}
+                  {apps.map((ap, i) => (
+                    <div key={ap.id} className="flex items-center gap-3 px-4"
+                      style={{ paddingTop: 10, paddingBottom: 10, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                      {/* Avatar initials */}
+                      <div className="rounded-full flex items-center justify-center shrink-0"
+                        style={{ width: 34, height: 34, background: 'var(--color-blue-100)', color: 'var(--color-blue-700)', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-semibold)' }}>
+                        {ap.initials}
+                      </div>
+                      {/* Name + eligibility */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>{ap.name}</span>
+                          <span className="rounded-[var(--radius-sm)]"
+                            style={{ padding: '2px 8px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)',
+                              background: ap.qualified ? 'hsl(142 71% 93%)' : 'hsl(38 92% 92%)',
+                              color: ap.qualified ? 'hsl(142 63% 26%)' : 'hsl(38 70% 30%)' }}>
+                            {ap.qualified ? 'Eligible' : 'Below threshold'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>
+                          <span>{ap.trainingMins} min past 7 days</span>
+                          <span>·</span>
+                          <span>Mock avg: {ap.mockScore}</span>
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                          Resume
+                        </button>
+                        <button className="flex items-center gap-1 rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)', background: 'transparent', border: '1px solid var(--border)' }}>
+                          <Eye className="w-3 h-3" />Mock
+                        </button>
+                        <button disabled={!ap.qualified} className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', opacity: ap.qualified ? 1 : 0.4, cursor: ap.qualified ? 'pointer' : 'not-allowed' }}>
+                          Accept
+                        </button>
+                        <button className="rounded-[var(--radius-sm)] transition-colors"
+                          style={{ padding: '5px 10px', fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'hsl(0 65% 48%)', background: 'transparent', border: '1px solid hsl(0 65% 75%)' }}>
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Post Opportunity panel ── */}
+        {sub === 'Post Opportunity' && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 'var(--font-weight-medium)', color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>New opportunity</div>
+            <div className="rounded-[var(--radius)] p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)', maxWidth: 640 }}>
+              <div className="space-y-3">
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Company name</label>
+                  <input value={form.company} onChange={setF('company')} placeholder="e.g. Google" style={inp} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Role title</label>
+                  <input value={form.role} onChange={setF('role')} placeholder="e.g. Software Engineer" style={inp} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Location</label>
+                    <input value={form.location} onChange={setF('location')} placeholder="e.g. Remote" style={inp} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Salary range</label>
+                    <input value={form.salary} onChange={setF('salary')} placeholder="e.g. 180k–240k" style={inp} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Type</label>
+                    <div className="relative">
+                      <select value={form.type} onChange={setF('type')} style={{ ...inp, paddingRight: 32, cursor: 'pointer', appearance: 'none' }}>
+                        <option value="Submission">Submission</option>
+                        <option value="Interview Guarantee">Interview Guarantee</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Credit price</label>
+                    <input type="number" value={form.credits} onChange={setF('credits')} min={0} max={1000} style={inp} />
+                    <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>0 = free referral</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Slot limit</label>
+                    <input type="number" value={form.slots} onChange={setF('slots')} placeholder="Max applicants" style={inp} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--text-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--foreground)' }}>Training threshold</label>
+                    <input type="number" value={form.minMins} onChange={setF('minMins')} placeholder="Min minutes" style={inp} />
+                    <div className="mt-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)' }}>past 7 days</div>
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <button style={{ padding: '8px 16px', fontSize: 'var(--text-sm)', fontWeight: 'var(--font-weight-medium)', background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+                    Post opportunity
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    SIDEBAR NAV
 ───────────────────────────────────────────── */
 const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: number; required?: boolean }[] = [
@@ -3415,6 +4515,7 @@ const NAV_ITEMS: { id: NavId; label: string; icon: React.ElementType; badge?: nu
   { id: 'profile',      label: 'Profile & Availability', icon: User, required: true },
   { id: 'reviews',      label: 'Reviews',      icon: Star },
   { id: 'earnings',     label: 'Earnings',     icon: DollarSign },
+  // { id: 'referral',     label: 'Referral',     icon: Gift },
 ];
 
 /* ─────────────────────────────────────────────
@@ -3462,6 +4563,9 @@ export function MentorDashboardPage() {
   const showCompletionBanner =
     !completionDismissed && activePage !== 'profile' &&
     !!profile && profile.status !== 'APPROVED';
+  // Surface the server's own explanation (e.g. "No discipline selected") rather
+  // than a generic prompt the mentor cannot act on.
+  const completionReason = statusReasonLabel(profile?.statusReason);
 
   // Dual-role accounts (candidate + mentor) can hop back to the candidate
   // experience; we remember the choice so they land there next time too.
@@ -3478,6 +4582,7 @@ export function MentorDashboardPage() {
     profile: 'Profile & Availability',
     reviews: 'Reviews',
     earnings: 'Earnings',
+    referral: 'Referral',
   };
 
   const pageContent: Record<NavId, React.ReactNode> = {
@@ -3487,6 +4592,7 @@ export function MentorDashboardPage() {
     profile: <ProfileAndAvailabilityPage />,
     reviews: <ReviewsPage />,
     earnings: <EarningsWithPayment />,
+    referral: <ReferralPage />,
   };
 
   return (
@@ -3610,7 +4716,7 @@ export function MentorDashboardPage() {
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
             <p className="flex-1 text-xs text-amber-700">
               <span className="font-medium">Your mentor profile isn't live yet.</span>{' '}
-              Complete your profile and weekly availability before you can appear in the mentor marketplace.
+              {completionReason || 'Complete your profile and weekly availability before you can appear in the mentor marketplace.'}
             </p>
             <button
               onClick={() => setActivePage('profile')}

@@ -3,7 +3,7 @@
 # Whitelist model: crawling is disallowed by default (Disallow: /), and only
 # the marketing/content pages below are opened back up. Everything behind the
 # login wall — /dashboard, /profile, /settings, /billing, /admin, /auth, the
-# interview and onboarding flows, /interview-insights, /marketplace — is
+# interview and onboarding flows, /interview-insights, /coaching — is
 # therefore blocked without needing its own rule.
 #
 # Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each
@@ -12,6 +12,68 @@
 # The Allow list mirrors PRERENDER_STATIC in scripts/routes.mjs and
 # STATIC_PATHS in api/sitemap.ts. Adding a public page means touching all
 # three; src/test/vercel-routes.test.ts asserts they stay in sync.
+#
+# Two groups below. Per RFC 9309 §2.2.1 a crawler obeys only the single most
+# specific group that matches its product token and ignores the others
+# entirely — so the social group is a full copy of the `*` rules plus
+# /experience, not a delta. Dropping a rule from one group only is a silent
+# divergence; the tests check both.
+
+# ── Social preview crawlers ──
+#
+# These are the bots middleware.ts intercepts (its CRAWLER_UA regex — keep the
+# two lists in step). For /experience/:id it answers them with a server-rendered
+# Open Graph document, so they never touch the empty SPA shell. Without an Allow
+# here the catch-all Disallow wins and LinkedIn refuses to fetch at all, which
+# it surfaces as "Cannot display preview".
+#
+# Googlebot is deliberately absent: it is not in CRAWLER_UA, so it would get the
+# real SPA route, whose post data needs a bearer token. It would index an empty
+# page. Add Googlebot only once /experience/:id renders its content logged out.
+User-agent: LinkedInBot
+User-agent: facebookexternalhit
+User-agent: Facebot
+User-agent: Twitterbot
+User-agent: Slackbot
+User-agent: Discordbot
+User-agent: redditbot
+User-agent: WhatsApp
+User-agent: TelegramBot
+User-agent: Applebot
+User-agent: PinterestBot
+
+# Shared interview experiences. Prefix match, so it covers /experience/:id.
+# /add-experience is unaffected — it does not start with "/experience".
+Allow: /experience
+
+Allow: /$
+Allow: /blog
+Allow: /faq
+Allow: /help
+Allow: /contact
+Allow: /privacy
+Allow: /terms
+Allow: /cookies
+Allow: /data-protection
+Allow: /sitemap.xml
+Allow: /llms.txt
+
+# og:image lives at /og-image.png. A preview card with an unfetchable image is
+# the failure this line prevents.
+Allow: /*.css
+Allow: /*.js
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.webp
+Allow: /*.svg
+Allow: /*.ico
+Allow: /*.woff2
+Allow: /*.webmanifest
+
+Disallow: /
+
+# ── Everyone else, search engines included ──
 
 User-agent: *
 

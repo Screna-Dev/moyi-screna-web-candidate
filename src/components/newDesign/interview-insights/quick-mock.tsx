@@ -863,7 +863,7 @@ export function CompanyMockLauncher({
         style={{
           padding: '10px 22px',
           background: 'linear-gradient(135deg, #F59E0B 0%, #EAB308 100%)',
-          color: '#FFFFFF', border: 'none', borderRadius: 8,
+          color: '#FFFFFF', border: 'none', borderRadius: 12,
           boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
           cursor: starting ? 'default' : 'pointer',
           fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600,

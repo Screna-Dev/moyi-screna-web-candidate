@@ -65,8 +65,6 @@
     { "source": "/experience/:id", "destination": "/app.html" },
 
     { "source": "/mentorship", "destination": "/app.html" },
-    { "source": "/marketplace", "destination": "/app.html" },
-    { "source": "/mentor-marketplace", "destination": "/app.html" },
     { "source": "/mentor-details", "destination": "/app.html" },
     { "source": "/guest-dashboard", "destination": "/app.html" },
     { "source": "/select-dashboard", "destination": "/app.html" },

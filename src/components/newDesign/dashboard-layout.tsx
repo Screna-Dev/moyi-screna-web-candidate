@@ -67,7 +67,6 @@ const adminSidebarLinks = [
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/coaching': 'Coaching',
-  '/marketplace': 'Mentorship Marketplace',
   '/mentor-details': 'Mentor Profile',
   '/interview-insights': 'InterviewPrep Note',
   '/quick-mock': 'Quick Mock',
@@ -112,7 +111,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   };
 
   const isLinkActive = (path: string) => {
-    if (path === '/coaching') return currentPath === '/coaching' || currentPath === '/marketplace' || currentPath === '/mentor-details';
+    if (path === '/coaching') return currentPath === '/coaching' || currentPath === '/mentor-details';
     // Quick Mock now lives under Questions, so its routes light up that entry.
     if (path === '/interview-insights') {
       return currentPath.startsWith('/interview-insights')
@@ -480,8 +479,8 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
   const firstName = userData?.firstName || 'there';
 
   const isApplications = location.pathname === '/applications';
-  // Marketplace & Jobs get a full-width canvas with no left sidebar.
-  const hasSidebar = !noSidebar && !isApplications && location.pathname !== '/marketplace';
+  // Jobs gets a full-width canvas with no left sidebar.
+  const hasSidebar = !noSidebar && !isApplications;
 
   // Title shown in the header: explicit prop wins, else mapped from path.
   const pageTitle = headerTitle ?? PAGE_TITLES[location.pathname];
