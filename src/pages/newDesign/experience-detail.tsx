@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate } from 'react-router';
-import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, MapPin, ExternalLink, CircleAlert, ChevronsUpDown } from 'lucide-react';
+import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDown, ChevronUp, Lightbulb, Check, Sparkles, AlertCircle, Loader2, CornerDownRight, Hash, X, User, MapPin, ExternalLink, CircleAlert, ChevronsUpDown, Lock } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getPublicPost, normalizePublicPosts, getComments, getPublicComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { hasStoredSession } from '../../services/api';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +17,7 @@ import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
+import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -160,15 +163,59 @@ function getQuestionHintStatus(
   return 'none';
 }
 
+// Whether signed-out visitors attempt to READ the discussion.
+//
+// The product rule is "guests read the thread, they just cannot post", and the
+// frontend for it is written below. No endpoint serves it yet. Measured
+// against api-staging on 2026-09-10, with no token:
+//
+//   GET /community/posts/{id}/comments         -> 401 UNAUTHORIZED
+//   GET /community/public/posts/{id}/comments  -> 404 NOT_FOUND
+//
+// The 401 holds for every combination of params and headers tried, and the
+// 404 is the framework's unmapped-route response, byte-identical to one for a
+// path invented on the spot. Note that the OpenAPI doc cannot settle this: it
+// declares `security: [{bearerAuth: []}]` at the ROOT and no operation
+// overrides it, so the known-permitAll /community/public/posts/search carries
+// the same annotation as the auth-only routes. Only the live responses count.
+//
+// On rather than off deliberately: the attempt showing up in the network tab
+// is what makes "waiting on the backend" visible. Off, the page looks exactly
+// like one where nobody wired it up, which cannot be told apart from a
+// frontend bug. Both failures are caught, and the day either route starts
+// answering, the thread appears with no code change.
+//
+// Set to false if the failed requests become noise before then.
+const PUBLIC_COMMENTS_ENABLED = true;
+
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════
 export function ExperienceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAuthenticated } = useAuth();
   const { planData } = useUserPlan();
   const posthog = usePostHog();
+
+  // Two things decide the shell, and they are not the same thing:
+  // Single notes live on one path, /experience/:id, whichever surface the
+  // reader came from — it is the URL middleware.ts gives an Open Graph document
+  // to, so it is the only one that previews correctly when shared.
+  //
+  // The shell therefore follows the session, not the route: DashboardLayout
+  // redirects to /auth when no token is stored, and shared links land
+  // signed-out readers here directly, so a guest must get the standalone shell
+  // on the very first render. Hence the synchronous storage check rather than
+  // `isAuthenticated`, which is still false while AuthContext resolves.
+  //
+  // Back-links follow the same split: a guest is sent to the public directory
+  // (the one they can actually browse), a member to the personal centre.
+  const signedOut = !hasStoredSession();
+  const Layout = signedOut ? InsightsLayout : DashboardLayout;
+  const listPath = signedOut ? '/interview-questions' : '/interview-insights';
+  const companyPath = (name?: string) =>
+    name ? `${listPath}/${companySlug(name)}` : listPath;
 
   // note_read —— 打开某篇面经，离开时记录 duration_seconds
   useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
@@ -181,6 +228,12 @@ export function ExperienceDetailPage() {
   // Free/Basic users can only open the 2 newest posts per company; the 3rd+
   // returns 403 INSUFFICIENT_PLAN_TIER, which we surface as an upgrade prompt.
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
+  // ── Guest access gate ──
+  // A signed-out visitor whose post fetch failed: either the public single-post
+  // endpoint isn't serving it, or it sits outside the free preview set. Either
+  // way the answer is "sign in", not "post not found".
+  const [guestGated, setGuestGated] = useState(false);
 
   // paywall_viewed —— 直接打开被锁定的面经（403 INSUFFICIENT_PLAN_TIER）弹出升级引导时上报。
   // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
@@ -238,8 +291,28 @@ export function ExperienceDetailPage() {
     if (!id) return;
     setPostLoading(true);
     try {
-      const res = await getPost(id);
-      const data = res.data?.data ?? res.data;
+      // Guests read the redacted public payload, members the authenticated one
+      // (plan-tier gated server-side). Keyed on stored session, not
+      // `isAuthenticated` — the latter is false for the first render of a
+      // signed-in visit, which would fire the public request and then repeat
+      // the whole fetch.
+      //
+      // There is no public single-post endpoint: a signed-out read is the list
+      // endpoint filtered to one postId, which answers 200 with zero rows for
+      // a post that is missing OR merely unpublished. The API withholds that
+      // distinction on purpose, so both fall through to the same gate below.
+      let data: any;
+      if (signedOut) {
+        const { posts } = normalizePublicPosts(await getPublicPost(id));
+        data = posts[0] ?? null;
+        if (!data) {
+          setGuestGated(true);
+          return;
+        }
+      } else {
+        const res = await getPost(id);
+        data = res.data?.data ?? res.data;
+      }
       setPost(data);
       // Initialize like/save from API
       setLiked(data?.liked ?? false);
@@ -256,40 +329,82 @@ export function ExperienceDetailPage() {
       if (err?.response?.status === 403 && code === 'INSUFFICIENT_PLAN_TIER') {
         // Free/Basic users hit the plan gate on the 3rd+ post for a company.
         setShowUpgradePrompt(true);
+      } else if (signedOut) {
+        // A signed-out read that threw rather than returning zero rows (network,
+        // 500, malformed uuid -> 400). Same message either way: the reader's
+        // problem is that they have no account, not that the post is missing.
+        setGuestGated(true);
       } else {
         console.error('[experience-detail] getPost failed for', id, err?.response?.status, err?.response?.data ?? err);
       }
     } finally {
       setPostLoading(false);
     }
-  }, [id]);
+  }, [id, signedOut]);
+
+  // True once a signed-out read of the thread has actually produced comments.
+  // Read-only rendering keys off this rather than off `signedOut` alone, so a
+  // guest whose fetch failed (or never ran) still gets the locked panel
+  // instead of an empty thread that claims there is nothing to read.
+  const [publicCommentsLoaded, setPublicCommentsLoaded] = useState(false);
 
   const fetchComments = useCallback(async () => {
     if (!id) return;
+
+    // Members read the authenticated route. Guests have no route yet, and
+    // there are two plausible shapes for the one they will get:
+    //
+    //   1. the existing /community/posts/{id}/comments relaxed to permitAll —
+    //      cheapest for the backend, and how they may well do it;
+    //   2. a redacted /community/public/posts/{id}/comments twin, matching the
+    //      other three public reads, which exist precisely because the payload
+    //      needs its `user` stripped. Comments carry commenter names, so the
+    //      same argument applies.
+    //
+    // Both are guesses, so try both instead of betting. Today they return 401
+    // and 404 respectively and the locked panel takes over; the day either one
+    // ships, the thread appears with no code change. Guest 401s are safe here:
+    // the response interceptor short-circuits them when no session is stored
+    // (see api.js) rather than attempting a refresh or bouncing to /auth.
+    const readers = signedOut ? [getComments, getPublicComments] : [getComments];
+
     setCommentsLoading(true);
     try {
-      const all: Comment[] = [];
-      let page = 0;
-      let totalPages = 1;
-      do {
-        const res = await getComments(id, { page });
-        const data = res.data?.data ?? res.data;
-        all.push(...(data?.content ?? []));
-        totalPages = data?.pageMeta?.totalPages ?? 1;
-        page += 1;
-      } while (page < totalPages);
-      setComments(all);
-    } catch {
-      // silent
+      let loaded: Comment[] | null = null;
+      for (const read of readers) {
+        try {
+          const all: Comment[] = [];
+          let page = 0;
+          let totalPages = 1;
+          do {
+            const res = await read(id, { page });
+            const data = res.data?.data ?? res.data;
+            all.push(...(data?.content ?? []));
+            totalPages = data?.pageMeta?.totalPages ?? 1;
+            page += 1;
+          } while (page < totalPages);
+          loaded = all;
+          break;
+        } catch {
+          // Wrong shape (or not deployed) — fall through to the next one.
+        }
+      }
+      // Silent on failure by design: a thread that cannot be read is not an
+      // error state for the reader, it is the locked panel below.
+      if (loaded) setComments(loaded);
+      if (signedOut) setPublicCommentsLoaded(loaded !== null);
     } finally {
       setCommentsLoading(false);
     }
-  }, [id]);
+  }, [id, signedOut]);
 
   useEffect(() => {
     fetchPost();
-    fetchComments();
-  }, [fetchPost, fetchComments]);
+    // Guests only reach the thread once the public endpoint exists — see
+    // PUBLIC_COMMENTS_ENABLED. Until then they get the post body and the
+    // locked panel, with no failing request behind it.
+    if (!signedOut || PUBLIC_COMMENTS_ENABLED) fetchComments();
+  }, [fetchPost, fetchComments, signedOut]);
 
   // Check if current user is author (you'll need to add authorId to your post data)
   const isAuthor = currentUser?.id === (post as any)?.authorId;
@@ -328,8 +443,31 @@ export function ExperienceDetailPage() {
   }, [hintsData, hintsLoadingSet, hintsFailedSet]);
 
 
+  // ── The signed-out gate ──
+  //
+  // Guests can read the note (trimmed server-side) but nothing around it:
+  // likes, saves and the whole discussion are authenticated endpoints. The
+  // controls stay on screen — hiding them would hide that the note has any
+  // engagement at all — and every one of them routes here instead of firing a
+  // request that would 401. Same shape as the locked cards on the company page.
+  const signInGate = useCallback(() => {
+    navigate('/auth', { state: { from: { pathname: `/experience/${id}` } } });
+  }, [navigate, id]);
+
+  // Whether the thread itself can be rendered. For members, always. For
+  // guests, only once a public read has actually returned — see
+  // PUBLIC_COMMENTS_ENABLED. Anything else falls back to the locked panel
+  // rather than an empty list, which would be a false statement about the note.
+  const canReadThread = !signedOut || publicCommentsLoaded;
+
+  // With the thread out of reach, `comments.length` is 0 and would report a
+  // note with a live discussion as having none. The public post payload
+  // carries the real count; prefer it exactly while the list is unavailable.
+  const commentTotal = canReadThread ? comments.length : (post?.commentCount ?? 0);
+
   // ── Like / Save handlers (debounced) ──
   const toggleLike = useCallback(() => {
+    if (signedOut) { signInGate(); return; }
     if (!currentUser) return;
     const newLiked = !liked;
     setLiked(newLiked);
@@ -350,9 +488,10 @@ export function ExperienceDetailPage() {
         setLikeCount(prev => Math.max(0, prev + (shouldLike ? -1 : 1)));
       });
     }, 1000);
-  }, [liked, currentUser, id]);
+  }, [liked, currentUser, id, signedOut, signInGate]);
 
   const toggleSave = useCallback(() => {
+    if (signedOut) { signInGate(); return; }
     if (!currentUser) return;
     const newSaved = !saved;
     setSaved(newSaved);
@@ -373,7 +512,7 @@ export function ExperienceDetailPage() {
         setSaveCount(prev => Math.max(0, prev + (shouldSave ? -1 : 1)));
       });
     }, 1000);
-  }, [saved, currentUser, id]);
+  }, [saved, currentUser, id, signedOut, signInGate]);
 
   const toggleAllQuestions = () => {
     if (allExpanded) {
@@ -552,7 +691,7 @@ export function ExperienceDetailPage() {
         <AlertDialogFooter>
           <Button
             variant="outline"
-            onClick={() => { setShowUpgradePrompt(false); navigate('/interview-insights'); }}
+            onClick={() => { setShowUpgradePrompt(false); navigate(listPath); }}
             className="rounded-xl"
           >
             Cancel
@@ -570,27 +709,58 @@ export function ExperienceDetailPage() {
 
   if (postLoading) {
     return (
-      <DashboardLayout fullBleed>
+      <Layout fullBleed>
         <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 flex items-center justify-center py-32">
             <Loader2 className="w-8 h-8 animate-spin text-[hsl(221,91%,60%)]" />
           </div>
         </div>
         {gateOverlays}
-      </DashboardLayout>
+      </Layout>
+    );
+  }
+
+  if (!post && guestGated) {
+    return (
+      <Layout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
+          <div className="max-w-lg mx-auto px-6 py-32 text-center">
+            <h1 className="text-xl font-semibold text-[hsl(222,22%,15%)] mb-2">
+              Sign in to read this interview note
+            </h1>
+            <p className="text-sm text-[hsl(222,12%,45%)] mb-6 leading-relaxed">
+              Full write-ups — every question, the candidate's notes, and the discussion —
+              are available once you have an account. It's free to start.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Link to="/auth" state={{ from: { pathname: `${listPath}/experience/${id}` } }}>
+                <Button className="rounded-xl bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white h-11 px-6">
+                  Sign in
+                </Button>
+              </Link>
+              <Link to={listPath}>
+                <Button variant="outline" className="rounded-xl h-11 px-6 border-[hsl(220,16%,90%)]">
+                  Browse companies
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+        {gateOverlays}
+      </Layout>
     );
   }
 
   if (!post) {
     return (
-      <DashboardLayout fullBleed>
+      <Layout fullBleed>
         <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
             {showUpgradePrompt ? 'Upgrade to Advanced to view this post.' : 'Post not found.'}
           </div>
         </div>
         {gateOverlays}
-      </DashboardLayout>
+      </Layout>
     );
   }
 
@@ -602,13 +772,13 @@ export function ExperienceDetailPage() {
   );
 
   return (
-    <DashboardLayout fullBleed>
+    <Layout fullBleed>
       <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
           {/* ─── Breadcrumb — back to this post's company insights page ─── */}
           <Link
-            to={post.company ? `/interview-insights/${companySlug(post.company)}` : '/interview-insights'}
+            to={companyPath(post.company)}
             className="inline-flex items-center text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] mb-6 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1.5" />
@@ -670,26 +840,48 @@ export function ExperienceDetailPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-5 border-t border-[hsl(220,16%,94%)]">
                   <div className="flex items-center gap-4">
-                    {/* Like button */}
+                    {/* Like / comment / save are all authenticated, so for
+                        guests the three are muted and one padlock chip carries
+                        the state for the group. Swapping each icon FOR a
+                        padlock was the first attempt and it reads worse: three
+                        identical locks in a row lose which control is which,
+                        and the counts (public, and part of why a note is worth
+                        opening) end up labelled by nothing. Clicking any of
+                        them still goes to /auth. Share stays live — the URL is
+                        public either way. */}
                     <button
                       onClick={toggleLike}
-                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
+                      title={signedOut ? 'Sign in to like this note' : undefined}
+                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${signedOut ? 'text-[hsl(222,12%,62%)]' : liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
                     >
-                      <ThumbsUp className={`w-4 h-4 transition-transform ${liked ? 'fill-current scale-110' : ''}`} />
+                      <ThumbsUp className={`w-4 h-4 transition-transform ${liked && !signedOut ? 'fill-current scale-110' : ''}`} />
                       {likeCount}
                     </button>
-                    <a href="#discussion" className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)] transition-colors">
+                    <a
+                      href="#discussion"
+                      title={signedOut ? 'Sign in to read the discussion' : undefined}
+                      className={`flex items-center gap-1.5 text-sm transition-colors ${signedOut ? 'text-[hsl(222,12%,62%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
+                    >
                       <MessageSquare className="w-4 h-4" />
-                      {comments.length}
+                      {commentTotal}
                     </a>
-                    {/* Save button */}
                     <button
                       onClick={toggleSave}
-                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
+                      title={signedOut ? 'Sign in to save this note' : undefined}
+                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${signedOut ? 'text-[hsl(222,12%,62%)]' : saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
                     >
-                      <Bookmark className={`w-4 h-4 transition-transform ${saved ? 'fill-current scale-110' : ''}`} />
+                      <Bookmark className={`w-4 h-4 transition-transform ${saved && !signedOut ? 'fill-current scale-110' : ''}`} />
                       {saveCount}
                     </button>
+                    {signedOut && (
+                      <button
+                        onClick={signInGate}
+                        className="flex items-center gap-1.5 rounded-full border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] px-2.5 py-1 text-xs font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
+                      >
+                        <Lock className="w-3 h-3" />
+                        Sign in to interact
+                      </button>
+                    )}
                     <button
                       onClick={handleShare}
                       className={`flex items-center gap-1.5 text-sm transition-colors ${shareCopied ? 'text-emerald-600' : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'}`}
@@ -804,8 +996,28 @@ export function ExperienceDetailPage() {
                                         A
                                       </div>
                                       <span className="text-xs font-medium text-[hsl(222,12%,45%)]">Author's notes</span>
+                                      {signedOut && (
+                                        <span className="ml-auto flex items-center gap-1 text-[10px] font-medium text-[hsl(222,12%,55%)]">
+                                          <Lock className="w-2.5 h-2.5" />
+                                          First line only
+                                        </span>
+                                      )}
                                     </div>
-                                    <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed"><Markdown className="text-sm text-[hsl(222,12%,35%)]">{q.notes}</Markdown></div>
+                                    {/* Guests get one sentence — the backend trims it — so the
+                                        note runs on into a blurred continuation rather than
+                                        stopping dead. Members get the note itself, markdown and
+                                        all. See LockedNoteTail for what the blurred text is. */}
+                                    {signedOut ? (
+                                      <LockedNoteTail
+                                        text={q.notes}
+                                        company={post.company}
+                                        role={post.role}
+                                        round={post.round}
+                                        onUnlock={signInGate}
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed"><Markdown className="text-sm text-[hsl(222,12%,35%)]">{q.notes}</Markdown></div>
+                                    )}
                                   </div>
                                 )}
 
@@ -1032,25 +1244,57 @@ export function ExperienceDetailPage() {
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
                     Discussion
-                    <span className="ml-2 text-sm font-normal text-[hsl(222,12%,55%)]">({comments.length})</span>
+                    <span className="ml-2 text-sm font-normal text-[hsl(222,12%,55%)]">({commentTotal})</span>
                   </h2>
-                  <div className="flex items-center gap-1 bg-[hsl(220,20%,98%)] rounded-lg p-0.5">
-                    {(['new', 'top'] as const).map(s => (
-                      <button
-                        key={s}
-                        onClick={() => setCommentSort(s)}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                          commentSort === s
-                            ? 'bg-white text-[hsl(222,22%,15%)] shadow-sm'
-                            : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'
-                        }`}
-                      >
-                        {s === 'new' ? 'Newest' : 'Top'}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Sorting a list you cannot see is nothing to offer. */}
+                  {canReadThread && (
+                    <div className="flex items-center gap-1 bg-[hsl(220,20%,98%)] rounded-lg p-0.5">
+                      {(['new', 'top'] as const).map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setCommentSort(s)}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                            commentSort === s
+                              ? 'bg-white text-[hsl(222,22%,15%)] shadow-sm'
+                              : 'text-[hsl(222,12%,50%)] hover:text-[hsl(222,22%,15%)]'
+                          }`}
+                        >
+                          {s === 'new' ? 'Newest' : 'Top'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
+                {/* The composer, and the sign-in prompt that stands in for it.
+                    Posting is authenticated in every case, so a guest never
+                    gets the textarea — the old build offered one whose Post
+                    button could only fail. Reading is a separate question:
+                    see the thread below.
+
+                    The prompt is only worth showing when the guest can read
+                    the thread. When the thread is locked too, the panel below
+                    already carries a sign-in CTA and this would be the second
+                    one in the same card. */}
+                {signedOut ? canReadThread && (
+                  <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[hsl(220,16%,92%)] bg-[hsl(220,20%,99%)] px-4 py-3.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[hsl(220,20%,93%)]">
+                        <Lock className="size-3.5 text-[hsl(222,12%,45%)]" />
+                      </div>
+                      <p className="text-sm text-[hsl(222,12%,40%)]">
+                        Sign in to join the discussion.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={signInGate}
+                      size="sm"
+                      className="h-8 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
+                    >
+                      Sign in
+                    </Button>
+                  </div>
+                ) : (
                 <div className="bg-[hsl(220,20%,99%)] rounded-xl border border-[hsl(220,16%,92%)] p-4 mb-6">
                   {referencedQ && (
                     <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-[hsl(221,91%,60%)]/8 rounded-lg border border-[hsl(221,91%,60%)]/15">
@@ -1134,13 +1378,44 @@ export function ExperienceDetailPage() {
                   </div>
                 </div>
 
+                )}
+
+                {/* The thread. Guests get it read-only once the public
+                    endpoint exists; until then the panel below says so rather
+                    than rendering an empty list, which would report a note
+                    with a live discussion as having none. */}
+                {!canReadThread ? (
+                  <div className="rounded-xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-6 text-center">
+                    <div className="mx-auto mb-3 flex size-9 items-center justify-center rounded-full bg-[hsl(221,91%,60%)]/10">
+                      <Lock className="size-4 text-[hsl(221,91%,60%)]" />
+                    </div>
+                    <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
+                      {commentTotal > 0
+                        ? `${commentTotal} ${commentTotal === 1 ? 'comment' : 'comments'} on this note`
+                        : 'Join the discussion'}
+                    </p>
+                    <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-[hsl(222,12%,45%)]">
+                      Candidates compare rounds, correct each other and add what the write-up
+                      left out.
+                    </p>
+                    <Button
+                      onClick={signInGate}
+                      className="mt-4 h-9 rounded-lg bg-[hsl(221,91%,60%)] px-5 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
+                    >
+                      Sign in to read the discussion
+                    </Button>
+                  </div>
+                ) : (
+                <>
                 {commentsLoading && (
                   <div className="flex justify-center py-6">
                     <Loader2 className="w-5 h-5 animate-spin text-[hsl(222,12%,60%)]" />
                   </div>
                 )}
                 {!commentsLoading && sortedComments.length === 0 && (
-                  <p className="text-sm text-[hsl(222,12%,55%)] text-center py-6">No comments yet. Be the first!</p>
+                  <p className="text-sm text-[hsl(222,12%,55%)] text-center py-6">
+                    {signedOut ? 'No comments yet.' : 'No comments yet. Be the first!'}
+                  </p>
                 )}
                 <div className="space-y-5">
                   {sortedComments.map(comment => {
@@ -1181,20 +1456,27 @@ export function ExperienceDetailPage() {
                             <div className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2"><Markdown className="text-sm text-[hsl(222,12%,30%)]">{comment.content}</Markdown></div>
 
                             <div className="flex items-center gap-4 text-[hsl(222,12%,55%)]">
+                              {/* Replies expand through GET /community/comments/
+                                  {id}/replies, which is authenticated like the
+                                  composer. A guest sees the count so the thread
+                                  is not misrepresented as flat, and the control
+                                  offers sign-in rather than a request that 401s. */}
                               <button
                                 onClick={() => {
+                                  if (signedOut) { signInGate(); return; }
                                   if (showReplyId === comment.id) {
                                     setShowReplyId(null);
                                   } else {
                                     setShowReplyId(comment.id);
                                   }
                                 }}
-                                className="flex items-center gap-1 text-xs hover:text-[hsl(221,91%,60%)] transition-colors"
+                                title={signedOut ? 'Sign in to reply' : undefined}
+                                className={`flex items-center gap-1 text-xs transition-colors ${signedOut ? 'text-[hsl(222,12%,62%)] hover:text-[hsl(222,22%,15%)]' : 'hover:text-[hsl(221,91%,60%)]'}`}
                               >
-                                <MessageSquare className="w-3 h-3" />
+                                {signedOut ? <Lock className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
                                 Reply{comment.replyCount ? ` (${comment.replyCount})` : ''}
                               </button>
-                              {isOwn && (
+                              {isOwn && !signedOut && (
                                 <button
                                   onClick={() => handleDeleteComment(comment.id)}
                                   disabled={deletingCommentId === comment.id}
@@ -1295,6 +1577,8 @@ export function ExperienceDetailPage() {
                     );
                   })}
                 </div>
+                </>
+                )}
               </div>
             </div>
 
@@ -1359,7 +1643,7 @@ export function ExperienceDetailPage() {
                 <div className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-5 shadow-sm">
                   <h4 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-2">Share your own experience</h4>
                   <p className="text-xs text-[hsl(222,12%,55%)] mb-3 leading-relaxed">Help the community by sharing what you went through.</p>
-                  <Link to="/add-experience">
+                  <Link to={isAuthenticated ? '/add-experience' : '/auth'}>
                     <Button variant="outline" className="w-full rounded-xl h-9 text-xs gap-1.5 border-[hsl(220,16%,90%)]">
                       <ExternalLink className="w-3 h-3" />
                       Add Interview Experience
@@ -1373,6 +1657,6 @@ export function ExperienceDetailPage() {
         </div>
       </div>
       {gateOverlays}
-    </DashboardLayout>
+    </Layout>
   );
 }

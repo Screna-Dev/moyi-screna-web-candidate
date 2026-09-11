@@ -20,7 +20,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { preview } from 'vite';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-import { PRERENDER_STATIC, minWordsFor, SHELL } from './routes.mjs';
+import { PRERENDER_STATIC, minWordsFor, SHELL, companySlug, eligibleCompanies } from './routes.mjs';
 
 const DIST = path.resolve('dist');
 // Constraint 1: :5173 is allowlisted in Sanity's CORS settings, :4173 is not.
@@ -30,6 +30,19 @@ const PROJECT = process.env.VITE_SANITY_PROJECT_ID || 'x5tgtd0h';
 const DATASET = process.env.VITE_SANITY_DATASET || 'production';
 const API = `https://${PROJECT}.apicdn.sanity.io/v2024-01-01/data/query/${DATASET}`;
 const PAGE_SIZE = 9; // must match blog-list.tsx
+
+// Community API origin for build-time seed fetches. Node-side, so no CORS.
+const API_BASE = (process.env.VITE_API_PATH || 'https://api.screna.ai').replace(/\/$/, '');
+const COMMUNITY = `${API_BASE}/api/v1/community/public`;
+
+// How many company pages the first wave publishes.
+//
+// Deliberately small. The content-density argument for these pages has not been
+// validated at scale yet, and generating all ~100 at once means that if a page
+// turns out too thin, ~100 pages are too thin simultaneously — which is the
+// definition of a doorway-page cluster rather than a fixable mistake. Prove the
+// template on the highest-volume companies, then raise this.
+const COMPANY_FIRST_WAVE = 10;
 
 let SHELL_TITLE = ''; // default <title> from the shell, used to detect unwired pages
 
@@ -51,7 +64,7 @@ const sanity = (q) => `${API}?query=${encodeURIComponent(q)}`;
 
 /** Fail fast on a CORS misconfiguration instead of after N × 20s timeouts. */
 async function assertCors() {
-  const res = await fetch(sanity('*[_type=="post"][0]{_id}'), { headers: { Origin: ORIGIN } });
+  const res = await fetchWithRetry(sanity('*[_type=="post"][0]{_id}'), { headers: { Origin: ORIGIN } });
   if (!res.ok) {
     throw new Error(
       `Sanity rejected origin ${ORIGIN} (HTTP ${res.status}). ` +
@@ -60,8 +73,107 @@ async function assertCors() {
   }
 }
 
+/**
+ * fetch with a bounded retry on connection-level failures.
+ *
+ * The community API drops connections intermittently — measured at roughly
+ * three failures in four one afternoon, recovering on its own. A single
+ * attempt turns that into a failed build, and the company-links tripwire below
+ * makes that failure hard rather than a warning, so one dropped connection
+ * would block a deploy for reasons that have nothing to do with the commit.
+ *
+ * Only retries throws (DNS, connection reset, timeout). An HTTP status is an
+ * answer: a 404 means the route is not deployed and retrying it four times
+ * just makes the build slower before it reports the same thing.
+ */
+async function fetchWithRetry(url, opts = {}, attempts = 4) {
+  let lastErr;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fetch(url, opts);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        const backoffMs = 500 * 2 ** i;
+        console.warn(`[prerender] ${url} failed (${err.message}); retrying in ${backoffMs}ms`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+let statsCache;
+/** GET /community/public/companies/stats, fetched at most once per build. */
+async function companyStats() {
+  if (statsCache !== undefined) return statsCache;
+  try {
+    const res = await fetchWithRetry(`${COMMUNITY}/companies/stats`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      console.warn(`[prerender] company stats HTTP ${res.status} from ${COMMUNITY} — no company seeds`);
+      statsCache = null;
+    } else {
+      const json = await res.json();
+      statsCache = json.data ?? json;
+    }
+  } catch (err) {
+    console.warn(`[prerender] company stats unreachable (${err.message}) — no company seeds`);
+    statsCache = null;
+  }
+  return statsCache;
+}
+
+/**
+ * Company pages to prerender: eligible companies (>= MIN_POSTS_FOR_PAGE notes),
+ * highest note count first, capped at the first wave.
+ *
+ * Returns [] rather than throwing when the endpoint is unavailable. That is not
+ * laziness about errors — /community/public/companies/** is part of an API
+ * release that may not be out yet, and a frontend deploy must not be blocked on
+ * it. No company pages in the snapshot degrades to client-side rendering for
+ * those routes, which is where they are today; a failed build degrades to no
+ * deploy at all. The count is logged either way so "0 companies" is visible in
+ * the build output rather than silent.
+ */
+async function companyRoutes() {
+  const stats = await companyStats();
+  if (!stats) return [];
+
+  const eligible = eligibleCompanies(stats);
+  const wave = eligible.slice(0, COMPANY_FIRST_WAVE);
+  console.log(
+    `[prerender] ${eligible.length} companies clear the note threshold; ` +
+      `prerendering the top ${wave.length}` +
+      (eligible.length > wave.length ? ` (${eligible.length - wave.length} left to client-side rendering)` : ''),
+  );
+  return wave.map((c) => `/interview-questions/${companySlug(c.company)}`);
+}
+
+/**
+ * Build-time payload for one company page: its profile plus the first page of
+ * notes, exactly as the browser would fetch them.
+ *
+ * The snapshot browser cannot reach the API itself — the preview server mounts
+ * no proxy on purpose — so this is the page's only source of content.
+ */
+async function companySeed(slug, companiesBySlug) {
+  const name = companiesBySlug.get(slug);
+  if (!name) return null;
+  const q = encodeURIComponent(name);
+  const [profileRes, feedRes] = await Promise.all([
+    fetchWithRetry(`${COMMUNITY}/companies/profile?company=${q}`, { headers: { Accept: 'application/json' } }),
+    fetchWithRetry(`${COMMUNITY}/posts/search?company=${q}&page=0`, { headers: { Accept: 'application/json' } }),
+  ]);
+  if (!profileRes.ok || !feedRes.ok) return null;
+  const profile = (await profileRes.json()).data;
+  const feed = (await feedRes.json()).data;
+  const posts = Array.isArray(feed?.posts) ? feed.posts : [];
+  if (!profile || posts.length === 0) return null;
+  return { profile, posts, total: feed.total };
+}
+
 async function blogRoutes() {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     sanity('*[_type == "post" && defined(slug.current)]{"slug": slug.current}'),
     { headers: { Accept: 'application/json' } },
   );
@@ -99,7 +211,17 @@ if (process.env.PRERENDER_SKIP === '1') {
 }
 
 await assertCors();
-const routes = [...PRERENDER_STATIC, ...(await blogRoutes())];
+
+// slug -> exact display name, so companySeed can query the API by the name it
+// indexes. The slug is lossy (AT&T -> at-t) and cannot be inverted, so the
+// mapping is captured here while both halves are in hand.
+const companiesBySlug = new Map();
+const companyPages = await companyRoutes();
+for (const c of eligibleCompanies((await companyStats()) ?? {})) {
+  companiesBySlug.set(companySlug(c.company), c.company);
+}
+
+const routes = [...PRERENDER_STATIC, ...companyPages, ...(await blogRoutes())];
 
 const server = await preview({
   preview: {
@@ -150,6 +272,42 @@ const inject = (page, id, data) =>
     [id, JSON.stringify(data).replace(/</g, '\\u003c')],
   );
 
+/**
+ * Plant a JSON payload in the DOM before any page script runs, so a module
+ * reading it at import time (readPrerenderSeed) finds it already there.
+ *
+ * evaluateOnNewDocument runs at document-start, which is EARLIER than
+ * documentElement existing — <html> has not been parsed yet, so a naive
+ * `document.documentElement.appendChild` throws, the seed never lands, and the
+ * page silently falls back to fetching (which cannot work here: the preview
+ * server mounts no API proxy). So: try once, and if there is no documentElement
+ * yet, attach the moment the parser creates it.
+ */
+const plantSeed = (page, id, data) =>
+  page.evaluateOnNewDocument(
+    ([elId, json]) => {
+      const plant = () => {
+        if (!document.documentElement) return false;
+        if (document.getElementById(elId)) return true;
+        const s = document.createElement('script');
+        s.id = elId;
+        s.type = 'application/json';
+        s.textContent = json;
+        document.documentElement.appendChild(s);
+        return true;
+      };
+      if (!plant()) {
+        const obs = new MutationObserver(() => {
+          if (plant()) obs.disconnect();
+        });
+        obs.observe(document, { childList: true, subtree: true });
+      }
+    },
+    // A literal `</script` would close the tag early when the snapshot is
+    // re-parsed, same hazard as inject() below.
+    [id, JSON.stringify(data).replace(/</g, '\\u003c')],
+  );
+
 const snapshots = [];
 const failures = [];
 const warnings = [];
@@ -174,14 +332,53 @@ for (const route of routes) {
       }
     });
 
+    // Company pages get their payload planted before any page script runs.
+    //
+    // This is the opposite order from the blog seeds below, and the difference
+    // matters: those pages fetch their own content from Sanity (reachable from
+    // the browser), so their seed only exists to stop a flash on the client.
+    // A company page cannot fetch anything — the preview server has no API
+    // proxy — so unless the data is already in the DOM when the module
+    // evaluates, the snapshot renders an empty page. readPrerenderSeed runs at
+    // module scope, so the tag has to exist before the bundle does.
+    // The directory's company grid is the crawler's only route from this page
+    // to the company pages, and it comes from the same unreachable API.
+    let directoryPayload = null;
+    if (route === '/interview-questions') {
+      directoryPayload = await companyStats();
+      if (!directoryPayload) {
+        warnings.push(`${route}: no seed — company grid will be empty, so nothing links to the company pages`);
+      } else {
+        await plantSeed(page, '__prerender_directory__', { stats: directoryPayload });
+      }
+    }
+
+    let companyPayload = null;
+    if (route.startsWith('/interview-questions/')) {
+      const slug = route.slice('/interview-questions/'.length);
+      companyPayload = await companySeed(slug, companiesBySlug);
+      if (!companyPayload) {
+        warnings.push(`${route}: no seed — page will render empty and trip its word floor`);
+      } else {
+        await plantSeed(page, '__prerender_company__', companyPayload);
+      }
+    }
+
     await page.goto(`${ORIGIN}${route}`, { waitUntil: 'load', timeout: 30_000 });
     await page.waitForFunction(
       () => document.documentElement.getAttribute('data-seo-ready') === '1',
       { timeout: 20_000 },
     );
 
+    // readPrerenderSeed consumes the tag on read, so the pre-navigation copy is
+    // gone from the DOM by now. Re-inject it into the captured HTML: without
+    // this the shipped snapshot shows the notes, then the client boots, finds
+    // no seed, and blanks the page to refetch.
+    if (companyPayload) await inject(page, '__prerender_company__', companyPayload);
+    if (directoryPayload) await inject(page, '__prerender_directory__', { stats: directoryPayload });
+
     if (route === '/blog') {
-      const res = await fetch(
+      const res = await fetchWithRetry(
         sanity(`{"posts": *[_type == "post" && defined(slug.current)] | order(publishedAt desc)[0...${PAGE_SIZE}]{
             _id, title, "slug": slug.current, excerpt, category, publishedAt, author, cover, seoTitle },
           "total": count(*[_type == "post" && defined(slug.current)]),
@@ -195,7 +392,7 @@ for (const route of routes) {
       const slug = route.slice('/blog/'.length);
       // Parameterised, not interpolated: a quote in a slug would silently
       // break the query and leave that post flashing on every visit.
-      const res = await fetch(
+      const res = await fetchWithRetry(
         sanity(`*[_type == "post" && slug.current == $slug][0]{
            _id, title, "slug": slug.current, excerpt, category, publishedAt, author, cover, seoTitle, body
          }`) + `&%24slug=${encodeURIComponent(JSON.stringify(slug))}`,
@@ -215,12 +412,16 @@ for (const route of routes) {
       document.documentElement.removeAttribute('data-seo-ready');
     });
 
-    const { words, blogLinks, title } = await page.evaluate(() => {
+    const { words, blogLinks, companyLinks, title } = await page.evaluate(() => {
       const clone = document.body.cloneNode(true);
       clone.querySelectorAll('script,style,noscript').forEach((n) => n.remove());
       return {
         words: (clone.textContent || '').trim().split(/\s+/).filter(Boolean).length,
         blogLinks: document.querySelectorAll('a[href^="/blog/"]').length,
+        // Grid cards only. A plain href^="/interview-questions/" scan also
+        // matches the category tiles' hardcoded example chips, which render
+        // with or without data and would mask an empty grid.
+        companyLinks: document.querySelectorAll('a[data-company-card]').length,
         title: document.title,
       };
     });
@@ -244,6 +445,17 @@ for (const route of routes) {
     // would slip through. Require real article links.
     if (route === '/blog' && blogLinks === 0) {
       failures.push('/blog: snapshot contains 0 article links (likely captured the skeleton)');
+    }
+    // Same reasoning, and learned the hard way: the directory's word count is
+    // mostly chrome (hero, category tiles, the Quick Mock panel), so an empty
+    // company grid still clears the floor. The floor is not the tripwire here —
+    // the links are. Without them this page is a dead end: the sitemap still
+    // advertises the company pages, but nothing on the site points at them.
+    if (route === '/interview-questions' && companyLinks === 0) {
+      failures.push(
+        '/interview-questions: snapshot contains 0 company links — the grid is empty ' +
+          '(company stats unreachable at build time; check the warning above)',
+      );
     }
 
     // Collect everything first, write at the end: writing mid-loop makes

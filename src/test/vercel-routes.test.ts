@@ -84,6 +84,7 @@ describe('vercel.json route coverage', () => {
       '/data-protection',
       '/faq',
       '/help',
+      '/interview-questions',   // public twin of /interview-insights
       '/privacy',
       '/terms',
     ]);
@@ -192,6 +193,30 @@ describe('robots.txt', () => {
     expect(isCrawlable('/blog/how-to-prepare-for-a-system-design-interview')).toBe(true);
   });
 
+  // The company pages carry the question text — they are the reason this
+  // surface is indexed at all, and the directory alone is just a card grid.
+  // `Allow: /interview-questions$` would open the directory and leave every
+  // company page to the catch-all Disallow, which is silent and invisible from
+  // the directory's own (passing) check above.
+  it.each([
+    '/interview-questions/google',
+    '/interview-questions/scale-ai',
+    '/interview-questions/at-t',
+  ])('leaves the company page %s crawlable', (p) => {
+    expect(isCrawlable(p), `robots.txt blocks ${p} — the question text would not be indexed`).toBe(
+      true,
+    );
+  });
+
+  // The same notes are served on both surfaces, so the personal-centre twin
+  // must stay out of the index or the two compete for identical queries.
+  it.each(['/interview-insights', '/interview-insights/google'])(
+    'keeps the personal-centre twin %s out of the index',
+    (p) => {
+      expect(isCrawlable(p), `${p} is crawlable — it duplicates /interview-questions`).toBe(false);
+    },
+  );
+
   // A disallowed sitemap is reported as unreadable in Search Console, which
   // costs every URL in it.
   it('leaves the sitemap and rendering assets crawlable', () => {
@@ -254,6 +279,40 @@ describe('robots.txt — /experience social previews', () => {
     for (const ua of [...socialAgents, 'Googlebot', '*']) {
       expect(isCrawlable('/add-experience', ua), `${ua} can crawl /add-experience`).toBe(false);
     }
+  });
+
+  // The OG document middleware.ts returns carries
+  // `<meta http-equiv="refresh" content="0;url=...">`. That is harmless for a
+  // social unfurler, which reads the tags and never follows the refresh. For a
+  // search engine the same document is simultaneously "different content for
+  // crawlers than for users" and "sneaky redirect" — two separate policy
+  // violations, on the very surface whose indexing case rests on not cloaking.
+  //
+  // The robots rules already keep search engines off /experience, but that is a
+  // request they are asked not to make, not one they cannot make. This asserts
+  // the regex itself, so a UA that slips past robots still gets the plain SPA.
+  it.each([
+    ['Googlebot', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'],
+    ['Googlebot-Image', 'Googlebot-Image/1.0'],
+    ['bingbot', 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)'],
+    ['YandexBot', 'Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)'],
+    ['DuckDuckBot', 'DuckDuckBot/1.1; (+http://duckduckgo.com/duckduckbot.html)'],
+    ['Baiduspider', 'Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)'],
+    // AI crawlers carry "AppleWebKit" in their UA, which must not be mistaken
+    // for the "Applebot" token.
+    ['GPTBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot'],
+    ['ClaudeBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ClaudeBot/1.0; +claudebot@anthropic.com'],
+    ['PerplexityBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; PerplexityBot/1.0'],
+    ['CCBot', 'CCBot/2.0 (https://commoncrawl.org/faq/)'],
+    ['a real browser', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'],
+    ['a real iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'],
+  ])('never serves the 0s-refresh OG document to %s', (_name, ua) => {
+    const src = readFileSync('middleware.ts', 'utf8');
+    const body = src.match(/const CRAWLER_UA\s*=\s*\n?\s*\/([^/]+)\/i/)![1];
+    expect(
+      new RegExp(body, 'i').test(ua),
+      `CRAWLER_UA matches ${ua} — it would receive the cloaked redirect document`,
+    ).toBe(false);
   });
 
   // The robots group and the middleware regex are two hand-maintained copies of

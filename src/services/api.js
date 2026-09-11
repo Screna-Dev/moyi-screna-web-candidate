@@ -206,6 +206,25 @@ const isAuthEndpoint = (url = '') =>
 // than a clean 401. Treat either signal as "token expired, try refreshing".
 // A genuine application 500 carries the envelope (status: 'ERROR') and is left
 // alone. See docs/auth — "Expired token behaviour".
+// "Is anyone signed in?" — an access token alone isn't enough, since it may be
+// the expired one we're about to refresh. Either token present means a session
+// exists (or existed); neither means a genuine guest.
+const hasSession = () => Boolean(getAccessToken() || getRefreshToken());
+
+/**
+ * Synchronous "was a session stored?" check, for the render paths that cannot
+ * wait for AuthContext.
+ *
+ * AuthContext resolves `isAuthenticated` asynchronously (it decodes the token
+ * and fetches personal info), so it reads false on the first render even for a
+ * signed-in user. Anything that must not be wrong on that first render — most
+ * of all picking DashboardLayout, which redirects to /auth when no token is in
+ * storage — has to read storage directly, the way DashboardLayout itself does.
+ * For everything else prefer `useAuth().isAuthenticated`: this only says a
+ * token exists, not that it is still valid.
+ */
+export const hasStoredSession = () => hasSession();
+
 const isExpiredTokenResponse = (response) => {
   if (!response) return false;
   if (response.status === 401) return true;
@@ -227,6 +246,14 @@ API.interceptors.response.use(
     }
 
     const originalRequest = error.config;
+
+    // A signed-out visitor has no session to refresh or end. The public pages
+    // (/interview-questions and friends) legitimately hit auth-only endpoints
+    // and take the 401 as "not available to guests"; bouncing them to /auth
+    // would make those pages unreachable without logging in.
+    if (isExpiredTokenResponse(error.response) && !hasSession()) {
+      return Promise.reject(error);
+    }
 
     // Only 401 (or an envelope-less 500) means "token expired". A 403 is
     // authenticated-but-not-allowed (wrong role / tier / credits gate) and must

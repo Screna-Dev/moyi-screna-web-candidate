@@ -19,6 +19,11 @@ export const SEO_COPY = {
     description:
       'Interview prep guides, mock interview tactics, career switch stories, OPT and visa notes, and mentorship advice from the Screna AI team.',
   },
+  interviewInsights: {
+    title: 'Real Interview Questions & Experiences by Company | Screna AI',
+    description:
+      'Browse real interview questions and candidate write-ups by company, role, round, and level — see how loops actually run before you sit in one.',
+  },
   faq: {
     title: 'FAQ | Screna AI',
     description:

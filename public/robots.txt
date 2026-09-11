@@ -3,8 +3,13 @@
 # Whitelist model: crawling is disallowed by default (Disallow: /), and only
 # the marketing/content pages below are opened back up. Everything behind the
 # login wall — /dashboard, /profile, /settings, /billing, /admin, /auth, the
-# interview and onboarding flows, /interview-insights, /coaching — is
-# therefore blocked without needing its own rule.
+# interview and onboarding flows, /coaching — is therefore blocked without
+# needing its own rule.
+#
+# /interview-insights is deliberately NOT opened up: it is the personal-centre
+# view of the interview-notes library. The same notes are served publicly at
+# /interview-questions, which is the path allowed below. Opening both would
+# have the two competing for the same queries.
 #
 # Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each
 # Allow below overrides the catch-all Disallow.
@@ -48,6 +53,7 @@ Allow: /experience
 
 Allow: /$
 Allow: /blog
+Allow: /interview-questions
 Allow: /faq
 Allow: /help
 Allow: /contact
@@ -83,6 +89,20 @@ Allow: /$
 
 # Blog index and every post (/blog/:slug).
 Allow: /blog
+
+# Public "Interview Questions" surface: the company directory and every company
+# page under it (/interview-questions/:companyId), both fully readable logged
+# out. Prefix match, so one rule covers the directory and every company page.
+#
+# No $ anchor: `Allow: /interview-questions$` would open the directory only and
+# leave the company pages to the catch-all Disallow — and the company pages are
+# the ones carrying the question text worth indexing.
+#
+# Single notes are not here. /experience/:id is the full-note page, it sits
+# behind the registration gate, and it is allowed only to the social-preview
+# group above (which middleware.ts answers with a purpose-built Open Graph
+# document). Search engines must not be added to that group — see middleware.ts.
+Allow: /interview-questions
 
 # Marketing, support and legal pages.
 Allow: /faq

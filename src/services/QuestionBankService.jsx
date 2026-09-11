@@ -8,8 +8,15 @@ export const getQuestion = (questionId) => {
   return API.get(`/question-bank/questions/${questionId}`);
 };
 
+// AI hints for one community question.
+//
+// Moved to /community/public/** and the old /community/questions/{id}/ai-hints
+// was deleted, so this is not a dual-path situation — there is nothing to fall
+// back to. It is now permitAll, which is a behaviour change and not just a
+// rename: signed-out readers can load hints, where before the request 401'd.
+// Callers must not gate it on auth.
 export const getQuestionAiHints = (questionId) => {
-  return API.get(`/community/questions/${questionId}/ai-hints`);
+  return API.get(`/community/public/questions/${questionId}/ai-hints`);
 };
 
 export const deleteQuestion = (questionId) => {
