@@ -20,7 +20,16 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { preview } from 'vite';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-import { PRERENDER_STATIC, minWordsFor, SHELL, companySlug, eligibleCompanies } from './routes.mjs';
+import {
+  PRERENDER_STATIC,
+  minWordsFor,
+  SHELL,
+  companySlug,
+  eligibleCompanies,
+  collectPublicPosts,
+  eligiblePosts,
+  POST_FIRST_WAVE,
+} from './routes.mjs';
 
 const DIST = path.resolve('dist');
 // Constraint 1: :5173 is allowlisted in Sanity's CORS settings, :4173 is not.
@@ -172,6 +181,72 @@ async function companySeed(slug, companiesBySlug) {
   return { profile, posts, total: feed.total };
 }
 
+/**
+ * Single notes to prerender, and their payloads.
+ *
+ * The company pages carry one trimmed sentence per note; this is the page with
+ * the whole write-up, so it is the one worth a snapshot. Gated hard on content
+ * (eligiblePosts): about half the library is a single question plus a sentence,
+ * and prerendering those would publish thousands of near-duplicate pages of the
+ * cards already on the company pages.
+ *
+ * The payload is the post row itself — the public search endpoint returns the
+ * full post when filtered to one id, so unlike the company pages there is no
+ * second request to make. The rows are already in hand from the scan.
+ */
+let experienceSeeds = new Map();
+
+/**
+ * The discussion on one note, for the snapshot.
+ *
+ * Comments are public to read now, so they belong in the indexed HTML: they are
+ * the part of this page a crawler cannot get any other way, and the reason the
+ * note page carries more than the company card already shows. Failure is not
+ * fatal — the note is still worth publishing without its thread.
+ */
+async function experienceComments(postId) {
+  const all = [];
+  for (let page = 0; page < 5; page += 1) {
+    try {
+      const res = await fetchWithRetry(
+        `${COMMUNITY}/posts/${postId}/comments?page=${page}`,
+        { headers: { Accept: 'application/json' } },
+      );
+      if (!res.ok) break;
+      const data = (await res.json()).data;
+      const batch = Array.isArray(data?.content) ? data.content : [];
+      all.push(...batch);
+      if (page + 1 >= (data?.pageMeta?.totalPages ?? 1)) break;
+    } catch {
+      break;
+    }
+  }
+  return all;
+}
+
+async function experienceRoutes() {
+  const posts = await collectPublicPosts({ apiBase: `${API_BASE}/api/v1`, fetchFn: fetchWithRetry });
+  if (posts.length === 0) {
+    console.warn('[prerender] no public posts returned — no single-note pages');
+    return [];
+  }
+  const eligible = eligiblePosts(posts);
+  const wave = eligible.slice(0, POST_FIRST_WAVE);
+  const threads = await Promise.all(wave.map((p) => experienceComments(p.id)));
+  experienceSeeds = new Map(wave.map((p, i) => [p.id, { post: p, comments: threads[i] }]));
+  const withThread = threads.filter((t) => t.length > 0).length;
+  console.log(
+    `[prerender] seeded ${threads.reduce((n, t) => n + t.length, 0)} comments across ` +
+      `${withThread}/${wave.length} notes`,
+  );
+  console.log(
+    `[prerender] scanned ${posts.length} notes; ${eligible.length} clear the content gate; ` +
+      `prerendering ${wave.length}` +
+      (eligible.length > wave.length ? ` (${eligible.length - wave.length} left to client-side rendering)` : ''),
+  );
+  return wave.map((p) => `/experience/${p.id}`);
+}
+
 async function blogRoutes() {
   const res = await fetchWithRetry(
     sanity('*[_type == "post" && defined(slug.current)]{"slug": slug.current}'),
@@ -221,7 +296,9 @@ for (const c of eligibleCompanies((await companyStats()) ?? {})) {
   companiesBySlug.set(companySlug(c.company), c.company);
 }
 
-const routes = [...PRERENDER_STATIC, ...companyPages, ...(await blogRoutes())];
+const experiencePages = await experienceRoutes();
+
+const routes = [...PRERENDER_STATIC, ...companyPages, ...experiencePages, ...(await blogRoutes())];
 
 const server = await preview({
   preview: {
@@ -364,6 +441,16 @@ for (const route of routes) {
       }
     }
 
+    let experiencePayload = null;
+    if (route.startsWith('/experience/')) {
+      experiencePayload = experienceSeeds.get(route.slice('/experience/'.length)) ?? null;
+      if (!experiencePayload) {
+        warnings.push(`${route}: no seed — page will render empty and trip its word floor`);
+      } else {
+        await plantSeed(page, '__prerender_experience__', experiencePayload);
+      }
+    }
+
     await page.goto(`${ORIGIN}${route}`, { waitUntil: 'load', timeout: 30_000 });
     await page.waitForFunction(
       () => document.documentElement.getAttribute('data-seo-ready') === '1',
@@ -375,6 +462,7 @@ for (const route of routes) {
     // this the shipped snapshot shows the notes, then the client boots, finds
     // no seed, and blanks the page to refetch.
     if (companyPayload) await inject(page, '__prerender_company__', companyPayload);
+    if (experiencePayload) await inject(page, '__prerender_experience__', experiencePayload);
     if (directoryPayload) await inject(page, '__prerender_directory__', { stats: directoryPayload });
 
     if (route === '/blog') {

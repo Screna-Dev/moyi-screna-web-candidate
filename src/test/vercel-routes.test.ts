@@ -109,8 +109,8 @@ describe('vercel.json route coverage', () => {
 // The file has two groups — the social preview crawlers and `*` — so rules
 // cannot be flattened into one list. RFC 9309 §2.2.1: a crawler obeys only the
 // most specific group matching its product token, ignoring every other group.
-// Flattening would make /experience look crawlable by Googlebot, which is the
-// one thing the split exists to prevent.
+// Flattening would hide divergence between the two groups — they must carry
+// the same rules, and the social one adds nothing beyond them.
 type RobotsRule = { allow: boolean; pattern: string };
 type RobotsGroup = { agents: string[]; rules: RobotsRule[] };
 
@@ -242,10 +242,18 @@ describe('robots.txt', () => {
 });
 
 // /experience/:id is served to social crawlers as a server-rendered Open Graph
-// document by middleware.ts, and to everyone else as the SPA route, whose post
-// data needs a bearer token. So it must be crawlable by exactly the first set
-// and no one else: blocked for LinkedIn means "Cannot display preview" on every
-// shared link, open to Googlebot means indexing a logged-out empty page.
+// document by middleware.ts, and to everyone else as the real page.
+//
+// Both sets must be able to fetch it, for different reasons: blocked for
+// LinkedIn means "Cannot display preview" on every shared link, and blocked for
+// Googlebot means the only page carrying a whole write-up never gets indexed.
+//
+// What separates them is CRAWLER_UA, not robots. A search engine that received
+// the Open Graph document would be getting crawler-only content AND a
+// meta-refresh; the test at the bottom of this file asserts the regex keeps
+// them on the real page. Note that "allowed to crawl" is not "will be indexed":
+// notes that fail the content gate send noindex from the page itself, because a
+// prefix rule here cannot express "only the substantial ones".
 const socialAgents = robotsGroups.find((g) => !g.agents.includes('*'))!.agents;
 const EXPERIENCE_URL = '/experience/9dc86733-4682-4085-80a3-eb7629b87706';
 
@@ -266,11 +274,25 @@ describe('robots.txt — /experience social previews', () => {
     }
   });
 
-  it.each(['Googlebot', 'bingbot', '*'])('keeps %s off the experience route', (ua) => {
+  it.each(['Googlebot', 'bingbot', '*'])('lets %s crawl the experience route', (ua) => {
     expect(
       isCrawlable(EXPERIENCE_URL, ua),
-      `${ua} can crawl ${EXPERIENCE_URL}, which renders empty without a login`,
-    ).toBe(false);
+      `robots.txt blocks ${ua} from ${EXPERIENCE_URL} — the only page with a full write-up would never be indexed`,
+    ).toBe(true);
+  });
+
+  // The `*` group is a full copy of the social one plus nothing — both must
+  // carry the rule. A crawler obeys exactly one group, so allowing /experience
+  // in only one of them is a silent divergence that shows up as either dead
+  // link previews or an unindexed surface, depending on which half was missed.
+  it('allows /experience in both robots groups', () => {
+    const groupsWithRule = robotsGroups.filter((g) =>
+      g.rules.some((r) => r.allow && r.pattern === '/experience'),
+    );
+    expect(
+      groupsWithRule.length,
+      'Allow: /experience must appear in the social group AND the * group',
+    ).toBe(2);
   });
 
   // "Allow: /experience" is a prefix rule. It must not be read as opening the

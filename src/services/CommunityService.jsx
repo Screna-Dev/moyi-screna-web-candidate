@@ -103,25 +103,25 @@ export const deletePost = (postId) => {
   return API.delete(`/community/posts/${postId}`);
 };
 
+// ─── Discussion: reads are public, writes are not ───────────────────────────
+//
+// The two reads moved under /community/public/** and the authenticated
+// originals were deleted, so these are the only paths — there is no token
+// variant to fall back to and no reason to branch on auth. The writes did NOT
+// move: posting, replying and deleting still live on /community/**, still need
+// a bearer token, and are still gated in the UI.
+//
+// Anyone reading this payload should know it is less redacted than the public
+// post search, which nulls `user` out entirely. Comments carry
+// `user: { id, name }` for anonymous visitors; `isAnonymous` is a separate
+// per-comment flag.
+
 export const getComments = (postId, query = {}) => {
-  return API.get(`/community/posts/${postId}/comments`, { params: query });
+  return API.get(`/community/public/posts/${postId}/comments`, { params: query });
 };
 
-// Signed-out read of one post's discussion.
-//
-// ⚠️ NOT DEPLOYED YET. The authenticated route above answers 401 without a
-// token and there is no public twin: as of 2026-09-10 this path 404s on
-// staging (`Resource not found: community/public/posts/{id}/comments`).
-// Callers must keep PUBLIC_COMMENTS_ENABLED (experience-detail.tsx) false
-// until the backend ships it, or every guest visit fires a 404.
-//
-// The path follows the same convention as the other three public reads —
-// /community/public/** mirroring /community/** — so if the backend picks a
-// different shape, this is the one line to change. It is expected to be
-// redacted the same way /community/public/posts/search is: no `user` object
-// on comments posted non-anonymously by other people.
-export const getPublicComments = (postId, query = {}) => {
-  return API.get(`/community/public/posts/${postId}/comments`, { params: query });
+export const getReplies = (commentId, query = {}) => {
+  return API.get(`/community/public/comments/${commentId}/replies`, { params: query });
 };
 
 export const createComment = (postId, data) => {
@@ -130,10 +130,6 @@ export const createComment = (postId, data) => {
 
 export const deleteComment = (commentId) => {
   return API.delete(`/community/comments/${commentId}`);
-};
-
-export const getReplies = (commentId, query = {}) => {
-  return API.get(`/community/comments/${commentId}/replies`, { params: query });
 };
 
 export const createReply = (commentId, data) => {

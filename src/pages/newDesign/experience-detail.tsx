@@ -5,7 +5,7 @@ import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDow
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getPublicPost, normalizePublicPosts, getComments, getPublicComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getPublicPost, normalizePublicPosts, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
@@ -18,6 +18,9 @@ import { EVENTS } from '@/constants/analyticsEvents';
 import { Markdown } from '@/components/newDesign/ui/markdown';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
+import { useSeo } from '@/hooks/useSeo';
+import { readPrerenderSeed } from '@/utils/prerenderSeed';
+import { isIndexablePost } from '@/utils/postIndexing';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -163,30 +166,13 @@ function getQuestionHintStatus(
   return 'none';
 }
 
-// Whether signed-out visitors attempt to READ the discussion.
-//
-// The product rule is "guests read the thread, they just cannot post", and the
-// frontend for it is written below. No endpoint serves it yet. Measured
-// against api-staging on 2026-09-10, with no token:
-//
-//   GET /community/posts/{id}/comments         -> 401 UNAUTHORIZED
-//   GET /community/public/posts/{id}/comments  -> 404 NOT_FOUND
-//
-// The 401 holds for every combination of params and headers tried, and the
-// 404 is the framework's unmapped-route response, byte-identical to one for a
-// path invented on the spot. Note that the OpenAPI doc cannot settle this: it
-// declares `security: [{bearerAuth: []}]` at the ROOT and no operation
-// overrides it, so the known-permitAll /community/public/posts/search carries
-// the same annotation as the auth-only routes. Only the live responses count.
-//
-// On rather than off deliberately: the attempt showing up in the network tab
-// is what makes "waiting on the backend" visible. Off, the page looks exactly
-// like one where nobody wired it up, which cannot be told apart from a
-// frontend bug. Both failures are caught, and the day either route starts
-// answering, the thread appears with no code change.
-//
-// Set to false if the failed requests become noise before then.
-const PUBLIC_COMMENTS_ENABLED = true;
+// Build-time snapshot payload for this note, read once at module scope as
+// readPrerenderSeed requires (it consumes the tag). The snapshot browser has no
+// route to the API — the preview server mounts no proxy — so for a prerendered
+// note this is the page's only source of content.
+const PRERENDER_SEED = readPrerenderSeed<{ post: ExperiencePost; comments?: Comment[] }>(
+  '__prerender_experience__',
+);
 
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -287,8 +273,28 @@ export function ExperienceDetailPage() {
   const [allExpanded, setAllExpanded] = useState(true);
 
   // ── Data Fetching ──
+  // Only usable when it is for THIS note: the SPA keeps the script tag around
+  // for one navigation, and a stale seed would render another candidate's
+  // write-up under this URL.
+  const seed = PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED : null;
+
   const fetchPost = useCallback(async () => {
     if (!id) return;
+    // A prerendered note ships with its content already rendered. Refetching
+    // would blank and repaint exactly what the snapshot exists to deliver.
+    if (seed) {
+      setPost(seed.post);
+      setLiked(seed.post.liked ?? false);
+      setLikeCount(seed.post.likeCount ?? 0);
+      setSaved(seed.post.saved ?? false);
+      setSaveCount(seed.post.saveCount ?? 0);
+      if (seed.post.questions) {
+        setExpandedQuestions(new Set(seed.post.questions.map((q: PostQuestion) => q.id)));
+        setAllExpanded(true);
+      }
+      setPostLoading(false);
+      return;
+    }
     setPostLoading(true);
     try {
       // Guests read the redacted public payload, members the authenticated one
@@ -340,70 +346,43 @@ export function ExperienceDetailPage() {
     } finally {
       setPostLoading(false);
     }
-  }, [id, signedOut]);
+  }, [id, signedOut, seed]);
 
-  // True once a signed-out read of the thread has actually produced comments.
-  // Read-only rendering keys off this rather than off `signedOut` alone, so a
-  // guest whose fetch failed (or never ran) still gets the locked panel
-  // instead of an empty thread that claims there is nothing to read.
-  const [publicCommentsLoaded, setPublicCommentsLoaded] = useState(false);
-
+  // One path for everyone: the read moved to /community/public/** and the
+  // authenticated original was deleted, so there is nothing to branch on.
   const fetchComments = useCallback(async () => {
     if (!id) return;
-
-    // Members read the authenticated route. Guests have no route yet, and
-    // there are two plausible shapes for the one they will get:
-    //
-    //   1. the existing /community/posts/{id}/comments relaxed to permitAll —
-    //      cheapest for the backend, and how they may well do it;
-    //   2. a redacted /community/public/posts/{id}/comments twin, matching the
-    //      other three public reads, which exist precisely because the payload
-    //      needs its `user` stripped. Comments carry commenter names, so the
-    //      same argument applies.
-    //
-    // Both are guesses, so try both instead of betting. Today they return 401
-    // and 404 respectively and the locked panel takes over; the day either one
-    // ships, the thread appears with no code change. Guest 401s are safe here:
-    // the response interceptor short-circuits them when no session is stored
-    // (see api.js) rather than attempting a refresh or bouncing to /auth.
-    const readers = signedOut ? [getComments, getPublicComments] : [getComments];
-
+    // A prerendered note ships with its thread already rendered — that is the
+    // part of this page a crawler cannot reach any other way. Refetching would
+    // blank and repaint exactly what the snapshot exists to deliver.
+    if (seed?.comments) {
+      setComments(seed.comments);
+      return;
+    }
     setCommentsLoading(true);
     try {
-      let loaded: Comment[] | null = null;
-      for (const read of readers) {
-        try {
-          const all: Comment[] = [];
-          let page = 0;
-          let totalPages = 1;
-          do {
-            const res = await read(id, { page });
-            const data = res.data?.data ?? res.data;
-            all.push(...(data?.content ?? []));
-            totalPages = data?.pageMeta?.totalPages ?? 1;
-            page += 1;
-          } while (page < totalPages);
-          loaded = all;
-          break;
-        } catch {
-          // Wrong shape (or not deployed) — fall through to the next one.
-        }
-      }
-      // Silent on failure by design: a thread that cannot be read is not an
-      // error state for the reader, it is the locked panel below.
-      if (loaded) setComments(loaded);
-      if (signedOut) setPublicCommentsLoaded(loaded !== null);
+      const all: Comment[] = [];
+      let page = 0;
+      let totalPages = 1;
+      do {
+        const res = await getComments(id, { page });
+        const data = res.data?.data ?? res.data;
+        all.push(...(data?.content ?? []));
+        totalPages = data?.pageMeta?.totalPages ?? 1;
+        page += 1;
+      } while (page < totalPages);
+      setComments(all);
+    } catch {
+      // Silent: a thread that fails to load leaves the section empty rather
+      // than turning the whole note into an error page.
     } finally {
       setCommentsLoading(false);
     }
-  }, [id, signedOut]);
+  }, [id, seed]);
 
   useEffect(() => {
     fetchPost();
-    // Guests only reach the thread once the public endpoint exists — see
-    // PUBLIC_COMMENTS_ENABLED. Until then they get the post body and the
-    // locked panel, with no failing request behind it.
-    if (!signedOut || PUBLIC_COMMENTS_ENABLED) fetchComments();
+    fetchComments();
   }, [fetchPost, fetchComments, signedOut]);
 
   // Check if current user is author (you'll need to add authorId to your post data)
@@ -454,16 +433,63 @@ export function ExperienceDetailPage() {
     navigate('/auth', { state: { from: { pathname: `/experience/${id}` } } });
   }, [navigate, id]);
 
-  // Whether the thread itself can be rendered. For members, always. For
-  // guests, only once a public read has actually returned — see
-  // PUBLIC_COMMENTS_ENABLED. Anything else falls back to the locked panel
-  // rather than an empty list, which would be a false statement about the note.
-  const canReadThread = !signedOut || publicCommentsLoaded;
+  // The thread is readable by everyone now — the read endpoint is public — so
+  // the only gate left on this section is posting. `commentTotal` still falls
+  // back to the post payload's count for the window before the thread loads,
+  // so the heading does not flash "(0)" on a note that has comments.
+  const commentTotal = comments.length || (post?.commentCount ?? 0);
 
-  // With the thread out of reach, `comments.length` is 0 and would report a
-  // note with a live discussion as having none. The public post payload
-  // carries the real count; prefer it exactly while the list is unavailable.
-  const commentTotal = canReadThread ? comments.length : (post?.commentCount ?? 0);
+  // ── Head tags + paywall declaration ──
+  //
+  // This page is the only surface carrying a whole write-up, which is why it is
+  // indexed at all. Three things decide what goes in the head:
+  //
+  //   • While the post is loading, `null` — that is what stops the prerenderer
+  //     snapshotting a spinner. Every terminal state passes an object instead,
+  //     or the build hangs on this route until it times out (see useSeo).
+  //   • A note that fails the content gate is noindex. robots.txt has to open
+  //     /experience as a prefix and company pages link to ten notes each, so a
+  //     crawler reaches thin notes regardless of the sitemap; this is the line
+  //     that actually keeps them out of the index.
+  //   • isAccessibleForFree is false because two things really are withheld
+  //     from a signed-out reader: the notes past their first sentence, and the
+  //     discussion. `.paywalled-note` is the blurred continuation span, which
+  //     contains a description rather than the withheld text — the withheld
+  //     text never reaches the browser, which is what makes the declaration
+  //     truthful rather than a wrapper around hidden content.
+  const seoTitle = post
+    ? `${post.company} ${post.role} Interview${post.round ? ` — ${post.round}` : ''} | Screna AI`
+    : '';
+  useSeo(
+    postLoading
+      ? null
+      : !post
+      ? { title: 'Interview Note | Screna AI', description: 'This interview note is not available.', path: `/experience/${id}`, noindex: true }
+      : {
+          title: seoTitle.slice(0, 60),
+          description: (post.summary || `A ${post.role} interview experience at ${post.company}.`).slice(0, 155),
+          path: `/experience/${id}`,
+          type: 'article',
+          noindex: !isIndexablePost(post),
+          jsonLd: isIndexablePost(post)
+            ? [
+                {
+                  '@context': 'https://schema.org',
+                  '@type': 'Article',
+                  headline: `${post.company} ${post.role} interview${post.round ? ` — ${post.round}` : ''}`,
+                  ...(post.summary ? { description: post.summary } : {}),
+                  ...(post.date ? { datePublished: new Date(post.date).toISOString() } : {}),
+                  isAccessibleForFree: false,
+                  hasPart: {
+                    '@type': 'WebPageElement',
+                    isAccessibleForFree: false,
+                    cssSelector: '.paywalled-note',
+                  },
+                },
+              ]
+            : undefined,
+        },
+  );
 
   // ── Like / Save handlers (debounced) ──
   const toggleLike = useCallback(() => {
@@ -1014,6 +1040,10 @@ export function ExperienceDetailPage() {
                                         role={post.role}
                                         round={post.round}
                                         onUnlock={signInGate}
+                                        // The selector this page's JSON-LD names
+                                        // in hasPart.cssSelector — keep the two
+                                        // in step (see the useSeo call above).
+                                        paywallClass="paywalled-note"
                                       />
                                     ) : (
                                       <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed"><Markdown className="text-sm text-[hsl(222,12%,35%)]">{q.notes}</Markdown></div>
@@ -1246,9 +1276,7 @@ export function ExperienceDetailPage() {
                     Discussion
                     <span className="ml-2 text-sm font-normal text-[hsl(222,12%,55%)]">({commentTotal})</span>
                   </h2>
-                  {/* Sorting a list you cannot see is nothing to offer. */}
-                  {canReadThread && (
-                    <div className="flex items-center gap-1 bg-[hsl(220,20%,98%)] rounded-lg p-0.5">
+                  <div className="flex items-center gap-1 bg-[hsl(220,20%,98%)] rounded-lg p-0.5">
                       {(['new', 'top'] as const).map(s => (
                         <button
                           key={s}
@@ -1260,23 +1288,16 @@ export function ExperienceDetailPage() {
                           }`}
                         >
                           {s === 'new' ? 'Newest' : 'Top'}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* The composer, and the sign-in prompt that stands in for it.
-                    Posting is authenticated in every case, so a guest never
-                    gets the textarea — the old build offered one whose Post
-                    button could only fail. Reading is a separate question:
-                    see the thread below.
-
-                    The prompt is only worth showing when the guest can read
-                    the thread. When the thread is locked too, the panel below
-                    already carries a sign-in CTA and this would be the second
-                    one in the same card. */}
-                {signedOut ? canReadThread && (
+                    Reading the thread is public now; posting is not — the write
+                    routes stayed on /community/** behind a bearer token — so a
+                    guest gets the thread but never the textarea. */}
+                {signedOut ? (
                   <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[hsl(220,16%,92%)] bg-[hsl(220,20%,99%)] px-4 py-3.5">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[hsl(220,20%,93%)]">
@@ -1380,33 +1401,8 @@ export function ExperienceDetailPage() {
 
                 )}
 
-                {/* The thread. Guests get it read-only once the public
-                    endpoint exists; until then the panel below says so rather
-                    than rendering an empty list, which would report a note
-                    with a live discussion as having none. */}
-                {!canReadThread ? (
-                  <div className="rounded-xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-6 text-center">
-                    <div className="mx-auto mb-3 flex size-9 items-center justify-center rounded-full bg-[hsl(221,91%,60%)]/10">
-                      <Lock className="size-4 text-[hsl(221,91%,60%)]" />
-                    </div>
-                    <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
-                      {commentTotal > 0
-                        ? `${commentTotal} ${commentTotal === 1 ? 'comment' : 'comments'} on this note`
-                        : 'Join the discussion'}
-                    </p>
-                    <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-[hsl(222,12%,45%)]">
-                      Candidates compare rounds, correct each other and add what the write-up
-                      left out.
-                    </p>
-                    <Button
-                      onClick={signInGate}
-                      className="mt-4 h-9 rounded-lg bg-[hsl(221,91%,60%)] px-5 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
-                    >
-                      Sign in to read the discussion
-                    </Button>
-                  </div>
-                ) : (
-                <>
+                {/* The thread, read-only for guests and interactive for
+                    members. Both read the same public endpoint. */}
                 {commentsLoading && (
                   <div className="flex justify-center py-6">
                     <Loader2 className="w-5 h-5 animate-spin text-[hsl(222,12%,60%)]" />
@@ -1456,25 +1452,25 @@ export function ExperienceDetailPage() {
                             <div className="text-sm text-[hsl(222,12%,30%)] leading-relaxed mb-2"><Markdown className="text-sm text-[hsl(222,12%,30%)]">{comment.content}</Markdown></div>
 
                             <div className="flex items-center gap-4 text-[hsl(222,12%,55%)]">
-                              {/* Replies expand through GET /community/comments/
-                                  {id}/replies, which is authenticated like the
-                                  composer. A guest sees the count so the thread
-                                  is not misrepresented as flat, and the control
-                                  offers sign-in rather than a request that 401s. */}
+                              {/* Reading replies is public now
+                                  (/community/public/comments/{id}/replies), so
+                                  everyone can expand the thread. Writing one is
+                                  not — the composer inside is gated separately
+                                  below, which is why this no longer locks. */}
                               <button
                                 onClick={() => {
-                                  if (signedOut) { signInGate(); return; }
                                   if (showReplyId === comment.id) {
                                     setShowReplyId(null);
                                   } else {
                                     setShowReplyId(comment.id);
                                   }
                                 }}
-                                title={signedOut ? 'Sign in to reply' : undefined}
-                                className={`flex items-center gap-1 text-xs transition-colors ${signedOut ? 'text-[hsl(222,12%,62%)] hover:text-[hsl(222,22%,15%)]' : 'hover:text-[hsl(221,91%,60%)]'}`}
+                                className="flex items-center gap-1 text-xs transition-colors hover:text-[hsl(221,91%,60%)]"
                               >
-                                {signedOut ? <Lock className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                                Reply{comment.replyCount ? ` (${comment.replyCount})` : ''}
+                                <MessageSquare className="w-3 h-3" />
+                                {comment.replyCount
+                                  ? `${comment.replyCount} ${comment.replyCount === 1 ? 'reply' : 'replies'}`
+                                  : 'Reply'}
                               </button>
                               {isOwn && !signedOut && (
                                 <button
@@ -1547,6 +1543,19 @@ export function ExperienceDetailPage() {
                                     </div>
                                   )}
 
+                                  {/* Guests can now open this thread, so the
+                                      reply box needs its own gate — posting a
+                                      reply is still an authenticated write. */}
+                                  {signedOut ? (
+                                    <button
+                                      type="button"
+                                      onClick={signInGate}
+                                      className="mt-3 ml-1 inline-flex items-center gap-1.5 text-xs font-medium text-[hsl(221,91%,60%)] hover:underline"
+                                    >
+                                      <Lock className="w-3 h-3" />
+                                      Sign in to reply
+                                    </button>
+                                  ) : (
                                   <div className="mt-3 flex gap-2 pl-1">
                                     <CornerDownRight className="w-3.5 h-3.5 text-[hsl(222,12%,70%)] shrink-0 mt-2.5" />
                                     <div className="flex-1 flex gap-2">
@@ -1568,6 +1577,7 @@ export function ExperienceDetailPage() {
                                       </Button>
                                     </div>
                                   </div>
+                                  )}
                                 </motion.div>
                               )}
                             </AnimatePresence>
@@ -1577,8 +1587,6 @@ export function ExperienceDetailPage() {
                     );
                   })}
                 </div>
-                </>
-                )}
               </div>
             </div>
 

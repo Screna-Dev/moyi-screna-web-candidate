@@ -8,7 +8,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 // is the SSR-style replacement for the Astro blog's build-time @astrojs/sitemap.
 
 // @ts-expect-error — plain .mjs manifest, shared with scripts/ and src/
-import { companySlug, eligibleCompanies } from '../scripts/routes.mjs';
+import { companySlug, eligibleCompanies, collectPublicPosts, eligiblePosts, POST_FIRST_WAVE } from '../scripts/routes.mjs';
 
 const PROJECT_ID = process.env.VITE_SANITY_PROJECT_ID || 'x5tgtd0h';
 const DATASET = process.env.VITE_SANITY_DATASET || 'production';
@@ -99,6 +99,27 @@ async function fetchCompanies(): Promise<CompanyRef[]> {
   );
 }
 
+/**
+ * One entry per single note substantial enough to index.
+ *
+ * Same gate and same deterministic ordering the prerenderer uses, so the two
+ * select the same notes from the same data without coordinating — advertising
+ * a URL whose snapshot was never built is the mistake this avoids.
+ *
+ * Only the newest POST_PAGE_BUDGET pages are scanned: the public search
+ * endpoint ignores every page-size parameter and returns 10 rows, so a full
+ * sweep of ~6,800 notes would be 684 requests inside a per-request function.
+ */
+async function fetchExperiences(): Promise<CompanyRef[]> {
+  const posts = await collectPublicPosts({ apiBase: `${API_BASE}/api/v1` });
+  return eligiblePosts(posts)
+    .slice(0, POST_FIRST_WAVE)
+    .map((p: { id: string; date?: string; createdAt?: string }) => ({
+      slug: p.id,
+      lastmod: p.createdAt ?? p.date ?? undefined,
+    }));
+}
+
 function urlEntry(loc: string, lastmod?: string): string {
   const mod = lastmod ? `\n    <lastmod>${xmlEscape(new Date(lastmod).toISOString())}</lastmod>` : '';
   return `  <url>\n    <loc>${xmlEscape(loc)}</loc>${mod}\n  </url>`;
@@ -107,14 +128,16 @@ function urlEntry(loc: string, lastmod?: string): string {
 export default async function handler(_req: IncomingMessage, res: ServerResponse) {
   // Either upstream being unreachable degrades to a smaller but still valid
   // sitemap rather than a 500 — a broken sitemap costs every URL in it.
-  const [posts, companies] = await Promise.all([
+  const [posts, companies, experiences] = await Promise.all([
     fetchPosts().catch(() => [] as PostRef[]),
     fetchCompanies().catch(() => [] as CompanyRef[]),
+    fetchExperiences().catch(() => [] as CompanyRef[]),
   ]);
 
   const entries = [
     ...STATIC_PATHS.map((p) => urlEntry(`${SITE_URL}${p}`)),
     ...companies.map((c) => urlEntry(`${SITE_URL}/interview-questions/${c.slug}`, c.lastmod)),
+    ...experiences.map((e) => urlEntry(`${SITE_URL}/experience/${e.slug}`, e.lastmod)),
     ...posts.map((p) => urlEntry(`${SITE_URL}/blog/${p.slug}`, p.publishedAt)),
   ];
 
