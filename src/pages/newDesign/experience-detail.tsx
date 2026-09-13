@@ -116,6 +116,14 @@ interface ExperiencePost {
   saved?: boolean;
 }
 
+// ─── AI hints for one question ──────────────────────────
+interface AiHints {
+  suggested_approach: string;
+  pro_tip: string;
+  framework: { step: number; title: string; description: string }[];
+  key_points_to_mention: string[];
+}
+
 // ─── Comment interface matching API ─────────────────────
 interface Comment {
   id: string;
@@ -170,9 +178,11 @@ function getQuestionHintStatus(
 // readPrerenderSeed requires (it consumes the tag). The snapshot browser has no
 // route to the API — the preview server mounts no proxy — so for a prerendered
 // note this is the page's only source of content.
-const PRERENDER_SEED = readPrerenderSeed<{ post: ExperiencePost; comments?: Comment[] }>(
-  '__prerender_experience__',
-);
+const PRERENDER_SEED = readPrerenderSeed<{
+  post: ExperiencePost;
+  comments?: Comment[];
+  hints?: Record<string, AiHints>;
+}>('__prerender_experience__');
 
 // ═══════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -256,9 +266,18 @@ export function ExperienceDetailPage() {
   const pendingSave = useRef<boolean | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
-  const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
+  // Seeded hints start expanded, not just loaded. The panel renders its body
+  // only when expanded, so a collapsed seed would leave the text out of the
+  // snapshot — which is the one thing the seed exists to prevent.
+  const [expandedHints, setExpandedHints] = useState<Set<string>>(
+    () => new Set(Object.keys(PRERENDER_SEED?.hints ?? {})),
+  );
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
-  const [hintsData, setHintsData] = useState<Record<string, { suggested_approach: string; pro_tip: string; framework: { step: number; title: string; description: string }[]; key_points_to_mention: string[] }>>({});
+  // Prefilled from the build-time seed on a prerendered note, so the hints are
+  // in the snapshot rather than waiting on a click that a crawler never makes.
+  const [hintsData, setHintsData] = useState<Record<string, AiHints>>(
+    () => PRERENDER_SEED?.hints ?? {},
+  );
   const [hintsLoadingSet, setHintsLoadingSet] = useState<Set<string>>(new Set());
   const [hintsFailedSet, setHintsFailedSet] = useState<Set<string>>(new Set());
   const [commentSort, setCommentSort] = useState<'top' | 'new'>('new');

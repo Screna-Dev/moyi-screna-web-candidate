@@ -303,30 +303,26 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // and the shareable one.
   const experiencePath = (postId: string) => `/experience/${postId}`;
   const shareUrl = (postId: string) => `${window.location.origin}/experience/${postId}`;
-  // Guests and Free/Basic are gated in two DIFFERENT ways, and conflating them
-  // is wrong in both directions:
+  // The note library is fully open to anyone signed in: every note, full text,
+  // paginated, on every plan. Free and Basic used to see the 2 newest and 5
+  // blurred cards, which left a paying Basic user with LESS than a signed-out
+  // visitor — a guest browses the whole company, just trimmed to one sentence
+  // per note. That gate is gone.
   //
-  //   signed-out  every published note for the company is listed and paginated,
-  //               but each note's text is cut to its first sentence server-side.
-  //               There is NO top-N limit.
-  //   FREE/BASIC  only the 2 newest notes per company are openable, but their
-  //               text is NOT cut.
+  // What still separates the audiences is the text itself, and it is decided
+  // server-side rather than here:
   //
-  // So the blurred "Sign in to unlock" cards belong to FREE/BASIC only. Showing
-  // them to guests hid the question titles — the very text this surface exists
-  // to get indexed — behind an overlay while leaving it in the DOM, which is
-  // both the wrong product behaviour and the shape of cloaking that the
-  // registration-wall declaration is supposed to rule out.
-  const lowTierLock = isLowTier;
+  //   signed out  every note listed and paginated, each cut to its first
+  //               sentence by the public endpoint. No top-N limit.
+  //   signed in   every note listed and paginated, nothing cut.
+  //
+  // Sorting, keyword search and the round/level/time filters remain an Advanced
+  // feature (restrictedBrowsing below) — that is a separate gate from note
+  // access, and the backend still discards those params for Free/Basic.
   // Neither audience can sort, keyword-search, or filter by round/level/time:
   // the public endpoint does not read those params and the backend discards
   // them for FREE/BASIC. Role and page DO work for guests.
   const restrictedBrowsing = signedOut || isLowTier;
-  // Free/Basic see the 2 newest notes unlocked and 5 more locked (blurred with
-  // an upgrade prompt) — 7 cards total.
-  const FREE_VISIBLE_LIMIT = 2;
-  const FREE_LOCKED_LIMIT = 5;
-
   // Build-time snapshot payload, read once at module scope by the page that
   // owns it. Only usable when it is for *this* company: the SPA keeps the
   // script tag around for one navigation, and a stale seed would render
@@ -717,10 +713,10 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
           results_count: content.length,
         });
       }
-      // Low-tier users are locked to the first page (backend forces page=0).
-      // Guests do paginate now, but off `total` rather than a length guess —
-      // see setHasMorePublic above.
-      setHasMore(!signedOut && !isLowTier ? content.length >= 10 : false);
+      // Everyone signed in paginates the same way now. The authenticated
+      // search reports no total, so "did this page come back full" is all
+      // there is; guests page off the real total via setHasMorePublic above.
+      setHasMore(!signedOut ? content.length >= 10 : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch company posts:', err);
@@ -731,7 +727,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       setIsInitialLoading(false);
       setIsReloading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, signedOut, isLowTier, apiName, initInteractions, posthog]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, signedOut, apiName, initInteractions, posthog]);
 
   useEffect(() => {
     // A prerendered page ships with its first page of notes already rendered.
@@ -1018,10 +1014,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 </div>
               )}
 
-              {/* Banner explaining the actual limit — which is a different limit
-                  for each audience, so the copy has to be too. A guest is not
-                  capped on how many notes they can see; their notes are
-                  shortened. Free/Basic is the reverse. */}
+              {/* Banner explaining the actual limit, which is a different limit
+                  for each audience, so the copy has to be too. Neither is
+                  capped on how many notes they can browse any more: a guest's
+                  notes are shortened, and Free/Basic get every note in full but
+                  cannot sort, search or filter. Saying "unlimited access to
+                  every post" here would now be selling something they have. */}
               {restrictedBrowsing && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
                   <div className="flex items-start gap-3">
@@ -1032,12 +1030,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                       <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
                         {signedOut
                           ? 'Every question, shortened answers'
-                          : `Showing the ${FREE_VISIBLE_LIMIT} newest experiences`}
+                          : 'Sorting and filters are an Advanced feature'}
                       </p>
                       <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
                         {signedOut
                           ? `Browse all ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes for ${company.name}. Each answer is trimmed to its first line — create a free account to read them in full.`
-                          : 'Upgrade to Advanced for full search, sorting, and unlimited access to every post.'}
+                          : `Every one of these ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes is yours to read in full. Upgrade to Advanced to search them by keyword, sort them, and filter by round, level and date.`}
                       </p>
                     </div>
                   </div>
@@ -1085,12 +1083,10 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
 
               {/* Posts — hidden during a reset fetch so stale results aren't shown */}
               <div className="space-y-4">
-                {!isReloading && (lowTierLock ? posts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : posts).map((post, i) => {
-                  // Free/Basic can only open the 2 newest notes per company; the next
-                  // 5 render locked (the backend answers 403 INSUFFICIENT_PLAN_TIER).
-                  // Guests are NOT locked — they get every note on the page, already
-                  // shortened server-side, so there is nothing to withhold here.
-                  const locked = lowTierLock && i >= FREE_VISIBLE_LIMIT;
+                {!isReloading && posts.map((post, i) => {
+                  // Nobody's cards are locked now: signed-in readers get every
+                  // note in full, and guests get every note trimmed server-side.
+                  // There is nothing left to withhold in the browser.
                   return (
                   <motion.article
                     key={post.id}
@@ -1098,22 +1094,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
-                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${locked ? 'cursor-pointer' : ''}`}
-                    onClick={
-                      locked
-                        ? () => {
-                            // paywall_viewed —— 访客/低阶用户点击锁定的面经卡片，看到解锁/升级引导。
-                            // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
-                            safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
-                              note_id: post.id,
-                              required_tier: 'advanced',
-                              user_current_tier: planData.currentPlan.toLowerCase(),
-                            });
-                            // A guest's blocker is the missing account, not the plan.
-                            navigate(isAuthenticated ? '/#pricing' : '/auth');
-                          }
-                        : undefined
-                    }
+                    className="group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300"
                   >
                     <div className="p-6">
                       {/* Header */}
@@ -1135,35 +1116,6 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                         )}
                       </div>
 
-                      {locked ? (
-                        <div className="relative">
-                          <div className="blur-sm select-none pointer-events-none">
-                            <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
-                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
-                            </div>
-                            <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                              {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 mb-5">
-                              {getQuestions(post).slice(0, 3).map((q, qi) => (
-                                <span key={q.id || qi} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate">
-                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
-                                  {q.title || 'Question'}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(221,91%,60%)]/20 shadow-sm">
-                              <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
-                              <span className="text-sm font-medium text-[hsl(222,22%,15%)]">
-                                {isAuthenticated ? 'Upgrade to Advanced to unlock' : 'Sign in to unlock'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
                           <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
                           </div>
@@ -1286,8 +1238,6 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                               View Post
                             </Link>
                           </div>
-                        </>
-                      )}
                     </div>
                   </motion.article>
                   );

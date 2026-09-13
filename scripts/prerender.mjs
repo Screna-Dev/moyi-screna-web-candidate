@@ -83,6 +83,29 @@ async function assertCors() {
 }
 
 /**
+ * Promise.all with a concurrency cap.
+ *
+ * Seeding the note pages means one request per note for comments plus one per
+ * question for hints — around 190 for a 39-note wave. Firing those at once
+ * made the API drop most of them: comment coverage fell from 39/39 notes to
+ * 6/39, and the retry could not recover because every attempt landed in the
+ * same burst. Fewer in flight is both faster overall and kinder upstream.
+ */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i], i);
+      }
+    }),
+  );
+  return out;
+}
+
+/**
  * fetch with a bounded retry on connection-level failures.
  *
  * The community API drops connections intermittently — measured at roughly
@@ -224,6 +247,36 @@ async function experienceComments(postId) {
   return all;
 }
 
+/**
+ * AI hints for every question on one note, keyed by question id.
+ *
+ * The hints endpoint went public, and the hints are generated per question
+ * rather than stamped from a template, so this is real per-page content rather
+ * than the same paragraphs repeated across the site. The UI loads them on click
+ * and renders nothing until it has them, so without seeding they are absent
+ * from the snapshot entirely.
+ *
+ * Best-effort per question: a note is still worth publishing with some or none
+ * of its hints, and one slow question should not cost the whole page.
+ */
+async function experienceHints(post) {
+  const questions = Array.isArray(post?.questions) ? post.questions : [];
+  const entries = await mapLimit(questions.filter((q) => q?.id), 4, async (q) => {
+      try {
+        const res = await fetchWithRetry(
+          `${COMMUNITY}/questions/${q.id}/ai-hints`,
+          { headers: { Accept: 'application/json' } },
+        );
+        if (!res.ok) return null;
+        const data = (await res.json()).data;
+        return data ? [q.id, data] : null;
+      } catch {
+        return null;
+      }
+  });
+  return Object.fromEntries(entries.filter(Boolean));
+}
+
 async function experienceRoutes() {
   const posts = await collectPublicPosts({ apiBase: `${API_BASE}/api/v1`, fetchFn: fetchWithRetry });
   if (posts.length === 0) {
@@ -232,12 +285,18 @@ async function experienceRoutes() {
   }
   const eligible = eligiblePosts(posts);
   const wave = eligible.slice(0, POST_FIRST_WAVE);
-  const threads = await Promise.all(wave.map((p) => experienceComments(p.id)));
-  experienceSeeds = new Map(wave.map((p, i) => [p.id, { post: p, comments: threads[i] }]));
+  // Sequential between the two sweeps, capped within each: they hit the same
+  // API and running both at once is what caused the drops in the first place.
+  const threads = await mapLimit(wave, 4, (p) => experienceComments(p.id));
+  const hints = await mapLimit(wave, 3, (p) => experienceHints(p));
+  experienceSeeds = new Map(
+    wave.map((p, i) => [p.id, { post: p, comments: threads[i], hints: hints[i] }]),
+  );
   const withThread = threads.filter((t) => t.length > 0).length;
+  const hintCount = hints.reduce((n, h) => n + Object.keys(h).length, 0);
   console.log(
     `[prerender] seeded ${threads.reduce((n, t) => n + t.length, 0)} comments across ` +
-      `${withThread}/${wave.length} notes`,
+      `${withThread}/${wave.length} notes, and AI hints for ${hintCount} questions`,
   );
   console.log(
     `[prerender] scanned ${posts.length} notes; ${eligible.length} clear the content gate; ` +
