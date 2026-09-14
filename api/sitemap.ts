@@ -7,7 +7,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 // published posts — no rebuild/redeploy needed when a post is published. This
 // is the SSR-style replacement for the Astro blog's build-time @astrojs/sitemap.
 
-// @ts-expect-error — plain .mjs manifest, shared with scripts/ and src/
+// Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
+// No @ts-expect-error here: allowJs resolves the import cleanly, so the
+// directive itself became the error (TS2578 "Unused '@ts-expect-error'") once
+// there was nothing left for it to suppress. src/utils/companySlug.ts imports
+// the same module with no directive at all.
 import { companySlug, eligibleCompanies, collectPublicPosts, eligiblePosts, POST_FIRST_WAVE } from '../scripts/routes.mjs';
 
 const PROJECT_ID = process.env.VITE_SANITY_PROJECT_ID || 'x5tgtd0h';
