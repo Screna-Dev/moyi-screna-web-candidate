@@ -30,7 +30,7 @@ const PRODUCT_LINKS = [
 
 const COMMUNITY_LINKS = [
   { label: 'Blog', href: '/blog' },
-  { label: 'Interview Insights', href: '/interview-insights' },
+  { label: 'Interview Insights', href: '/interview-questions' },
   { label: 'Join our Discord', href: 'https://discord.gg/7FqHDtea5X' },
 ];
 

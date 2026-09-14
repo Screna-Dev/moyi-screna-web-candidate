@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
-import { ArrowRight, Clock, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/newDesign/dashboard-layout";
+import { InsightsLayout } from "@/components/newDesign/insights-layout";
 import { WidePageContainer } from "@/components/newDesign/dashboard-page";
 import ShareButton from "@/components/newDesign/interview/share-experience-button";
 import { type CompanyData } from "@/components/newDesign/interview/company-card";
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
-import { getPosts, getPublicPosts, getCompaniesStats } from "@/services/CommunityService";
+import { getCompaniesStats, getPublicCompaniesStats } from "@/services/CommunityService";
+import { hasStoredSession } from "@/services/api";
+import { companySlug } from "@/utils/companySlug";
+import { readPrerenderSeed } from "@/utils/prerenderSeed";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePostHog } from "posthog-js/react";
 import { safeCapture } from "@/utils/posthog";
 import { EVENTS } from "@/constants/analyticsEvents";
 import { clearAllCompanyPostFilters } from "@/utils/companyPostFilters";
+import { useSeo } from "@/hooks/useSeo";
+import { SEO_COPY } from "@/constants/seo";
 import { QuickMockWidget } from "@/components/newDesign/interview-insights/quick-mock";
 import imgFaang from "@/assets/newDesign/cat-faang.png";
 import imgLargeEnt from "@/assets/newDesign/cat-large-ent.png";
@@ -27,29 +33,7 @@ const bannerSvg = {
   p147eae80: "M879.26 168C941.26 132 985.26 120 1037.26 142V228C993.26 204 943.26 208 879.26 244V168Z",
 };
 
-// ─── API post shape (from /community/posts/search) ─────────
-type ApiPostQuestion = { id?: string; title?: string; label?: string };
-type ApiPost = {
-  id: string;
-  company?: string;
-  role?: string;
-  level?: string;
-  round?: string;
-  date?: string;
-  outcome?: string;
-  summary?: string;
-  questions?: (ApiPostQuestion | string)[];
-  isAnonymous?: boolean;
-  user?: { id?: string; name?: string };
-  likeCount?: number;
-  saveCount?: number;
-  commentCount?: number;
-  liked?: boolean;
-  saved?: boolean;
-  createdAt?: string;
-};
-
-// Format an ISO timestamp into a short "x ago" label for the ticker.
+// Format an ISO timestamp into a short "x ago" label for the company cards.
 function timeAgo(iso: string | undefined): string {
   if (!iso) return "";
   const then = new Date(iso).getTime();
@@ -66,6 +50,15 @@ function timeAgo(iso: string | undefined): string {
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
 }
+
+// ─── Build-time seed ───────────────────────────────────────────────────────
+// The company grid is the crawler's only path from this page to the company
+// pages, and the snapshot browser cannot reach the API (the preview server
+// mounts no proxy on purpose). So scripts/prerender.mjs fetches the stats
+// payload server-side and plants it before the bundle evaluates.
+//
+// Read at module scope, exactly once, as readPrerenderSeed requires.
+const PRERENDER_SEED = readPrerenderSeed<{ stats?: unknown }>('__prerender_directory__');
 
 // Shape returned per-company by GET /community/companies/stats
 // (companies are nested under data.categories[].companies[]; each carries its own category).
@@ -107,10 +100,6 @@ const COMPANY_META: CompanyMeta[] = [
 
 const META_BY_NAME = new Map(COMPANY_META.map((c) => [c.name.toLowerCase().trim(), c]));
 
-function slugify(name: string): string {
-  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
 const categoryTiles = [
   { name: "FAANG / Big Tech", subtitle: "Large-scale engineering and product interviews.", examples: ["Google", "Apple", "Meta", "Amazon"], image: imgFaang },
   { name: "Large Enterprises", subtitle: "Established companies with structured interview loops.", examples: ["Microsoft", "Oracle", "Salesforce", "IBM"], image: imgLargeEnt },
@@ -143,10 +132,15 @@ function CardLogo({ name, size }: { name: string; size: "sm" | "lg" }) {
   return <div className={`${base} bg-surface-1 shadow-sm ring-1 ring-border/50`}>{initials}</div>;
 }
 
-function InlineCompanyCard({ company }: { company: CompanyData }) {
+function InlineCompanyCard({ company, basePath }: { company: CompanyData; basePath: string }) {
   return (
     <Link
-      to={`/interview-insights/${company.id}`}
+      to={`${basePath}/${company.id}`}
+      // Marks a link that came from the live company list, as opposed to the
+      // hardcoded example chips on the category tiles. scripts/prerender.mjs
+      // counts these to tell "grid rendered" from "grid empty but the tiles
+      // still link somewhere" — a distinction the word count cannot make.
+      data-company-card
       className="group relative flex min-h-[160px] w-full flex-col justify-between rounded-[16px] border border-border bg-[#F7F8F9] p-5 shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-border/80 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 active:border-primary"
     >
       <div className="flex min-w-0 items-start gap-3.5">
@@ -157,7 +151,10 @@ function InlineCompanyCard({ company }: { company: CompanyData }) {
           </h3>
           <div className="mt-1.5 flex flex-col items-start gap-1">
             <span className="max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground" style={{ fontFamily: "var(--font-sans)" }}>
-              {company.category ?? "Company"}
+              {/* `||`, not `??`: the stats API returns uncategorised companies
+                  with an empty category, which `??` would let through as a
+                  blank pill. */}
+              {company.category || "Company"}
             </span>
             <span className="text-[11px] font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
               Updated {company.updatedAgo}
@@ -191,9 +188,30 @@ function LoadingCards({ count = 9 }: { count?: number }) {
   );
 }
 
-export function InterviewInsightsPage() {
+export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean } = {}) {
   const { isAuthenticated } = useAuth();
   const posthog = usePostHog();
+
+  // Two things vary, and they are independent:
+  //
+  //   isPublic  — which surface. /interview-questions is the marketing entry
+  //               point: no sidebar for anyone, indexable, and the only one in
+  //               robots/sitemap. /interview-insights keeps the personal-centre
+  //               sidebar and stays out of the index.
+  //   signedOut — which payload. Guests read the redacted /community/public/**
+  //               endpoints; members read the authenticated twins. Independent
+  //               of the surface, because a signed-in user may well arrive on
+  //               the public page from the home nav.
+  //
+  // signedOut reads storage rather than `isAuthenticated`, which is false on
+  // the first render even for a signed-in visitor while AuthContext resolves.
+  // Endpoint choice must not flip mid-flight, or the page fires both variants.
+  const signedOut = !hasStoredSession();
+  const Layout = isPublic ? InsightsLayout : DashboardLayout;
+  // Only DashboardLayout renders a top header to title.
+  const layoutProps = isPublic ? {} : { headerTitle: "InterviewPrep Note" };
+  const basePath = isPublic ? "/interview-questions" : "/interview-insights";
+  const shareTo = signedOut ? "/auth" : "/add-experience";
 
   // interview_notes_browsed —— 进入面经列表页（每次进入上报一次）。
   // view_type 映射：'by_company' = 本页（公司分组网格），'all' = 公司详情页的平铺面经列表。
@@ -210,42 +228,33 @@ export function InterviewInsightsPage() {
     clearAllCompanyPostFilters();
   }, []);
 
-  const [latest, setLatest] = useState<string[]>([]);
   const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
   const [rollup, setRollup] = useState<{ totalCompanyCount: number; totalPostCount: number; totalRecentPostCount: number } | null>(null);
   const [companiesLoading, setCompaniesLoading] = useState(true);
 
-  // Fetch the newest posts on mount to populate the "Latest" ticker.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
-        const res = await fetchFn(isAuthenticated ? { page: 0, sortBy: "NEWEST" } : { page: 0 });
-        const data = res.data?.data ?? res.data;
-        const content: ApiPost[] = Array.isArray(data) ? data : [];
-        if (cancelled) return;
-        // Ticker: derived from the newest posts (Company · Round · time-ago).
-        setLatest(
-          content.slice(0, 6).map((p) =>
-            [p.company || "Unknown", p.round || "Interview", timeAgo(p.createdAt || p.date)]
-              .filter(Boolean)
-              .join(" · ")
-          )
-        );
-      } catch (err) {
-        console.error("Failed to fetch latest posts:", err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isAuthenticated]);
+  // The "Latest" ticker that used to live here is commented out further down
+  // (search for latest-marquee). Its fetch went with it: the result was written
+  // to state nothing read, and on the authenticated path it could only ever
+  // 400, because /community/posts/search requires `company`. To bring the
+  // ticker back, re-add a fetch of the newest posts — public via
+  // normalizePublicPosts(getPublicPosts({ page: 0 })), authenticated via
+  // getPosts({ company, sortBy: 'NEWEST' }).
 
-  // Load per-company stats once on mount for the companies directory.
+  // Per-company stats for the directory grid. /community/public/companies/stats
+  // is byte-identical to the authenticated twin, so both audiences render from
+  // the same payload and the same code below — the only difference is the URL.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await getCompaniesStats();
+        // Prerendered load: the grid is already rendered from the seed, so
+        // refetching would blank and repaint the content the snapshot exists
+        // to deliver.
+        const res = PRERENDER_SEED?.stats
+          ? { data: { data: PRERENDER_SEED.stats } }
+          : signedOut
+            ? await getPublicCompaniesStats()
+            : await getCompaniesStats();
         const data = res.data?.data ?? res.data;
         if (cancelled || !data) return;
         // New shape: companies are grouped under data.categories[].companies[];
@@ -271,7 +280,7 @@ export function InterviewInsightsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [isAuthenticated]);
 
   const [activeCategory, setActiveCategory] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
@@ -294,7 +303,7 @@ export function InterviewInsightsPage() {
       const name = s.company?.trim();
       if (!name) continue;
       const meta = META_BY_NAME.get(name.toLowerCase());
-      const id = meta?.id ?? slugify(name);
+      const id = meta?.id ?? companySlug(name);
       if (!id) continue;
 
       const postCount = s.postCount ?? 0;
@@ -346,6 +355,52 @@ export function InterviewInsightsPage() {
     return counts;
   }, [companies]);
 
+  // ── Head tags ──
+  //
+  // Both surfaces render the same library, so exactly one may be indexed or
+  // they compete for the same queries. /interview-questions carries the real
+  // tags; /interview-insights is marked noindex.
+  //
+  // The personal-centre branch still has to pass an object rather than null:
+  // useSeo only sets data-seo-ready once it writes something, and a route that
+  // never writes would hang the prerenderer for its full timeout. noindex is
+  // the "terminal state, nothing to index" signal that keeps that honest.
+  //
+  // On the public branch, `null` while the directory loads is deliberate — it
+  // is what stops the prerenderer from snapshotting an empty grid. Once loading
+  // settles it resolves either way, so an empty library cannot hang the build.
+  useSeo(
+    !isPublic
+      ? {
+          ...SEO_COPY.interviewInsights,
+          path: '/interview-insights',
+          noindex: true,
+        }
+      : companiesLoading
+        ? null
+        : {
+            ...SEO_COPY.interviewInsights,
+            path: '/interview-questions',
+            jsonLd: [
+              {
+                '@context': 'https://schema.org',
+                '@type': 'CollectionPage',
+                name: 'Interview Questions by Company',
+                description: SEO_COPY.interviewInsights.description,
+                url: 'https://www.screna.ai/interview-questions',
+                ...(rollup
+                  ? {
+                      mainEntity: {
+                        '@type': 'ItemList',
+                        numberOfItems: rollup.totalCompanyCount,
+                      },
+                    }
+                  : {}),
+              },
+            ],
+          },
+  );
+
   const displayedCompanies = useMemo(() => {
     let filtered = companies;
     if (activeCategory !== "All") {
@@ -391,7 +446,7 @@ export function InterviewInsightsPage() {
   }, [hasMoreCompanies]);
 
   return (
-    <DashboardLayout headerTitle="InterviewPrep Note" fullBleed>
+    <Layout fullBleed {...layoutProps}>
     <WidePageContainer maxWidth="none">
 
       {/* ── Hero banner — full-bleed, no top/left/right margin ── */}
@@ -438,12 +493,12 @@ export function InterviewInsightsPage() {
                 Browse community notes by company, role, round, and level so interview patterns are easier to spot.
               </p>
             </div>
-            <Link to="/add-experience" className="shrink-0 w-[222px] h-[44px] block mt-1">
+            <Link to={shareTo} className="shrink-0 w-[222px] h-[44px] block mt-1">
               <ShareButton />
             </Link>
           </div>
 
-          {/* Stats row — full-bleed within banner, top/bottom border */}
+          {/* Stats row — full-bleed within banner, top/bottom border. */}
           <div
             className="grid sm:grid-cols-2"
             style={{ marginTop: 32, marginLeft: -32, marginRight: -32, borderTop: '1px solid #e1e4ea', borderBottom: '1px solid #e1e4ea' }}
@@ -469,8 +524,13 @@ export function InterviewInsightsPage() {
         </div>
       </section>
 
-      {/* ── Quick Mock launcher — the entry point moved here from /quick-mock ── */}
-      <QuickMockWidget />
+      {/* ── Quick Mock launcher — the entry point moved here from /quick-mock ──
+          Both surfaces show the same panel, so the public page is not a lesser
+          version of the personal centre. Starting a mock still needs a session
+          — the role list, the resume-derived defaults and the credit check are
+          all authenticated endpoints — so for guests it renders locked: no
+          requests fire, and the start button goes to /auth. */}
+      <QuickMockWidget locked={signedOut} />
 
       <div className="space-y-16">
           {/* Category Tiles */}
@@ -501,7 +561,7 @@ export function InterviewInsightsPage() {
                         {cat.examples.map((ex) => (
                           <Link
                             key={ex}
-                            to={`/interview-insights/${ex.toLowerCase().replace(/\s+/g, '-')}`}
+                            to={`${basePath}/${ex.toLowerCase().replace(/\s+/g, '-')}`}
                             onClick={(e) => e.stopPropagation()}
                             className="rounded-full bg-white/40 px-[10px] py-1 text-[11px] font-semibold leading-[15.4px] text-foreground transition-colors hover:bg-white/60"
                             style={{ fontFamily: "var(--font-sans)" }}
@@ -576,7 +636,7 @@ export function InterviewInsightsPage() {
                       viewport={{ once: true, margin: "-40px" }}
                       transition={{ duration: 0.35, delay: Math.min((i % ITEMS_PER_PAGE) * 0.03, 0.3) }}
                     >
-                      <InlineCompanyCard company={company} />
+                      <InlineCompanyCard company={company} basePath={basePath} />
                     </motion.div>
                   ))}
                 </div>
@@ -598,7 +658,7 @@ export function InterviewInsightsPage() {
       </div>
 
     </WidePageContainer>
-    </DashboardLayout>
+    </Layout>
   );
 }
 

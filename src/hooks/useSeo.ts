@@ -73,7 +73,12 @@ export function useSeo(input: SeoInput | null) {
     document.title = title;
     upsertCanonical(url);
     upsertMeta('name', 'description', description);
-    upsertMeta('name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow');
+    // `follow`, not `nofollow`, on the noindex pages. Every route that sets
+    // noindex here is one of ours — the personal-centre twins, a thin single
+    // note — and each links onward to pages we do want crawled. Keeping the
+    // page out of the index is the goal; severing the crawl path through it is
+    // collateral damage with no upside.
+    upsertMeta('name', 'robots', noindex ? 'noindex, follow' : 'index, follow');
     upsertMeta('property', 'og:type', type);
     upsertMeta('property', 'og:url', url);
     upsertMeta('property', 'og:title', title);

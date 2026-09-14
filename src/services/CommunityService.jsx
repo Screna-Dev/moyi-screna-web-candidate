@@ -4,8 +4,53 @@ export const getPosts = (params = {}) => {
   return API.get('/community/posts/search', { params });
 };
 
+// ─── Signed-out (public) community reads ────────────────────────────────────
+// Three endpoints under /community/public/** are permitAll. They never read
+// user state: sending a token changes nothing, so signed-in code paths must use
+// the /community/** twins instead. The payload is redacted server-side — no
+// `user` key at all, and questions[].notes carries only its first sentence.
+
 export const getPublicPosts = (params = {}) => {
   return API.get('/community/public/posts/search', { params });
+};
+
+// Company directory + site-wide roll-up. Byte-identical to the authenticated
+// /community/companies/stats, so the same parser and types serve both.
+export const getPublicCompaniesStats = (params = {}) => {
+  return API.get('/community/public/companies/stats', { params });
+};
+
+// One company's { displayName, category, summary, postCount, recentPostCount,
+// latestUpdatedAt, passEligible }. Matches on display name, case-insensitively.
+// A company that does not exist comes back as HTTP 400 with
+// errorCode NOT_FOUND — not a 404. Branch on errorCode, never on the status.
+export const getPublicCompanyProfile = (company) => {
+  return API.get('/community/public/companies/profile', { params: { company } });
+};
+
+/**
+ * Read GET /community/public/posts/search into a fixed shape.
+ *
+ * The endpoint returns { posts, total, size, page }. Only that contract is
+ * accepted: an earlier deployment answered with a bare PostDto[] and ignored
+ * every query parameter, but frontend and API ship together, so that shape
+ * cannot reach this code. Tolerating it here would mean carrying a branch that
+ * never runs and cannot be tested — and, worse, one that quietly trusts a
+ * response whose `company` filter was never applied.
+ *
+ * Anything else degrades to an empty page rather than to unfiltered results,
+ * so a shape surprise reads as "nothing here" and not as another company's
+ * notes under this company's heading.
+ */
+export const normalizePublicPosts = (res) => {
+  const data = res?.data?.data ?? res?.data;
+  const posts = Array.isArray(data?.posts) ? data.posts : [];
+  return {
+    posts,
+    total: Number.isFinite(data?.total) ? data.total : posts.length,
+    size: Number.isFinite(data?.size) ? data.size : 10,
+    page: Number.isFinite(data?.page) ? data.page : 0,
+  };
 };
 
 // Per-company published-post stats + across-all roll-up totals.
@@ -40,6 +85,16 @@ export const getPost = (postId) => {
   return API.get(`/community/posts/${postId}`);
 };
 
+// Public single-post read for signed-out visitors.
+//
+// There is no GET /community/public/posts/{id} — that path 404s. Single-post
+// access is a parameter on the list endpoint, which returns 0 or 1 rows and
+// deliberately does not distinguish "no such post" from "not published", so
+// neither should the UI.
+export const getPublicPost = (postId) => {
+  return API.get('/community/public/posts/search', { params: { postId } });
+};
+
 export const createPost = (data) => {
   return API.post('/community/posts', data);
 };
@@ -48,8 +103,25 @@ export const deletePost = (postId) => {
   return API.delete(`/community/posts/${postId}`);
 };
 
+// ─── Discussion: reads are public, writes are not ───────────────────────────
+//
+// The two reads moved under /community/public/** and the authenticated
+// originals were deleted, so these are the only paths — there is no token
+// variant to fall back to and no reason to branch on auth. The writes did NOT
+// move: posting, replying and deleting still live on /community/**, still need
+// a bearer token, and are still gated in the UI.
+//
+// Anyone reading this payload should know it is less redacted than the public
+// post search, which nulls `user` out entirely. Comments carry
+// `user: { id, name }` for anonymous visitors; `isAnonymous` is a separate
+// per-comment flag.
+
 export const getComments = (postId, query = {}) => {
-  return API.get(`/community/posts/${postId}/comments`, { params: query });
+  return API.get(`/community/public/posts/${postId}/comments`, { params: query });
+};
+
+export const getReplies = (commentId, query = {}) => {
+  return API.get(`/community/public/comments/${commentId}/replies`, { params: query });
 };
 
 export const createComment = (postId, data) => {
@@ -58,10 +130,6 @@ export const createComment = (postId, data) => {
 
 export const deleteComment = (commentId) => {
   return API.delete(`/community/comments/${commentId}`);
-};
-
-export const getReplies = (commentId, query = {}) => {
-  return API.get(`/community/comments/${commentId}/replies`, { params: query });
 };
 
 export const createReply = (commentId, data) => {

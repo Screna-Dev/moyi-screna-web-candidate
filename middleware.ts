@@ -105,26 +105,50 @@ export default async function middleware(request: Request) {
     try {
       const apiUrl =
         process.env.VITE_API_URL || 'https://api-staging.screna.ai/api/v1';
-      const res = await fetch(`${apiUrl}/community/posts/${postId}`, {
-        headers: { Accept: 'application/json' },
-      });
+
+      // The public list endpoint filtered to one post, NOT
+      // /community/posts/{postId}: that one requires a CANDIDATE bearer token,
+      // and this runs at the edge with no credentials. It answered 401 for
+      // every request, so every shared link previewed with the generic fallback
+      // card below — the real-data branch never once ran.
+      const res = await fetch(
+        `${apiUrl}/community/public/posts/search?${new URLSearchParams({ postId })}`,
+        { headers: { Accept: 'application/json' } },
+      );
 
       if (res.ok) {
         const json = await res.json();
-        const post = json.data ?? json;
 
-        const title = [post.company, post.round || 'Interview Experience']
-          .filter(Boolean)
-          .join(' — ');
-        const description =
-          post.summary ||
-          `${post.role ? post.role + ' interview' : 'Interview'} experience at ${post.company || 'a top company'} on Screna AI`;
-        const image = post.og_image || DEFAULT_OG_IMAGE;
+        // Only the { posts, total } contract is read. An endpoint that answers
+        // with something else — an older build, a proxy, an error envelope —
+        // must land on the generic card, never on an unfiltered result set: a
+        // server that ignores `postId` returns the newest notes site-wide, and
+        // reading posts[0] from that would put another candidate's company,
+        // round and summary on the preview card for THIS url.
+        const posts = Array.isArray(json.data?.posts) ? json.data.posts : [];
 
-        return new Response(
-          buildOgHtml({ title, description, image, url: pageUrl }),
-          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-        );
+        // Zero rows means missing OR unpublished; the API withholds which on
+        // purpose, and either way there is nothing to preview. The id check is
+        // the cheap half of the guard above — a confidently wrong preview card
+        // is worse than a vague but honest one.
+        const post = posts[0] && posts[0].id === postId ? posts[0] : undefined;
+
+        if (post) {
+          const title = [post.company, post.round || 'Interview Experience']
+            .filter(Boolean)
+            .join(' — ');
+          const description =
+            post.summary ||
+            `${post.role ? post.role + ' interview' : 'Interview'} experience at ${post.company || 'a top company'} on Screna AI`;
+          // No per-post image exists on PostDto; every card uses the site image
+          // until something generates and stores one.
+          const image = DEFAULT_OG_IMAGE;
+
+          return new Response(
+            buildOgHtml({ title, description, image, url: pageUrl }),
+            { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+          );
+        }
       }
     } catch {
       // Fall through to default OG tags

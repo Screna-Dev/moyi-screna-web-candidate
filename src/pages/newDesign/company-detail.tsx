@@ -18,8 +18,13 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPosts, getPublicPosts, likePost, unlikePost, savePost, unsavePost, getCompanyProfile, getPostOptions } from '../../services/CommunityService';
+import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, savePost, unsavePost,
+         getCompanyProfile, getPublicCompanyProfile, getPostOptions } from '../../services/CommunityService';
+import { hasStoredSession } from '../../services/api';
+import { companySlug, resolveCompanyName } from '@/utils/companySlug';
+import { readPrerenderSeed } from '@/utils/prerenderSeed';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -32,7 +37,32 @@ import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { RoleFilter, RoundFilter, LevelFilter, TimeFilter } from '@/components/newDesign/interview-insights/filter-popovers';
 import { readCompanyPostFilters, writeCompanyPostFilters } from '@/utils/companyPostFilters';
 import { CompanyMockLauncher } from '@/components/newDesign/interview-insights/quick-mock';
+import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { mostCommonRole } from '@/utils/quickMockDefaults';
+import { useSeo } from '@/hooks/useSeo';
+
+// ─── Build-time seed ───────────────────────────────────────────────────────
+// scripts/prerender.mjs fetches this company's profile and first page of notes
+// server-side and injects them as a JSON script tag, because the snapshot
+// browser has no route to the API (the preview server mounts no proxy on
+// purpose, so a production build never bakes in staging data).
+//
+// Read at module scope, exactly once, as readPrerenderSeed requires: it removes
+// the tag on read so a later client-side navigation cannot re-consume a stale
+// payload.
+type CompanySeed = {
+  profile?: {
+    displayName?: string;
+    category?: string;
+    summary?: string;
+    postCount?: number;
+    recentPostCount?: number;
+    latestUpdatedAt?: string | null;
+  };
+  posts?: unknown[];
+  total?: number;
+};
+const PRERENDER_SEED = readPrerenderSeed<CompanySeed>('__prerender_company__');
 
 // ─── Post Interface (shared shape with the listing feed) ──
 interface PostQuestion {
@@ -89,31 +119,42 @@ const OUTCOME_COLORS: Record<string, string> = {
   Pending: 'bg-blue-50 text-blue-600',
 };
 
-// ─── Company meta (mock — no companies API yet) ──
+// ─── Company meta ──
+// Curated slug -> display-name/category/description for a handful of companies.
+//
+// This used to carry per-company note counts too (`totalNotes: 1842` and
+// friends) which the header fell back to whenever the profile API was
+// unreachable — i.e. for every signed-out visitor, since that endpoint was
+// auth-only. Those numbers were invented and are gone: every count on this page
+// now comes from /community/public/companies/profile. Do not reintroduce them.
+//
+// Only `name` is still read, and only for the first paint while the real
+// display name is being resolved from the company directory (see companySlug —
+// the slug itself cannot be inverted). `category` and `description` are
+// deliberately NOT used as fallbacks: this page is submitted to a search index,
+// and editorial copy about a company we have no profile row for would be
+// invention of a different kind.
 type CompanyMeta = {
   name: string;
   category: string;
   description: string;
-  totalNotes: number;
-  last30Days: number;
-  updatedAgo: string;
 };
 
 const COMPANY_META: Record<string, CompanyMeta> = {
-  google: { name: 'Google', category: 'FAANG / Big Tech', description: 'Structured coding, system design, and Googleyness notes from SWE, PM, and EM candidates.', totalNotes: 1842, last30Days: 94, updatedAgo: '2h ago' },
-  meta: { name: 'Meta', category: 'FAANG / Big Tech', description: 'Product sense, execution, coding, and behavioral writeups across IC and manager loops.', totalNotes: 1274, last30Days: 67, updatedAgo: '4h ago' },
-  openai: { name: 'OpenAI', category: 'Mid-sized', description: 'ML systems, research engineering, alignment, and infrastructure interview notes.', totalNotes: 386, last30Days: 58, updatedAgo: '1h ago' },
-  amazon: { name: 'Amazon', category: 'FAANG / Big Tech', description: 'Leadership Principles, bar raiser, coding, and system design experiences.', totalNotes: 2105, last30Days: 112, updatedAgo: '1h ago' },
-  apple: { name: 'Apple', category: 'FAANG / Big Tech', description: 'Team-specific technical screens and onsite loops for hardware, platform, and product teams.', totalNotes: 893, last30Days: 41, updatedAgo: '6h ago' },
-  microsoft: { name: 'Microsoft', category: 'FAANG / Big Tech', description: 'Growth-mindset interviews, team-match loops, coding, and design rounds.', totalNotes: 1537, last30Days: 83, updatedAgo: '3h ago' },
-  anthropic: { name: 'Anthropic', category: 'Mid-sized', description: 'Safety-focused technical screens, ML infrastructure, and research collaboration rounds.', totalNotes: 214, last30Days: 43, updatedAgo: '5h ago' },
-  deepmind: { name: 'DeepMind', category: 'Mid-sized', description: 'Research-heavy interview notes covering ML theory, papers, and systems depth.', totalNotes: 178, last30Days: 31, updatedAgo: '1d ago' },
-  stripe: { name: 'Stripe', category: 'Large Enterprises', description: 'Practical engineering, debugging, API design, and product-minded system design notes.', totalNotes: 743, last30Days: 48, updatedAgo: '2h ago' },
-  figma: { name: 'Figma', category: 'Mid-sized', description: 'Collaborative product engineering and design systems interview experiences.', totalNotes: 312, last30Days: 27, updatedAgo: '8h ago' },
-  databricks: { name: 'Databricks', category: 'Large Enterprises', description: 'Distributed systems, data engineering, and platform interview loops.', totalNotes: 415, last30Days: 34, updatedAgo: '6h ago' },
-  citadel: { name: 'Citadel', category: 'Large Enterprises', description: 'Low-latency systems, probability, C++, and trading intuition rounds.', totalNotes: 268, last30Days: 24, updatedAgo: '9h ago' },
-  salesforce: { name: 'Salesforce', category: 'Large Enterprises', description: 'Enterprise product, platform architecture, and customer-centric behavioral loops.', totalNotes: 524, last30Days: 32, updatedAgo: '1d ago' },
-  perplexity: { name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.', totalNotes: 86, last30Days: 20, updatedAgo: '2d ago' },
+  google: { name: 'Google', category: 'FAANG / Big Tech', description: 'Structured coding, system design, and Googleyness notes from SWE, PM, and EM candidates.' },
+  meta: { name: 'Meta', category: 'FAANG / Big Tech', description: 'Product sense, execution, coding, and behavioral writeups across IC and manager loops.' },
+  openai: { name: 'OpenAI', category: 'Mid-sized', description: 'ML systems, research engineering, alignment, and infrastructure interview notes.' },
+  amazon: { name: 'Amazon', category: 'FAANG / Big Tech', description: 'Leadership Principles, bar raiser, coding, and system design experiences.' },
+  apple: { name: 'Apple', category: 'FAANG / Big Tech', description: 'Team-specific technical screens and onsite loops for hardware, platform, and product teams.' },
+  microsoft: { name: 'Microsoft', category: 'FAANG / Big Tech', description: 'Growth-mindset interviews, team-match loops, coding, and design rounds.' },
+  anthropic: { name: 'Anthropic', category: 'Mid-sized', description: 'Safety-focused technical screens, ML infrastructure, and research collaboration rounds.' },
+  deepmind: { name: 'DeepMind', category: 'Mid-sized', description: 'Research-heavy interview notes covering ML theory, papers, and systems depth.' },
+  stripe: { name: 'Stripe', category: 'Large Enterprises', description: 'Practical engineering, debugging, API design, and product-minded system design notes.' },
+  figma: { name: 'Figma', category: 'Mid-sized', description: 'Collaborative product engineering and design systems interview experiences.' },
+  databricks: { name: 'Databricks', category: 'Large Enterprises', description: 'Distributed systems, data engineering, and platform interview loops.' },
+  citadel: { name: 'Citadel', category: 'Large Enterprises', description: 'Low-latency systems, probability, C++, and trading intuition rounds.' },
+  salesforce: { name: 'Salesforce', category: 'Large Enterprises', description: 'Enterprise product, platform architecture, and customer-centric behavioral loops.' },
+  perplexity: { name: 'Perplexity', category: 'Small', description: 'Fast-moving AI product interviews with pragmatic systems and product judgment.' },
 };
 
 // Format an ISO-8601 UTC timestamp as a locale-relative "x ago" string.
@@ -152,9 +193,6 @@ function resolveCompany(companyId: string | undefined): CompanyMeta {
     name,
     category: 'Company',
     description: `Community-shared interview experiences for ${name} across roles, rounds, and levels.`,
-    totalNotes: 0,
-    last30Days: 0,
-    updatedAgo: 'recently',
   };
 }
 
@@ -234,7 +272,7 @@ function UpgradeModal({
   );
 }
 
-export function CompanyDetailPage() {
+export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } = {}) {
   const { companyId } = useParams();
   const { isAuthenticated } = useAuth();
   const { isPremium, isLoading: isPlanLoading, planData } = useUserPlan();
@@ -248,12 +286,82 @@ export function CompanyDetailPage() {
   // We wait for the plan to resolve before restricting so we don't penalize
   // Premium users with a flash of locked UI.
   const isLowTier = isAuthenticated && !isPlanLoading && !isPremium;
-  // Free/Basic see the 2 newest posts unlocked and 5 more locked (blurred with
-  // an upgrade prompt) — 7 cards total — plus a locked filter/sort toolbar.
-  const FREE_VISIBLE_LIMIT = 2;
-  const FREE_LOCKED_LIMIT = 5;
 
-  const fallbackCompany = useMemo(() => resolveCompany(companyId), [companyId]);
+  // `isPublic` selects the surface (marketing, no sidebar, indexable vs
+  // personal centre with sidebar, noindex); `signedOut` selects the payload
+  // (redacted public endpoints vs authenticated twins). See the note on
+  // InterviewInsightsPage — they are independent.
+  //
+  // signedOut reads storage rather than `isAuthenticated`, which is false on
+  // the first render even for a signed-in visitor.
+  const signedOut = !hasStoredSession();
+  const Layout = isPublic ? InsightsLayout : DashboardLayout;
+  const listPath = isPublic ? '/interview-questions' : '/interview-insights';
+  const companyPath = `${listPath}/${companyId}`;
+  // /experience/:id is the only note URL: it is what middleware.ts answers with
+  // an Open Graph document for social crawlers, so it is both the in-app link
+  // and the shareable one.
+  const experiencePath = (postId: string) => `/experience/${postId}`;
+  const shareUrl = (postId: string) => `${window.location.origin}/experience/${postId}`;
+  // The note library is fully open to anyone signed in: every note, full text,
+  // paginated, on every plan. Free and Basic used to see the 2 newest and 5
+  // blurred cards, which left a paying Basic user with LESS than a signed-out
+  // visitor — a guest browses the whole company, just trimmed to one sentence
+  // per note. That gate is gone.
+  //
+  // What still separates the audiences is the text itself, and it is decided
+  // server-side rather than here:
+  //
+  //   signed out  every note listed and paginated, each cut to its first
+  //               sentence by the public endpoint. No top-N limit.
+  //   signed in   every note listed and paginated, nothing cut.
+  //
+  // Sorting, keyword search and the round/level/time filters remain an Advanced
+  // feature (restrictedBrowsing below) — that is a separate gate from note
+  // access, and the backend still discards those params for Free/Basic.
+  // Neither audience can sort, keyword-search, or filter by round/level/time:
+  // the public endpoint does not read those params and the backend discards
+  // them for FREE/BASIC. Role and page DO work for guests.
+  const restrictedBrowsing = signedOut || isLowTier;
+  // Build-time snapshot payload, read once at module scope by the page that
+  // owns it. Only usable when it is for *this* company: the SPA keeps the
+  // script tag around for one navigation, and a stale seed would render
+  // Google's notes under Meta's heading.
+  const seed = PRERENDER_SEED && companySlug(PRERENDER_SEED.profile?.displayName) === companySlug(companyId)
+    ? PRERENDER_SEED
+    : null;
+
+  // ── Company identity ──
+  // The slug cannot be turned back into a display name (see companySlug): 18 of
+  // the library's companies collapse punctuation, so 'AT&T' -> 'at-t' -> 'AT T'
+  // and the API then reports the company as missing. The title-cased guess is
+  // only for the first paint; every API call waits for `apiName`, which is
+  // either the seed's exact name or one matched against the real company list.
+  const guessedName = useMemo(() => resolveCompany(companyId).name, [companyId]);
+  const [resolvedName, setResolvedName] = useState<string | null>(
+    seed?.profile?.displayName ?? null,
+  );
+  const [nameResolved, setNameResolved] = useState<boolean>(!!seed);
+
+  useEffect(() => {
+    if (seed) return;
+    let cancelled = false;
+    setResolvedName(null);
+    setNameResolved(false);
+    resolveCompanyName(companyId ?? '').then(({ name }) => {
+      if (cancelled) return;
+      setResolvedName(name);
+      setNameResolved(true);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  const apiName = resolvedName;
+  const fallbackCompany = useMemo(() => {
+    const base = resolveCompany(companyId);
+    return { ...base, name: resolvedName ?? guessedName };
+  }, [companyId, resolvedName, guessedName]);
 
   // Real category + summary from GET /community/companies/profile (looked up by
   // display name); falls back to the resolved/curated values until it loads.
@@ -267,34 +375,68 @@ export function CompanyDetailPage() {
   } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   useEffect(() => {
+    // Prerendered pages already have the profile; refetching would only make
+    // the snapshot flash on hydration.
+    if (seed?.profile) {
+      setProfile(seed.profile);
+      setProfileLoading(false);
+      return;
+    }
+    // Waiting on the exact display name — a lookup with the title-cased guess
+    // would 400 NOT_FOUND for any company whose name carries punctuation.
+    if (!apiName) return;
+
     let cancelled = false;
     setProfileLoading(true);
     setProfile(null);
-    getCompanyProfile(fallbackCompany.name)
+    // Same service method behind both URLs; the public one just skips auth.
+    const fetchProfile = signedOut ? getPublicCompanyProfile : getCompanyProfile;
+    fetchProfile(apiName)
       .then((res) => {
         const data = res.data?.data ?? res.data;
         if (!cancelled && data) setProfile(data);
       })
-      .catch(() => { /* leave profile null — no mock fallback for stats */ })
+      .catch(() => {
+        // A company with no profile row answers 400/NOT_FOUND. That is a real
+        // state, not a failure: the header falls back to the curated blurb.
+      })
       .finally(() => { if (!cancelled) setProfileLoading(false); });
     return () => { cancelled = true; };
-  }, [fallbackCompany.name]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiName, signedOut]);
 
   // `name` is the real, route-derived company identity (also used for API
-  // lookups), so it always resolves. `category` and `description` are shown as a
-  // loading skeleton until the profile API resolves and are never backfilled
-  // with curated/mock copy — they're null when the company has no profile data.
+  // lookups), so it always resolves. For signed-in users `category` and
+  // `description` are shown as a loading skeleton until the profile API resolves
+  // and are never backfilled with curated copy — they're null when the company
+  // has no profile data. Guests can't reach that API at all, so they get the
+  // curated blurb, which also gives the indexable page real body copy.
+  // Guests and members read the same profile endpoint now, so there is no
+  // audience split here. `category` and `description` stay null when the
+  // company has no profile row rather than being backfilled with curated copy —
+  // an AI-written blurb for a company we have no data on would be invention,
+  // and this page is being submitted to a search index.
   const company = useMemo(() => ({
     name: profile?.displayName || fallbackCompany.name,
-    category: profile?.category ?? null,
-    description: profile?.summary ?? null,
+    category: profile?.category || null,
+    description: profile?.summary || null,
   }), [fallbackCompany, profile]);
 
   // Header stats, sourced solely from GET /community/companies/profile
   // (published-post counts). We show a loading skeleton until it resolves and
   // never fall back to curated/mock numbers — a company with no posts shows a
   // real 0. `?? 0` keeps a real 0 from the API.
-  const notesCount = profile?.postCount ?? 0;
+  // ONE note count for everything the user reads, and it is the profile's.
+  //
+  // Two totals exist and they can disagree: profile.postCount is a database
+  // aggregate while the feed's total comes from the Elasticsearch index, and
+  // index sync is asynchronous — rendering both would show a company as having
+  // 485 notes in one line and 490 in the next. So the profile's number is the
+  // only one displayed. The feed's total is still what drives pagination (see
+  // hasMorePublic), because there it MUST match the ES result set being paged;
+  // it is consumed at fetch time and never rendered.
+  const noteTotal = profile?.postCount ?? null;
+  const notesCount = noteTotal ?? 0;
   const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
   // ── Toolbar state (filters + sort + search), persisted per company ──
@@ -373,6 +515,9 @@ export function CompanyDetailPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Auth-only endpoint, and it only feeds the filter popovers — which are
+    // rendered locked for guests anyway. Skip it when signed out.
+    if (!isAuthenticated) return;
     getPostOptions()
       .then(res => {
         const data = res?.data?.data ?? res?.data;
@@ -384,7 +529,7 @@ export function CompanyDetailPage() {
       })
       .catch(() => { /* filters fall back to their hardcoded options */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [isAuthenticated]);
 
   // API state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -393,6 +538,11 @@ export function CompanyDetailPage() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Guest-side pagination is driven by the real match count the public endpoint
+  // returns, rather than by "did this page come back full" — which is all the
+  // authenticated search allows, since it reports no total. Starts false so a
+  // failed read never offers a page that may not exist.
+  const [hasMorePublic, setHasMorePublic] = useState(false);
   // True while a *reset* fetch is in flight (sort/filter/search change). We show
   // the loading state and hide the previous results instead of leaving stale
   // posts on screen. Append fetches ("load more") don't set this.
@@ -526,7 +676,7 @@ export function CompanyDetailPage() {
       const params: any = {
         page: pageNum,
         sortBy: SORT_TO_API[activeSort] || 'RELEVANCE',
-        company: company.name,
+        company: apiName,
       };
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
       if (filterRole) params.role = filterRole;
@@ -534,10 +684,22 @@ export function CompanyDetailPage() {
       if (filterLevel) params.level = filterLevel;
       if (filterTime) params.time = TIME_TO_API[filterTime];
 
-      const fetchFn = isAuthenticated ? getPosts : getPublicPosts;
-      const res = await fetchFn(isAuthenticated ? params : { page: 0, company: company.name });
-      const data = res.data?.data ?? res.data;
-      const content: Post[] = Array.isArray(data) ? data : [];
+      let content: Post[];
+      if (signedOut) {
+        // Public search takes company / role / page and nothing else: sorting
+        // is locked to NEWEST server-side and the other facets are not read.
+        const pub = normalizePublicPosts(
+          await getPublicPosts({ company: apiName, role: filterRole || undefined, page: pageNum }),
+        );
+        content = pub.posts as Post[];
+        // Paginate off the real match count, not off "did this page come back
+        // full" — the public endpoint reports a cross-page total.
+        setHasMorePublic((pub.page + 1) * pub.size < pub.total);
+      } else {
+        const res = await getPosts(params);
+        const data = res.data?.data ?? res.data;
+        content = Array.isArray(data) ? data : [];
+      }
 
       setPosts(prev => reset ? content : [...prev, ...content]);
       initInteractions(content, reset);
@@ -545,15 +707,16 @@ export function CompanyDetailPage() {
       // note_search_performed —— 仅统计用户主动搜索（非空关键词触发的 reset 请求）；
       // 默认列表加载 / load-more 不上报。游客请求不带 search 参数、低阶用户搜索框
       // 隐藏，故仅登录态上报。results_count 为本次返回条数（API 按页返回，无总数）。
-      if (reset && isAuthenticated && debouncedSearchQuery) {
+      if (reset && !signedOut && debouncedSearchQuery) {
         safeCapture(posthog, EVENTS.NOTE_SEARCH_PERFORMED, {
           query: debouncedSearchQuery,
           results_count: content.length,
         });
       }
-      // Low-tier users are locked to the first page (backend forces page=0), so
-      // never offer "load more"; guests never paginate either.
-      setHasMore(isAuthenticated && !isLowTier ? content.length >= 10 : false);
+      // Everyone signed in paginates the same way now. The authenticated
+      // search reports no total, so "did this page come back full" is all
+      // there is; guests page off the real total via setHasMorePublic above.
+      setHasMore(!signedOut ? content.length >= 10 : false);
       setPage(pageNum);
     } catch (err) {
       console.error('Failed to fetch company posts:', err);
@@ -564,21 +727,43 @@ export function CompanyDetailPage() {
       setIsInitialLoading(false);
       setIsReloading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, isAuthenticated, isLowTier, company.name, initInteractions, posthog]);
+  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, signedOut, apiName, initInteractions, posthog]);
 
   useEffect(() => {
-    // Hold the first fetch until the profile (canonical `company.name`) and the
-    // plan/auth tier (`isLowTier`) have both resolved. Otherwise the query fires
-    // once with the route-derived fallback name / default tier — returning wrong
-    // data — and then again with the correct values. `isInitialLoading` keeps the
-    // loading state on screen while we wait. Once settled, filter/sort changes
-    // still refetch normally (fetchPosts identity changes).
-    if (profileLoading || isPlanLoading) return;
+    // A prerendered page ships with its first page of notes already rendered.
+    // Refetching them on hydration would blank and repaint the exact content
+    // the snapshot exists to deliver.
+    if (seed?.posts) {
+      setPosts(seed.posts as Post[]);
+      initInteractions(seed.posts as Post[], true);
+      // The snapshot carries page 0 only, but it also carries the match total,
+      // so "Load more" is offered from the seeded page and fetches page 1
+      // normally. Without this the prerendered companies — the highest-traffic
+      // ones — would strand a reader at ten notes with no way forward.
+      const seededTotal = typeof seed.total === 'number' ? seed.total : 0;
+      setHasMorePublic(seededTotal > (seed.posts as Post[]).length);
+      setIsInitialLoading(false);
+      return;
+    }
+    // Hold the first fetch until the exact company name is known (a guess would
+    // query the wrong company) and the plan/auth tier has settled. Otherwise
+    // the query fires with provisional values, returns wrong data, and fires
+    // again. `isInitialLoading` keeps the spinner up meanwhile; once settled,
+    // filter/sort changes refetch normally via fetchPosts's identity.
+    //
+    // Deliberately NOT gated on profileLoading. The feed used to take its
+    // `company` parameter from the profile response, which forced the two
+    // requests to run in series; it now uses the resolved name, so gating on
+    // the profile would only add a round trip to a chain that is already
+    // stats -> name -> feed. They run in parallel instead.
+    if (!nameResolved || isPlanLoading) return;
     fetchPosts(0, true);
-  }, [fetchPosts, profileLoading, isPlanLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchPosts, nameResolved, isPlanLoading]);
 
   const handleLoadMore = () => {
-    if (!loading && hasMore) fetchPosts(page + 1, false);
+    if (loading) return;
+    if (signedOut ? hasMorePublic : hasMore) fetchPosts(page + 1, false);
   };
 
   const formatDate = (dateStr: string | undefined) => {
@@ -590,15 +775,84 @@ export function CompanyDetailPage() {
     }
   };
 
+  // ── F4 / F8: head tags + paywall declaration ──
+  //
+  // Unconditional: one URL serves both audiences, so the canonical, title and
+  // description describe the page rather than the viewer.
+  //
+  // The JSON-LD is the registration-wall declaration. Google exempts gated
+  // content from cloaking ONLY if the gate is declared this way AND the crawler
+  // receives exactly what an entitled reader receives. Both halves matter:
+  //
+  //   • isAccessibleForFree MUST be false, at the top level and on the gated
+  //     part. Declaring `true` while a wall exists is the misconfiguration —
+  //     it asserts the page is free, so the wall reads as cloaking instead of
+  //     being exempted by it.
+  //   • cssSelector must be a class selector that really exists on this page,
+  //     and the element it names must NOT contain the withheld text. The server
+  //     already truncates notes to one sentence, so `.paywalled-note` wraps the
+  //     CTA that stands in for the rest — there is no hidden full note behind a
+  //     blur to leak.
+  //
+  // The declaration is a statement about the page, not a mechanism: it does not
+  // hide anything and must not be used to try to.
+  const notesCountForSeo = noteTotal ?? posts.length;
+  useSeo(
+    !isPublic
+      ? {
+          // Personal-centre twin: same notes, so it must not compete with the
+          // indexed page. Still writes (rather than passing null) so
+          // data-seo-ready is set and the prerenderer can never hang here.
+          title: `${company.name} Interview Notes | Screna AI`,
+          description: `Interview notes for ${company.name}.`,
+          path: `/interview-insights/${companyId}`,
+          noindex: true,
+        }
+      : isInitialLoading
+      ? null
+      : {
+          title: `${company.name} Interview Questions & Experiences | Screna AI`,
+          description: `${notesCountForSeo} real ${company.name} interview write-ups: verbatim questions by role, round and level.`.slice(0, 155),
+          path: `/interview-questions/${companyId}`,
+          type: 'article',
+          jsonLd: [
+            {
+              '@context': 'https://schema.org',
+              '@type': 'Article',
+              headline: `${company.name} Interview Questions & Experiences`,
+              ...(company.description ? { description: company.description } : {}),
+              isAccessibleForFree: false,
+              hasPart: {
+                '@type': 'WebPageElement',
+                isAccessibleForFree: false,
+                cssSelector: '.paywalled-note',
+              },
+            },
+          ],
+        },
+  );
+
   const getQuestions = (post: Post) => post.questions || [];
 
+  // The first question note that has any text. On the public endpoint this is
+  // already just one sentence — the server does the truncating, deliberately:
+  // withholding it in the client would still ship the full text in the
+  // response, which is the implementation Google's paywall guidance rules out.
+  const firstNoteOf = (post: Post): string | null => {
+    for (const q of getQuestions(post)) {
+      const n = (q.notes || '').trim();
+      if (n) return n;
+    }
+    return null;
+  };
+
   return (
-    <DashboardLayout fullBleed>
+    <Layout fullBleed>
       <div className="pb-20 bg-[#f9fafb]">
         <div className="max-w-6xl mx-auto px-6 my-[24px]">
           {/* Back Link */}
           <Link
-            to="/interview-insights"
+            to={listPath}
             className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)] transition-colors hover:text-[hsl(222,22%,15%)] mb-6"
           >
             <ArrowLeft className="size-4" />
@@ -633,7 +887,10 @@ export function CompanyDetailPage() {
                   </p>
                 ) : null}
 
-                {/* Stats — published-post counts from the profile API */}
+                {/* Stats — published-post counts from the profile API. Shown to
+                    both audiences: /community/public/companies/profile returns
+                    the same real numbers, so there is nothing to hide here any
+                    more (and nothing hardcoded — see noteTotal). */}
                 <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[hsl(222,12%,45%)]">
                   {profileLoading ? (
                     <span className="inline-flex items-center gap-2" aria-label="Loading stats" aria-busy="true">
@@ -657,16 +914,21 @@ export function CompanyDetailPage() {
             {/* CTAs — one-click company mock above the share button. Spec §5:
                 below 900px the two buttons stack full-width. */}
             <div className="shrink-0 flex flex-col gap-2.5 w-full min-[900px]:w-auto" style={{ minWidth: 232 }}>
-              {isAuthenticated && (
-                <CompanyMockLauncher
-                  company={company.name}
-                  companyId={companyId}
-                  fallbackRole={commonRole ?? undefined}
-                />
-              )}
+              {/* Rendered for everyone so the public page carries the same CTA
+                  as the personal centre; guests get it locked (click -> /auth,
+                  no authenticated requests). Keyed on `signedOut` rather than
+                  `isAuthenticated` for the usual reason — the latter is false
+                  on the first render of a signed-in visit, which would flash a
+                  locked button at a user who is not locked out of anything. */}
+              <CompanyMockLauncher
+                company={company.name}
+                companyId={companyId}
+                fallbackRole={commonRole ?? undefined}
+                locked={signedOut}
+              />
               <Link
                 to={isAuthenticated ? '/add-experience' : '/auth'}
-                state={{ from: { pathname: `/interview-insights/${companyId}` } }}
+                state={{ from: { pathname: companyPath } }}
                 className="shrink-0"
               >
                 <Button className="w-full bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
@@ -686,7 +948,7 @@ export function CompanyDetailPage() {
                   the controls render locked: each chip and the sort button show a
                   lock, and clicking any of them opens the upgrade modal (instead of
                   bouncing the user straight to pricing). */}
-              {isLowTier ? (
+              {restrictedBrowsing ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
                     {['Role', 'Round', 'Level', 'Time'].map(label => (
@@ -752,23 +1014,36 @@ export function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Low-tier upgrade banner — explains the browse limit up front. */}
-              {isLowTier && (
+              {/* Banner explaining the actual limit, which is a different limit
+                  for each audience, so the copy has to be too. Neither is
+                  capped on how many notes they can browse any more: a guest's
+                  notes are shortened, and Free/Basic get every note in full but
+                  cannot sort, search or filter. Saying "unlimited access to
+                  every post" here would now be selling something they have. */}
+              {restrictedBrowsing && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(221,91%,60%)]/10">
                       <Lock className="size-4 text-[hsl(221,91%,60%)]" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">Showing the {FREE_VISIBLE_LIMIT} newest experiences</p>
-                      <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">Upgrade to Advanced for full search, sorting, and unlimited access to every post.</p>
+                      <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
+                        {signedOut
+                          ? 'Every question, shortened answers'
+                          : 'Sorting and filters are an Advanced feature'}
+                      </p>
+                      <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
+                        {signedOut
+                          ? `Browse all ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes for ${company.name}. Each answer is trimmed to its first line — create a free account to read them in full.`
+                          : `Every one of these ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes is yours to read in full. Upgrade to Advanced to search them by keyword, sort them, and filter by round, level and date.`}
+                      </p>
                     </div>
                   </div>
                   <Button
-                    onClick={() => navigate('/#pricing')}
+                    onClick={() => navigate(signedOut ? '/auth' : '/#pricing')}
                     className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
                   >
-                    Upgrade
+                    {signedOut ? 'Sign up free' : 'Upgrade'}
                   </Button>
                 </div>
               )}
@@ -798,7 +1073,7 @@ export function CompanyDetailPage() {
                   <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
                   <Link
                     to={isAuthenticated ? '/add-experience' : '/auth'}
-                    state={{ from: { pathname: `/interview-insights/${companyId}` } }}
+                    state={{ from: { pathname: companyPath } }}
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
                   >
                     Be the first to share
@@ -808,10 +1083,10 @@ export function CompanyDetailPage() {
 
               {/* Posts — hidden during a reset fetch so stale results aren't shown */}
               <div className="space-y-4">
-                {!isReloading && (isLowTier ? posts.slice(0, FREE_VISIBLE_LIMIT + FREE_LOCKED_LIMIT) : posts).map((post, i) => {
-                  // Free/Basic users can only open the 2 newest posts per company;
-                  // the next 5 are locked (backend returns 403 INSUFFICIENT_PLAN_TIER).
-                  const locked = isLowTier && i >= FREE_VISIBLE_LIMIT;
+                {!isReloading && posts.map((post, i) => {
+                  // Nobody's cards are locked now: signed-in readers get every
+                  // note in full, and guests get every note trimmed server-side.
+                  // There is nothing left to withhold in the browser.
                   return (
                   <motion.article
                     key={post.id}
@@ -819,23 +1094,7 @@ export function CompanyDetailPage() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.5) }}
-                    className={`group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300 ${(!isAuthenticated || locked) ? 'cursor-pointer' : ''}`}
-                    onClick={
-                      !isAuthenticated
-                        ? () => navigate('/auth', { state: { from: { pathname: `/interview-insights/${companyId}` } } })
-                        : locked
-                          ? () => {
-                              // paywall_viewed —— 低阶用户点击锁定的面经卡片，看到解锁/升级引导。
-                              // required_tier：解锁需 Advanced+（无逐条 tier 字段，按 gating 逻辑近似）。
-                              safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
-                                note_id: post.id,
-                                required_tier: 'advanced',
-                                user_current_tier: planData.currentPlan.toLowerCase(),
-                              });
-                              navigate('/#pricing');
-                            }
-                          : undefined
-                    }
+                    className="group bg-white rounded-2xl border border-[hsl(220,16%,90%)] hover:border-[hsl(221,91%,60%)]/25 hover:shadow-lg hover:shadow-[hsl(221,91%,60%)]/[0.04] transition-all duration-300"
                   >
                     <div className="p-6">
                       {/* Header */}
@@ -857,58 +1116,6 @@ export function CompanyDetailPage() {
                         )}
                       </div>
 
-                      {!isAuthenticated ? (
-                        <div className="relative">
-                          <div className="blur-sm select-none pointer-events-none">
-                            <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
-                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
-                            </div>
-                            <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                              {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 mb-5">
-                              {getQuestions(post).slice(0, 3).map((q, qi) => (
-                                <span key={q.id || qi} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate">
-                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
-                                  {q.title || 'Question'}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(220,16%,90%)] shadow-sm">
-                              <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
-                              <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Sign in to view details</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : locked ? (
-                        <div className="relative">
-                          <div className="blur-sm select-none pointer-events-none">
-                            <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
-                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
-                            </div>
-                            <div className="text-sm text-[hsl(222,12%,35%)] leading-relaxed line-clamp-2 mb-4">
-                              {post.summary ? <Markdown className="text-sm text-[hsl(222,12%,35%)]">{post.summary}</Markdown> : 'No summary available'}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 mb-5">
-                              {getQuestions(post).slice(0, 3).map((q, qi) => (
-                                <span key={q.id || qi} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[hsl(220,20%,97%)] border border-[hsl(220,16%,92%)] text-xs text-[hsl(222,22%,25%)] max-w-[220px] truncate">
-                                  <span className="w-1 h-1 rounded-full bg-[hsl(221,91%,60%)] mr-2 shrink-0" />
-                                  {q.title || 'Question'}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 border border-[hsl(221,91%,60%)]/20 shadow-sm">
-                              <Lock className="w-4 h-4 text-[hsl(221,91%,60%)]" />
-                              <span className="text-sm font-medium text-[hsl(222,22%,15%)]">Upgrade to Advanced to unlock</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
                           <div className="flex items-center gap-3 text-xs text-[hsl(222,12%,55%)] mb-3">
                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(post.date)}</span>
                           </div>
@@ -935,33 +1142,85 @@ export function CompanyDetailPage() {
                             )}
                           </div>
 
+                          {/* F7 — leading sample of the candidate's own notes.
+                              Rendered only for signed-out readers, which is the
+                              one case where the text arrived pre-truncated: the
+                              public endpoint returns a single sentence per
+                              question, so there is no withheld remainder in the
+                              DOM to hide. Signed-in readers get the full notes
+                              on the note page itself.
+
+                              This element is what the page's JSON-LD names in
+                              hasPart.cssSelector — keep the class and the
+                              selector in step (see the useSeo call above). */}
+                          {signedOut && firstNoteOf(post) && (
+                            <div
+                              className="mb-5 rounded-xl border border-[hsl(220,16%,92%)] bg-[hsl(220,20%,98%)] px-4 py-3"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* `paywalled-note` goes on the blurred span inside,
+                                  not on this box: the JSON-LD declares that
+                                  selector isAccessibleForFree:false, and the
+                                  quoted first sentence IS free to everyone. */}
+                              <LockedNoteTail
+                                compact
+                                quoted
+                                paywallClass="paywalled-note"
+                                text={firstNoteOf(post) as string}
+                                company={post.company || company.name}
+                                role={post.role}
+                                round={post.round}
+                                onUnlock={() => navigate('/auth', { state: { from: { pathname: companyPath } } })}
+                                label="Create a free account to read the full write-up"
+                              />
+                            </div>
+                          )}
+
                           <div className="flex items-center justify-between pt-4 border-t border-[hsl(220,16%,94%)]">
                             <div className="flex items-center gap-4">
+                              {/* Locked for guests: muted icons plus one padlock
+                                  chip for the group. The clicks already routed
+                                  to /auth, but nothing on screen said so — see
+                                  the same treatment on the note page. */}
                               <button
                                 onClick={(e) => toggleLike(post.id, e)}
-                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${interactions.get(post.id)?.liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'}`}
+                                title={signedOut ? 'Sign in to like this note' : undefined}
+                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${signedOut ? 'text-[hsl(222,12%,68%)]' : interactions.get(post.id)?.liked ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'}`}
                               >
-                                <ThumbsUp className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.liked ? 'fill-current scale-110' : ''}`} />
+                                <ThumbsUp className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.liked && !signedOut ? 'fill-current scale-110' : ''}`} />
                                 {interactions.get(post.id)?.likeCount ?? 0}
                               </button>
-                              <span className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)]">
+                              <span
+                                title={signedOut ? 'Sign in to read the discussion' : undefined}
+                                className={`flex items-center gap-1.5 text-xs ${signedOut ? 'text-[hsl(222,12%,68%)]' : 'text-[hsl(222,12%,55%)]'}`}
+                              >
                                 <MessageSquare className="w-3.5 h-3.5" />
                                 {post.commentCount ?? 0}
                               </span>
                               <button
                                 onClick={(e) => toggleSave(post.id, e)}
-                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${interactions.get(post.id)?.saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'}`}
+                                title={signedOut ? 'Sign in to save this note' : undefined}
+                                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${signedOut ? 'text-[hsl(222,12%,68%)]' : interactions.get(post.id)?.saved ? 'text-[hsl(221,91%,60%)]' : 'text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)]'}`}
                               >
-                                <Bookmark className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.saved ? 'fill-current scale-110' : ''}`} />
+                                <Bookmark className={`w-3.5 h-3.5 transition-transform ${interactions.get(post.id)?.saved && !signedOut ? 'fill-current scale-110' : ''}`} />
                                 {interactions.get(post.id)?.saveCount ?? 0}
                               </button>
+                              {signedOut && (
+                                <span
+                                  title="Sign in to like, save or comment"
+                                  className="flex items-center gap-1 rounded-full border border-[hsl(220,16%,91%)] bg-[hsl(220,20%,98%)] px-2 py-0.5 text-[10px] font-medium text-[hsl(222,12%,50%)]"
+                                >
+                                  <Lock className="w-2.5 h-2.5" />
+                                  Sign in to interact
+                                </span>
+                              )}
                               <SharePopover
                                 data={{
                                   title: `${post.company} — ${post.round || 'Interview Experience'}`,
                                   subtitle: post.role,
                                   tags: [post.level, post.outcome, post.round].filter(Boolean),
                                   summary: post.summary || `Interview experience at ${post.company} for ${post.role} position`,
-                                  url: `${window.location.origin}/experience/${post.id}`,
+                                  url: shareUrl(post.id),
                                 }}
                               >
                                 <button type="button" className="flex items-center gap-1.5 text-xs text-[hsl(222,12%,55%)] hover:text-[hsl(222,22%,15%)] transition-colors">
@@ -972,15 +1231,13 @@ export function CompanyDetailPage() {
                               </SharePopover>
                             </div>
                             <Link
-                              to={`/experience/${post.id}`}
+                              to={experiencePath(post.id)}
                               onClick={(e) => e.stopPropagation()}
                               className="px-4 py-1.5 rounded-lg bg-[hsl(222,22%,15%)] text-white text-xs font-medium hover:bg-[hsl(222,22%,20%)] transition-colors"
                             >
                               View Post
                             </Link>
                           </div>
-                        </>
-                      )}
                     </div>
                   </motion.article>
                   );
@@ -988,7 +1245,10 @@ export function CompanyDetailPage() {
               </div>
 
               {/* Load More */}
-              {posts.length > 0 && hasMore && !loading && (
+              {/* Guests paginate off the real match count the public endpoint
+                  returns; members off "did this page come back full", since the
+                  authenticated search has no total. */}
+              {posts.length > 0 && (signedOut ? hasMorePublic : hasMore) && !loading && (
                 <div className="text-center pt-6 pb-2">
                   <Button
                     variant="outline"
@@ -1009,9 +1269,9 @@ export function CompanyDetailPage() {
 
             {/* ── Sidebar ── */}
             <aside className="space-y-5 lg:sticky lg:top-24 lg:h-fit">
-              {/* Search — hidden for low-tier users (backend ignores the search
-                  param for Free/Basic). */}
-              {!isLowTier && (
+              {/* Search — hidden for guests / low-tier users (the public + Free/Basic
+                  endpoints ignore the search param). */}
+              {!restrictedBrowsing && (
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(222,12%,55%)]" />
                   <input
@@ -1068,7 +1328,7 @@ export function CompanyDetailPage() {
           navigate('/#pricing');
         }}
       />
-    </DashboardLayout>
+    </Layout>
   );
 }
 

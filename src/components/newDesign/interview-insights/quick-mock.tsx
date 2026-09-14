@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, Coins, Loader2 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AlertCircle, Coins, Loader2, Lock } from 'lucide-react';
 import { getCommunityCompanies, getPostOptions } from '@/services/CommunityService';
 import { createQuickMockInterview, parseQuickMockError } from '@/services/InterviewServices';
 import { getProfile, getProfilePreferences } from '@/services/ProfileServices';
@@ -62,11 +62,19 @@ const FALLBACK_ROLES = [
 ];
 
 // ─── Company / role vocabularies ──────────────────────────────────────────────
-function useQuickMockOptions() {
+//
+// `enabled` is false on the locked (signed-out) surfaces. Both endpoints need a
+// bearer token, so firing them would put 401s in a guest's console on a page
+// that is supposed to be fully readable logged out — and the prerenderer runs
+// signed out against a preview server with no API proxy at all. The FALLBACK_*
+// lists are what the locked UI shows instead; the guest never gets as far as
+// sending either value anywhere.
+function useQuickMockOptions(enabled = true) {
   const [companies, setCompanies] = useState<string[]>(FALLBACK_COMPANIES);
   const [roles, setRoles] = useState<string[]>(FALLBACK_ROLES);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     getCommunityCompanies()
       .then((res) => {
@@ -90,7 +98,7 @@ function useQuickMockOptions() {
       .catch(() => { /* keep fallbacks */ });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   return { companies, roles };
 }
@@ -105,7 +113,12 @@ function useQuickMockOptions() {
 // Difficulty: the API's `level`, mapped from GET /profile/resume signals — but
 // the mapping is gated off for now (spec Open Question #1), so everyone starts at
 // Intermediate.
-function useAutoDefaults(roleOptions: string[], fallbackRole?: string) {
+//
+// `enabled` is false when locked: there is no profile and no resume to read, so
+// both requests are skipped. `hasResume` then stays null rather than going
+// false, which is what keeps the "Upload your resume" prompt — advice aimed at
+// someone who has an account — out of the signed-out UI.
+function useAutoDefaults(roleOptions: string[], fallbackRole?: string, enabled = true) {
   // Roles the user selected for themselves — authoritative over anything inferred.
   const [profileRoles, setProfileRoles] = useState<string[]>([]);
   // Titles straight off the resume — used when the profile has no target role.
@@ -115,6 +128,7 @@ function useAutoDefaults(roleOptions: string[], fallbackRole?: string) {
   const [hasResume, setHasResume] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     getProfilePreferences()
       .then((res) => {
@@ -125,11 +139,12 @@ function useAutoDefaults(roleOptions: string[], fallbackRole?: string) {
       })
       .catch(() => { /* fall through to the resume titles */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   // Resume signals for the level mapping, and to tell "no resume" apart from
   // "resume we couldn't read" for the hint under the button.
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     getProfile()
       .then((res) => {
@@ -154,7 +169,7 @@ function useAutoDefaults(roleOptions: string[], fallbackRole?: string) {
       })
       .catch(() => { if (!cancelled) setHasResume(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   // Resolution order: the user's own profile selection → titles on the resume →
   // the company's most common role → a generic default.
@@ -185,6 +200,32 @@ function useAutoDefaults(roleOptions: string[], fallbackRole?: string) {
     levelIsFromResume: levelSource === 'auto',
     hasResume,
   };
+}
+
+// ─── The locked (signed-out) action ───────────────────────────────────────────
+//
+// Both surfaces render the full launcher for guests — the Questions pages are
+// public and the UI should read the same as the personal centre's — but every
+// path out of it needs a session: the role defaults come from the profile, the
+// round is pre-paid in credits, and POST /training-plans/interviews/quick-mock
+// is authenticated. So the control stays, and the click goes to /auth instead.
+//
+// Same shape as the locked note cards on the company page: report the gate, then
+// send the reader to the thing that would open it, with a route back.
+function useSignInGate() {
+  const navigate = useNavigate();
+  const posthog = usePostHog();
+  const { pathname } = useLocation();
+  return useCallback(() => {
+    // paywall_viewed —— 访客点击被锁的 Quick Mock 入口，看到注册引导。
+    // 访客的门槛是"没有账号"而不是"套餐不够"，故 required_tier 记为 signed_in。
+    safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+      feature: 'quick_mock',
+      required_tier: 'signed_in',
+      user_current_tier: 'guest',
+    });
+    navigate('/auth', { state: { from: { pathname } } });
+  }, [navigate, posthog, pathname]);
 }
 
 // ─── Session creation + handoff to /ai-mock ───────────────────────────────────
@@ -504,10 +545,16 @@ function levelHintFor(isFromResume: boolean) {
 // ════════════════════════════════════════════════════════════════════════════
 // QuickMockWidget — questions directory. Company → Start mock (spec §5).
 // ════════════════════════════════════════════════════════════════════════════
-export function QuickMockWidget() {
+//
+// `locked` renders the same panel for signed-out visitors with the start button
+// gated (see useSignInGate). Everything that costs nothing stays live — picking
+// a company, opening Adjust settings — so the surface reads as the real feature
+// rather than a screenshot of one.
+export function QuickMockWidget({ locked = false }: { locked?: boolean } = {}) {
   const posthog = usePostHog();
-  const { companies, roles } = useQuickMockOptions();
-  const auto = useAutoDefaults(roles);
+  const signIn = useSignInGate();
+  const { companies, roles } = useQuickMockOptions(!locked);
+  const auto = useAutoDefaults(roles, undefined, !locked);
   const { start, starting, error, setError } = useQuickMockLauncher();
   const { cost, balance, hasEnough } = useCreditCheck();
 
@@ -529,9 +576,13 @@ export function QuickMockWidget() {
   const canStart = Boolean(company) && Boolean(role) && !starting;
 
   useEffect(() => {
+    // Start-funnel event: a guest looking at the locked panel has not entered
+    // that funnel, and counting them would move its denominator without moving
+    // anything else. The locked click reports itself as paywall_viewed instead.
+    if (locked) return;
     safeCapture(posthog, EVENTS.MOCK_QUICK_VIEWED, { entry: 'questions_directory' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [locked]);
 
   const toggleSettings = () => {
     if (!settingsOpen) {
@@ -649,18 +700,27 @@ export function QuickMockWidget() {
             </div>
             <button
               type="button"
-              onClick={handleStart}
-              disabled={!canStart}
+              onClick={locked ? signIn : handleStart}
+              // Locked is always clickable: it is the sign-in prompt, and a
+              // greyed-out one teaches the reader the feature is broken rather
+              // than that it is behind an account.
+              disabled={locked ? false : !canStart}
+              title={locked ? 'Sign in to start a mock interview' : undefined}
               style={{
                 height: 44, padding: '0 18px', borderRadius: 10, border: 'none',
-                background: company ? 'var(--primary)' : 'hsl(221 91% 60% / 0.5)',
-                cursor: canStart ? 'pointer' : 'default',
+                background: locked || company ? 'var(--primary)' : 'hsl(221 91% 60% / 0.5)',
+                cursor: locked || canStart ? 'pointer' : 'default',
                 fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 13, color: '#fff',
                 whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 transition: 'background 0.15s',
               }}
             >
-              {starting ? (
+              {locked ? (
+                <>
+                  <Lock style={{ width: 13, height: 13 }} />
+                  Sign in to start
+                </>
+              ) : starting ? (
                 <>
                   Starting…
                   <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />
@@ -781,16 +841,24 @@ export function CompanyMockLauncher({
   company,
   companyId,
   fallbackRole,
+  locked = false,
 }: {
   company: string;
   /** Route slug, for analytics. Derived from the name when absent. */
   companyId?: string;
   /** The company's most common role — spec's fallback when the profile yields none. */
   fallbackRole?: string;
+  /**
+   * Signed-out: render the same CTA, send the click to /auth. The window never
+   * opens, because everything in it (auto-filled role, difficulty, balance) is
+   * read off an account the visitor does not have yet.
+   */
+  locked?: boolean;
 }) {
   const posthog = usePostHog();
-  const { roles } = useQuickMockOptions();
-  const auto = useAutoDefaults(roles, fallbackRole);
+  const signIn = useSignInGate();
+  const { roles } = useQuickMockOptions(!locked);
+  const auto = useAutoDefaults(roles, fallbackRole, !locked);
   const { start, starting, error, setError } = useQuickMockLauncher();
   const { cost, balance, hasEnough } = useCreditCheck();
 
@@ -815,6 +883,10 @@ export function CompanyMockLauncher({
 
   const handleCtaClick = () => {
     if (starting) return;
+    // The locked click is a sign-up prompt, not an entry into the mock funnel,
+    // so it reports itself (paywall_viewed) and leaves mock_company_cta_clicked
+    // meaning what it has always meant.
+    if (locked) { signIn(); return; }
     // mock_company_cta_clicked —— spec §6
     safeCapture(posthog, EVENTS.MOCK_COMPANY_CTA_CLICKED, {
       source: 'company_header',
@@ -858,7 +930,11 @@ export function CompanyMockLauncher({
         type="button"
         onClick={handleCtaClick}
         disabled={starting}
-        title={`Starts a ${DEFAULT_DURATION}-minute mock · ${cost} credits`}
+        title={
+          locked
+            ? `Sign in to start a ${DEFAULT_DURATION}-minute mock`
+            : `Starts a ${DEFAULT_DURATION}-minute mock · ${cost} credits`
+        }
         className="mock-cta-btn flex items-center justify-center gap-2 w-full text-sm font-semibold"
         style={{
           padding: '10px 22px',
@@ -887,7 +963,9 @@ export function CompanyMockLauncher({
           </>
         ) : (
           <>
-            <span style={{ fontSize: 10, lineHeight: 1 }}>▶</span>
+            {locked
+              ? <Lock style={{ width: 13, height: 13 }} />
+              : <span style={{ fontSize: 10, lineHeight: 1 }}>▶</span>}
             Mock {company} Questions
           </>
         )}

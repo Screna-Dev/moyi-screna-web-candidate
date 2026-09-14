@@ -3,8 +3,13 @@
 # Whitelist model: crawling is disallowed by default (Disallow: /), and only
 # the marketing/content pages below are opened back up. Everything behind the
 # login wall — /dashboard, /profile, /settings, /billing, /admin, /auth, the
-# interview and onboarding flows, /interview-insights, /coaching — is
-# therefore blocked without needing its own rule.
+# interview and onboarding flows, /coaching — is therefore blocked without
+# needing its own rule.
+#
+# /interview-insights is deliberately NOT opened up: it is the personal-centre
+# view of the interview-notes library. The same notes are served publicly at
+# /interview-questions, which is the path allowed below. Opening both would
+# have the two competing for the same queries.
 #
 # Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each
 # Allow below overrides the catch-all Disallow.
@@ -27,9 +32,13 @@
 # here the catch-all Disallow wins and LinkedIn refuses to fetch at all, which
 # it surfaces as "Cannot display preview".
 #
-# Googlebot is deliberately absent: it is not in CRAWLER_UA, so it would get the
-# real SPA route, whose post data needs a bearer token. It would index an empty
-# page. Add Googlebot only once /experience/:id renders its content logged out.
+# Googlebot is deliberately absent, and must stay absent. Not because it is
+# barred from /experience — the `*` group below now allows it — but because
+# THIS group selects who gets middleware.ts's Open Graph document instead of
+# the real page. That document carries a meta-refresh, which is fine for an
+# unfurler and is a cloaking + sneaky-redirect violation for a search engine.
+# Googlebot is not in CRAWLER_UA either, so it gets the real page. Keep both
+# lists in step, and keep search engines out of both.
 User-agent: LinkedInBot
 User-agent: facebookexternalhit
 User-agent: Facebot
@@ -48,6 +57,7 @@ Allow: /experience
 
 Allow: /$
 Allow: /blog
+Allow: /interview-questions
 Allow: /faq
 Allow: /help
 Allow: /contact
@@ -83,6 +93,37 @@ Allow: /$
 
 # Blog index and every post (/blog/:slug).
 Allow: /blog
+
+# Public "Interview Questions" surface: the company directory and every company
+# page under it (/interview-questions/:companyId), both fully readable logged
+# out. Prefix match, so one rule covers the directory and every company page.
+#
+# No $ anchor: `Allow: /interview-questions$` would open the directory only and
+# leave the company pages to the catch-all Disallow — and the company pages are
+# the ones carrying the question text worth indexing.
+#
+Allow: /interview-questions
+
+# Single notes. /experience/:id is the only page carrying a whole write-up —
+# the company pages show one trimmed sentence per note — so it is the page
+# worth indexing, and this opens it.
+#
+# Two things this rule does NOT do, both load-bearing:
+#
+#   1. It does not add search engines to the social-preview group above. That
+#      group exists because middleware.ts answers those agents with an Open
+#      Graph document containing <meta http-equiv="refresh">. Serving that to a
+#      search engine would be "different content for crawlers" and "sneaky
+#      redirect" at once. Googlebot is not in CRAWLER_UA, so it falls through
+#      to the real page; src/test/vercel-routes.test.ts asserts the regex.
+#   2. It does not mean every note gets indexed. Prefix rules cannot say "only
+#      the substantial ones", so the page itself sends noindex unless the note
+#      clears the content gate (isIndexablePost in scripts/routes.mjs). Roughly
+#      half the library is one question plus one sentence, and publishing those
+#      would be thousands of thin pages duplicating cards that already exist.
+#
+# /add-experience is unaffected — it does not start with "/experience".
+Allow: /experience
 
 # Marketing, support and legal pages.
 Allow: /faq

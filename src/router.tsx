@@ -219,8 +219,30 @@ export const router = createBrowserRouter([
       { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
       { path: '/evaluation', element: <EvaluationPage /> },
       { path: '/add-experience', element: <AddExperiencePage /> },
+      // The interview-notes library is reachable through two surfaces that share
+      // one set of page components.
+      //
+      //   /interview-insights   personal centre. DashboardLayout + sidebar, and
+      //                         login-walled: DashboardLayout redirects to /auth
+      //                         when no token is stored. noindex — see the
+      //                         useSeo call in each page.
+      //   /interview-questions  the public, indexable marketing surface. No
+      //                         sidebar, no auth wall, redacted payload for
+      //                         guests. This is the one in robots.txt, the
+      //                         sitemap and the prerender manifest.
+      //
+      // Both render the same notes, so exactly one of them may be indexed or
+      // they compete for the same queries; that is what `isPublic` keys.
       { path: '/interview-insights', element: <InterviewInsightsPage /> },
       { path: '/interview-insights/:companyId', element: <CompanyDetailPage /> },
+      { path: '/interview-questions', element: <InterviewInsightsPage isPublic /> },
+      { path: '/interview-questions/:companyId', element: <CompanyDetailPage isPublic /> },
+      // Single notes stay on one path regardless of surface: /experience/:id is
+      // what middleware.ts answers with an Open Graph document, so it is the
+      // only URL that previews correctly when shared. Signed-out readers who
+      // arrive from a shared link get the marketing shell rather than a bounce
+      // to /auth. Not opened to search engines this round — it is the full-note
+      // page, and the gate sits here.
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},
       { path: '/help',element: <HelpCenterPage />},
