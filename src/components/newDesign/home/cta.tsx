@@ -10,7 +10,7 @@ export function CTA() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    navigate(`/auth?email=${encodeURIComponent(email)}`);
+    navigate(`/auth?email=${encodeURIComponent(email)}&signup=true`);
   };
 
   return (

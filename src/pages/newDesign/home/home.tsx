@@ -610,6 +610,7 @@ export function HomePage() {
   const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   const goAuth = () => navigate('/auth');
+  const goSignup = () => navigate('/auth?signup=true');
 
   // Pay-as-you-go top-up. Signed-out visitors go to auth first (can't pay without
   // an account); signed-in users open the Buy-credits modal and check out via Stripe.
@@ -1025,7 +1026,7 @@ export function HomePage() {
                   Log in
                 </button>
                 <button
-                  onClick={goAuth}
+                  onClick={goSignup}
                   className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
                   style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
                   onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
@@ -1105,7 +1106,7 @@ export function HomePage() {
                   Log in
                 </button>
                 <button
-                  onClick={goAuth}
+                  onClick={goSignup}
                   className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
                   style={{ background: '#2E5BFF' }}
                 >
@@ -1324,7 +1325,7 @@ export function HomePage() {
           `}</style>
           <button
             data-reveal data-delay="300"
-            onClick={goAuth}
+            onClick={goSignup}
             className="hero-cta inline-flex items-center gap-2.5 h-12 px-7 rounded-full text-[15px] font-semibold text-white transition-all duration-200 mb-10"
             style={{
               background: '#2E5BFF',
@@ -1714,7 +1715,7 @@ export function HomePage() {
           </p>
           <button
             data-reveal data-delay="300"
-            onClick={goAuth}
+            onClick={goSignup}
             className="inline-flex items-center gap-2 h-12 px-8 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95"
             style={{
               background: '#FFFFFF',

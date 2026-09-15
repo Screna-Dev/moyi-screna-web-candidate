@@ -168,7 +168,7 @@ export function QuestionUnknownPage() {
                     Sign up or log in to share your answer and engage with the community.
                   </p>
                   <div className="flex items-center gap-3">
-                    <a href="/auth">
+                    <a href="/auth?signup=true">
                       <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 shadow-sm shadow-blue-200">
                         <Sparkles className="w-4 h-4 mr-2" />
                         Sign Up Free
@@ -261,7 +261,7 @@ export function QuestionUnknownPage() {
                   <p className="text-sm text-white/70 mb-4 leading-relaxed">
                     Unlock all answers, bookmarks, and AI practice tools.
                   </p>
-                  <a href="/auth">
+                  <a href="/auth?signup=true">
                     <Button className="w-full bg-white text-slate-900 hover:bg-white/90 font-medium rounded-lg shadow-sm">
                       Create Free Account
                     </Button>
