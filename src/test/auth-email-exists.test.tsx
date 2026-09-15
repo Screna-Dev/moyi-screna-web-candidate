@@ -73,7 +73,8 @@ describe('AuthPage — signup with an already registered email', () => {
   });
 
   it('switches to the login form and shows the notice on /auth', async () => {
-    renderAt('/auth');
+    // /auth defaults to login now, so the signup form needs ?signup=true.
+    renderAt('/auth?signup=true');
     fillSignupForm();
     await waitFor(() => expect(mockSignup).toHaveBeenCalled());
     expect(await screen.findByText('Welcome back')).toBeInTheDocument();

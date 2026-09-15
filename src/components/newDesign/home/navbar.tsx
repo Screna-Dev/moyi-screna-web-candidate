@@ -28,6 +28,7 @@ export function Navbar() {
   const avatarRef = useRef<HTMLDivElement>(null);
 
   const goAuth = () => navigate('/auth');
+  const goSignup = () => navigate('/auth?signup=true');
 
   // Initials for the logged-in avatar fallback.
   const nameParts = (user?.name || '').trim().split(' ');
@@ -183,7 +184,7 @@ export function Navbar() {
                 Log in
               </button>
               <button
-                onClick={goAuth}
+                onClick={goSignup}
                 className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
                 style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
@@ -257,7 +258,7 @@ export function Navbar() {
                 Log in
               </button>
               <button
-                onClick={goAuth}
+                onClick={goSignup}
                 className="inline-flex items-center justify-center h-10 px-5 rounded-[7px] text-[14px] font-medium text-white w-full"
                 style={{ background: '#2E5BFF' }}
               >

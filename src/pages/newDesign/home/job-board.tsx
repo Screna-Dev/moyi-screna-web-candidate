@@ -407,7 +407,7 @@ export default function JobBoardPage() {
                                         </DialogDescription>
                                       </DialogHeader>
                                       <DialogFooter className="flex flex-col gap-3 sm:flex-col mt-2">
-                                        <a href="/auth">
+                                        <a href="/auth?signup=true">
                                           <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 shadow-sm">
                                             Sign Up Free
                                           </Button>

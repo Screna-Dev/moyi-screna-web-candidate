@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-// @ts-expect-error — plain .mjs manifest, shared with scripts/prerender.mjs
+// Plain .mjs manifest, shared with scripts/prerender.mjs — resolves via
+// allowJs, so no suppression directive is needed (an unused one is itself
+// a TS2578 error).
 import { PRERENDER_STATIC, SHELL } from '../../scripts/routes.mjs';
 
 // vercel.json no longer has a catch-all rewrite: unknown paths must 404, which

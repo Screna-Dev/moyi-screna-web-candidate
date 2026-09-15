@@ -250,8 +250,10 @@ export function AuthPage() {
     searchParams.get('referral_code') ||
     searchParams.get('referralCode') ||
     '';
+  // Login is the default face of /auth — signup is opt-in, via the /register
+  // route or an explicit ?signup=true from a "Sign up" entry point.
   const [isLogin, setIsLogin] = useState(
-    isRegisterRoute ? false : searchParams.get('login') === 'true'
+    isRegisterRoute || searchParams.get('signup') === 'true' ? false : true
   );
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
@@ -329,6 +331,21 @@ export function AuthPage() {
     setPassword(val);
     if (!isLogin) setPasswordErrors(validatePassword(val));
   };
+
+  // A "Sign up" link elsewhere in the app points at /auth?signup=true. If the
+  // page is already mounted (login form showing), react-router only swaps the
+  // query string, so the useState initializer above never re-runs — follow the
+  // param when it actually changes. The in-page toggle doesn't touch the URL,
+  // so it isn't fought by this.
+  const lastModeParamRef = useRef(`${searchParams.get('signup')}|${searchParams.get('login')}`);
+  useEffect(() => {
+    const key = `${searchParams.get('signup')}|${searchParams.get('login')}`;
+    if (key === lastModeParamRef.current) return;
+    lastModeParamRef.current = key;
+    if (isRegisterRoute) return;
+    if (searchParams.get('signup') === 'true') setIsLogin(false);
+    else if (searchParams.get('login') === 'true') setIsLogin(true);
+  }, [searchParams, isRegisterRoute]);
 
   const handleToggle = () => {
     setIsLogin(!isLogin);
