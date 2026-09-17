@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import svgPaths from "./svg-article-margin";
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
 import { useAuth } from "@/contexts/AuthContext";
+import { buildAuthPath } from "@/utils/returnTo";
 import { likePost, unlikePost, savePost, unsavePost } from "@/services/CommunityService";
 import { SharePopover } from "@/components/newDesign/share-popover";
 import { toast } from "sonner";
@@ -141,6 +142,7 @@ export function InterviewNoteCard({ note }: { note: InterviewNote }) {
 
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [liked, setLiked] = useState(!!note.liked);
   const [saved, setSaved] = useState(!!note.saved);
   const [upvotes, setUpvotes] = useState(note.upvotes);
@@ -151,7 +153,7 @@ export function InterviewNoteCard({ note }: { note: InterviewNote }) {
   const toggleLike = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isAuthenticated) { navigate("/auth"); return; }
+    if (!isAuthenticated) { navigate(buildAuthPath(location)); return; }
     const next = !liked;
     setLiked(next);
     setUpvotes((v) => Math.max(0, v + (next ? 1 : -1)));
@@ -166,7 +168,7 @@ export function InterviewNoteCard({ note }: { note: InterviewNote }) {
   const toggleSave = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isAuthenticated) { navigate("/auth"); return; }
+    if (!isAuthenticated) { navigate(buildAuthPath(location)); return; }
     const next = !saved;
     setSaved(next);
     setSaves((v) => Math.max(0, v + (next ? 1 : -1)));

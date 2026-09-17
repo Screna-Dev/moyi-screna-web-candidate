@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { Loader2, AlertCircle, CheckCircle, Mail, ArrowLeft, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { resolvePostAuthPath } from '@/utils/postAuthRedirect';
+import { sanitizeReturnTo, targetFromLocation } from '@/utils/returnTo';
 
 function RisoTexture({ className, rotation = 0 }: { className?: string; rotation?: number }) {
   return (
@@ -242,7 +243,18 @@ export function AuthPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isRegisterRoute = location.pathname === '/register';
-  const returnTo = searchParams.get('returnTo') || '';
+  // `?returnTo=` is the contract (F3). `state.from` is the older shape a few
+  // bounce sites used — it never worked, because nothing read it; keep reading
+  // it so any caller still on that shape starts landing correctly too.
+  const legacyFrom = (location.state as { from?: string | { pathname?: string; search?: string; hash?: string } } | null)?.from;
+  const returnTo = sanitizeReturnTo(
+    searchParams.get('returnTo') ||
+      (typeof legacyFrom === 'string'
+        ? legacyFrom
+        : legacyFrom?.pathname
+          ? targetFromLocation({ pathname: legacyFrom.pathname, search: legacyFrom.search, hash: legacyFrom.hash })
+          : '')
+  );
   // Referral code is now collected in the onboarding "Source" step, not at signup.
   // A referral link's code is forwarded to onboarding via the returnTo query params.
   const referralCode =
@@ -614,11 +626,18 @@ export function AuthPage() {
 
       {/* Main content */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 py-12">
-        {/* Logo */}
-        <div className="mb-12">
-          <h1 className="text-3xl font-semibold text-slate-900 tracking-tight" style={{ fontFamily: 'var(--font-serif)' }}>
+        {/* Logo — also the way out (F1). It sits above the card rather than
+            inside it, so it is present in all four states: login, sign up,
+            the verification step and any error banner. Until this existed the
+            only exit from /auth was the browser back button. */}
+        <div className="mb-12 flex flex-col items-center gap-3">
+          <Link to="/" className="text-3xl font-semibold text-slate-900 tracking-tight hover:text-slate-700 transition-colors" style={{ fontFamily: 'var(--font-serif)' }}>
             Screna AI
-          </h1>
+          </Link>
+          <Link to="/" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            Back to home
+          </Link>
         </div>
 
         {/* Card */}

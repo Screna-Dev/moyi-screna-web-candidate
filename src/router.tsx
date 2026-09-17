@@ -24,6 +24,7 @@ import { Footer } from './components/newDesign/home/footer';
 import { CookieBanner } from './components/newDesign/cookie-banner';
 import { ResumePromptModal } from './components/newDesign/resume-prompt-modal';
 import { useSessionTracking } from './hooks/useSessionTracking';
+import { RequireAuth } from './components/RequireAuth';
 
 // ─── Lazy routes ────────────────────────────────────────────────────────────
 // Everything behind the login wall, plus auth/onboarding. App.tsx already
@@ -197,28 +198,28 @@ export const router = createBrowserRouter([
       { path: '/auth/google/callback', element: <GoogleCallback /> },
       { path: '/signup-flow', element: <SignupFlowPage /> },
       { path: '/mock-interview', element: <MockInterviewPage /> },
-      { path: '/personalized-practice', element: <PersonalizedPracticePage /> },
-      { path: '/quick-mock', element: <QuickMockPage /> },
-      { path: '/coaching', element: <CoachingPage /> },
-      { path: '/session-confirm', element: <SessionConfirmPage /> },
-      { path: '/ai-mock', element: <AIMockPage /> },
-      { path: '/ai-mockwhite', element: <AIMockWhitePage /> },
-      { path: '/dashboard', element: <DashboardHomePage /> },
-      { path: '/profile', element: <DashboardPage /> },
+      { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
+      { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
+      { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
+      { path: '/session-confirm', element: <RequireAuth><SessionConfirmPage /></RequireAuth> },
+      { path: '/ai-mock', element: <RequireAuth><AIMockPage /></RequireAuth> },
+      { path: '/ai-mockwhite', element: <RequireAuth><AIMockWhitePage /></RequireAuth> },
+      { path: '/dashboard', element: <RequireAuth><DashboardHomePage /></RequireAuth> },
+      { path: '/profile', element: <RequireAuth><DashboardPage /></RequireAuth> },
       // Jobs feature temporarily hidden for this release — restore when re-launching.
       // { path: '/applications', element: <DashboardPage /> },
-      { path: '/dashboard/contributions', element: <DashboardPage /> },
-      { path: '/contributions', element: <MyContributionsPage /> },
+      { path: '/dashboard/contributions', element: <RequireAuth><DashboardPage /></RequireAuth> },
+      { path: '/contributions', element: <RequireAuth><MyContributionsPage /></RequireAuth> },
       // Jobs feature temporarily hidden for this release — restore when re-launching.
       // { path: '/job-board', element: <JobBoardPage /> },
-      { path: '/refer', element: <ReferEarnPage /> },
-      { path: '/history', element: <HistoryPage /> },
-      { path: '/settings', element: <SettingsPage /> },
+      { path: '/refer', element: <RequireAuth><ReferEarnPage /></RequireAuth> },
+      { path: '/history', element: <RequireAuth><HistoryPage /></RequireAuth> },
+      { path: '/settings', element: <RequireAuth><SettingsPage /></RequireAuth> },
       // /billing is deprecated — billing now lives under Settings. Redirect old
       // links/bookmarks to the canonical location.
       { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
-      { path: '/evaluation', element: <EvaluationPage /> },
-      { path: '/add-experience', element: <AddExperiencePage /> },
+      { path: '/evaluation', element: <RequireAuth><EvaluationPage /></RequireAuth> },
+      { path: '/add-experience', element: <RequireAuth><AddExperiencePage /></RequireAuth> },
       // The interview-notes library is reachable through two surfaces that share
       // one set of page components.
       //
@@ -233,8 +234,8 @@ export const router = createBrowserRouter([
       //
       // Both render the same notes, so exactly one of them may be indexed or
       // they compete for the same queries; that is what `isPublic` keys.
-      { path: '/interview-insights', element: <InterviewInsightsPage /> },
-      { path: '/interview-insights/:companyId', element: <CompanyDetailPage /> },
+      { path: '/interview-insights', element: <RequireAuth><InterviewInsightsPage /></RequireAuth> },
+      { path: '/interview-insights/:companyId', element: <RequireAuth><CompanyDetailPage /></RequireAuth> },
       { path: '/interview-questions', element: <InterviewInsightsPage isPublic /> },
       { path: '/interview-questions/:companyId', element: <CompanyDetailPage isPublic /> },
       // Single notes stay on one path regardless of surface: /experience/:id is
@@ -304,12 +305,12 @@ export const router = createBrowserRouter([
         },
         {
           path: '/select-dashboard',
-          element: <SelectDashboardPage />,
+          element: <RequireAuth><SelectDashboardPage /></RequireAuth>,
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/mentor-dashboard',
-          element: <MentorDashboardPage />,
+          element: <RequireAuth><MentorDashboardPage /></RequireAuth>,
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },

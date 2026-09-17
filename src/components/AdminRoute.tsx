@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { buildAuthPath } from '@/utils/returnTo';
 import { Loader2 } from 'lucide-react';
 
 interface AdminRouteProps {
@@ -20,7 +21,7 @@ export default function AdminRoute({ children, allowedRoles = ['ADMIN'] }: Admin
   }
 
   if (!user) {
-    return <Navigate to="/auth" state={{ from: location }} replace />;
+    return <Navigate to={buildAuthPath(location)} replace />;
   }
 
   if (!user.role || !allowedRoles.includes(user.role)) {

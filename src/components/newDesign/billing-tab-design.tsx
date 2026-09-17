@@ -814,6 +814,13 @@ export function BillingTab() {
     const marker = readPendingCheckout();
 
     if (urlSignal?.outcome === 'cancelled') {
+      // P4: the one return path where the user definitely did not pay.
+      safeCapture(posthog, EVENTS.CHECKOUT_RETURNED, {
+        entry: 'billing',
+        payment_type: marker?.kind ?? urlSignal.kind ?? 'subscription',
+        outcome: 'cancelled',
+        signal: 'url',
+      });
       clearPendingCheckout();
       setCheckoutCancelled(true);
       setCheckoutCancelledKind(marker?.kind ?? urlSignal.kind);
@@ -825,6 +832,17 @@ export function BillingTab() {
       ? { kind: urlSignal.kind ?? 'subscription' as const, ts: Date.now() }
       : null);
     if (!pending) return; // ordinary visit — nothing to confirm
+
+    // P4: fired once per return, before any polling — a returning user is an
+    // observable fact, whether or not the webhook has landed yet. `signal`
+    // records which of the two mechanisms told us (the backend's ?checkout=
+    // param, or the sessionStorage marker it falls back on).
+    safeCapture(posthog, EVENTS.CHECKOUT_RETURNED, {
+      entry: 'billing',
+      payment_type: pending.kind,
+      outcome: 'returned',
+      signal: urlSignal ? 'url' : 'marker',
+    });
 
     let cancelled = false;
     setCheckoutPending(true);
@@ -859,6 +877,15 @@ export function BillingTab() {
             safeCapture(posthog, EVENTS.PAYMENT_COMPLETED, {
               source: 'billing_checkout_return',
               plan: settled.plan,
+            });
+          } else {
+            // Polling gave up. Not the same as "the payment failed" — the
+            // webhook may still land after we stopped looking — so it is
+            // recorded as what the front end actually observed (P4).
+            safeCapture(posthog, EVENTS.PAYMENT_REQUEST_FAILED, {
+              entry: 'billing',
+              payment_type: pending.kind,
+              reason: 'settlement_poll_timeout',
             });
           }
         }
