@@ -12,6 +12,7 @@ import { getPersonalInfo } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
 import { markPendingCheckout } from '@/utils/pendingCheckout';
+import { buildAuthPath } from '@/utils/returnTo';
 import { useSeo, SITE_URL } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
 import { SOCIAL_PROFILE_URLS, SUPPORT_EMAIL } from '@/constants/site';
@@ -608,6 +609,10 @@ export function HomePage() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [pillStyle, setPillStyle] = useState({ left: 4, width: 196 });
   const [showBuyCredits, setShowBuyCredits] = useState(false);
+  // P4: how many times this visitor has tried to pay in this page session.
+  // A retry after a failure is the same intent, not a second buyer — the
+  // dashboard groups on this so one person retrying three times reads as one.
+  const paymentAttemptRef = useRef(0);
 
   const goAuth = () => navigate('/auth');
   const goSignup = () => navigate('/auth?signup=true');
@@ -687,7 +692,10 @@ export function HomePage() {
       billing_cycle: 'monthly',
     });
     if (!user) {
-      navigate('/auth');
+      // Signed-out visitors used to land on a bare /auth and, after signing in,
+      // on the dashboard — nowhere near the plan they had just picked. Carry the
+      // pricing section as the return target (F4).
+      navigate(buildAuthPath('/#pricing'));
       return;
     }
     if (plan.tier === 'FREE') {
@@ -709,13 +717,28 @@ export function HomePage() {
     }
 
     setLoadingTier(plan.tier);
+    const attempt = (paymentAttemptRef.current += 1);
+    const paymentProps = {
+      entry: 'landing_pricing',
+      payment_type: 'subscription',
+      plan_tier: plan.tier.toLowerCase(),
+      attempt,
+    };
+    // P4: from here on the front end can see what happened. It cannot see
+    // whether money moved — that is the Stripe webhook — so these events say
+    // "we asked" / "the ask failed" / "we handed off to Checkout", nothing more.
+    safeCapture(posthog, EVENTS.PAYMENT_REQUEST_STARTED, paymentProps);
     try {
       // changePlan() owns the create-vs-change-tier decision (and its own error
       // toast) using the subscription record fetched when the app loaded.
       const planType = (plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()) as PlanType;
       const result = await changePlan(planType);
-      if (!result.success) return;
+      if (!result.success) {
+        safeCapture(posthog, EVENTS.PAYMENT_REQUEST_FAILED, { ...paymentProps, reason: 'change_plan_rejected' });
+        return;
+      }
       if (result.url) {
+        safeCapture(posthog, EVENTS.CHECKOUT_STARTED, { ...paymentProps, flow: 'change_plan' });
         window.location.href = result.url;
         return;
       }
@@ -727,9 +750,13 @@ export function HomePage() {
         // and a real payment only lands via webhook — leave a marker so the
         // billing page knows to wait instead of showing "Free".
         markPendingCheckout('subscription', plan.tier);
+        safeCapture(posthog, EVENTS.CHECKOUT_STARTED, { ...paymentProps, flow: 'create_subscription' });
         window.location.href = url;
       } else {
         // No Checkout URL (e.g. saved payment method) — subscription created directly.
+        // No Checkout hop, so nothing will come back through checkout_returned;
+        // this is the "直接扣款" path in the acceptance table.
+        safeCapture(posthog, EVENTS.SUBSCRIPTION_STARTED, { ...paymentProps, flow: 'saved_payment_method' });
         toast({ title: 'Subscription started', description: `You're now on ${plan.name}.` });
         navigate('/settings?tab=billing');
       }
@@ -740,6 +767,7 @@ export function HomePage() {
         (err as { message?: string })?.message ||
         'Something went wrong. Please try again.';
       console.error('subscription error:', err);
+      safeCapture(posthog, EVENTS.PAYMENT_REQUEST_FAILED, { ...paymentProps, reason: 'request_error', message });
       toast({ title: 'Unable to start plan', description: message, variant: 'destructive' });
     } finally {
       setLoadingTier(null);

@@ -7,6 +7,7 @@ import { getProfile, getProfilePreferences } from '@/services/ProfileServices';
 import { useUserPlan } from '@/hooks/useUserPlan';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
+import { buildAuthPath } from '@/utils/returnTo';
 import { EVENTS } from '@/constants/analyticsEvents';
 import {
   DEFAULT_LEVEL,
@@ -224,7 +225,7 @@ function useSignInGate() {
       required_tier: 'signed_in',
       user_current_tier: 'guest',
     });
-    navigate('/auth', { state: { from: { pathname } } });
+    navigate(buildAuthPath(pathname));
   }, [navigate, posthog, pathname]);
 }
 

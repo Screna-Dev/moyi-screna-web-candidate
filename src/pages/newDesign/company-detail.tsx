@@ -23,6 +23,7 @@ import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, savePost, unsavePost,
          getCompanyProfile, getPublicCompanyProfile, getPostOptions } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
+import { buildAuthPath } from '@/utils/returnTo';
 import { companySlug, resolveCompanyName } from '@/utils/companySlug';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
 import { toast } from 'sonner';
@@ -596,7 +597,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
 
   const toggleLike = useCallback((postId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isAuthenticated) { navigate('/auth'); return; }
+    if (!isAuthenticated) { navigate(buildAuthPath(companyPath)); return; }
 
     const curr = interactions.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
     const newLiked = !curr.liked;
@@ -629,11 +630,11 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         });
       });
     }, 1000));
-  }, [isAuthenticated, navigate, interactions]);
+  }, [isAuthenticated, navigate, interactions, companyPath]);
 
   const toggleSave = useCallback((postId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isAuthenticated) { navigate('/auth'); return; }
+    if (!isAuthenticated) { navigate(buildAuthPath(companyPath)); return; }
 
     const curr = interactions.get(postId) ?? { liked: false, likeCount: 0, saved: false, saveCount: 0 };
     const newSaved = !curr.saved;
@@ -666,7 +667,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         });
       });
     }, 1000));
-  }, [isAuthenticated, navigate, interactions]);
+  }, [isAuthenticated, navigate, interactions, companyPath]);
 
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
@@ -927,8 +928,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 locked={signedOut}
               />
               <Link
-                to={isAuthenticated ? '/add-experience' : '/auth'}
-                state={{ from: { pathname: companyPath } }}
+                to={isAuthenticated ? '/add-experience' : buildAuthPath(companyPath)}
                 className="shrink-0"
               >
                 <Button className="w-full bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white rounded-xl shadow-lg shadow-[hsl(221,91%,60%)]/20 h-11 px-6 text-sm gap-2 shrink-0">
@@ -1040,7 +1040,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     </div>
                   </div>
                   <Button
-                    onClick={() => navigate(signedOut ? '/auth' : '/#pricing')}
+                    onClick={() => navigate(signedOut ? buildAuthPath(companyPath) : '/#pricing')}
                     className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
                   >
                     {signedOut ? 'Sign up free' : 'Upgrade'}
@@ -1072,8 +1072,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
                   <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
                   <Link
-                    to={isAuthenticated ? '/add-experience' : '/auth'}
-                    state={{ from: { pathname: companyPath } }}
+                    to={isAuthenticated ? '/add-experience' : buildAuthPath(companyPath)}
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
                   >
                     Be the first to share
@@ -1170,7 +1169,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                                 company={post.company || company.name}
                                 role={post.role}
                                 round={post.round}
-                                onUnlock={() => navigate('/auth', { state: { from: { pathname: companyPath } } })}
+                                onUnlock={() => navigate(buildAuthPath(companyPath))}
                                 label="Create a free account to read the full write-up"
                               />
                             </div>

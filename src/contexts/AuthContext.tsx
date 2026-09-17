@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useNavigate } from 'react-router-dom';
 import { usePostHog } from 'posthog-js/react';
 import { safeIdentify, safeCapture } from '@/utils/posthog';
+import { setAuthState } from '@/utils/authState';
 import { getDaysSinceOnboarding } from '@/utils/analytics';
 import { EVENTS } from '@/constants/analyticsEvents';
-import API, { scheduleProactiveRefresh, stopTokenRefreshCycle } from '@/services/api';
+import API, { scheduleProactiveRefresh, stopTokenRefreshCycle, hasStoredSession } from '@/services/api';
 import { getPersonalInfo } from '@/services/ProfileServices';
 
 interface User {
@@ -196,6 +197,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           // immediately, silently swapping in a fresh token (or ending the
           // session if the 30-day refresh token is gone).
           scheduleProactiveRefresh(token);
+          // Before the first capture of the session: the app_opened below must
+          // not go out tagged `initializing`.
+          setAuthState('authenticated');
           safeIdentify(posthog, userData.id, {
             email: userData.email,
             name: userData.name,
@@ -215,6 +219,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       sessionStorage.removeItem('refreshToken');
     } finally {
       setIsLoading(false);
+      // Whatever happened above, the gate is decided now: a token that failed
+      // to decode was cleared, so those visitors are anonymous, not pending.
+      setAuthState(hasStoredSession() ? 'authenticated' : 'anonymous');
     }
   };
 
@@ -228,6 +235,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setUser(userData);
         scheduleProactiveRefresh(token);
         window.dispatchEvent(new Event('screna-auth-change'));
+        setAuthState('authenticated');
         safeIdentify(posthog, userData.id, {
           email: userData.email,
           name: userData.name,
@@ -272,6 +280,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setUser(userData);
         scheduleProactiveRefresh(accessToken);
         window.dispatchEvent(new Event('screna-auth-change'));
+        setAuthState('authenticated');
         safeIdentify(posthog, userData.id, {
           email: userData.email,
           name: userData.name,
@@ -359,12 +368,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     localStorage.removeItem('cookie_consent');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('refreshToken');
-    // Clear any PostHog tracking data
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('ph_')) {
-        localStorage.removeItem(key);
-      }
+    // End the analytics identity properly (P3). Deleting the ph_* keys by hand
+    // pulled the floor out from under the SDK: its in-memory distinct_id kept
+    // pointing at the user who just left, so the next person to sign up in this
+    // browser wrote their email and events into the previous user's profile
+    // until a reload. reset() is the call that severs it.
+    try {
+      posthog?.reset();
+    } catch {
+      /* ad blocker — clearing the tokens above is what actually signs them out */
     }
+    setAuthState('anonymous');
     setUser(null);
     window.dispatchEvent(new Event('screna-auth-change'));
     navigate('/auth');

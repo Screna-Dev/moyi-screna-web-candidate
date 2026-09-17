@@ -87,6 +87,15 @@ export const EVENTS = {
   CREDITS_DEPLETED: 'credits_depleted',
   UPGRADE_CLICKED: 'upgrade_clicked',
   PLAN_SWITCH_CONFIRMED: 'plan_switch_confirmed',
+  // 支付漏斗的前端可观察阶段（P4）。以前只有 plan_selected 和 payment_completed
+  // 两端，中间全黑：选完档位到回跳落地之间失败的请求一条都看不见。
+  // 全部带 entry / payment_type / attempt，看板按这三维分组。
+  // 注意扣款事实来自 Stripe webhook —— 这些事件说的是「前端发起/收到了什么」，
+  // 不是「钱有没有到账」，对账要用后台记录。
+  PAYMENT_REQUEST_STARTED: 'payment_request_started',
+  PAYMENT_REQUEST_FAILED: 'payment_request_failed',
+  CHECKOUT_STARTED: 'checkout_started',
+  CHECKOUT_RETURNED: 'checkout_returned',
 
   // 05 — Retention
   APP_OPENED: 'app_opened',

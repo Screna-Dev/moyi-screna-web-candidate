@@ -7,6 +7,7 @@ import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPost, getPublicPost, normalizePublicPosts, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
+import { buildAuthPath } from '@/utils/returnTo';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -449,7 +450,7 @@ export function ExperienceDetailPage() {
   // engagement at all — and every one of them routes here instead of firing a
   // request that would 401. Same shape as the locked cards on the company page.
   const signInGate = useCallback(() => {
-    navigate('/auth', { state: { from: { pathname: `/experience/${id}` } } });
+    navigate(buildAuthPath(`/experience/${id}`));
   }, [navigate, id]);
 
   // The thread is readable by everyone now — the read endpoint is public — so
@@ -778,7 +779,7 @@ export function ExperienceDetailPage() {
               are available once you have an account. It's free to start.
             </p>
             <div className="flex items-center justify-center gap-3">
-              <Link to="/auth" state={{ from: { pathname: `${listPath}/experience/${id}` } }}>
+              <Link to={buildAuthPath(`${listPath}/experience/${id}`)}>
                 <Button className="rounded-xl bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,50%)] text-white h-11 px-6">
                   Sign in
                 </Button>
