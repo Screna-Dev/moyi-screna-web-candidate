@@ -21,7 +21,7 @@ import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { useSeo } from '@/hooks/useSeo';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
-import { isIndexablePost } from '@/utils/postIndexing';
+import { isIndexablePost, noteSeoTitle } from '@/utils/postIndexing';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -477,16 +477,21 @@ export function ExperienceDetailPage() {
   //     contains a description rather than the withheld text — the withheld
   //     text never reaches the browser, which is what makes the declaration
   //     truthful rather than a wrapper around hidden content.
-  const seoTitle = post
-    ? `${post.company} ${post.role} Interview${post.round ? ` — ${post.round}` : ''} | Screna AI`
-    : '';
+  //
+  // The title is built by noteSeoTitle (scripts/routes.mjs), not here, for two
+  // reasons. It appends the brand AFTER cutting the variable part — the other
+  // order is what shipped `… — Onsite - Multi Round | </title>` to all 40
+  // snapshots, brand gone, separator dangling. And the server-side renderer
+  // writes the same head tags a moment before this hook rewrites them, so the
+  // rule has to have one definition.
+  const seoTitle = post ? noteSeoTitle(post) : '';
   useSeo(
     postLoading
       ? null
       : !post
       ? { title: 'Interview Note | Screna AI', description: 'This interview note is not available.', path: `/experience/${id}`, noindex: true }
       : {
-          title: seoTitle.slice(0, 60),
+          title: seoTitle,
           description: (post.summary || `A ${post.role} interview experience at ${post.company}.`).slice(0, 155),
           path: `/experience/${id}`,
           type: 'article',
@@ -841,7 +846,16 @@ export function ExperienceDetailPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <CompanyLogo company={post.company} className="w-10 h-10 rounded-xl" />
                   <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* The page's only h1. It was a plain div, which left the
+                        indexed note page with no h1 at all while its three
+                        h2s (Summary, Questions Asked, Discussion) hung under
+                        nothing. Sized text-base with normal weight so the
+                        element change is invisible: index.css bolds every
+                        heading and theme.css gives h1 --text-2xl, and the
+                        spans below carry their own text-lg. Without these the
+                        "·" separators (which set no size of their own) would
+                        jump from 16px to 24px. */}
+                    <h1 className="flex items-center gap-1.5 flex-wrap text-base font-normal tracking-normal">
                       <span className="text-lg font-semibold text-[hsl(222,22%,15%)]">{post.company}</span>
                       <span className="text-[hsl(222,12%,70%)]">·</span>
                       <span className="text-lg text-[hsl(222,12%,35%)]">{post.role}</span>
@@ -853,7 +867,7 @@ export function ExperienceDetailPage() {
                           <span className="text-lg text-[hsl(222,12%,35%)]">{post.level}</span>
                         </>
                       )}
-                    </div>
+                    </h1>
                   </div>
                 </div>
 
@@ -1163,6 +1177,32 @@ export function ExperienceDetailPage() {
                                                 ))}
                                               </div>
                                             </div>
+
+                                            {/* Provenance, in words rather than
+                                                only in the "AI Generated" badge
+                                                above. This block is the largest
+                                                body of text on the page (~294
+                                                words per question against a
+                                                median of 101 for the note
+                                                itself), it is machine-written,
+                                                and it sits directly under the
+                                                candidate's own notes — so the
+                                                page has to say which is which,
+                                                to a reader and to a crawler
+                                                reading the same HTML.
+
+                                                A static string, deliberately:
+                                                hanging it off the hints payload
+                                                would keep it out of the
+                                                server-rendered HTML, which is
+                                                the one copy that has to carry
+                                                it. It renders with the hints
+                                                body (same expanded container),
+                                                because a disclaimer about text
+                                                nobody can see says nothing. */}
+                                            <p className="mt-3 text-[11px] leading-[1.6] text-slate-500">
+                                              AI-generated suggestions, not part of the candidate&apos;s original notes. May be inaccurate — verify before relying on them.
+                                            </p>
                                           </div>
                                         </motion.div>
                                       )}

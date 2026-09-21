@@ -1,0 +1,40 @@
+{
+  // The serverless functions under api/ — the request-time page renderers and
+  // the proxies. They were covered by no tsconfig at all: tsconfig.app.json
+  // includes only "src", and the root config has `files: []`, so `tsc --noEmit`
+  // at the root checked nothing and api/*.ts reached production unchecked by
+  // anything but Vercel's esbuild, which strips types without reading them.
+  //
+  // Its own project rather than an addition to tsconfig.app.json, because the
+  // two have incompatible libs: these files run on Node with no DOM, and the
+  // app cannot be compiled without one.
+  //
+  // Run it with `npm run typecheck:api`.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.api.tsbuildinfo",
+    "target": "ES2023",
+    // DOM for fetch/Response/AbortSignal, which @types/node also declares but
+    // not identically; both together is what the renderers compile against.
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    // scripts/routes.mjs is imported from here and is plain JavaScript on
+    // purpose (scripts/, api/ and src/ all consume it, and a .ts module could
+    // not be loaded by the build scripts without a loader). allowJs resolves
+    // it; checkJs stays off so it is not type-checked twice.
+    "allowJs": true,
+    "checkJs": false,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true
+  },
+  "include": ["api/**/*.ts"]
+}

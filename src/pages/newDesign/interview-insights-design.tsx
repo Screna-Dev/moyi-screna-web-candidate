@@ -10,7 +10,7 @@ import { type CompanyData } from "@/components/newDesign/interview/company-card"
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
 import { getCompaniesStats, getPublicCompaniesStats } from "@/services/CommunityService";
 import { hasStoredSession } from "@/services/api";
-import { companySlug } from "@/utils/companySlug";
+import { companySlug, MIN_POSTS_FOR_PAGE } from "@/utils/companySlug";
 import { readPrerenderSeed } from "@/utils/prerenderSeed";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePostHog } from "posthog-js/react";
@@ -401,13 +401,30 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
           },
   );
 
+  // Every company the library knows about, by the id the links use.
+  //
+  // The chips on the category tiles are hardcoded names, so some of them
+  // (Oracle, Notion, Cursor…) may not be in the library at all. Their links are
+  // ordinary crawlable anchors, and one pointing at a company with no notes is
+  // a 404 advertised from an indexed page. Filtering them through this set is
+  // cheaper than curating the chip list by hand against live data.
+  const knownCompanyIds = useMemo(() => new Set(companies.map((c) => c.id)), [companies]);
+
+  // The featured grid is a shortlist, and on the public surface it is the
+  // companies that earn an indexed page of their own — the same threshold the
+  // sitemap applies, so the grid and the sitemap put forward the same set.
+  // Everything below the threshold is reachable from the full list at the foot
+  // of the page, which is where the completeness requirement is met.
   const displayedCompanies = useMemo(() => {
     let filtered = companies;
+    if (isPublic) {
+      filtered = filtered.filter((c) => (c.totalNotes ?? 0) >= MIN_POSTS_FOR_PAGE);
+    }
     if (activeCategory !== "All") {
       filtered = filtered.filter((c) => c.category === activeCategory);
     }
     return filtered;
-  }, [companies, activeCategory]);
+  }, [companies, activeCategory, isPublic]);
 
   const ITEMS_PER_PAGE = activeCategory === "All" ? 27 : 19;
   const paginatedCompanies = displayedCompanies.slice(0, currentPage * ITEMS_PER_PAGE);
@@ -557,11 +574,19 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
                     <h3 className="text-[20px] font-bold leading-[28px] tracking-[-0.5px] text-foreground" style={{ fontFamily: "var(--font-sans)" }}>{cat.name}</h3>
                     <p className="mt-1.5 text-[14px] font-medium leading-[22.75px] text-foreground/80" style={{ fontFamily: "var(--font-sans)" }}>{cat.subtitle}</p>
                     <div className="mt-auto w-full space-y-4">
+                      {/* Hardcoded example chips, filtered to companies the
+                          library actually has notes for: these are crawlable
+                          links, and one pointing at a company with no page is a
+                          404 advertised from an indexed page. Unfiltered until
+                          the stats land, so the tiles are not empty on first
+                          paint. */}
                       <div className="flex flex-wrap gap-2">
-                        {cat.examples.map((ex) => (
+                        {cat.examples
+                          .filter((ex) => knownCompanyIds.size === 0 || knownCompanyIds.has(companySlug(ex)))
+                          .map((ex) => (
                           <Link
                             key={ex}
-                            to={`${basePath}/${ex.toLowerCase().replace(/\s+/g, '-')}`}
+                            to={`${basePath}/${companySlug(ex)}`}
                             onClick={(e) => e.stopPropagation()}
                             className="rounded-full bg-white/40 px-[10px] py-1 text-[11px] font-semibold leading-[15.4px] text-foreground transition-colors hover:bg-white/60"
                             style={{ fontFamily: "var(--font-sans)" }}
@@ -655,6 +680,59 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
               <div className="py-12 text-center text-sm text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>No companies found matching your search.</div>
             )}
           </section>
+
+          {/* ── Every company, in the initial HTML ──
+              The grid above is a shortlist that the client slices to 27 cards
+              and extends on scroll with an IntersectionObserver. A crawler does
+              not scroll, so 27 cards was the entire crawlable width of this
+              surface: the ~500 companies below the featured threshold had pages
+              that nothing linked to, stranding the notes on them.
+
+              This list is the fix and its requirements are exactly two: every
+              company, and present without an interaction. No slicing, no
+              observer, no collapsed container. It renders from the same
+              `companies` list already in state (the prerender seed on a
+              snapshot load), so it costs no extra request.
+
+              Public surface only. /interview-insights is noindex and
+              login-walled, so a 700-link index there is noise with no crawl
+              value. */}
+          {isPublic && companies.length > 0 && (
+            <section className="border-t border-border pt-8" aria-labelledby="all-companies">
+              <h2
+                id="all-companies"
+                className="text-foreground"
+                style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 600, lineHeight: 1.2 }}
+              >
+                All companies
+              </h2>
+              <p className="mt-1.5 text-sm text-muted-foreground" style={{ fontFamily: "var(--font-sans)" }}>
+                Every company with interview notes in the library.
+              </p>
+              <ul
+                className="mt-4 gap-x-6 gap-y-1.5 text-[13px] leading-[1.6]"
+                style={{ columnWidth: "200px", columnGap: "24px", listStyle: "none", padding: 0, margin: "16px 0 0" }}
+              >
+                {companies.map((c) => (
+                  <li key={c.id} style={{ breakInside: "avoid" }}>
+                    <Link
+                      to={`${basePath}/${c.id}`}
+                      // Distinct from data-company-card: the prerender build
+                      // counts both, because a full grid with an empty index
+                      // (or the reverse) is a different failure with the same
+                      // word count.
+                      data-company-index
+                      className="text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                      style={{ fontFamily: "var(--font-sans)" }}
+                    >
+                      {c.name}
+                      <span className="ml-1 text-[11px] text-muted-foreground/70">{c.totalNotes ?? 0}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
       </div>
 
     </WidePageContainer>

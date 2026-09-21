@@ -9,6 +9,18 @@ import { PRERENDER_STATIC, SHELL } from '../../scripts/routes.mjs';
 // means every real route needs an explicit entry. A missing one is a live
 // 404 on a working page, so it is guarded here rather than in review.
 
+// Rewrites now have two kinds of destination, and the difference is the whole
+// point of this round of work: /app.html hands the URL to the client-side SPA,
+// and /api/** hands it to a server-side renderer. A public page pointed at
+// /app.html answers with the SPA shell — 3 KB, ten words, no h1, no canonical,
+// no robots meta, byte-identical to the response for a URL that does not
+// exist — which is exactly what the renderers replaced.
+const SSR_DESTINATIONS = [
+  '/api/experience/:id',
+  '/api/interview-questions/:companyId',
+  '/api/interview-questions/:companyId/page/:n',
+];
+
 const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
   redirects: { source: string }[];
   rewrites: { source: string; destination: string }[];
@@ -45,7 +57,6 @@ describe('vercel.json route coverage', () => {
 
   it('has no stale rewrite entries', () => {
     for (const s of rewriteSources) {
-      if (s === '/sitemap.xml') continue;
       const hit = routerPaths.some((p) => toRegex(s).test(p));
       expect(hit, `${s} no longer matches any route in router.tsx`).toBe(true);
     }
@@ -54,11 +65,40 @@ describe('vercel.json route coverage', () => {
   // One destination pointing back at /index.html would let the home page
   // snapshot serve every SPA route again — the exact failure app.html exists
   // to prevent.
-  it('only rewrites to app.html or the sitemap function', () => {
+  it('only rewrites to app.html or a known renderer', () => {
     for (const r of vercel.rewrites) {
-      const ok = r.destination === `/${SHELL}` || r.destination === '/api/sitemap';
+      const ok = r.destination === `/${SHELL}` || SSR_DESTINATIONS.includes(r.destination);
       expect(ok, `${r.source} -> ${r.destination} is not an allowed destination`).toBe(true);
     }
+  });
+
+  // The regression this guards is a one-word edit with no visible symptom: send
+  // /experience/:id back to /app.html and every note URL in the sitemap answers
+  // with the shell again, indistinguishable from a 404 to anything reading it.
+  it.each([
+    ['/experience/:id', '/api/experience/:id'],
+    ['/interview-questions/:companyId', '/api/interview-questions/:companyId'],
+    [
+      '/interview-questions/:companyId/page/:n',
+      '/api/interview-questions/:companyId/page/:n',
+    ],
+  ])('rewrites %s to its renderer, not the SPA shell', (source, destination) => {
+    const rule = vercel.rewrites.find((r) => r.source === source);
+    expect(rule, `${source} has no rewrite — it would 404 in production`).toBeDefined();
+    expect(
+      rule!.destination,
+      `${source} is served by ${rule!.destination}; the SPA shell is not a valid answer for an indexed URL`,
+    ).toBe(destination);
+  });
+
+  // Vercel matches rewrites in order. /interview-questions/:companyId would
+  // also match nothing under it (a :param is one segment), but ordering is
+  // cheap insurance and reads as intent.
+  it('matches the company pagination rewrite before the company rewrite', () => {
+    const pager = rewriteSources.indexOf('/interview-questions/:companyId/page/:n');
+    const company = rewriteSources.indexOf('/interview-questions/:companyId');
+    expect(pager).toBeGreaterThanOrEqual(0);
+    expect(pager).toBeLessThan(company);
   });
 
   it('gives every prerendered route an app.html fallback', () => {
@@ -92,11 +132,18 @@ describe('vercel.json route coverage', () => {
     ]);
   });
 
-  it('keeps PRERENDER_STATIC and api/sitemap.ts STATIC_PATHS identical', () => {
-    const src = readFileSync('api/sitemap.ts', 'utf8');
-    const block = src.match(/const STATIC_PATHS = \[([\s\S]*?)\]/)![1];
-    const paths = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    expect(paths.sort()).toEqual([...PRERENDER_STATIC].sort());
+  // The sitemap generator used to keep its own STATIC_PATHS array, and this
+  // case asserted the two lists were equal. They are now one list: sitemap.mjs
+  // imports PRERENDER_STATIC and maps over it, which is stronger than any
+  // equality check — there is no second copy to drift. What is still worth
+  // guarding is that it keeps doing that rather than growing a literal back.
+  it('generates the sitemap static entries from PRERENDER_STATIC', () => {
+    const src = readFileSync('scripts/sitemap.mjs', 'utf8');
+    expect(src).toContain('PRERENDER_STATIC');
+    expect(
+      /PRERENDER_STATIC\.map\(/.test(src),
+      'scripts/sitemap.mjs no longer maps over PRERENDER_STATIC — check it has not grown its own path list',
+    ).toBe(true);
   });
 });
 
@@ -108,11 +155,14 @@ describe('vercel.json route coverage', () => {
 // earlier version had `Disallow: /interview`, which prefix-matched and so
 // silently blocked /interview-insights.
 //
-// The file has two groups — the social preview crawlers and `*` — so rules
-// cannot be flattened into one list. RFC 9309 §2.2.1: a crawler obeys only the
-// most specific group matching its product token, ignoring every other group.
-// Flattening would hide divergence between the two groups — they must carry
-// the same rules, and the social one adds nothing beyond them.
+// The file has exactly one group now. It had two — the social preview crawlers
+// and `*` — while middleware.ts answered those agents with a hand-built Open
+// Graph document; that branch is gone, /experience/:id is server-rendered for
+// everyone, and per RFC 9309 §2.2.1 a crawler obeys only the single most
+// specific group matching its token, so the second group was a full second copy
+// of every rule. The parser below still handles multiple groups, and the count
+// is asserted, because adding one back silently halves the rules some crawler
+// obeys.
 type RobotsRule = { allow: boolean; pattern: string };
 type RobotsGroup = { agents: string[]; rules: RobotsRule[] };
 
@@ -177,7 +227,11 @@ const isCrawlable = (path: string, ua = '*') => {
 
 describe('robots.txt', () => {
   it('parses into groups, each ending in the catch-all Disallow', () => {
-    expect(robotsGroups.length).toBe(2);
+    expect(
+      robotsGroups.length,
+      'robots.txt should have exactly one group — a second one replaces these rules ' +
+        'for the agents it names rather than extending them',
+    ).toBe(1);
     for (const g of robotsGroups) {
       expect(g.rules.length).toBeGreaterThan(5);
       expect(
@@ -204,6 +258,11 @@ describe('robots.txt', () => {
     '/interview-questions/google',
     '/interview-questions/scale-ai',
     '/interview-questions/at-t',
+    // The crawlable pagination. These are the only links into the ~18,700 note
+    // pages — "Load more" is a button — so blocking them would strand the
+    // library behind ten notes per company however open /experience is.
+    '/interview-questions/google/page/1',
+    '/interview-questions/meta/page/238',
   ])('leaves the company page %s crawlable', (p) => {
     expect(isCrawlable(p), `robots.txt blocks ${p} — the question text would not be indexed`).toBe(
       true,
@@ -221,8 +280,21 @@ describe('robots.txt', () => {
 
   // A disallowed sitemap is reported as unreadable in Search Console, which
   // costs every URL in it.
-  it('leaves the sitemap and rendering assets crawlable', () => {
-    for (const p of ['/sitemap.xml', '/assets/index-abc123.js', '/assets/index-abc123.css']) {
+  //
+  // /sitemap.xml is a sitemap INDEX now, so the children matter as much as the
+  // index: `Allow: /sitemap.xml` does not cover /sitemap-companies.xml, and the
+  // failure mode is quiet — the index fetches fine and every file it names comes
+  // back blocked.
+  it('leaves the sitemap, its children and the rendering assets crawlable', () => {
+    for (const p of [
+      '/sitemap.xml',
+      '/sitemap-static.xml',
+      '/sitemap-companies.xml',
+      '/sitemap-notes-2026-09.xml',
+      '/assets/index-abc123.js',
+      '/assets/index-abc123.css',
+      '/og-image.png',
+    ]) {
       expect(isCrawlable(p), `robots.txt blocks ${p}`).toBe(true);
     }
   });
@@ -243,122 +315,72 @@ describe('robots.txt', () => {
   });
 });
 
-// /experience/:id is served to social crawlers as a server-rendered Open Graph
-// document by middleware.ts, and to everyone else as the real page.
+// /experience/:id is server-rendered by api/experience/[id].ts and served
+// identically to every user agent — search engines, social unfurlers and
+// browsers all get the same document, with the same head tags.
 //
-// Both sets must be able to fetch it, for different reasons: blocked for
-// LinkedIn means "Cannot display preview" on every shared link, and blocked for
-// Googlebot means the only page carrying a whole write-up never gets indexed.
+// That is a change from the previous arrangement, where middleware.ts
+// intercepted a list of social-crawler user agents and answered them with a
+// hand-built Open Graph document containing `<meta http-equiv="refresh">`.
+// It worked for unfurlers and was two policy violations for a search engine at
+// once — different content for crawlers, and a sneaky redirect — on the very
+// surface whose indexing case rests on not cloaking. One document for everyone
+// removes the category of problem rather than fencing it off by user agent.
 //
-// What separates them is CRAWLER_UA, not robots. A search engine that received
-// the Open Graph document would be getting crawler-only content AND a
-// meta-refresh; the test at the bottom of this file asserts the regex keeps
-// them on the real page. Note that "allowed to crawl" is not "will be indexed":
-// notes that fail the content gate send noindex from the page itself, because a
-// prefix rule here cannot express "only the substantial ones".
-const socialAgents = robotsGroups.find((g) => !g.agents.includes('*'))!.agents;
+// What is left to assert is that robots does not block the surface, and that
+// nothing has reintroduced a user-agent branch. Note that "allowed to crawl" is
+// not "will be indexed": a note that fails the content gate sends noindex from
+// the page itself, because a prefix rule here cannot express "only the
+// substantial ones".
 const EXPERIENCE_URL = '/experience/9dc86733-4682-4085-80a3-eb7629b87706';
 
-describe('robots.txt — /experience social previews', () => {
-  it.each(socialAgents)('lets %s fetch a shared experience', (ua) => {
-    expect(
-      isCrawlable(EXPERIENCE_URL, ua),
-      `${ua} is blocked from ${EXPERIENCE_URL} — link previews will fail`,
-    ).toBe(true);
-  });
-
-  // The og:image is absolute (https://www.screna.ai/og-image.png). Because the
-  // social group replaces `*` rather than extending it, forgetting the asset
-  // allows there yields a card with a broken image.
-  it.each(socialAgents)('lets %s fetch the og:image and rendering assets', (ua) => {
-    for (const p of ['/og-image.png', '/assets/index-abc123.css']) {
-      expect(isCrawlable(p, ua), `${ua} is blocked from ${p}`).toBe(true);
-    }
-  });
-
-  it.each(['Googlebot', 'bingbot', '*'])('lets %s crawl the experience route', (ua) => {
-    expect(
-      isCrawlable(EXPERIENCE_URL, ua),
-      `robots.txt blocks ${ua} from ${EXPERIENCE_URL} — the only page with a full write-up would never be indexed`,
-    ).toBe(true);
-  });
-
-  // The `*` group is a full copy of the social one plus nothing — both must
-  // carry the rule. A crawler obeys exactly one group, so allowing /experience
-  // in only one of them is a silent divergence that shows up as either dead
-  // link previews or an unindexed surface, depending on which half was missed.
-  it('allows /experience in both robots groups', () => {
-    const groupsWithRule = robotsGroups.filter((g) =>
-      g.rules.some((r) => r.allow && r.pattern === '/experience'),
-    );
-    expect(
-      groupsWithRule.length,
-      'Allow: /experience must appear in the social group AND the * group',
-    ).toBe(2);
-  });
+describe('/experience is open to everyone, on one document', () => {
+  it.each(['Googlebot', 'bingbot', 'LinkedInBot', 'facebookexternalhit', '*'])(
+    'lets %s crawl the experience route',
+    (ua) => {
+      expect(
+        isCrawlable(EXPERIENCE_URL, ua),
+        `robots.txt blocks ${ua} from ${EXPERIENCE_URL} — the only page with a full write-up ` +
+          'would never be indexed, and shared links would not preview',
+      ).toBe(true);
+    },
+  );
 
   // "Allow: /experience" is a prefix rule. It must not be read as opening the
   // authoring page, which is a different route that happens to contain the word.
   it('does not open /add-experience to anyone', () => {
-    for (const ua of [...socialAgents, 'Googlebot', '*']) {
+    for (const ua of ['Googlebot', 'LinkedInBot', '*']) {
       expect(isCrawlable('/add-experience', ua), `${ua} can crawl /add-experience`).toBe(false);
     }
   });
 
-  // The OG document middleware.ts returns carries
-  // `<meta http-equiv="refresh" content="0;url=...">`. That is harmless for a
-  // social unfurler, which reads the tags and never follows the refresh. For a
-  // search engine the same document is simultaneously "different content for
-  // crawlers than for users" and "sneaky redirect" — two separate policy
-  // violations, on the very surface whose indexing case rests on not cloaking.
-  //
-  // The robots rules already keep search engines off /experience, but that is a
-  // request they are asked not to make, not one they cannot make. This asserts
-  // the regex itself, so a UA that slips past robots still gets the plain SPA.
-  it.each([
-    ['Googlebot', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'],
-    ['Googlebot-Image', 'Googlebot-Image/1.0'],
-    ['bingbot', 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)'],
-    ['YandexBot', 'Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)'],
-    ['DuckDuckBot', 'DuckDuckBot/1.1; (+http://duckduckgo.com/duckduckbot.html)'],
-    ['Baiduspider', 'Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)'],
-    // AI crawlers carry "AppleWebKit" in their UA, which must not be mistaken
-    // for the "Applebot" token.
-    ['GPTBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot'],
-    ['ClaudeBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ClaudeBot/1.0; +claudebot@anthropic.com'],
-    ['PerplexityBot', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; PerplexityBot/1.0'],
-    ['CCBot', 'CCBot/2.0 (https://commoncrawl.org/faq/)'],
-    ['a real browser', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'],
-    ['a real iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'],
-  ])('never serves the 0s-refresh OG document to %s', (_name, ua) => {
-    const src = readFileSync('middleware.ts', 'utf8');
-    const body = src.match(/const CRAWLER_UA\s*=\s*\n?\s*\/([^/]+)\/i/)![1];
-    expect(
-      new RegExp(body, 'i').test(ua),
-      `CRAWLER_UA matches ${ua} — it would receive the cloaked redirect document`,
-    ).toBe(false);
+  // The regression: reintroduce a user-agent check in middleware.ts and some
+  // agents get a different document again — and because middleware runs before
+  // rewrites, those agents would never reach the renderer at all. There is no
+  // robots group left to keep in step with such a list either, so nothing else
+  // would notice.
+  it('has no user-agent branch left in middleware.ts', () => {
+    // Comments stripped first: this file's own comments explain the branch that
+    // was removed, and they name the things being asserted against.
+    const code = readFileSync('middleware.ts', 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    for (const forbidden of ['user-agent', 'CRAWLER_UA', 'http-equiv']) {
+      expect(
+        code.toLowerCase().includes(forbidden.toLowerCase()),
+        `middleware.ts references ${forbidden} again — it runs before rewrites, so any agent ` +
+          'it answers never reaches api/experience/[id].ts',
+      ).toBe(false);
+    }
   });
 
-  // The robots group and the middleware regex are two hand-maintained copies of
-  // the same list. If they drift, a bot gets the OG document but is forbidden to
-  // request it, or is allowed in and served the empty SPA.
-  it('matches the CRAWLER_UA list in middleware.ts', () => {
+  // Narrowing the matcher is what keeps the renderer reachable. A matcher that
+  // covers /experience/:path* puts this function in front of the rewrite for
+  // every request to the surface.
+  it('keeps the middleware matcher off the rendered routes', () => {
     const src = readFileSync('middleware.ts', 'utf8');
-    const body = src.match(/const CRAWLER_UA\s*=\s*\n?\s*\/([^/]+)\/i/)![1];
-    const tokens = body.split('|').map((t: string) => t.toLowerCase());
-    expect(tokens.sort()).toEqual([...socialAgents].sort());
-  });
-
-  // Every path the general crawlers may read, the social crawlers may read too.
-  // Guards the copy-paste: a page added to `*` only would be unpreviewable.
-  it('never lets the * group outgrow the social group', () => {
-    const socialAllows = new Set(
-      robotsGroups.find((g) => !g.agents.includes('*'))!.rules.filter((r) => r.allow).map((r) => r.pattern),
-    );
-    const missing = robotsGroups
-      .find((g) => g.agents.includes('*'))!
-      .rules.filter((r) => r.allow && !socialAllows.has(r.pattern))
-      .map((r) => r.pattern);
-    expect(missing, `social crawlers are missing Allow rules present in *: ${missing}`).toEqual([]);
+    const matcher = src.match(/matcher:\s*\[([^\]]*)\]/)![1];
+    const patterns = [...matcher.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(patterns).toEqual(['/api/v1/:path*']);
   });
 });

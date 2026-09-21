@@ -5,7 +5,11 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["vite/client"],
+    // "node" alongside vite/client: the test files under src/test read
+    // vercel.json and robots.txt off disk (node:fs) and exercise the
+    // serverless renderers under api/_render, which type against node:http.
+    // Without it every one of those imports is an unresolved-module error.
+    "types": ["vite/client", "node"],
     "skipLibCheck": true,
     "allowJs": true,
 

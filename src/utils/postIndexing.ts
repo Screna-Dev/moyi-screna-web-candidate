@@ -1,14 +1,15 @@
 // Typed wrapper over the single-note indexing gate.
 //
-// The rule itself lives in scripts/routes.mjs so that api/sitemap.ts (which
-// decides what is advertised), scripts/prerender.mjs (which decides what is
-// snapshotted) and the note page (which decides what is noindex) all apply the
-// identical test. Same arrangement, and same reason, as companySlug.
+// The rule itself lives in scripts/routes.mjs so that scripts/sitemap.mjs
+// (which decides what is advertised), scripts/prerender.mjs (which decides what
+// is snapshotted) and api/_render/note.ts (which decides what is noindex) all
+// apply the identical test. Same arrangement, and same reason, as companySlug.
 
 // Plain .mjs manifest, shared with scripts/ and api/ — see scripts/routes.mjs.
 import {
   isIndexablePost as isIndexablePostImpl,
   postContentWords as postContentWordsImpl,
+  noteSeoTitle as noteSeoTitleImpl,
   MIN_POST_CONTENT_WORDS as MIN_WORDS,
 } from '../../scripts/routes.mjs';
 
@@ -35,3 +36,17 @@ export const postContentWords = (post: IndexablePostInput): number =>
  */
 export const isIndexablePost = (post: IndexablePostInput): boolean =>
   isIndexablePostImpl(post);
+
+/**
+ * The note page's <title>, og:title and twitter:title.
+ *
+ * Shared with api/_render/note.ts, which writes the same string into the
+ * server-rendered HTML before this page's useSeo rewrites it on boot. Two
+ * copies of the truncation rule is how the brand went missing from all 40
+ * prerendered titles — see noteSeoTitle in scripts/routes.mjs.
+ */
+export const noteSeoTitle = (post: {
+  company?: string | null;
+  role?: string | null;
+  round?: string | null;
+} | null | undefined): string => noteSeoTitleImpl(post);

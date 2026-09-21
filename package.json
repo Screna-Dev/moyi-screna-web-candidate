@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/prerender.mjs",
+    "build": "vite build && node scripts/sitemap.mjs && node scripts/prerender.mjs",
     "build:no-prerender": "vite build",
     "lint": "eslint .",
+    "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",

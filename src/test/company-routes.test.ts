@@ -8,11 +8,11 @@ import {
   MIN_POSTS_FOR_PAGE,
 } from '../../scripts/routes.mjs';
 
-// These four helpers decide which company pages exist, what URL each gets, and
-// whether the build accepts the resulting snapshot. They are consumed from three
-// places that cannot import each other's language (the React app, the Vercel
-// sitemap function, the prerender script), so a regression here shows up as
-// published-but-broken URLs rather than a failing import.
+// These helpers decide which company pages are indexed, what URL each gets, and
+// whether the build accepts the resulting snapshot. They are consumed from
+// places that cannot import each other's language (the React app, the
+// request-time renderers under api/_render, the build scripts), so a regression
+// here shows up as published-but-broken URLs rather than a failing import.
 
 describe('companySlug', () => {
   it.each([
@@ -64,9 +64,13 @@ describe('minWordsFor', () => {
     expect(minWordsFor('/interview-questions')).toBe(120);
   });
 
-  it('applies the company-page prefix rule', () => {
-    expect(minWordsFor('/interview-questions/google')).toBe(350);
-    expect(minWordsFor('/interview-questions/scale-ai')).toBe(350);
+  // Company pages had their own 350-word floor while they were snapshotted at
+  // build time. They are rendered per request now and answer to
+  // RENDERED_MIN_WORDS instead, so there is no '/interview-questions/' prefix
+  // rule left and they fall through to the default.
+  it('has no company-page prefix rule left, only the directory exact match', () => {
+    expect(minWordsFor('/interview-questions/google')).toBe(120);
+    expect(minWordsFor('/interview-questions/scale-ai')).toBe(120);
   });
 
   it('keeps the pre-existing rules intact', () => {
@@ -148,7 +152,18 @@ describe('eligibleCompanies', () => {
     expect(eligibleCompanies(stats).map((c: { slug: string }) => c.slug)).not.toContain('tiny');
   });
 
-  it('sorts most notes first, so the prerender first wave is the busiest pages', () => {
+  // The renderer asks for every company, threshold or not, because the
+  // threshold decides indexing and not existence: a company below it still gets
+  // a rendered `noindex, follow` page, which is the crawl path to its notes.
+  it('returns every company when the threshold is lifted', () => {
+    expect(eligibleCompanies(stats, 0).map((c: { slug: string }) => c.slug)).toEqual([
+      'meta',
+      'scale-ai',
+      'tiny',
+    ]);
+  });
+
+  it('sorts most notes first, so the featured grid leads with the busiest pages', () => {
     expect(eligibleCompanies(stats).map((c: { slug: string }) => c.slug)).toEqual(['meta', 'scale-ai']);
   });
 

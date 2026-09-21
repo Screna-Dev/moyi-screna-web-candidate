@@ -238,12 +238,20 @@ export const router = createBrowserRouter([
       { path: '/interview-insights/:companyId', element: <RequireAuth><CompanyDetailPage /></RequireAuth> },
       { path: '/interview-questions', element: <InterviewInsightsPage isPublic /> },
       { path: '/interview-questions/:companyId', element: <CompanyDetailPage isPublic /> },
-      // Single notes stay on one path regardless of surface: /experience/:id is
-      // what middleware.ts answers with an Open Graph document, so it is the
-      // only URL that previews correctly when shared. Signed-out readers who
-      // arrive from a shared link get the marketing shell rather than a bounce
-      // to /auth. Not opened to search engines this round — it is the full-note
-      // page, and the gate sits here.
+      // The crawlable half of a company's notes. A company page shows its ten
+      // newest and offers "Load more" — a button, which nothing but a person
+      // ever presses, so ten notes per company was the whole of what could be
+      // crawled. These URLs expose the rest as ordinary links, ordered
+      // oldest-first so their contents do not shift every time a note is
+      // published. Same component: it reads :n and renders that window.
+      { path: '/interview-questions/:companyId/page/:n', element: <CompanyDetailPage isPublic /> },
+      // Single notes stay on one path regardless of surface. The page is
+      // server-rendered by api/experience/[id].ts, which emits its head tags
+      // and Open Graph set for every agent — so it previews correctly when
+      // shared and is the page search engines index. This route is what the
+      // bundle mounts once it boots and replaces that markup; signed-out
+      // readers arriving from a shared link get the marketing shell rather than
+      // a bounce to /auth.
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},
       { path: '/help',element: <HelpCenterPage />},

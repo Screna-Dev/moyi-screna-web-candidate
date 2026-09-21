@@ -6,11 +6,26 @@
 // from the URL back into the exact display name the API indexes.
 
 // Plain .mjs manifest, shared with scripts/ and api/ — see scripts/routes.mjs.
-import { companySlug as slugifyImpl, flattenCompanyStats as flattenImpl } from '../../scripts/routes.mjs';
+import {
+  companySlug as slugifyImpl,
+  flattenCompanyStats as flattenImpl,
+  MIN_POSTS_FOR_PAGE as MIN_POSTS_IMPL,
+} from '../../scripts/routes.mjs';
 import { getPublicCompaniesStats } from '../services/CommunityService';
 
 /** Company display name -> URL slug. One-way; see resolveCompanyName. */
 export const companySlug = (name: string | null | undefined): string => slugifyImpl(name);
+
+/**
+ * The note count above which a company earns an INDEXED page, re-exported
+ * typed for the app.
+ *
+ * The same number the sitemap generator applies, which is the point: the
+ * directory's featured grid and the sitemap should agree on which companies are
+ * being put forward. Every company still gets a rendered page either way — see
+ * the full list at the foot of the directory.
+ */
+export const MIN_POSTS_FOR_PAGE: number = MIN_POSTS_IMPL;
 
 export type DirectoryCompany = {
   company: string;
