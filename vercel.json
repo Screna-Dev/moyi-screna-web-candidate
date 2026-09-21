@@ -13,7 +13,6 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }]
     }
   ],
-  "crons": [{ "path": "/api/cron/rebuild", "schedule": "0 6 * * *" }],
   "rewrites": [
     { "source": "/experience/:id", "destination": "/api/experience/:id" },
     {

@@ -33,8 +33,10 @@ export function sendPage(res: ServerResponse, page: Rendered): void {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   if (page.status === 200) {
     // A day at the edge, a week of stale-while-revalidate. Notes are edited
-    // rarely and the daily sitemap rebuild is what picks up new ones, so the
-    // long window costs nothing and keeps the 1+N upstream reads a one-off.
+    // rarely, so the long window costs nothing and keeps the 1+N upstream
+    // reads a one-off. Note this caches the PAGE, not the sitemap: a new note
+    // is servable immediately at its own URL, because its URL was never
+    // requested before and so has nothing cached against it.
     res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
   } else if (page.status === 404) {
     // Short, so an unpublished note that goes live is servable within a minute
