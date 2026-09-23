@@ -5,8 +5,8 @@ import {
   renderHead,
   unavailablePage,
   type Rendered,
-} from './document';
-import { esc, join, seedTag, shouldNoindexOnLength } from './html';
+} from './document.js';
+import { esc, join, seedTag, shouldNoindexOnLength } from './html.js';
 import {
   UpstreamError,
   fetchCompanyPosts,
@@ -14,7 +14,7 @@ import {
   fetchCompanyStats,
   type CompanyProfile,
   type PublicPost,
-} from './community';
+} from './community.js';
 // Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
 import {
   COMPANY_PAGE_SIZE,

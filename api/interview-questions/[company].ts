@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sendPage, unavailablePage } from '../_render/document';
-import { renderCompanyPage } from '../_render/company';
-import { segmentAfter } from '../_render/params';
+import { sendPage, unavailablePage } from '../_render/document.js';
+import { renderCompanyPage } from '../_render/company.js';
+import { segmentAfter } from '../_render/params.js';
 
 // GET /interview-questions/:company — rewritten here by vercel.json.
 //

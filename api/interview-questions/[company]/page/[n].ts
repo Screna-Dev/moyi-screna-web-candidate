@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { notFoundPage, sendPage, unavailablePage } from '../../../_render/document';
-import { renderCompanyPage } from '../../../_render/company';
-import { pageNumber, segmentAfter } from '../../../_render/params';
+import { notFoundPage, sendPage, unavailablePage } from '../../../_render/document.js';
+import { renderCompanyPage } from '../../../_render/company.js';
+import { pageNumber, segmentAfter } from '../../../_render/params.js';
 
 // GET /interview-questions/:company/page/:n — rewritten here by vercel.json.
 //

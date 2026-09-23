@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sendPage, unavailablePage } from '../_render/document';
-import { renderNotePage } from '../_render/note';
+import { sendPage, unavailablePage } from '../_render/document.js';
+import { renderNotePage } from '../_render/note.js';
 
 // GET /experience/:id — rewritten here by vercel.json.
 //

@@ -16,8 +16,16 @@
     // DOM for fetch/Response/AbortSignal, which @types/node also declares but
     // not identically; both together is what the renderers compile against.
     "lib": ["ES2023", "DOM"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    // NodeNext, not "bundler", because nothing bundles these files. package.json
+    // is `"type": "module"`, so @vercel/node transpiles each api/*.ts to ESM and
+    // emits the import specifiers verbatim — an extensionless `./html` reaches
+    // the lambda as `./html` and Node's ESM resolver throws ERR_MODULE_NOT_FOUND
+    // at import time. That is a FUNCTION_INVOCATION_FAILED 500 before the
+    // handler's try/catch exists, so not even the 503 page comes back. Under
+    // "bundler" tsc accepted those specifiers; nodenext is what makes TS2835
+    // fire here instead of in production.
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
     "types": ["node"],
     "skipLibCheck": true,
 

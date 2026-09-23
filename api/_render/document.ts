@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { esc, join } from './html';
+import { esc, join } from './html.js';
 
 // Document assembly and the response contract, shared by every request-time
 // renderer.

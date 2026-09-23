@@ -5,8 +5,8 @@ import {
   renderHead,
   unavailablePage,
   type Rendered,
-} from './document';
-import { esc, join, seedTag, shouldNoindexOnLength } from './html';
+} from './document.js';
+import { esc, join, seedTag, shouldNoindexOnLength } from './html.js';
 import {
   UpstreamError,
   fetchHints,
@@ -14,7 +14,7 @@ import {
   type AiHints,
   type PostQuestion,
   type PublicPost,
-} from './community';
+} from './community.js';
 // Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
 import { companySlug, isIndexablePost, noteSeoTitle } from '../../scripts/routes.mjs';
 
