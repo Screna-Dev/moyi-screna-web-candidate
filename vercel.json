@@ -14,7 +14,12 @@
     }
   ],
   "rewrites": [
-    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/experience/:id", "destination": "/api/experience/:id" },
+    {
+      "source": "/interview-questions/:companyId/page/:n",
+      "destination": "/api/interview-questions/:companyId/page/:n"
+    },
+    { "source": "/interview-questions/:companyId", "destination": "/api/interview-questions/:companyId" },
 
     { "source": "/blog", "destination": "/app.html" },
     { "source": "/blog/:slug", "destination": "/app.html" },
@@ -62,10 +67,8 @@
 
     { "source": "/interview-insights", "destination": "/app.html" },
     { "source": "/interview-insights/:companyId", "destination": "/app.html" },
-    { "source": "/experience/:id", "destination": "/app.html" },
 
     { "source": "/interview-questions", "destination": "/app.html" },
-    { "source": "/interview-questions/:companyId", "destination": "/app.html" },
 
     { "source": "/mentorship", "destination": "/app.html" },
     { "source": "/mentor-details", "destination": "/app.html" },

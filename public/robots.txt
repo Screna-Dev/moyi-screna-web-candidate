@@ -14,76 +14,21 @@
 # Per RFC 9309 the longest matching rule wins and Allow breaks ties, so each
 # Allow below overrides the catch-all Disallow.
 #
-# The Allow list mirrors PRERENDER_STATIC in scripts/routes.mjs and
-# STATIC_PATHS in api/sitemap.ts. Adding a public page means touching all
-# three; src/test/vercel-routes.test.ts asserts they stay in sync.
+# The Allow list mirrors PRERENDER_STATIC in scripts/routes.mjs, which
+# scripts/sitemap.mjs also uses for its static entries; src/test/vercel-routes.test.ts
+# asserts they stay in sync.
 #
-# Two groups below. Per RFC 9309 §2.2.1 a crawler obeys only the single most
-# specific group that matches its product token and ignores the others
-# entirely — so the social group is a full copy of the `*` rules plus
-# /experience, not a delta. Dropping a rule from one group only is a silent
-# divergence; the tests check both.
-
-# ── Social preview crawlers ──
+# ── One group, on purpose ──
 #
-# These are the bots middleware.ts intercepts (its CRAWLER_UA regex — keep the
-# two lists in step). For /experience/:id it answers them with a server-rendered
-# Open Graph document, so they never touch the empty SPA shell. Without an Allow
-# here the catch-all Disallow wins and LinkedIn refuses to fetch at all, which
-# it surfaces as "Cannot display preview".
-#
-# Googlebot is deliberately absent, and must stay absent. Not because it is
-# barred from /experience — the `*` group below now allows it — but because
-# THIS group selects who gets middleware.ts's Open Graph document instead of
-# the real page. That document carries a meta-refresh, which is fine for an
-# unfurler and is a cloaking + sneaky-redirect violation for a search engine.
-# Googlebot is not in CRAWLER_UA either, so it gets the real page. Keep both
-# lists in step, and keep search engines out of both.
-User-agent: LinkedInBot
-User-agent: facebookexternalhit
-User-agent: Facebot
-User-agent: Twitterbot
-User-agent: Slackbot
-User-agent: Discordbot
-User-agent: redditbot
-User-agent: WhatsApp
-User-agent: TelegramBot
-User-agent: Applebot
-User-agent: PinterestBot
-
-# Shared interview experiences. Prefix match, so it covers /experience/:id.
-# /add-experience is unaffected — it does not start with "/experience".
-Allow: /experience
-
-Allow: /$
-Allow: /blog
-Allow: /interview-questions
-Allow: /faq
-Allow: /help
-Allow: /contact
-Allow: /privacy
-Allow: /terms
-Allow: /cookies
-Allow: /data-protection
-Allow: /sitemap.xml
-Allow: /llms.txt
-
-# og:image lives at /og-image.png. A preview card with an unfetchable image is
-# the failure this line prevents.
-Allow: /*.css
-Allow: /*.js
-Allow: /*.png
-Allow: /*.jpg
-Allow: /*.jpeg
-Allow: /*.webp
-Allow: /*.svg
-Allow: /*.ico
-Allow: /*.woff2
-Allow: /*.webmanifest
-
-Disallow: /
-
-# ── Everyone else, search engines included ──
+# There used to be a second group for the social-preview crawlers (LinkedIn,
+# facebookexternalhit, Slackbot…), because middleware.ts answered exactly those
+# user agents with a hand-built Open Graph document and the catch-all Disallow
+# would have stopped them fetching at all. Both are gone: /experience/:id is
+# server-rendered by api/experience/[id].ts and carries the og:/twitter: tags
+# itself, so every agent gets the same document and no agent needs rules of its
+# own. Per RFC 9309 §2.2.1 a crawler obeys only the most specific group matching
+# its token, so a second group was also a second copy of every rule below —
+# divergence waiting to happen, with dead link previews as the symptom.
 
 User-agent: *
 
@@ -94,9 +39,10 @@ Allow: /$
 # Blog index and every post (/blog/:slug).
 Allow: /blog
 
-# Public "Interview Questions" surface: the company directory and every company
-# page under it (/interview-questions/:companyId), both fully readable logged
-# out. Prefix match, so one rule covers the directory and every company page.
+# Public "Interview Questions" surface: the company directory, every company
+# page under it (/interview-questions/:companyId) and the crawlable pagination
+# under those (/interview-questions/:companyId/page/:n), all fully readable
+# logged out. Prefix match, so one rule covers all three.
 #
 # No $ anchor: `Allow: /interview-questions$` would open the directory only and
 # leave the company pages to the catch-all Disallow — and the company pages are
@@ -108,19 +54,10 @@ Allow: /interview-questions
 # the company pages show one trimmed sentence per note — so it is the page
 # worth indexing, and this opens it.
 #
-# Two things this rule does NOT do, both load-bearing:
-#
-#   1. It does not add search engines to the social-preview group above. That
-#      group exists because middleware.ts answers those agents with an Open
-#      Graph document containing <meta http-equiv="refresh">. Serving that to a
-#      search engine would be "different content for crawlers" and "sneaky
-#      redirect" at once. Googlebot is not in CRAWLER_UA, so it falls through
-#      to the real page; src/test/vercel-routes.test.ts asserts the regex.
-#   2. It does not mean every note gets indexed. Prefix rules cannot say "only
-#      the substantial ones", so the page itself sends noindex unless the note
-#      clears the content gate (isIndexablePost in scripts/routes.mjs). Roughly
-#      half the library is one question plus one sentence, and publishing those
-#      would be thousands of thin pages duplicating cards that already exist.
+# It does NOT mean every note gets indexed. Prefix rules cannot say "only the
+# substantial ones", so the page itself sends noindex unless the note clears the
+# content gate (isIndexablePost in scripts/routes.mjs) and its rendered body
+# clears the word floor.
 #
 # /add-experience is unaffected — it does not start with "/experience".
 Allow: /experience
@@ -135,13 +72,20 @@ Allow: /cookies
 Allow: /data-protection
 
 # Crawlers must be able to fetch the sitemap itself, otherwise Search Console
-# reports it as unreadable.
+# reports it as unreadable. /sitemap.xml is a sitemap INDEX now, pointing at
+# /sitemap-static.xml, /sitemap-companies.xml and one /sitemap-notes-YYYY-MM.xml
+# per month — none of which the rule above covers, because it is anchored by the
+# ".xml" it ends with rather than being a prefix. Without the wildcard line the
+# index is readable and every file it names is blocked, which Search Console
+# reports as "Couldn't fetch" against the children and costs every URL in them.
 Allow: /sitemap.xml
+Allow: /sitemap-*.xml
 Allow: /llms.txt
 
 # Rendering resources. Google renders pages before indexing them; blocking the
 # CSS/JS bundles or the hero images would make the landing page look broken to
-# the crawler.
+# the crawler. og-image.png is here too — an unfetchable image is an empty
+# preview card on every shared link.
 Allow: /*.css
 Allow: /*.js
 Allow: /*.png

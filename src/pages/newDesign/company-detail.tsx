@@ -25,6 +25,13 @@ import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, s
 import { hasStoredSession } from '../../services/api';
 import { buildAuthPath } from '@/utils/returnTo';
 import { companySlug, resolveCompanyName } from '@/utils/companySlug';
+import {
+  COMPANY_PAGE_SIZE,
+  companyPageCount,
+  companyPageWindow,
+  companySeoDescription,
+  companySeoTitle,
+} from '@/utils/companyPaging';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
@@ -62,6 +69,15 @@ type CompanySeed = {
   };
   posts?: unknown[];
   total?: number;
+  /**
+   * Which crawlable page this payload is. null/absent = the company page
+   * itself (newest ten); a number = that /page/:n window, oldest-first.
+   *
+   * Load-bearing: without it a /page/7 render would be replaced on boot by the
+   * newest ten, so the notes a crawler was served and the notes a reader sees
+   * under the same URL would differ.
+   */
+  page?: number | null;
 };
 const PRERENDER_SEED = readPrerenderSeed<CompanySeed>('__prerender_company__');
 
@@ -94,6 +110,30 @@ interface Post {
   saveCount?: number;
   liked?: boolean;
   saved?: boolean;
+}
+
+/**
+ * Page numbers to show in the pager: first, last, and a window around the
+ * current page. `null` marks an elided run.
+ *
+ * Windowed rather than exhaustive because Meta has 238 pages. 238 anchors on
+ * every page of every company is unreadable, and it makes a worse internal link
+ * graph than a chain a crawler walks a few hops at a time.
+ */
+function pagerNumbers(pageCount: number, current: number): (number | null)[] {
+  const wanted = new Set<number>([1, pageCount]);
+  for (let i = current - 2; i <= current + 2; i += 1) {
+    if (i >= 1 && i <= pageCount) wanted.add(i);
+  }
+  const sorted = [...wanted].sort((a, b) => a - b);
+  const out: (number | null)[] = [];
+  let previous = 0;
+  for (const n of sorted) {
+    if (n - previous > 1) out.push(null);
+    out.push(n);
+    previous = n;
+  }
+  return out;
 }
 
 const SORT_OPTIONS = ['Relevance', 'Newest', 'Hot', 'Most Saved'] as const;
@@ -274,7 +314,14 @@ function UpgradeModal({
 }
 
 export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } = {}) {
-  const { companyId } = useParams();
+  const { companyId, n } = useParams();
+  // /interview-questions/:companyId/page/:n — the crawlable archive view.
+  //
+  // null on the company page itself. Anything that is not a positive integer is
+  // also null and renders the company page: those URLs are guessable, and
+  // minting content under /page/0 or /page/abc would hand a crawler an
+  // unbounded set of near-duplicates.
+  const archivePage = n && /^[1-9][0-9]{0,4}$/.test(n) ? Number(n) : null;
   const { isAuthenticated } = useAuth();
   const { isPremium, isLoading: isPlanLoading, planData } = useUserPlan();
   const navigate = useNavigate();
@@ -328,9 +375,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // owns it. Only usable when it is for *this* company: the SPA keeps the
   // script tag around for one navigation, and a stale seed would render
   // Google's notes under Meta's heading.
-  const seed = PRERENDER_SEED && companySlug(PRERENDER_SEED.profile?.displayName) === companySlug(companyId)
-    ? PRERENDER_SEED
-    : null;
+  const seed =
+    PRERENDER_SEED &&
+    companySlug(PRERENDER_SEED.profile?.displayName) === companySlug(companyId) &&
+    (PRERENDER_SEED.page ?? null) === archivePage
+      ? PRERENDER_SEED
+      : null;
 
   // ── Company identity ──
   // The slug cannot be turned back into a display name (see companySlug): 18 of
@@ -544,6 +594,16 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // authenticated search allows, since it reports no total. Starts false so a
   // failed read never offers a page that may not exist.
   const [hasMorePublic, setHasMorePublic] = useState(false);
+  // Total notes for this company as the FEED reports it — the Elasticsearch
+  // count the pages are cut from, not profile.postCount, which is a database
+  // aggregate that lags it by tens of notes. It drives the pager's page count,
+  // so where the two disagree at a page boundary the wrong one would have the
+  // pager linking to a 404. See fetchArchivePage.
+  // `seed`, not PRERENDER_SEED: the raw seed may belong to another company or
+  // another page of the archive, and its total would then be the wrong number.
+  const [archiveTotal, setArchiveTotal] = useState<number | null>(
+    typeof seed?.total === 'number' ? seed.total : null,
+  );
   // True while a *reset* fetch is in flight (sort/filter/search change). We show
   // the loading state and hide the previous results instead of leaving stale
   // posts on screen. Append fetches ("load more") don't set this.
@@ -696,6 +756,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         // Paginate off the real match count, not off "did this page come back
         // full" — the public endpoint reports a cross-page total.
         setHasMorePublic((pub.page + 1) * pub.size < pub.total);
+        // The same total drives the pager's page count, so the links it renders
+        // match the pages the server will actually serve. profile.postCount is
+        // the wrong number for that: it is a database aggregate, the pages are
+        // cut from the Elasticsearch index, and where they disagree at a page
+        // boundary the pager would link to a 404.
+        setArchiveTotal(pub.total);
       } else {
         const res = await getPosts(params);
         const data = res.data?.data ?? res.data;
@@ -730,6 +796,63 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     }
   }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, signedOut, apiName, initInteractions, posthog]);
 
+  // ── The crawlable archive window (/page/:n) ──
+  //
+  // A different question from the company page's, so a different fetch. The
+  // company page answers "what is new here"; /page/:n is a stable slice of the
+  // whole library for this company, ordered oldest-first so that publishing a
+  // note cannot shift the contents of every page (see companyPageWindow).
+  //
+  // It reads the PUBLIC endpoint for every visitor, signed in or not. That is
+  // the only endpoint that reports a cross-page `total`, and `total` is what
+  // the window arithmetic needs; the authenticated search reports none and
+  // cannot be paged backwards at all. The cost is that a signed-in reader sees
+  // trimmed teasers in this view — the full note is one click away on
+  // /experience/:id, and the alternative is an archive that silently shows a
+  // different slice than the URL says.
+  const fetchArchivePage = useCallback(async (pageNo: number) => {
+    setLoading(true);
+    setIsReloading(true);
+    setError(null);
+    try {
+      // Page 0 first, for `total`. Not profile.postCount: that is a database
+      // aggregate and the pages are cut from the Elasticsearch index, which
+      // lags it by tens of notes — paging off the wrong number drops or
+      // repeats notes at the page boundaries.
+      const head = normalizePublicPosts(await getPublicPosts({ company: apiName, page: 0 }));
+      setArchiveTotal(head.total);
+      const { from, take } = companyPageWindow(head.total, pageNo);
+      if (take <= 0) {
+        setPosts([]);
+        return;
+      }
+      const firstApiPage = Math.floor(from / COMPANY_PAGE_SIZE);
+      const lastApiPage = Math.floor((from + take - 1) / COMPANY_PAGE_SIZE);
+      const rows: Post[] = [];
+      for (let apiPage = firstApiPage; apiPage <= lastApiPage; apiPage += 1) {
+        const batch =
+          apiPage === 0
+            ? head
+            : normalizePublicPosts(await getPublicPosts({ company: apiName, page: apiPage }));
+        rows.push(...(batch.posts as Post[]));
+      }
+      const offset = from - firstApiPage * COMPANY_PAGE_SIZE;
+      // Reversed, so the page reads oldest -> newest within itself as well as
+      // across the series.
+      const windowPosts = rows.slice(offset, offset + take).reverse();
+      setPosts(windowPosts);
+      initInteractions(windowPosts, true);
+    } catch (err) {
+      console.error('Failed to fetch archive page:', err);
+      setError('Failed to load experiences. Please try again.');
+      setPosts([]);
+    } finally {
+      setLoading(false);
+      setIsInitialLoading(false);
+      setIsReloading(false);
+    }
+  }, [apiName, initInteractions]);
+
   useEffect(() => {
     // A prerendered page ships with its first page of notes already rendered.
     // Refetching them on hydration would blank and repaint the exact content
@@ -742,8 +865,18 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       // normally. Without this the prerendered companies — the highest-traffic
       // ones — would strand a reader at ten notes with no way forward.
       const seededTotal = typeof seed.total === 'number' ? seed.total : 0;
-      setHasMorePublic(seededTotal > (seed.posts as Post[]).length);
+      // No "Load more" in the archive view: its next page is a URL, not an
+      // appended API page, and the two paginations would fight over `posts`.
+      setHasMorePublic(archivePage === null && seededTotal > (seed.posts as Post[]).length);
       setIsInitialLoading(false);
+      return;
+    }
+    // The archive view has its own fetch, and its own ordering. Falling through
+    // to fetchPosts here would replace the oldest-first window the server
+    // rendered with the newest ten.
+    if (archivePage !== null) {
+      if (!nameResolved) return;
+      fetchArchivePage(archivePage);
       return;
     }
     // Hold the first fetch until the exact company name is known (a guess would
@@ -760,7 +893,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     if (!nameResolved || isPlanLoading) return;
     fetchPosts(0, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPosts, nameResolved, isPlanLoading]);
+  }, [fetchPosts, fetchArchivePage, archivePage, nameResolved, isPlanLoading]);
 
   const handleLoadMore = () => {
     if (loading) return;
@@ -798,6 +931,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // The declaration is a statement about the page, not a mechanism: it does not
   // hide anything and must not be used to try to.
   const notesCountForSeo = noteTotal ?? posts.length;
+  const archivePageCount = companyPageCount(archiveTotal ?? noteTotal ?? posts.length);
   useSeo(
     !isPublic
       ? {
@@ -812,9 +946,26 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       : isInitialLoading
       ? null
       : {
-          title: `${company.name} Interview Questions & Experiences | Screna AI`,
-          description: `${notesCountForSeo} real ${company.name} interview write-ups: verbatim questions by role, round and level.`.slice(0, 155),
-          path: `/interview-questions/${companyId}`,
+          // Title and description come from scripts/routes.mjs, which
+          // api/_render/company.ts also calls: the server writes these tags
+          // into the HTML and this hook rewrites them moments later, so a
+          // second copy of the wording is a page that describes itself two
+          // ways depending on how long you look at it.
+          title: companySeoTitle(company.name, archivePage),
+          description: companySeoDescription(
+            company.name,
+            notesCountForSeo,
+            archivePage,
+            archivePageCount,
+          ),
+          // Page 1 canonicalises to the company page. The two are the head and
+          // the tail of one entry point, and only one of them should compete
+          // for the company's name as a query; every later page is its own
+          // canonical, because its notes appear nowhere else.
+          path:
+            archivePage === null || archivePage === 1
+              ? `/interview-questions/${companyId}`
+              : `/interview-questions/${companyId}/page/${archivePage}`,
           type: 'article',
           jsonLd: [
             {
@@ -948,7 +1099,11 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                   the controls render locked: each chip and the sort button show a
                   lock, and clicking any of them opens the upgrade modal (instead of
                   bouncing the user straight to pricing). */}
-              {restrictedBrowsing ? (
+              {/* No toolbar in the archive view. Sort and filters act on the
+                  newest-first feed; here the order is fixed (oldest-first, by
+                  URL) and the slice is addressed by the path, so a control that
+                  reordered the page would either lie or break the URL. */}
+              {archivePage === null && (restrictedBrowsing ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
                     {['Role', 'Round', 'Level', 'Time'].map(label => (
@@ -1012,7 +1167,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     )}
                   </div>
                 </div>
-              )}
+              ))}
 
               {/* Banner explaining the actual limit, which is a different limit
                   for each audience, so the copy has to be too. Neither is
@@ -1020,7 +1175,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                   notes are shortened, and Free/Basic get every note in full but
                   cannot sort, search or filter. Saying "unlimited access to
                   every post" here would now be selling something they have. */}
-              {restrictedBrowsing && (
+              {archivePage === null && restrictedBrowsing && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(221,91%,60%)]/10">
@@ -1100,13 +1255,20 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <CompanyLogo company={post.company} />
-                          <div className="flex items-center gap-1.5 text-sm">
+                          {/* Each card's heading. The page carried one h1 (the
+                              company name) and nothing below it, so ~1,800
+                              words of question text sat under a single
+                              heading. text-sm with normal weight and tracking
+                              keeps the h2 pixel-identical to the div it
+                              replaced — index.css bolds all headings and
+                              theme.css sizes h2 at --text-xl. */}
+                          <h2 className="flex items-center gap-1.5 text-sm font-normal tracking-normal">
                             <span className="font-semibold text-[hsl(222,22%,15%)]">{post.company || company.name}</span>
                             <span className="text-[hsl(222,12%,70%)]">·</span>
                             <span className="text-[hsl(222,12%,45%)]">{post.role || 'Unknown Role'}</span>
                             <span className="text-[hsl(222,12%,70%)]">·</span>
                             <span className="text-[hsl(222,12%,45%)]">{post.round || 'Not specified'}</span>
-                          </div>
+                          </h2>
                         </div>
                         {post.outcome && (
                           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${OUTCOME_COLORS[post.outcome] || 'bg-slate-50 text-slate-500'}`}>
@@ -1246,8 +1408,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               {/* Load More */}
               {/* Guests paginate off the real match count the public endpoint
                   returns; members off "did this page come back full", since the
-                  authenticated search has no total. */}
-              {posts.length > 0 && (signedOut ? hasMorePublic : hasMore) && !loading && (
+                  authenticated search has no total. Never in the archive view —
+                  there the next page is a URL. */}
+              {archivePage === null && posts.length > 0 && (signedOut ? hasMorePublic : hasMore) && !loading && (
                 <div className="text-center pt-6 pb-2">
                   <Button
                     variant="outline"
@@ -1257,6 +1420,52 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     Load more experiences
                   </Button>
                 </div>
+              )}
+
+              {/* ── The crawlable pager ──
+                  Real <a href> links, which is the entire point: "Load more"
+                  above is a button, and a crawler never presses it, so ten
+                  notes per company was everything anything could reach. These
+                  links are also on the company page itself, not just on the
+                  archive pages — otherwise the whole series is orphaned, since
+                  the pages are deliberately kept out of the sitemap.
+
+                  <Link> renders a plain anchor with a resolvable href, so the
+                  markup a crawler reads after hydration matches what the server
+                  sent. */}
+              {isPublic && archivePageCount > 1 && (
+                <nav className="pt-8 pb-2" aria-label="All notes, oldest first">
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[hsl(222,12%,45%)]">
+                    Every note, oldest first
+                  </h2>
+                  <ul className="flex flex-wrap items-center gap-2" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {pagerNumbers(archivePageCount, archivePage ?? 1).map((num, i) =>
+                      num === null ? (
+                        <li key={`gap-${i}`} aria-hidden="true" className="px-1 text-xs text-[hsl(222,12%,55%)]">
+                          …
+                        </li>
+                      ) : num === archivePage ? (
+                        <li key={num}>
+                          <span
+                            aria-current="page"
+                            className="inline-block rounded-lg bg-[hsl(222,22%,15%)] px-3 py-1.5 text-xs font-medium text-white"
+                          >
+                            {num}
+                          </span>
+                        </li>
+                      ) : (
+                        <li key={num}>
+                          <Link
+                            to={`/interview-questions/${companyId}/page/${num}`}
+                            className="inline-block rounded-lg border border-[hsl(220,16%,90%)] px-3 py-1.5 text-xs font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
+                          >
+                            {num}
+                          </Link>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </nav>
               )}
 
               {loading && !isReloading && posts.length > 0 && (
