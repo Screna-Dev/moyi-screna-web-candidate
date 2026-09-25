@@ -4,6 +4,7 @@ import { PostHogProvider } from "posthog-js/react";
 import App from "./App.tsx";
 import "./index.css";
 import "./styles/index.css";
+import { reloadForChunkError } from "./utils/chunkReload";
 
 // 将环境变量暴露到 window 对象，方便在浏览器控制台调试
 // 注意：VITE_* 开头的环境变量会被打包到客户端代码中，是公开的
@@ -23,6 +24,13 @@ import "./styles/index.css";
 if ("scrollRestoration" in history) {
   history.scrollRestoration = "manual";
 }
+
+// Vite fires this when a lazy route's chunk (or its preloaded deps) fails to
+// load — usually a deploy replaced the hashed filenames under an open tab.
+// Reload once instead of letting the router render its error page.
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadForChunkError()) event.preventDefault();
+});
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");
