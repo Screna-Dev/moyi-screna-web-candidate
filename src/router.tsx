@@ -1,5 +1,5 @@
 import { lazy, useEffect, useLayoutEffect } from 'react';
-import { createBrowserRouter, Outlet, Navigate, useLocation } from 'react-router-dom';
+import { createBrowserRouter, Outlet, Navigate, useLocation, useRouteError } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -25,6 +25,12 @@ import { CookieBanner } from './components/newDesign/cookie-banner';
 import { ResumePromptModal } from './components/newDesign/resume-prompt-modal';
 import { useSessionTracking } from './hooks/useSessionTracking';
 import { RequireAuth } from './components/RequireAuth';
+// Company and experience pages are served pre-rendered (api/_render) and must
+// never depend on a lazy chunk: if Googlebot drops that fetch, the route error
+// used to replace the SSR content with "Page Not Found" (GSC soft 404).
+import { CompanyDetailPage } from './pages/newDesign/company-detail';
+import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
+import { isChunkLoadError, reloadForChunkError } from './utils/chunkReload';
 
 // ─── Lazy routes ────────────────────────────────────────────────────────────
 // Everything behind the login wall, plus auth/onboarding. App.tsx already
@@ -71,8 +77,6 @@ const SettingsPage = lazy(() => import('./pages/newDesign/settings-design').then
 
 // Interview insights (login-walled)
 const InterviewInsightsPage = lazy(() => import('./pages/newDesign/interview-insights-design').then((m) => ({ default: m.InterviewInsightsPage })));
-const CompanyDetailPage = lazy(() => import('./pages/newDesign/company-detail').then((m) => ({ default: m.CompanyDetailPage })));
-const ExperienceDetailPage = lazy(() => import('./pages/newDesign/experience-detail').then((m) => ({ default: m.ExperienceDetailPage })));
 
 // Mentorship
 const MentorshipPage = lazy(() => import('./components/newDesign/mentorship').then((m) => ({ default: m.MentorshipPage })));
@@ -155,20 +159,38 @@ function RootLayout() {
   );
 }
 
-// Error fallback component
+// Error fallback component. Also the '*' route, where there is no route error
+// and "Page Not Found" is the truth. A real route error must never claim the
+// page doesn't exist — Google reads that as a soft 404.
 function ErrorBoundary() {
+  // useRouteError only has a value under errorElement; on the '*' route it's undefined.
+  const error = useRouteError();
+  const chunkError = isChunkLoadError(error);
+  const reloading = chunkError && reloadForChunkError();
+
+  useEffect(() => {
+    if (error && !chunkError) console.error('[route error]', error);
+  }, [error, chunkError]);
+
+  if (reloading) return null;
+
+  const title = error ? 'Something went wrong' : 'Page Not Found';
+  const message = error
+    ? chunkError
+      ? 'A new version of the site is available. Please reload the page.'
+      : 'An unexpected error occurred. Please try again.'
+    : "The page you're looking for doesn't exist.";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[hsl(221,60%,20%)] via-[hsl(221,40%,40%)] to-[hsl(220,20%,85%)] flex items-center justify-center px-6">
       <div className="text-center">
-        <h1 className="text-4xl font-semibold text-white mb-4">Page Not Found</h1>
-        <p className="text-xl text-[hsl(220,30%,75%)] mb-8">
-          The page you're looking for doesn't exist.
-        </p>
+        <h1 className="text-4xl font-semibold text-white mb-4">{title}</h1>
+        <p className="text-xl text-[hsl(220,30%,75%)] mb-8">{message}</p>
         <a
-          href="/"
+          href={error ? window.location.href : '/'}
           className="px-8 py-4 bg-[hsl(221,91%,60%)] text-white rounded-lg text-lg font-medium hover:bg-[hsl(221,91%,55%)] transition-all duration-200 shadow-lg shadow-[hsl(221,91%,30%)]/40 inline-block"
         >
-          Go Home
+          {error ? 'Reload' : 'Go Home'}
         </a>
       </div>
     </div>
