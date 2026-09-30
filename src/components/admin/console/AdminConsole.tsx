@@ -12,6 +12,9 @@ import { SystemLogs } from './pages/SystemLogs';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OpsManager } from './pages/OpsManager';
 import { PGS } from './pages/PGS';
+import { EmployerHiring } from './pages/employer/EmployerHiring';
+import { EmployerStoreProvider, useEmployerStore } from './pages/employer/store';
+import { SECTION_VIEW, isEmployerSection, sectionOf } from './pages/employer/sections';
 import { Card } from '@/components/newDesign/ui/card';
 import { UsersList } from '@/components/admin/UsersList';
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
@@ -68,6 +71,9 @@ function PageContent({ page, isOps }: { page: Page; isOps: boolean }) {
     case 'system-logs':         return <SystemLogs />;
     case 'ops-manager':         return <OpsManager />;
     case 'pgs':                 return <PGS />;
+    case 'employer-dashboard':
+    case 'employer-jobs':
+    case 'employer-candidates': return <EmployerHiring />;
     case 'users':               return <UsersAdminTab />;
     case 'redeem-codes':        return <div className="p-6"><RedeemCodesPanel /></div>;
     case 'audit-logs':          return <div className="p-6"><AuditLogsPanel /></div>;
@@ -77,9 +83,25 @@ function PageContent({ page, isOps }: { page: Page; isOps: boolean }) {
 }
 
 export default function AdminConsole() {
+  return (
+    <EmployerStoreProvider>
+      <AdminConsoleInner />
+    </EmployerStoreProvider>
+  );
+}
+
+function AdminConsoleInner() {
   const { user } = useAuth();
+  const employer = useEmployerStore();
   const isOps = (user?.role || '').toUpperCase() === 'OPS';
   const [page, setPage] = useState<Page>(isOps ? 'resume-applications' : 'command-center');
+  // Inside the Hiring pages, the highlighted entry follows in-page navigation
+  // (e.g. Dashboard → a candidate report lights up Candidates).
+  const activePage: Page = isEmployerSection(page) ? sectionOf(employer.view) : page;
+  const changePage = (next: Page) => {
+    if (isEmployerSection(next)) employer.go(SECTION_VIEW[next]);
+    setPage(next);
+  };
   const [jobApplicationsBadge, setJobApplicationsBadge] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -110,10 +132,10 @@ export default function AdminConsole() {
       }}
     >
       <Toaster position="bottom-right" />
-      <Sidebar currentPage={page} onPageChange={setPage} userRole={user?.role} jobApplicationsBadge={jobApplicationsBadge} />
+      <Sidebar currentPage={activePage} onPageChange={changePage} userRole={user?.role} jobApplicationsBadge={jobApplicationsBadge} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <Header currentPage={page} />
+        <Header currentPage={activePage} />
 
         <main
           style={{
