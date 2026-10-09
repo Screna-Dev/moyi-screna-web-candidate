@@ -6,6 +6,7 @@ import { applicationsSeries } from '../mockData';
 import type { Candidate, Job } from '../types';
 import { Button, Card, Pill, SectionTitle, StatCard, cx, statusTone } from '../ui';
 import { applicationWindowLabel, nextAction, unlockedCount } from './jobTableHelpers';
+import { HiringGuide } from './HiringGuide';
 
 type Metric = 'applications' | 'interviews' | 'reports';
 type Range = '7d' | '30d' | '3m';
@@ -107,6 +108,7 @@ function FirstTimeDashboard() {
     { title: 'Review and publish the AI interview', body: 'Confirm the interview questions, candidate experience and sponsorship settings.', done: false, note: 'Starts after job creation' },
   ];
   const doneCount = steps.filter((s) => s.done).length;
+  const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -123,10 +125,14 @@ function FirstTimeDashboard() {
           <p className="text-[#5a6172] text-[14px] leading-5">
             Add the role, confirm the AI-generated interview, and publish when everything looks right. You can save your work as a draft at any time.
           </p>
-          <div>
+          <div className="flex flex-col items-start gap-3">
             <Button variant="primary" onClick={() => go({ name: 'wizard' })}>
               <Plus size={15} /> Create your first job
             </Button>
+            <button type="button" onClick={() => setGuideOpen(true)} className="text-[13px] font-semibold text-[#3c77f6] hover:underline">
+              See how employer hiring works →
+            </button>
+            <p className="text-[12px] text-[#5a6172]">No credits are used while drafting. Publishing uses 1 Interview Credit.</p>
           </div>
         </div>
         <div className="flex flex-col gap-3" aria-hidden>
@@ -187,7 +193,10 @@ function FirstTimeDashboard() {
         </Card>
 
         <Card>
-          <SectionTitle title="How hiring works" />
+          <SectionTitle
+            title="How hiring works"
+            right={<button type="button" onClick={() => setGuideOpen(true)} className="text-[12px] font-medium text-[#3c77f6] hover:underline">Open guide →</button>}
+          />
           <div className="mt-4 flex flex-col gap-2">
             {[
               { t: 'Publish a job', b: 'Add the role details and confirm the structured AI interview.' },
@@ -223,6 +232,15 @@ function FirstTimeDashboard() {
         </div>
       </div>
 
+      <HiringGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onFinish={() => {
+          setGuideOpen(false);
+          go({ name: 'wizard' });
+        }}
+      />
+
       <Card>
         <SectionTitle title="My Jobs" />
         <div className="mt-4 bg-[#f6f7f9] rounded-xl py-10 flex flex-col items-center gap-2 text-center">
@@ -244,6 +262,7 @@ export function DashboardView() {
   const [metric, setMetric] = useState<Metric>('applications');
   const [range, setRange] = useState<Range>('30d');
   const stats = useCompanyStats(jobs, candidatesFor);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const series = useMemo(() => seriesFor(metric, range), [metric, range]);
   const total = Math.round(series.reduce((s, p) => s + p.value, 0));
@@ -295,9 +314,23 @@ export function DashboardView() {
           </h1>
           <p className="text-[#5a6172] text-[14px] mt-1">Here's what's happening with hiring at {company.name}.</p>
         </div>
-        <Button variant="primary" onClick={() => go({ name: 'wizard' })}>
-          <Plus size={15} /> Post a job
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button onClick={() => setGuideOpen(true)}>
+            <HelpCircle size={15} /> How hiring works
+          </Button>
+          <Button variant="primary" onClick={() => go({ name: 'wizard' })}>
+            <Plus size={15} /> Post a job
+          </Button>
+        </div>
+        <HiringGuide
+          open={guideOpen}
+          onClose={() => setGuideOpen(false)}
+          finishLabel="Post a job"
+          onFinish={() => {
+            setGuideOpen(false);
+            go({ name: 'wizard' });
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

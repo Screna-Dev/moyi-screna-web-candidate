@@ -74,6 +74,7 @@ const DEFAULT_INSTRUCTIONS =
 
 const backendBase: Omit<Job, 'id' | 'companyId' | 'status' | 'title' | 'location' | 'workplace' | 'applicants' | 'interviewsCompleted' | 'updatedAt'> = {
   department: 'Engineering',
+  hrContactPhone: '(312) 555-0148',
   employmentType: 'Full-time',
   salaryMin: '120,000',
   salaryMax: '150,000',
@@ -128,6 +129,7 @@ export function blankJob(companyId: string, id: string): Job {
     status: 'Draft',
     title: '',
     department: '',
+    hrContactPhone: '',
     location: '',
     workplace: 'Hybrid',
     salaryMin: '',

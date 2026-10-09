@@ -60,6 +60,7 @@ export type Job = {
   status: JobStatus;
   title: string;
   department: string;
+  hrContactPhone: string;
   employmentType: EmploymentType;
   workplace: WorkplaceType;
   location: string;

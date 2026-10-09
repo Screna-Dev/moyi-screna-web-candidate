@@ -44,9 +44,20 @@ export function StepJobDetails({ job, update, showErrors }: StepProps) {
             />
           </div>
         </div>
-        <Field label="Job location" required hint={<ErrorHint show={!!err.location} />}>
-          <TextInput value={job.location} onChange={(e) => update({ location: e.target.value })} placeholder="e.g. Chicago, Illinois" />
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Job location" required hint={<ErrorHint show={!!err.location} />}>
+            <TextInput value={job.location} onChange={(e) => update({ location: e.target.value })} placeholder="e.g. Chicago, Illinois" />
+          </Field>
+          <Field label="HR contact number">
+            <TextInput
+              type="tel"
+              autoComplete="tel"
+              value={job.hrContactPhone}
+              onChange={(e) => update({ hrContactPhone: e.target.value })}
+              placeholder="e.g. (312) 555-0148"
+            />
+          </Field>
+        </div>
 
         <Divider />
 
