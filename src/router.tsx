@@ -61,14 +61,6 @@ const MockInterviewPage = lazy(() => import('./pages/newDesign/home/mock-intervi
 const PersonalizedPracticePage = lazy(() => import('./pages/newDesign/personalized-practice-design').then((m) => ({ default: m.PersonalizedPracticePage })));
 const QuickMockPage = lazy(() => import('./pages/newDesign/quick-mock-page').then((m) => ({ default: m.QuickMockPage })));
 const CoachingPage = lazy(() => import('./pages/newDesign/coaching-page').then((m) => ({ default: m.CoachingPage })));
-const OpportunitiesLayout = lazy(() => import('./pages/newDesign/opportunities/opportunities-layout').then((m) => ({ default: m.OpportunitiesLayout })));
-const OpportunitiesPage = lazy(() => import('./pages/newDesign/opportunities/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
-const MyJobsPage = lazy(() => import('./pages/newDesign/opportunities/MyJobsPage').then((m) => ({ default: m.MyJobsPage })));
-const JobDetailPage = lazy(() => import('./pages/newDesign/opportunities/JobDetailPage').then((m) => ({ default: m.JobDetailPage })));
-const BackendEngineerDetailPage = lazy(() => import('./pages/newDesign/opportunities/BackendEngineerDetailPage').then((m) => ({ default: m.BackendEngineerDetailPage })));
-const InterviewResultPage = lazy(() => import('./pages/newDesign/opportunities/InterviewResultPage').then((m) => ({ default: m.InterviewResultPage })));
-const NotQualifiedResultPage = lazy(() => import('./pages/newDesign/opportunities/NotQualifiedResultPage').then((m) => ({ default: m.NotQualifiedResultPage })));
-const ContactRecruiterPage = lazy(() => import('./pages/newDesign/opportunities/ContactRecruiterPage').then((m) => ({ default: m.ContactRecruiterPage })));
 const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
 const AIMockPage = lazy(() => import('./pages/newDesign/ai-mock').then((m) => ({ default: m.AIMockPage })));
 const AIMockWhitePage = lazy(() => import('./pages/newDesign/ai-mock-white').then((m) => ({ default: m.AIMockWhitePage })));
@@ -231,22 +223,6 @@ export const router = createBrowserRouter([
       { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
       { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
       { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
-      // Opportunities (apply to jobs directly). UI-only for now — no API yet;
-      // pages read mock data from components/newDesign/opportunities/mockJobs.
-      // Job 1 (partner job) and job 8 (not-qualified result) have their own
-      // design frames, so they sit on static paths that outrank :id.
-      {
-        element: <RequireAuth><OpportunitiesLayout /></RequireAuth>,
-        children: [
-          { path: '/opportunities', element: <OpportunitiesPage /> },
-          { path: '/opportunities/my-jobs', element: <MyJobsPage /> },
-          { path: '/opportunities/job/1', element: <BackendEngineerDetailPage /> },
-          { path: '/opportunities/job/:id', element: <JobDetailPage /> },
-          { path: '/opportunities/job/8/results', element: <NotQualifiedResultPage /> },
-          { path: '/opportunities/job/:id/results', element: <InterviewResultPage /> },
-          { path: '/opportunities/job/:id/contact', element: <ContactRecruiterPage /> },
-        ],
-      },
       { path: '/session-confirm', element: <RequireAuth><SessionConfirmPage /></RequireAuth> },
       { path: '/ai-mock', element: <RequireAuth><AIMockPage /></RequireAuth> },
       { path: '/ai-mockwhite', element: <RequireAuth><AIMockWhitePage /></RequireAuth> },

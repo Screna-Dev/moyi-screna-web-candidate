@@ -15,7 +15,6 @@ import {
   BookOpen,
   ChevronRight,
   Menu,
-  Briefcase,
 } from 'lucide-react';
 import logoImg from '../../assets/Navbar.png';
 import { AnimatePresence, motion } from 'motion/react';
@@ -49,7 +48,6 @@ const sidebarLinks = [
   // directory and from a company page (see components/newDesign/interview-insights/quick-mock).
   // The /quick-mock route is kept for existing links.
   { icon: Target, label: 'Practices', path: '/personalized-practice', ai: true },
-  { icon: Briefcase, label: 'Opportunities', path: '/opportunities' },
   { icon: Users, label: 'Coaching', path: '/coaching' },
 ];
 
@@ -121,8 +119,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         || currentPath.includes('mock-interview');
     }
     if (path === '/personalized-practice') return currentPath === '/personalized-practice';
-    // My Jobs, job detail, results and contact-recruiter all live under /opportunities.
-    if (path === '/opportunities') return currentPath === '/opportunities' || currentPath.startsWith('/opportunities/');
     if (path === '/contributions') return currentPath === '/contributions' || currentPath === '/dashboard/contributions';
     return currentPath === path;
   };
@@ -449,11 +445,9 @@ interface DashboardLayoutProps {
   // Ported new-design pages bring their own page container/padding (e.g.
   // WidePageContainer), so they opt out of the layout's default padded wrapper.
   fullBleed?: boolean;
-  // Overrides the pathname-derived breadcrumb shown before the header title.
-  breadcrumb?: { label: string; path: string };
 }
 
-export function DashboardLayout({ children, headerTitle, noSidebar = false, fullBleed = false, breadcrumb: breadcrumbProp }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerTitle, noSidebar = false, fullBleed = false }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -491,12 +485,12 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
   // Title shown in the header: explicit prop wins, else mapped from path.
   const pageTitle = headerTitle ?? PAGE_TITLES[location.pathname];
 
-  const breadcrumb = breadcrumbProp ?? (
+  const breadcrumb =
     location.pathname === '/mentor-details'
       ? { label: 'Coaching', path: '/coaching' }
       : location.pathname.startsWith('/interview-insights/') || location.pathname.startsWith('/experience/')
       ? { label: 'InterviewPrep Note', path: '/interview-insights' }
-      : undefined);
+      : undefined;
 
   return (
     <div className="min-h-screen bg-background">
