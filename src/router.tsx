@@ -347,7 +347,7 @@ export const router = createBrowserRouter([
         },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin — ADMIN sees full console; OPS sees only Job Applications
+      // admin — ADMIN sees full console; OPS sees only Job Application
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },
       { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
       { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },
