@@ -28,6 +28,12 @@ export const getPublicCompanyProfile = (company) => {
   return API.get('/community/public/companies/profile', { params: { company } });
 };
 
+// Per-company counts: top roles, top rounds, top topic categories per round.
+// Public only — there is no authenticated twin, so every reader calls this one.
+export const getPublicCompanyBreakdown = (company) => {
+  return API.get('/community/public/companies/breakdown', { params: { company } });
+};
+
 /**
  * Read GET /community/public/posts/search into a fixed shape.
  *

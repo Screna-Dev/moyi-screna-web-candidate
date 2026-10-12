@@ -120,6 +120,7 @@ describe('vercel.json route coverage', () => {
   it('keeps the public route list intact', () => {
     expect([...PRERENDER_STATIC].sort()).toEqual([
       '/',
+      '/about',
       '/blog',
       '/contact',
       '/cookies',

@@ -9,9 +9,11 @@ import {
 import { esc, join, seedTag, shouldNoindexOnLength } from './html.js';
 import {
   UpstreamError,
+  fetchCompanyBreakdown,
   fetchCompanyPosts,
   fetchCompanyProfile,
   fetchCompanyStats,
+  type CompanyBreakdown,
   type CompanyProfile,
   type PublicPost,
 } from './community.js';
@@ -21,6 +23,9 @@ import {
   MIN_POSTS_FOR_PAGE,
   companyPageCount,
   companyPageWindow,
+  companyFaq,
+  companyFaqJsonLd,
+  companyIntro,
   companySeoDescription,
   companySeoTitle,
   eligibleCompanies,
@@ -203,10 +208,28 @@ function pager(slug: string, pageCount: number, current: number | null): string 
   );
 }
 
+/** The FAQ section. Same card markup as noteCard. */
+function faqSection(name: string, faq: { question: string; answer: string }[]): string {
+  return join(
+    '<section class="mt-10">',
+    `<h2 class="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">${esc(name)} interview FAQ</h2>`,
+    ...faq.map(
+      ({ question, answer }) =>
+        '<article class="bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4"><div class="p-6">' +
+        `<h3 class="text-sm font-semibold text-[hsl(222,22%,15%)]">${esc(question)}</h3>` +
+        `<p class="mt-3 text-sm text-[hsl(222,12%,45%)]">${esc(answer)}</p>` +
+        '</div></article>',
+    ),
+    '</section>',
+  );
+}
+
 function renderBody({
   name,
   slug,
   profile,
+  intro,
+  faq,
   posts,
   noteTotal,
   pageCount,
@@ -215,6 +238,10 @@ function renderBody({
   name: string;
   slug: string;
   profile: CompanyProfile | null;
+  /** companyIntro() — replaces profile.summary as the opening paragraph. */
+  intro: string;
+  /** companyFaq(); empty on /page/:n and on small companies. */
+  faq: { question: string; answer: string }[];
   posts: PublicPost[];
   noteTotal: number;
   pageCount: number;
@@ -229,8 +256,10 @@ function renderBody({
     )}${current ? ` <span class="text-[20px] font-normal text-[hsl(222,12%,45%)]">interview notes, page ${current} of ${pageCount}</span>` : ''}</h1>`,
     profile?.category &&
       `<p class="mt-3 text-xs font-medium text-[hsl(221,91%,60%)]">${esc(profile.category)}</p>`,
-    profile?.summary &&
-      `<p class="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">${esc(profile.summary)}</p>`,
+    // The opening paragraph is built from the breakdown counts, never from
+    // profile.summary: a generic company blurb answers nothing about the
+    // interview, and with no breakdown the page has no paragraph at all.
+    intro && `<p class="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">${esc(intro)}</p>`,
     `<p class="mt-4 text-sm text-[hsl(222,12%,45%)]">${noteTotal} interview ${
       noteTotal === 1 ? 'note' : 'notes'
     }${profile?.latestUpdatedAt ? ` · updated ${esc(formatMonth(profile.latestUpdatedAt))}` : ''}</p>`,
@@ -238,7 +267,12 @@ function renderBody({
     posts.length
       ? join(...posts.map((p) => noteCard(p, name)))
       : '<p class="text-sm text-[hsl(222,12%,45%)]">No published notes for this company yet.</p>',
-    pager(slug, pageCount, current),
+    // Between the cards and the pager (spec F3); the client renders it in the
+    // same place.
+    faq.length && faqSection(name, faq),
+    // Archive pages only — the company page has "Load more" instead (client),
+    // and its archive is reached through the sitemap and these links.
+    current !== null && pager(slug, pageCount, current),
     '</div></div>',
   );
 }
@@ -293,6 +327,7 @@ export async function renderCompanyPage(
 ): Promise<Rendered> {
   let row: CompanyRow | undefined;
   let profile: CompanyProfile | null = null;
+  let breakdown: CompanyBreakdown | null = null;
   let posts: PublicPost[] = [];
   let feedTotal = 0;
 
@@ -301,12 +336,16 @@ export async function renderCompanyPage(
     if (!row) return notFoundPage('We have no interview notes for this company.');
     // The profile is optional: a company with no profile row answers
     // 400/NOT_FOUND, which is a real state rather than a failure. The notes
-    // are not optional — without them there is no page.
-    const [profileResult, pageResult] = await Promise.all([
+    // are not optional — without them there is no page. The breakdown follows
+    // the profile's rule: 400/NOT_FOUND is null (no intro, no FAQ), a 5xx or a
+    // timeout is a 503 for the whole page.
+    const [profileResult, breakdownResult, pageResult] = await Promise.all([
       fetchCompanyProfile(row.company),
+      fetchCompanyBreakdown(row.company),
       collectPage(row.company, current),
     ]);
     profile = profileResult;
+    breakdown = breakdownResult;
     posts = pageResult.posts;
     feedTotal = pageResult.total;
   } catch (err) {
@@ -324,10 +363,18 @@ export async function renderCompanyPage(
     return notFoundPage('There is no such page of notes for this company.');
   }
 
+  // The intro is on every page of the series; the FAQ only on the company
+  // page itself, so the archive pages do not repeat one FAQPage 200 times.
+  const intro = companyIntro(name, breakdown);
+  const faq = current === null ? companyFaq(name, breakdown) : [];
+  const faqJsonLd = current === null ? companyFaqJsonLd(name, breakdown) : null;
+
   const body = renderBody({
     name,
     slug,
     profile,
+    intro,
+    faq,
     posts,
     // The displayed count is the profile's, which is the one number the client
     // page shows too; the feed's total drives pagination and is never rendered.
@@ -361,7 +408,7 @@ export async function renderCompanyPage(
             '@context': 'https://schema.org',
             '@type': 'Article',
             headline: `${name} Interview Questions & Experiences`,
-            ...(profile?.summary ? { description: profile.summary } : {}),
+            ...(intro ? { description: intro } : {}),
             isAccessibleForFree: false,
             hasPart: {
               '@type': 'WebPageElement',
@@ -369,6 +416,7 @@ export async function renderCompanyPage(
               cssSelector: '.paywalled-note',
             },
           },
+          ...(faqJsonLd ? [faqJsonLd] : []),
         ],
   });
 
@@ -376,8 +424,11 @@ export async function renderCompanyPage(
   // than the newest ten. Without it the page would render the server's
   // oldest-first window and then replace it with the newest ten on boot.
   const seeds = [
+    // profile.summary is dropped so the blurb is nowhere in the page source;
+    // the client builds its intro from `breakdown`, exactly as this does.
     seedTag('__prerender_company__', {
-      profile: profile ?? { displayName: name },
+      profile: profile ? { ...profile, summary: undefined } : { displayName: name },
+      breakdown,
       posts,
       total: feedTotal,
       page: current,

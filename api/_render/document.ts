@@ -184,7 +184,9 @@ export function renderHead(input: HeadInput): string {
     `<meta name="twitter:image" content="${esc(image)}">`,
     ...(input.jsonLd ?? []).map(
       (obj) =>
-        `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, '\\u003c')}</script>`,
+        // data-seo: the attribute useSeo removes before writing its own copy.
+        // Without it the page carries every block twice once the bundle boots.
+        `<script type="application/ld+json" data-seo>${JSON.stringify(obj).replace(/</g, '\\u003c')}</script>`,
     ),
   );
 }

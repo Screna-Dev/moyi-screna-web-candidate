@@ -26,6 +26,7 @@
     { "source": "/faq", "destination": "/app.html" },
     { "source": "/help", "destination": "/app.html" },
     { "source": "/contact", "destination": "/app.html" },
+    { "source": "/about", "destination": "/app.html" },
     { "source": "/privacy", "destination": "/app.html" },
     { "source": "/terms", "destination": "/app.html" },
     { "source": "/cookies", "destination": "/app.html" },
