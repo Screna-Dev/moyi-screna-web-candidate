@@ -23,8 +23,16 @@ function checkAuth() {
   return !!localStorage.getItem('authToken') || !!sessionStorage.getItem('authToken');
 }
 
+// The candidate signup promo has no place on the employer side.
+function isEmployerPath(pathname: string) {
+  return pathname === '/employer' || pathname.startsWith('/employer/');
+}
+
 function TopBarWrapper() {
   const [isLoggedIn, setIsLoggedIn] = useState(checkAuth);
+  const [onEmployer, setOnEmployer] = useState(() => isEmployerPath(router.state.location.pathname));
+
+  useEffect(() => router.subscribe((state) => setOnEmployer(isEmployerPath(state.location.pathname))), []);
 
   useEffect(() => {
     const handler = () => setIsLoggedIn(checkAuth());
@@ -36,9 +44,11 @@ function TopBarWrapper() {
     };
   }, []);
 
+  const hidden = isLoggedIn || onEmployer;
+
   useLayoutEffect(() => {
     const root = document.documentElement;
-    if (isLoggedIn) {
+    if (hidden) {
       root.style.setProperty('--topbar-h', '0px');
       return;
     }
@@ -57,9 +67,9 @@ function TopBarWrapper() {
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isLoggedIn]);
+  }, [hidden]);
 
-  if (isLoggedIn) return null;
+  if (hidden) return null;
   return <TopBar />;
 }
 

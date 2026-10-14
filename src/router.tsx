@@ -94,6 +94,8 @@ const MentorDashboardPage = lazy(() => import('./pages/mentor/mentor-dashboard')
 const SelectDashboardPage = lazy(() => import('./pages/mentor/select-dashboard').then((m) => ({ default: m.SelectDashboardPage })));
 
 // Admin
+const EmployerLoginPage = lazy(() => import('./pages/employer/EmployerLoginPage').then((m) => ({ default: m.EmployerLoginPage })));
+const EmployerApp = lazy(() => import('./pages/employer/EmployerApp').then((m) => ({ default: m.EmployerApp })));
 const AdminRoute = lazy(() => import('./components/AdminRoute'));
 const AdminConsole = lazy(() => import('./components/admin/console/AdminConsole'));
 const AdminRedeemCodes = lazy(() => import('./pages/AdminRedeemCodes'));
@@ -368,6 +370,10 @@ export const router = createBrowserRouter([
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },
+
+      // employer side — separate company-email sign-in, no Google
+      { path: '/employer/login', element: <EmployerLoginPage /> },
+      { path: '/employer', element: <EmployerApp /> },
 
       // admin — ADMIN sees full console; OPS sees only Job Applications
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },

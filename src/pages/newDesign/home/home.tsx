@@ -982,6 +982,13 @@ export function HomePage() {
 
           {/* CTA */}
           <div className="flex items-center gap-3">
+            <Link
+              to="/employer/login"
+              className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-full text-[14px] font-medium border transition-colors duration-150 text-[#2E5BFF] border-[#C9D6FF] hover:bg-[#F2F5FF]"
+              style={{ fontFamily: "'Inter', sans-serif" }}
+            >
+              For Employers
+            </Link>
             {user ? (
               <div className="relative hidden md:block" ref={avatarRef}>
                 <button
@@ -1098,6 +1105,14 @@ export function HomePage() {
                 {link}
               </a>
             ))}
+            <Link
+              to="/employer/login"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-[15px] font-medium"
+              style={{ color: '#2E5BFF' }}
+            >
+              For Employers
+            </Link>
             {user ? (
               <>
                 <Link
