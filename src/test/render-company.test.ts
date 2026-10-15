@@ -54,11 +54,36 @@ function library(total: number) {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+const SUMMARY = 'Meta is a global technology company building social apps.';
+
+/** companies/breakdown for a company with `total` posts. */
+function breakdown(total: number) {
+  return {
+    company: 'Meta',
+    totalPosts: total,
+    topRoles: [{ name: 'Software Engineer', posts: total }],
+    topRounds: [{ name: 'Technical Phone Screen', posts: total }],
+    roundTopics: {
+      'Technical Phone Screen': [{ name: 'Algorithms & Data Structures', questions: total * 2 }],
+    },
+  };
+}
+
+/** The seed the page boots from, parsed. */
+function seedOf(html: string): any {
+  const raw = html.match(/id="__prerender_company__"[^>]*>([\s\S]*?)<\/script>/)![1];
+  return JSON.parse(raw.replace(/\\u003c/g, '<'));
+}
+
 /**
  * A backend holding `total` notes for Meta, paged the way the real one does:
- * ten rows, newest first, no sort parameter read.
+ * ten rows, newest first, no sort parameter read. `breakdown` overrides the
+ * companies/breakdown answer: a number is an HTTP status.
  */
-function mockBackend(total: number, opts: { profile?: boolean } = {}) {
+function mockBackend(
+  total: number,
+  opts: { profile?: boolean; breakdown?: number | ReturnType<typeof breakdown> } = {},
+) {
   const all = library(total);
   globalThis.fetch = vi.fn((input: unknown) => {
     const url = String(input);
@@ -68,7 +93,13 @@ function mockBackend(total: number, opts: { profile?: boolean } = {}) {
       return Promise.resolve(
         opts.profile === false
           ? json({ errorCode: 'NOT_FOUND' }, 400)
-          : json({ data: { displayName: 'Meta', category: 'FAANG / Big Tech', postCount: total } }),
+          : json({ data: { displayName: 'Meta', category: 'FAANG / Big Tech', summary: SUMMARY, postCount: total } }),
+      );
+    }
+    if (url.includes('/companies/breakdown')) {
+      const b = opts.breakdown ?? breakdown(total);
+      return Promise.resolve(
+        typeof b === 'number' ? json({ status: 'ERROR', errorCode: 'NOT_FOUND' }, b) : json({ data: b }),
       );
     }
     if (url.includes('/posts/search')) {
@@ -96,7 +127,7 @@ afterEach(() => {
 });
 
 describe('renderCompanyPage — the company page', () => {
-  it('lists the newest ten, links each note, and offers the archive', async () => {
+  it('lists the newest ten and links each note', async () => {
     mockBackend(25);
     const page = await renderCompanyPage(req, 'meta', null);
     expect(page.status).toBe(200);
@@ -104,10 +135,9 @@ describe('renderCompanyPage — the company page', () => {
       'note-25', 'note-24', 'note-23', 'note-22', 'note-21',
       'note-20', 'note-19', 'note-18', 'note-17', 'note-16',
     ]);
-    // The pager is the only thing on the site that links into the archive; the
-    // pages are deliberately absent from the sitemap, so without these anchors
-    // the whole series is orphaned.
-    expect(page.html).toContain('href="/interview-questions/meta/page/1"');
+    // No pager on the company page itself — "Load more" (client) is its way
+    // forward; the archive is linked from the archive pages and the sitemap.
+    expect(page.html).not.toContain('href="/interview-questions/meta/page/');
     expect(page.html).toContain('content="index, follow"');
     expect(page.html).toContain('<link rel="canonical" href="https://www.screna.ai/interview-questions/meta">');
     // One h1, with the note cards as h2s under it.
@@ -122,6 +152,89 @@ describe('renderCompanyPage — the company page', () => {
     const page = await renderCompanyPage(req, 'meta', null);
     expect(page.status).toBe(200);
     expect(linkedIds(page.html)).toHaveLength(10);
+  });
+});
+
+describe('renderCompanyPage — intro and FAQ', () => {
+  it('opens with the breakdown intro, then the FAQ and its JSON-LD', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', null);
+    expect(page.status).toBe(200);
+    expect(page.html).toContain('Most of these Meta write-ups come from Software Engineers (25).');
+    expect(page.html).toContain('Meta interview FAQ</h2>');
+    expect(page.html.match(/<h3[ >]/g)).toHaveLength(2);
+    expect(page.html).toContain('"@type":"FAQPage"');
+    // The blurb is gone from the body, the JSON-LD and the seed.
+    expect(page.html).not.toContain(SUMMARY);
+    const seed = seedOf(page.html);
+    expect(seed.breakdown.totalPosts).toBe(25);
+    expect('summary' in seed.profile).toBe(false);
+  });
+
+  it('puts the FAQ after the note cards', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', null);
+    const lastCardAt = page.html.lastIndexOf('href="/experience/');
+    const faqAt = page.html.indexOf('Meta interview FAQ');
+    expect(lastCardAt).toBeGreaterThan(-1);
+    expect(faqAt).toBeGreaterThan(lastCardAt);
+  });
+
+  it('keeps the pager on archive pages, the only link to page 1', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', 2);
+    expect(page.html).toContain('href="/interview-questions/meta/page/1"');
+    expect(page.html).toContain('href="/interview-questions/meta/page/3"');
+  });
+
+  it('uses one string for the paragraph and Article.description', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', null);
+    const intro = page.html.match(/<p class="mt-3 max-w-2xl[^"]*">([^<]*)<\/p>/)![1];
+    expect(page.html).toContain(`"description":${JSON.stringify(intro)}`);
+  });
+
+  it('marks its JSON-LD for useSeo to replace', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', null);
+    const blocks = page.html.match(/<script type="application\/ld\+json"[^>]*>/g) ?? [];
+    expect(blocks).toHaveLength(2);
+    for (const tag of blocks) expect(tag).toContain('data-seo');
+  });
+
+  it('keeps the intro on /page/2 but not the FAQ', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'meta', 2);
+    expect(page.html).toContain('Most of these Meta write-ups');
+    expect(page.html).not.toContain('interview FAQ');
+    expect(page.html).not.toContain('FAQPage');
+  });
+
+  it('renders no intro, no FAQ and no blurb when the breakdown is NOT_FOUND', async () => {
+    mockBackend(25, { breakdown: 400 });
+    const page = await renderCompanyPage(req, 'meta', null);
+    expect(page.status).toBe(200);
+    expect(page.html).not.toContain('Most of these');
+    expect(page.html).not.toContain('interview FAQ');
+    expect(page.html).not.toContain('FAQPage');
+    expect(page.html).not.toContain(SUMMARY);
+    expect(seedOf(page.html).breakdown).toBeNull();
+  });
+
+  it('503s when the breakdown is down', async () => {
+    mockBackend(25, { breakdown: 500 });
+    expect((await renderCompanyPage(req, 'meta', null)).status).toBe(503);
+  });
+
+  it('gives a below-threshold company the short intro and no FAQ or JSON-LD', async () => {
+    mockBackend(25, { breakdown: breakdown(3) });
+    const page = await renderCompanyPage(req, 'tiny-startup', null);
+    expect(page.html).toContain('content="noindex, follow"');
+    expect(page.html).toContain(
+      'Screna has 3 Meta interview write-ups. The most reported round is the technical phone screen (3).',
+    );
+    expect(page.html).not.toContain('interview FAQ');
+    expect(page.html).not.toContain('application/ld+json');
   });
 });
 

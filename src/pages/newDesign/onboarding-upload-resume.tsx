@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, ArrowRight, ArrowLeft, UploadCloud, FileText, RefreshCw,
-  Hash, Plus, UserPlus, AlertCircle,
+  Hash, Plus, UserPlus, AlertCircle, Search, Sparkles,
 } from 'lucide-react';
 import { uploadResumeAndWait } from '@/services/ProfileServices';
 import { emitResumeUploaded } from '@/hooks/useResumeUploaded';
@@ -86,6 +86,18 @@ const SOURCE_OPTIONS: SourceOption[] = [
     icon: <LinkedInIcon className="w-4 h-4 text-white" />,
   },
   {
+    id: 'search_engine',
+    label: 'Google / search engine',
+    tile: 'bg-[hsl(145,55%,93%)]',
+    icon: <Search className="w-4 h-4 text-[hsl(145,60%,36%)]" />,
+  },
+  {
+    id: 'ai_assistant',
+    label: 'ChatGPT / AI assistant',
+    tile: 'bg-[hsl(265,85%,95%)]',
+    icon: <Sparkles className="w-4 h-4 text-[hsl(265,70%,58%)]" />,
+  },
+  {
     id: 'other_social',
     label: 'Other social media',
     tile: 'bg-[hsl(330,80%,95%)]',
@@ -112,6 +124,8 @@ const SOURCE_API_ENUM: Record<string, string> = {
   reddit: 'REDDIT',
   x: 'X_TWITTER',
   linkedin: 'LINKEDIN',
+  search_engine: 'SEARCH_ENGINE',
+  ai_assistant: 'AI_ASSISTANT',
   other_social: 'OTHER_SOCIAL_MEDIA',
   somewhere_else: 'SOMEWHERE_ELSE',
   referral: 'REFERRED_BY_SOMEONE',

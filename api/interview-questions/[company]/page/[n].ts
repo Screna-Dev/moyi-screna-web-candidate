@@ -10,10 +10,9 @@ import { pageNumber, segmentAfter } from '../../../_render/params.js';
 // ten notes per company was the whole of what anything could reach. These URLs
 // expose the rest as ordinary links.
 //
-// They are navigation, not content, and deliberately absent from the sitemap —
-// 1,832 list pages would dilute a file whose job is to advertise the ~18,700
-// note pages they lead to. Their value is the href, and Google follows those
-// without being told.
+// Pages 2+ of companies that clear the page threshold are listed in
+// sitemap-company-pages.xml (scripts/sitemap.mjs). Page 1 is not: its canonical
+// is the company page.
 
 export const config = {
   maxDuration: 30,

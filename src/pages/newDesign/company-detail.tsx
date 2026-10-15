@@ -21,7 +21,7 @@ import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
 import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, savePost, unsavePost,
-         getCompanyProfile, getPublicCompanyProfile, getPostOptions } from '../../services/CommunityService';
+         getCompanyProfile, getPublicCompanyProfile, getPublicCompanyBreakdown, getPostOptions } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
 import { buildAuthPath } from '@/utils/returnTo';
 import { companySlug, resolveCompanyName } from '@/utils/companySlug';
@@ -48,6 +48,13 @@ import { CompanyMockLauncher } from '@/components/newDesign/interview-insights/q
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { mostCommonRole } from '@/utils/quickMockDefaults';
 import { useSeo } from '@/hooks/useSeo';
+import { useCompanyPasses } from '@/hooks/useCompanyPass';
+import {
+  companyFaq,
+  companyFaqJsonLd,
+  companyIntro,
+  type CompanyBreakdown,
+} from '@/utils/companyBreakdown';
 
 // ─── Build-time seed ───────────────────────────────────────────────────────
 // scripts/prerender.mjs fetches this company's profile and first page of notes
@@ -69,6 +76,11 @@ type CompanySeed = {
   };
   posts?: unknown[];
   total?: number;
+  /**
+   * companies/breakdown, or null when it answered NOT_FOUND. The intro and FAQ
+   * are built from this; `profile.summary` is no longer in the seed.
+   */
+  breakdown?: CompanyBreakdown | null;
   /**
    * Which crawlable page this payload is. null/absent = the company page
    * itself (newest ten); a number = that /page/:n window, oldest-first.
@@ -110,6 +122,8 @@ interface Post {
   saveCount?: number;
   liked?: boolean;
   saved?: boolean;
+  // Explicitly null on a trimmed payload (guest, or a Free/Basic preview).
+  user?: { id?: string; name?: string } | null;
 }
 
 /**
@@ -328,11 +342,11 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   const posthog = usePostHog();
 
   // Plan-tier gating. The product has two tiers: Free/Basic (low) and
-  // Advanced/Flagship (Premium, high). Low-tier signed-in users can only browse
-  // a company's newest posts, first page, with no sort/search/pagination, and
-  // can open only the 2 most recent posts per company (the 3rd+ is locked).
-  // We wait for the plan to resolve before restricting so we don't penalize
-  // Premium users with a flash of locked UI.
+  // Advanced/Flagship (Premium, high). Low-tier signed-in users browse a
+  // company's posts newest-first and paginated, with no sort/search/filter,
+  // and get only the 2 most recent posts per company in full — the rest come
+  // back trimmed like a guest's. We wait for the plan to resolve before
+  // restricting so we don't penalize Premium users with a flash of locked UI.
   const isLowTier = isAuthenticated && !isPlanLoading && !isPremium;
 
   // `isPublic` selects the surface (marketing, no sidebar, indexable vs
@@ -351,18 +365,14 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // and the shareable one.
   const experiencePath = (postId: string) => `/experience/${postId}`;
   const shareUrl = (postId: string) => `${window.location.origin}/experience/${postId}`;
-  // The note library is fully open to anyone signed in: every note, full text,
-  // paginated, on every plan. Free and Basic used to see the 2 newest and 5
-  // blurred cards, which left a paying Basic user with LESS than a signed-out
-  // visitor — a guest browses the whole company, just trimmed to one sentence
-  // per note. That gate is gone.
+  // Every audience can list and paginate every note. What separates them is
+  // the text itself, and it is decided server-side rather than here:
   //
-  // What still separates the audiences is the text itself, and it is decided
-  // server-side rather than here:
-  //
-  //   signed out  every note listed and paginated, each cut to its first
-  //               sentence by the public endpoint. No top-N limit.
-  //   signed in   every note listed and paginated, nothing cut.
+  //   signed out   every note cut to its first sentence by the public endpoint.
+  //   Free/Basic   the 2 newest notes per company in full (all of them for a
+  //                company they hold a Company Pass for); every other note cut
+  //                exactly like a guest's, with `user: null`.
+  //   Advanced+    nothing cut.
   //
   // Sorting, keyword search and the round/level/time filters remain an Advanced
   // feature (restrictedBrowsing below) — that is a separate gate from note
@@ -456,6 +466,38 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiName, signedOut]);
 
+  // ── Breakdown (public surface only) ──
+  // Counts behind the opening paragraph and the FAQ. Same rule as the profile:
+  // the seed when there is one (null included — that is a NOT_FOUND the server
+  // already asked about), otherwise one request. The personal-centre twin keeps
+  // profile.summary and never asks.
+  const [breakdown, setBreakdown] = useState<CompanyBreakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(isPublic);
+  useEffect(() => {
+    if (!isPublic) return;
+    if (seed && 'breakdown' in seed) {
+      setBreakdown(seed.breakdown ?? null);
+      setBreakdownLoading(false);
+      return;
+    }
+    if (!apiName) return;
+
+    let cancelled = false;
+    setBreakdownLoading(true);
+    setBreakdown(null);
+    getPublicCompanyBreakdown(apiName)
+      .then((res) => {
+        const data = res.data?.data ?? res.data;
+        if (!cancelled) setBreakdown(data ?? null);
+      })
+      .catch(() => {
+        // 400/NOT_FOUND or an outage: no intro and no FAQ. Never the summary.
+      })
+      .finally(() => { if (!cancelled) setBreakdownLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiName, isPublic]);
+
   // `name` is the real, route-derived company identity (also used for API
   // lookups), so it always resolves. For signed-in users `category` and
   // `description` are shown as a loading skeleton until the profile API resolves
@@ -467,11 +509,24 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // company has no profile row rather than being backfilled with curated copy —
   // an AI-written blurb for a company we have no data on would be invention,
   // and this page is being submitted to a search index.
-  const company = useMemo(() => ({
-    name: profile?.displayName || fallbackCompany.name,
-    category: profile?.category || null,
-    description: profile?.summary || null,
-  }), [fallbackCompany, profile]);
+  //
+  // On the public surface the description is the breakdown intro instead
+  // (scripts/routes.mjs, the same function the server renders with), so the
+  // paragraph answers what the interview covers rather than what the company
+  // does. The personal centre keeps the profile summary.
+  const company = useMemo(() => {
+    const name = profile?.displayName || fallbackCompany.name;
+    return {
+      name,
+      category: profile?.category || null,
+      description: isPublic ? companyIntro(name, breakdown) || null : profile?.summary || null,
+    };
+  }, [fallbackCompany, profile, isPublic, breakdown]);
+  const faq = useMemo(
+    () => (isPublic && archivePage === null ? companyFaq(company.name, breakdown) : []),
+    [isPublic, archivePage, company.name, breakdown],
+  );
+  const descriptionLoading = isPublic ? breakdownLoading : profileLoading;
 
   // Header stats, sourced solely from GET /community/companies/profile
   // (published-post counts). We show a loading skeleton until it resolves and
@@ -810,6 +865,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // trimmed teasers in this view — the full note is one click away on
   // /experience/:id, and the alternative is an archive that silently shows a
   // different slice than the URL says.
+  // Ids of cards that came from the PUBLIC payload — the seed, and every archive
+  // window (fetchArchivePage reads the public endpoint whoever is reading).
+  // There `user` is null on every note, so for Free/Basic it says nothing
+  // about which notes their plan trims — see isPlanPreview.
+  const publicIds = useRef<Set<string>>(new Set());
+
   const fetchArchivePage = useCallback(async (pageNo: number) => {
     setLoading(true);
     setIsReloading(true);
@@ -840,6 +901,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       // Reversed, so the page reads oldest -> newest within itself as well as
       // across the series.
       const windowPosts = rows.slice(offset, offset + take).reverse();
+      publicIds.current = new Set(windowPosts.map((p) => p.id));
       setPosts(windowPosts);
       initInteractions(windowPosts, true);
     } catch (err) {
@@ -853,11 +915,29 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     }
   }, [apiName, initInteractions]);
 
+  // The seed is the unfiltered newest-first page, so it only stands in for the
+  // feed when the query is the default one. It is usable on first mount with no
+  // sort/search/filter (including none restored from sessionStorage), and once
+  // the query changes it is spent for good — clearing the filters again fetches
+  // rather than falling back to the snapshot. Not "spent after the effect's
+  // first run": isPlanLoading and friends rerun the effect with the default
+  // query, and that run must keep the seed. The archive view (/page/:n) has no
+  // toolbar and ignores the query, so filters restored from sessionStorage must
+  // not cost it its seed.
+  const isDefaultQuery =
+    archivePage !== null ||
+    (activeSort === 'Newest' &&
+      !debouncedSearchQuery &&
+      !filterRole && !filterRound && !filterLevel && !filterTime);
+  const seedUsable = useRef(isDefaultQuery);
+
   useEffect(() => {
+    if (!isDefaultQuery) seedUsable.current = false;
     // A prerendered page ships with its first page of notes already rendered.
     // Refetching them on hydration would blank and repaint the exact content
     // the snapshot exists to deliver.
-    if (seed?.posts) {
+    if (seed?.posts && seedUsable.current) {
+      publicIds.current = new Set((seed.posts as Post[]).map((p) => p.id));
       setPosts(seed.posts as Post[]);
       initInteractions(seed.posts as Post[], true);
       // The snapshot carries page 0 only, but it also carries the match total,
@@ -893,7 +973,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     if (!nameResolved || isPlanLoading) return;
     fetchPosts(0, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPosts, fetchArchivePage, archivePage, nameResolved, isPlanLoading]);
+  }, [fetchPosts, fetchArchivePage, archivePage, nameResolved, isPlanLoading, isDefaultQuery]);
 
   const handleLoadMore = () => {
     if (loading) return;
@@ -980,6 +1060,10 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 cssSelector: '.paywalled-note',
               },
             },
+            // FAQ on the company page only, as the server renders it.
+            ...(archivePage === null && faq.length
+              ? [companyFaqJsonLd(company.name, breakdown) as Record<string, unknown>]
+              : []),
           ],
         },
   );
@@ -990,6 +1074,20 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // already just one sentence — the server does the truncating, deliberately:
   // withholding it in the client would still ship the full text in the
   // response, which is the implementation Google's paywall guidance rules out.
+  // A Free/Basic card the server trimmed. The payload has no "trimmed" flag;
+  // the rule (frontend-community-api.md §1) is positional: for FREE/BASIC the
+  // company's 2 newest — the first 2 rows of page 0, sort forced to NEWEST —
+  // are full and every later row is trimmed. `user` only ever confirms "full"
+  // (a trimmed note always has `user: null`, but so does an anonymous full
+  // one), so a card with an author is never marked. Never for Advanced+, for a
+  // Company Pass holder on this company, or for cards from the public payload
+  // (seed, archive windows), which are trimmed for everyone and say nothing
+  // about the reader's plan.
+  const { find: findCompanyPass } = useCompanyPasses();
+  const hasCompanyPass = !!findCompanyPass(company.name);
+  const isPlanPreview = (post: Post, rank: number) =>
+    isLowTier && !hasCompanyPass && rank >= 2 && post.user === null && !publicIds.current.has(post.id);
+
   const firstNoteOf = (post: Post): string | null => {
     for (const q of getQuestions(post)) {
       const n = (q.notes || '').trim();
@@ -1028,7 +1126,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     </span>
                   ) : null}
                 </div>
-                {profileLoading ? (
+                {descriptionLoading ? (
                   <div className="mt-3 max-w-2xl space-y-2" aria-label="Loading summary" aria-busy="true">
                     <span className="block h-4 w-full animate-pulse rounded bg-[hsl(222,12%,88%)]" />
                     <span className="block h-4 w-4/5 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
@@ -1170,11 +1268,10 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               ))}
 
               {/* Banner explaining the actual limit, which is a different limit
-                  for each audience, so the copy has to be too. Neither is
-                  capped on how many notes they can browse any more: a guest's
-                  notes are shortened, and Free/Basic get every note in full but
-                  cannot sort, search or filter. Saying "unlimited access to
-                  every post" here would now be selling something they have. */}
+                  for each audience, so the copy has to be too. A guest sees the
+                  newest ten, shortened, and signs in for more ("Load more" asks
+                  them to); Free/Basic browse everything but get the 2 newest in
+                  full, the rest shortened, and cannot sort, search or filter. */}
               {archivePage === null && restrictedBrowsing && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
                   <div className="flex items-start gap-3">
@@ -1184,13 +1281,13 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
                         {signedOut
-                          ? 'Every question, shortened answers'
-                          : 'Sorting and filters are an Advanced feature'}
+                          ? 'The newest notes, shortened answers'
+                          : 'Read every note in full with Advanced'}
                       </p>
                       <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
                         {signedOut
-                          ? `Browse all ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes for ${company.name}. Each answer is trimmed to its first line — create a free account to read them in full.`
-                          : `Every one of these ${noteTotal ? `${noteTotal.toLocaleString()} ` : ''}notes is yours to read in full. Upgrade to Advanced to search them by keyword, sort them, and filter by round, level and date.`}
+                          ? `See the newest notes for ${company.name}, each answer trimmed to its first line — create a free account to browse ${noteTotal ? `all ${noteTotal.toLocaleString()}` : 'them all'} and read them in full.`
+                          : `Your plan includes the 2 newest notes for ${company.name} in full; the rest show the first line of each answer. Upgrade to Advanced to read ${noteTotal ? `all ${noteTotal.toLocaleString()} notes` : 'every note'} in full, and to search, sort and filter them.`}
                       </p>
                     </div>
                   </div>
@@ -1304,17 +1401,17 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                           </div>
 
                           {/* F7 — leading sample of the candidate's own notes.
-                              Rendered only for signed-out readers, which is the
-                              one case where the text arrived pre-truncated: the
-                              public endpoint returns a single sentence per
+                              Rendered only where the text arrived pre-truncated
+                              — signed-out readers, and Free/Basic cards past the
+                              2 newest: the server returns a single sentence per
                               question, so there is no withheld remainder in the
-                              DOM to hide. Signed-in readers get the full notes
+                              DOM to hide. Untrimmed readers get the full notes
                               on the note page itself.
 
                               This element is what the page's JSON-LD names in
                               hasPart.cssSelector — keep the class and the
                               selector in step (see the useSeo call above). */}
-                          {signedOut && firstNoteOf(post) && (
+                          {(signedOut || isPlanPreview(post, i)) && firstNoteOf(post) && (
                             <div
                               className="mb-5 rounded-xl border border-[hsl(220,16%,92%)] bg-[hsl(220,20%,98%)] px-4 py-3"
                               onClick={(e) => e.stopPropagation()}
@@ -1331,8 +1428,8 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                                 company={post.company || company.name}
                                 role={post.role}
                                 round={post.round}
-                                onUnlock={() => navigate(buildAuthPath(companyPath))}
-                                label="Create a free account to read the full write-up"
+                                onUnlock={() => (signedOut ? navigate(buildAuthPath(companyPath)) : setUpgradeOpen(true))}
+                                label={signedOut ? 'Create a free account to read the full write-up' : 'Upgrade to Advanced to read the full write-up'}
                               />
                             </div>
                           )}
@@ -1405,35 +1502,61 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 })}
               </div>
 
-              {/* Load More */}
-              {/* Guests paginate off the real match count the public endpoint
-                  returns; members off "did this page come back full", since the
-                  authenticated search has no total. Never in the archive view —
-                  there the next page is a URL. */}
+              {/* Load More — the company page's only way past the newest ten
+                  (it has no pager; see below). Members load the next page.
+                  Guests see it only when there is more (off the real match
+                  count the public endpoint returns) and it sends them to sign
+                  in instead. Never in the archive view — there the next page
+                  is a URL. */}
               {archivePage === null && posts.length > 0 && (signedOut ? hasMorePublic : hasMore) && !loading && (
                 <div className="text-center pt-6 pb-2">
                   <Button
                     variant="outline"
-                    onClick={handleLoadMore}
+                    onClick={signedOut ? () => navigate(buildAuthPath(companyPath)) : handleLoadMore}
                     className="text-[hsl(221,91%,60%)] border-[hsl(221,91%,60%)]/20 hover:bg-[hsl(221,91%,60%)]/5 rounded-xl"
                   >
-                    Load more experiences
+                    {signedOut ? (
+                      <>
+                        <Lock className="w-3.5 h-3.5" />
+                        Sign in to load more experiences
+                      </>
+                    ) : (
+                      'Load more experiences'
+                    )}
                   </Button>
                 </div>
               )}
 
-              {/* ── The crawlable pager ──
-                  Real <a href> links, which is the entire point: "Load more"
-                  above is a button, and a crawler never presses it, so ten
-                  notes per company was everything anything could reach. These
-                  links are also on the company page itself, not just on the
-                  archive pages — otherwise the whole series is orphaned, since
-                  the pages are deliberately kept out of the sitemap.
+              {/* FAQ — company page of the public surface only, after the note
+                  cards. Markup, copy and position match the server's faqSection
+                  (api/_render/company.ts). */}
+              {faq.length > 0 && (
+                <section className="mt-10">
+                  <h2 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">{company.name} interview FAQ</h2>
+                  {faq.map(({ question, answer }) => (
+                    <article key={question} className="bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4">
+                      <div className="p-6">
+                        <h3 className="text-sm font-semibold text-[hsl(222,22%,15%)]">{question}</h3>
+                        <p className="mt-3 text-sm text-[hsl(222,12%,45%)]">{answer}</p>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+
+              {/* ── The crawlable pager — archive pages only ──
+                  Real <a href> links between /page/1..n. The company page
+                  itself does not show it (product call, 2026-10-12): there
+                  "Load more" is the way forward. Crawlers still reach the
+                  series: pages 2+ are in sitemap-company-pages.xml, and every
+                  archive page links to the others — which is also the only
+                  link to page 1 (its canonical is the company page, so it is
+                  not in the sitemap). The server renders the same rule.
 
                   <Link> renders a plain anchor with a resolvable href, so the
                   markup a crawler reads after hydration matches what the server
                   sent. */}
-              {isPublic && archivePageCount > 1 && (
+              {isPublic && archivePage !== null && archivePageCount > 1 && (
                 <nav className="pt-8 pb-2" aria-label="All notes, oldest first">
                   <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[hsl(222,12%,45%)]">
                     Every note, oldest first

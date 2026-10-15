@@ -5,13 +5,14 @@ import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Bookmark, Clock, ChevronDow
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
 import { Button } from '../../components/newDesign/ui/button';
-import { getPost, getPublicPost, normalizePublicPosts, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
+import { getPost, getPosts, getPublicPost, normalizePublicPosts, getComments, createComment, deleteComment, getReplies, createReply, deleteReply, likePost, unlikePost, savePost, unsavePost } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
 import { buildAuthPath } from '@/utils/returnTo';
 import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
+import { useCompanyPasses } from '@/hooks/useCompanyPass';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
@@ -115,6 +116,10 @@ interface ExperiencePost {
   saveCount?: number;
   liked?: boolean;
   saved?: boolean;
+  // Explicitly null on a trimmed payload (guest, or a Free/Basic preview) —
+  // and on an anonymous post, which is why isAnonymous is read alongside it.
+  user?: { id?: string; name?: string } | null;
+  isAnonymous?: boolean;
 }
 
 // ─── AI hints for one question ──────────────────────────
@@ -192,7 +197,8 @@ export function ExperienceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser, isAuthenticated } = useAuth();
-  const { planData } = useUserPlan();
+  const { planData, isPremium, isLoading: isPlanLoading } = useUserPlan();
+  const { find: findCompanyPass } = useCompanyPasses();
   const posthog = usePostHog();
 
   // Two things decide the shell, and they are not the same thing:
@@ -221,9 +227,10 @@ export function ExperienceDetailPage() {
   const [post, setPost] = useState<ExperiencePost | null>(null);
   const [postLoading, setPostLoading] = useState(true);
 
-  // ── Plan-tier access gate ──
-  // Free/Basic users can only open the 2 newest posts per company; the 3rd+
-  // returns 403 INSUFFICIENT_PLAN_TIER, which we surface as an upgrade prompt.
+  // ── Plan-tier access gate (legacy) ──
+  // Free/Basic used to get 403 INSUFFICIENT_PLAN_TIER on the 3rd+ post per
+  // company. The backend now answers 200 with a trimmed payload instead (see
+  // isPlanPreview below); this dialog only fires if an older backend still 403s.
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   // ── Guest access gate ──
@@ -296,7 +303,13 @@ export function ExperienceDetailPage() {
   // Only usable when it is for THIS note: the SPA keeps the script tag around
   // for one navigation, and a stale seed would render another candidate's
   // write-up under this URL.
-  const seed = PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED : null;
+  //
+  // Guests only. The server renders every /experience/:id load from the public
+  // endpoint, so the seed is the trimmed payload (one sentence per note,
+  // `user: null`) whoever is reading. A signed-in reader must refetch: Advanced+
+  // would otherwise read trimmed notes as if they were whole, and Free/Basic
+  // would be shown the preview banner on their 2 newest notes.
+  const seed = signedOut && PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED : null;
 
   const fetchPost = useCallback(async () => {
     if (!id) return;
@@ -458,6 +471,55 @@ export function ExperienceDetailPage() {
   // back to the post payload's count for the window before the thread loads,
   // so the heading does not flash "(0)" on a note that has comments.
   const commentTotal = comments.length || (post?.commentCount ?? 0);
+
+  // ── Free/Basic preview ──
+  // Free/Basic readers get the 2 newest notes per company in full (and every
+  // note of a company they hold a Company Pass for); every other note comes
+  // back 200 in the guest shape — notes cut to their first sentence, `user:
+  // null`. The payload has no "trimmed" flag, and `user: null` alone cannot
+  // say (an anonymous full note has it too), so the rule is the one the API
+  // documents (frontend-community-api.md §1): look the note up among the
+  // company's first 2 search rows, which for FREE/BASIC are its 2 newest — the
+  // same query the server trims by. A note with an author shown is full and
+  // needs no lookup; so is everything for Advanced+ and pass holders.
+  const needsRankCheck =
+    !signedOut &&
+    !isPlanLoading &&
+    !isPremium &&
+    !!post &&
+    post.user === null &&
+    !findCompanyPass(post.company);
+  const [rank, setRank] = useState<{ id: string; trimmed: boolean } | null>(null);
+  useEffect(() => {
+    if (!needsRankCheck || !post) return;
+    let cancelled = false;
+    getPosts({ company: post.company, page: 0 })
+      .then((res: any) => {
+        const rows = res.data?.data ?? res.data;
+        const newest = (Array.isArray(rows) ? rows : []).slice(0, 2).map((r: { id: string }) => r.id);
+        if (!cancelled) setRank({ id: post.id, trimmed: !newest.includes(post.id) });
+      })
+      .catch(() => {
+        // Lookup failed: fall back to the payload alone, which is wrong only
+        // for anonymous notes.
+        if (!cancelled) setRank({ id: post.id, trimmed: !post.isAnonymous });
+      });
+    return () => { cancelled = true; };
+  }, [needsRankCheck, post]);
+  const isPlanPreview = needsRankCheck && rank?.id === post?.id && !!rank?.trimmed;
+  const notesTrimmed = signedOut || isPlanPreview;
+  const upgradeGate = useCallback(() => navigate('/#pricing'), [navigate]);
+
+  // paywall_viewed —— 免费/Basic 用户打开删节版面经（每家公司最新 2 篇以外）时上报。
+  useEffect(() => {
+    if (!isPlanPreview) return;
+    safeCapture(posthog, EVENTS.PAYWALL_VIEWED, {
+      note_id: id ?? null,
+      required_tier: 'advanced',
+      user_current_tier: planData.currentPlan.toLowerCase(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlanPreview, id]);
 
   // ── Head tags + paywall declaration ──
   //
@@ -967,6 +1029,30 @@ export function ExperienceDetailPage() {
 
               {/* ── Section 3: Questions ── */}
               <div className="mb-5">
+                {/* Free/Basic preview: says why the notes stop after one line,
+                    which a guest learns from the sign-in copy but a signed-in
+                    reader otherwise would not. */}
+                {isPlanPreview && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[hsl(221,91%,60%)]/20 bg-[hsl(221,91%,60%)]/[0.04] px-5 py-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(221,91%,60%)]/10">
+                        <Lock className="size-4 text-[hsl(221,91%,60%)]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">You're reading a preview</p>
+                        <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
+                          Free and Basic plans include the 2 newest notes per company in full. Upgrade to Advanced to read every note in full.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={upgradeGate}
+                      className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
+                    >
+                      Upgrade
+                    </Button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-4 px-1">
                   <h2 className="text-lg font-semibold text-[hsl(222,22%,15%)]">
                     Questions Asked
@@ -1056,7 +1142,7 @@ export function ExperienceDetailPage() {
                                         A
                                       </div>
                                       <span className="text-xs font-medium text-[hsl(222,12%,45%)]">Author's notes</span>
-                                      {signedOut && (
+                                      {notesTrimmed && (
                                         <span className="ml-auto flex items-center gap-1 text-[10px] font-medium text-[hsl(222,12%,55%)]">
                                           <Lock className="w-2.5 h-2.5" />
                                           First line only
@@ -1067,13 +1153,14 @@ export function ExperienceDetailPage() {
                                         note runs on into a blurred continuation rather than
                                         stopping dead. Members get the note itself, markdown and
                                         all. See LockedNoteTail for what the blurred text is. */}
-                                    {signedOut ? (
+                                    {notesTrimmed ? (
                                       <LockedNoteTail
                                         text={q.notes}
                                         company={post.company}
                                         role={post.role}
                                         round={post.round}
-                                        onUnlock={signInGate}
+                                        onUnlock={signedOut ? signInGate : upgradeGate}
+                                        label={signedOut ? undefined : 'Upgrade to Advanced to read the full note'}
                                         // The selector this page's JSON-LD names
                                         // in hasPart.cssSelector — keep the two
                                         // in step (see the useSeo call above).

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Menu, X, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -14,10 +14,15 @@ const NAV_LINKS = [
   { label: 'Blog', to: '/blog' },
   { label: 'Pricing', to: '/#pricing' },
   { label: 'FAQ', to: '/#faq' },
+  { label: 'About', to: '/about' },
 ];
 
 export function Navbar() {
   const navigate = useNavigate();
+  // The current page's link is drawn in the accent colour. Hash links share
+  // the home path, so only real routes can be "current".
+  const { pathname } = useLocation();
+  const linkColor = (to: string) => (!to.includes('#') && pathname === to ? '#2E5BFF' : '#4A4D57');
   const { user, logout } = useAuth();
   const { planData, isLoading: isPlanLoading } = useUserPlan();
 
@@ -95,15 +100,15 @@ export function Navbar() {
         </Link>
 
         {/* Desktop nav links */}
-        <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+        <div className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
           {NAV_LINKS.map(({ label, to }) => (
             <Link
               key={label}
               to={to}
               className="text-[14px] transition-colors duration-150"
-              style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
+              style={{ color: linkColor(to), fontFamily: "'Inter', sans-serif" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#2E5BFF')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = linkColor(to))}
             >
               {label}
             </Link>
@@ -113,7 +118,7 @@ export function Navbar() {
         {/* CTA */}
         <div className="flex items-center gap-3">
           {user ? (
-            <div className="relative hidden md:block" ref={avatarRef}>
+            <div className="relative hidden lg:block" ref={avatarRef}>
               <button
                 onClick={() => setAvatarOpen((v) => !v)}
                 aria-label="Account menu"
@@ -176,7 +181,7 @@ export function Navbar() {
             <>
               <button
                 onClick={goAuth}
-                className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
+                className="hidden lg:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
                 style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif", background: 'transparent' }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#0A0A0A')}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
@@ -185,7 +190,7 @@ export function Navbar() {
               </button>
               <button
                 onClick={goSignup}
-                className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
+                className="hidden lg:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
                 style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#2E5BFF')}
@@ -195,7 +200,7 @@ export function Navbar() {
             </>
           )}
           <button
-            className="md:hidden p-2 rounded-lg"
+            className="lg:hidden p-2 rounded-lg"
             style={{ color: '#0A0A0A' }}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle menu"
@@ -208,7 +213,7 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileMenuOpen && (
         <div
-          className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
+          className="lg:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
           style={{ borderColor: '#E8E8EA' }}
         >
           {NAV_LINKS.map(({ label, to }) => (
@@ -216,7 +221,7 @@ export function Navbar() {
               key={label}
               to={to}
               className="text-[15px]"
-              style={{ color: '#4A4D57' }}
+              style={{ color: linkColor(to) }}
               onClick={() => setMobileMenuOpen(false)}
             >
               {label}

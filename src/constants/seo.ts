@@ -11,8 +11,9 @@
 export const SEO_COPY = {
   home: {
     title: 'Screna AI - AI Mock Interview & Interview Preparation Platform',
+    // Must match index.html's meta description (the llms.txt positioning).
     description:
-      'Ace your next interview with AI-powered mock interviews, personalized preparation plans, and expert mentors. Practice technical, behavioral, and system design interviews.',
+      'Screna AI is an interview preparation platform for tech job seekers: AI mock interviews, personalized training plans, real interview experiences, and 1:1 mentors.',
   },
   blog: {
     title: 'Blog — Interview Prep & Career Insights | Screna AI',
@@ -38,6 +39,11 @@ export const SEO_COPY = {
     title: 'Contact | Screna AI',
     description:
       'Get in touch with the Screna AI team about the product, partnerships, mentorship, or support. We reply to every message we receive.',
+  },
+  about: {
+    title: 'About Screna AI — Interview Preparation Platform',
+    description:
+      'Screna AI brings together AI mock interviews, real interview experiences, and 1:1 mentors to help tech job seekers prepare for their next role.',
   },
   privacy: {
     title: 'Privacy Policy | Screna AI',

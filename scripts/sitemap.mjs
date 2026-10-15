@@ -29,6 +29,8 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import {
   PRERENDER_STATIC,
+  companyPageCount,
+  companyPageWindow,
   companySlug,
   eligibleCompanies,
   flattenCompanyStats,
@@ -148,7 +150,9 @@ async function blogPosts() {
 
 /**
  * Every published note for one company, by walking its pages until one comes
- * back empty.
+ * back empty, plus the endpoint's cross-page `total` (falling back to the row
+ * count when it reports none). `total` is what /page/:n is cut from, so the
+ * archive URLs below are counted off it rather than off stats' postCount.
  *
  * Queried by the exact display name, url-encoded: 'AT&T' and 'Booking.com' are
  * real company names and an unencoded `&` truncates the query string, which
@@ -156,6 +160,7 @@ async function blogPosts() {
  */
 async function companyNotes(name) {
   const rows = [];
+  let total = null;
   for (let page = 0; page <= MAX_PAGES_PER_COMPANY; page += 1) {
     const data = await getJson(
       `${COMMUNITY}/posts/search?${new URLSearchParams({ company: name, page: String(page) })}`,
@@ -165,10 +170,10 @@ async function companyNotes(name) {
     rows.push(...batch);
     // The endpoint reports a cross-page total; stop as soon as it is covered
     // rather than spending one more request to see an empty page.
-    const total = Number.isFinite(data?.total) ? data.total : null;
+    total = Number.isFinite(data?.total) ? data.total : null;
     if (total !== null && rows.length >= total) break;
   }
-  return rows;
+  return { rows, total: total ?? rows.length };
 }
 
 async function main() {
@@ -181,10 +186,9 @@ async function main() {
   const names = [...new Set(flattenCompanyStats(stats).map((c) => c.company).filter(Boolean))];
 
   // Company PAGES, on the other hand, are keyed by slug and gated on the note
-  // threshold — one URL per company that earns an indexed page. The /page/:n
-  // children are deliberately absent: they are navigation, and 1,832 list pages
-  // would dilute a file whose purpose is to advertise the note pages they lead
-  // to. Google follows their links without being told about them.
+  // threshold — one URL per company that earns an indexed page. Their /page/:n
+  // archive children are gated the same way (below the threshold they render
+  // `noindex, follow`) and listed in their own file.
   const companies = eligibleCompanies(stats);
 
   const scanned = await mapLimit(names, SHARD_CONCURRENCY, async (name) => {
@@ -194,14 +198,15 @@ async function main() {
       // One company's notes missing is a gap in coverage, not a reason to
       // publish no sitemap at all — but it must be visible in the build log.
       console.warn(`[sitemap] ${name}: scan failed (${err.message}) — its notes are not advertised`);
-      return [];
+      return { rows: [], total: 0 };
     }
   });
+  const feedByName = new Map(names.map((name, i) => [name, scanned[i]]));
 
   // Deduplicated by id: a note reached through two spellings of its company is
   // still one page.
   const byId = new Map();
-  for (const row of scanned.flat()) {
+  for (const row of scanned.flatMap((s) => s.rows)) {
     if (row?.id && !byId.has(row.id)) byId.set(row.id, row);
   }
   const allNotes = [...byId.values()];
@@ -231,6 +236,39 @@ async function main() {
       ),
     ),
   ]);
+
+  // Company archive pages (/page/:n), for the same companies. Page 1 is left
+  // out: its canonical is the company page itself, and a sitemap lists only
+  // canonical URLs. The count and each window come from the scan's `total` —
+  // the number the renderer cuts pages from (collectPage) — so every URL here
+  // is one the server will answer. A company whose scan failed lists nothing.
+  // lastmod is the newest note in the page's window.
+  const archiveEntries = [];
+  for (const c of companies) {
+    const feed = feedByName.get(c.company);
+    if (!feed || feed.rows.length === 0) continue;
+    for (let n = 2; n <= companyPageCount(feed.total); n += 1) {
+      const { from, take } = companyPageWindow(feed.total, n);
+      // A one-note page usually renders under RENDERED_MIN_WORDS and answers
+      // `noindex` (18 of 25 measured live, 2026-10-09; no page with 2+ notes
+      // did, 0 of 205). The word count needs the rendered body, which this
+      // script does not build, so skip them rather than list a noindex URL.
+      // Only ever the last page — every other window is a full ten.
+      if (take < 2) continue;
+      const stamps = feed.rows
+        .slice(from, from + take)
+        .map((p) => isoDate(p.updatedAt ?? p.createdAt ?? p.date))
+        .filter(Boolean)
+        .sort();
+      archiveEntries.push(
+        urlEntry(`${SITE_URL}/interview-questions/${c.slug}/page/${n}`, stamps.at(-1)),
+      );
+    }
+  }
+  for (let i = 0; i < archiveEntries.length; i += MAX_URLS_PER_FILE) {
+    const suffix = i === 0 ? '' : `-${i / MAX_URLS_PER_FILE + 1}`;
+    files.push([`sitemap-company-pages${suffix}.xml`, urlset(archiveEntries.slice(i, i + MAX_URLS_PER_FILE))]);
+  }
 
   // Notes split by the month they were last touched. Month, rather than a flat
   // numbered split, so a file's name says what changed: a rebuild rewrites the
@@ -265,7 +303,8 @@ async function main() {
   console.log(
     `[sitemap] scanned ${names.length} companies -> ${allNotes.length} notes ` +
       `(${noteUrls} clear the content gate); ` +
-      `${companies.length} company pages; ${posts.length} blog posts; ` +
+      `${companies.length} company pages; ${archiveEntries.length} company archive pages; ` +
+      `${posts.length} blog posts; ` +
       `${files.length} child sitemaps + index`,
   );
   if (noteUrls === 0) {

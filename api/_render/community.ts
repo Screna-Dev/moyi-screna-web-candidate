@@ -176,6 +176,28 @@ export async function fetchCompanyProfile(name: string): Promise<CompanyProfile 
 }
 
 /**
+ * GET /community/public/companies/breakdown. Database counts, so `totalPosts`
+ * is the same number as profile.postCount. `posts` counts write-ups and
+ * `questions` counts questions — not comparable. roundTopics is keyed by each
+ * topRounds name; read it in topRounds order.
+ */
+export interface CompanyBreakdown {
+  company?: string;
+  totalPosts?: number;
+  topRoles?: { name: string; posts: number }[];
+  topRounds?: { name: string; posts: number }[];
+  roundTopics?: Record<string, { name: string; questions: number }[]>;
+}
+
+/** One company's breakdown; null when the company does not exist (400/NOT_FOUND). */
+export async function fetchCompanyBreakdown(name: string): Promise<CompanyBreakdown | null> {
+  return getJson<CompanyBreakdown>(
+    `${COMMUNITY}/companies/breakdown?${new URLSearchParams({ company: name })}`,
+    8000,
+  );
+}
+
+/**
  * One page of a company's notes, newest first, plus the cross-page total.
  *
  * Sorting is fixed to NEWEST server-side and no sort parameter is read, which

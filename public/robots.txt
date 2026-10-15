@@ -66,6 +66,7 @@ Allow: /experience
 Allow: /faq
 Allow: /help
 Allow: /contact
+Allow: /about
 Allow: /privacy
 Allow: /terms
 Allow: /cookies

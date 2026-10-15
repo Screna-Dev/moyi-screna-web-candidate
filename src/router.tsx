@@ -14,6 +14,7 @@ import FaqPage from './pages/newDesign/home/faq-page';
 import { BlogListPage } from './pages/newDesign/blog/blog-list';
 import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 import { ContactPage } from './pages/newDesign/contact';
+import { AboutPage } from './pages/newDesign/about';
 import { HelpCenterPage } from './pages/newDesign/help-center';
 import { PrivacyPolicy } from './pages/newDesign/privacy-policy';
 import { CookiePolicy } from './pages/newDesign/cookie-policy';
@@ -276,6 +277,7 @@ export const router = createBrowserRouter([
       // a bounce to /auth.
       { path: '/experience/:id', element: <ExperienceDetailPage /> },
       { path: '/contact',element: <ContactPage />},
+      { path: '/about', element: <AboutPage /> },
       { path: '/help',element: <HelpCenterPage />},
       { path: '/privacy',element: <PrivacyPolicy/>},
       { path: '/cookies',element: <CookiePolicy/>},
@@ -345,7 +347,7 @@ export const router = createBrowserRouter([
         },
       { path: '*', element: <ErrorBoundary /> },
 
-      // admin — ADMIN sees full console; OPS sees only Job Applications
+      // admin — ADMIN sees full console; OPS sees only Job Application
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },
       { path: '/redeem-code', element: <AdminRoute><AdminRedeemCodes /></AdminRoute> },
       { path: '/audit-logs', element: <AdminRoute><AdminAuditLogs /></AdminRoute> },

@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
 import { markPendingCheckout } from '@/utils/pendingCheckout';
 import { buildAuthPath } from '@/utils/returnTo';
-import { useSeo, SITE_URL } from '@/hooks/useSeo';
+import { useSeo } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
-import { SOCIAL_PROFILE_URLS, SUPPORT_EMAIL } from '@/constants/site';
+import { ORGANIZATION_JSON_LD } from '@/constants/organization';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 // WebP, resized to ~2x display size (see scripts/optimize-images.mjs).
 // These nine images were 9.5 MB as PNGs and dominated the landing page's LCP;
@@ -40,26 +40,18 @@ import avJordan from '@/imports/avatars/jordan-blake.jpg';
 import avPriya from '@/imports/avatars/priya-shah.jpg';
 import avEthan from '@/imports/avatars/ethan-wu.jpg';
 
-// ─── Structured data ────────────────────────────────────────────────────────
-// Site-level Organization entity. index.html carries a separate WebApplication
-// block (untouched by useSeo, since it has no data-seo marker) — the two are
-// complementary: one describes the company, the other the product.
-const ORGANIZATION_JSON_LD = {
-  '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'Screna AI',
-  url: SITE_URL,
-  logo: `${SITE_URL}/logo.png`,
-  description:
-    'AI-driven interview preparation: mock interviews, personalized training plans, a real interview experience library, and expert mentors.',
-  sameAs: SOCIAL_PROFILE_URLS,
-  contactPoint: {
-    '@type': 'ContactPoint',
-    contactType: 'customer support',
-    email: SUPPORT_EMAIL,
-    url: `${SITE_URL}/contact`,
-  },
-};
+// ─── Nav ─────────────────────────────────────────────────────────────────────
+// The home page draws its own nav bar rather than the shared Navbar, so its
+// links are kept here — the same set as NAV_LINKS in components/newDesign/home/
+// navbar.tsx. Hash links scroll within this page.
+const HOME_NAV_LINKS = [
+  { label: 'Features', href: '#features' },
+  { label: 'Interview Questions', href: '/interview-questions' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'Pricing', href: '#pricing' },
+  { label: 'FAQ', href: '#faq' },
+  { label: 'About', href: '/about' },
+];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
@@ -105,6 +97,8 @@ const FAQ_ITEMS = [
   },
 ];
 
+// No Basic card: the backend stopped selling BASIC on 2026-08-28 (checkout
+// returns 400). BASIC stays in PlanTier for existing subscribers.
 const PLANS: Plan[] = [
   {
     name: 'Free',
@@ -117,19 +111,6 @@ const PLANS: Plan[] = [
       'Book 1-on-1 mentorship sessions with industry experts',
     ],
     cta: 'Start for free',
-    highlighted: false,
-  },
-  {
-    name: 'Basic',
-    tier: 'BASIC',
-    price: '$7.99/mo',
-    tagline: 'Build your foundation',
-    features: [
-      '100 free credits / month',
-      'Limited access to InterviewPrep Note',
-      'Book 1-on-1 mentorship sessions with industry experts',
-    ],
-    cta: 'Get Basic',
     highlighted: false,
   },
   {
@@ -955,17 +936,11 @@ export function HomePage() {
           </Link>
 
           {/* Desktop nav links */}
-          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+          <div className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+            {HOME_NAV_LINKS.map(({ label: link, href }) => (
               <a
                 key={link}
-                href={
-                  link === 'Blog'
-                    ? '/blog'
-                    : link === 'Interview Questions'
-                    ? '/interview-questions'
-                    : `#${link.toLowerCase()}`
-                }
+                href={href}
                 className="text-[14px] transition-colors duration-150"
                 style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
                 onMouseEnter={(e) =>
@@ -983,7 +958,7 @@ export function HomePage() {
           {/* CTA */}
           <div className="flex items-center gap-3">
             {user ? (
-              <div className="relative hidden md:block" ref={avatarRef}>
+              <div className="relative hidden lg:block" ref={avatarRef}>
                 <button
                   onClick={() => setAvatarOpen((v) => !v)}
                   aria-label="Account menu"
@@ -1046,7 +1021,7 @@ export function HomePage() {
               <>
                 <button
                   onClick={goAuth}
-                  className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
+                  className="hidden lg:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-all duration-150"
                   style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif", background: 'transparent' }}
                   onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#0A0A0A')}
                   onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
@@ -1055,7 +1030,7 @@ export function HomePage() {
                 </button>
                 <button
                   onClick={goSignup}
-                  className="hidden md:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
+                  className="hidden lg:inline-flex items-center justify-center h-9 px-5 rounded-full text-[14px] font-medium text-white transition-all duration-150 active:scale-95"
                   style={{ background: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
                   onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#1E48E6')}
                   onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#2E5BFF')}
@@ -1065,7 +1040,7 @@ export function HomePage() {
               </>
             )}
             <button
-              className="md:hidden p-2 rounded-lg"
+              className="lg:hidden p-2 rounded-lg"
               style={{ color: '#0A0A0A' }}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle menu"
@@ -1078,19 +1053,13 @@ export function HomePage() {
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div
-            className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
+            className="lg:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
             style={{ borderColor: '#E8E8EA' }}
           >
-            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {HOME_NAV_LINKS.map(({ label: link, href }) => (
               <a
                 key={link}
-                href={
-                  link === 'Blog'
-                    ? '/blog'
-                    : link === 'Interview Questions'
-                    ? '/interview-questions'
-                    : `#${link.toLowerCase()}`
-                }
+                href={href}
                 className="text-[15px]"
                 style={{ color: '#4A4D57' }}
                 onClick={() => setMobileMenuOpen(false)}
@@ -1644,7 +1613,7 @@ export function HomePage() {
           </div>
 
           {/* Pricing cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
             {PLANS.map((plan, i) => (
               <PricingCard
                 key={i}

@@ -28,6 +28,7 @@ export const PRERENDER_STATIC = [
   '/faq',
   '/help',
   '/contact',
+  '/about',
   '/privacy',
   '/terms',
   '/cookies',
@@ -336,6 +337,159 @@ export function companySeoDescription(name, noteCount, page, pageCount) {
     ? `${name} interview notes, page ${page} of ${pageCount}: verbatim questions from real interviews, oldest first.`
     : `${noteCount} real ${name} interview write-ups: verbatim questions by role, round and level.`;
   return core.slice(0, 155);
+}
+
+// ─── Company page intro + FAQ ───────────────────────────────────────────────
+//
+// The company page's opening paragraph and its FAQ, built from
+// GET /community/public/companies/breakdown. Fixed templates over the counts —
+// no generated prose, and only topic CATEGORY names, never question text.
+//
+// One implementation for both renderers: api/_render/company.ts writes these
+// strings into the HTML and the JSON-LD, and the page re-renders them on boot.
+// Neither side may assemble a sentence of its own.
+
+/** Below this many posts: the short intro, and no FAQ. */
+export const INTRO_MIN_POSTS = 20;
+/** A round with fewer posts than this gets no question of its own. */
+export const FAQ_MIN_ROUND_POSTS = 10;
+/** Rounds that are a mix of others, so "what does it cover" has no answer. */
+export const MIXED_ROUNDS = ['Onsite - Multi Round'];
+
+// Keyed by the API's round name (PostRound labels). `noun` reads after "the",
+// `short` before "write-ups", `a` is the article for `noun`.
+const ROUND_WORDS = {
+  'Recruiter / HR Screen': { noun: 'recruiter screen', short: 'recruiter screen', a: 'a' },
+  'Online Assessment (OA)': { noun: 'online assessment', short: 'online assessment', a: 'an' },
+  'Technical Phone Screen': { noun: 'technical phone screen', short: 'technical phone screen', a: 'a' },
+  'Hiring Manager Screen': { noun: 'hiring manager screen', short: 'hiring manager screen', a: 'a' },
+  'Take-home Assignment': { noun: 'take-home assignment', short: 'take-home assignment', a: 'a' },
+  'Onsite - Coding / Algorithms': { noun: 'onsite coding round', short: 'onsite coding', a: 'an' },
+  'Onsite - System Design / Architecture': { noun: 'system design round', short: 'system design', a: 'a' },
+  'Onsite - Portfolio / Case Presentation': {
+    noun: 'portfolio / case presentation round',
+    short: 'portfolio / case presentation',
+    a: 'a',
+  },
+  'Onsite - Product Sense / Strategy': { noun: 'product sense round', short: 'product sense', a: 'a' },
+  'Onsite - Behavioral / Leadership': {
+    noun: 'behavioral / leadership round',
+    short: 'behavioral / leadership',
+    a: 'a',
+  },
+  'Onsite - Cross-functional / Panel': { noun: 'cross-functional panel', short: 'cross-functional panel', a: 'a' },
+  'Onsite - Multi Round': { noun: 'multi-round onsite', short: 'multi-round onsite', a: 'a' },
+  'Executive / Final Round': { noun: 'executive / final round', short: 'executive / final round', a: 'an' },
+  'Team Matching': { noun: 'team matching round', short: 'team matching', a: 'a' },
+};
+
+function roundWords(name) {
+  const known = ROUND_WORDS[name];
+  if (known) return known;
+  const lower = String(name).toLowerCase();
+  return { noun: lower, short: lower, a: 'a' };
+}
+
+const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+
+const plural = (role) => (/s$/i.test(role) ? role : `${role}s`);
+
+/** 'A' · 'A and B' · 'A, B and C' */
+function listJoin(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** The named entries of a breakdown list; a null/blank name says nothing. */
+const named = (list) => (Array.isArray(list) ? list.filter((x) => x && x.name) : []);
+
+/** Opening paragraph. '' when there is nothing to say (no breakdown, 0 posts). */
+export function companyIntro(name, breakdown) {
+  const total = Number(breakdown?.totalPosts) || 0;
+  if (!total) return '';
+  const roles = named(breakdown.topRoles);
+  const rounds = named(breakdown.topRounds);
+
+  if (total < INTRO_MIN_POSTS) {
+    const first = `Screna has ${fmt(total)} ${name} interview ${total === 1 ? 'write-up' : 'write-ups'}.`;
+    if (!rounds.length) return first;
+    return `${first} The most reported round is the ${roundWords(rounds[0].name).noun} (${fmt(rounds[0].posts)}).`;
+  }
+
+  const sentences = [];
+  if (roles.length) {
+    const [lead, ...rest] = roles.map((r) => `${plural(r.name)} (${fmt(r.posts)})`);
+    sentences.push(
+      `Most of these ${name} write-ups come from ${lead}${rest.length ? `, then ${listJoin(rest)}` : ''}.`,
+    );
+  }
+  if (rounds.length === 1) {
+    sentences.push(`The most reported round is the ${roundWords(rounds[0].name).noun} (${fmt(rounds[0].posts)}).`);
+  } else if (rounds.length > 1) {
+    const items = rounds.map((r) => `the ${roundWords(r.name).noun} (${fmt(r.posts)})`);
+    sentences.push(`The most reported rounds are ${listJoin(items)}.`);
+  }
+  return sentences.join(' ');
+}
+
+/** FAQ entries [{ question, answer }], 0–3 of them. */
+export function companyFaq(name, breakdown) {
+  const total = Number(breakdown?.totalPosts) || 0;
+  if (total < INTRO_MIN_POSTS) return [];
+  const rounds = named(breakdown.topRounds);
+  if (!rounds.length) return [];
+
+  const faq = [];
+  const listed = rounds.map((r, i) => {
+    const w = roundWords(r.name);
+    const unit = i === 0 ? ` ${Number(r.posts) === 1 ? 'write-up' : 'write-ups'}` : '';
+    return `${w.a} ${w.noun} (${fmt(r.posts)}${unit})`;
+  });
+  faq.push({
+    question: `What rounds are in the ${name} interview?`,
+    answer: `Candidates most often report ${listJoin(listed)}.`,
+  });
+
+  // Questions 2 and 3: the first two rounds, in topRounds order, that are not
+  // a mix of others, have enough posts, and have tagged topics.
+  const topicsOf = (r) => named(breakdown.roundTopics?.[r.name]);
+  const picked = rounds
+    .filter(
+      (r) =>
+        !MIXED_ROUNDS.includes(r.name) &&
+        Number(r.posts) >= FAQ_MIN_ROUND_POSTS &&
+        topicsOf(r).length > 0,
+    )
+    .slice(0, 2);
+
+  picked.forEach((r, i) => {
+    const w = roundWords(r.name);
+    const topics = topicsOf(r).map((t, j) => `${t.name} (${fmt(t.questions)}${j === 0 ? ' questions' : ''})`);
+    const verb = topics.length === 1 ? 'topic is' : 'topics are';
+    faq.push({
+      question:
+        i === 0
+          ? `What does the ${name} ${w.noun} cover?`
+          : `What is asked in the ${name} ${w.noun}?`,
+      answer: `Across ${fmt(r.posts)} ${w.short} write-ups, the most tagged question ${verb} ${listJoin(topics)}.`,
+    });
+  });
+  return faq;
+}
+
+/** FAQPage JSON-LD for the same entries; null when there are none. */
+export function companyFaqJsonLd(name, breakdown) {
+  const faq = companyFaq(name, breakdown);
+  if (!faq.length) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map(({ question, answer }) => ({
+      '@type': 'Question',
+      name: question,
+      acceptedAnswer: { '@type': 'Answer', text: answer },
+    })),
+  };
 }
 
 // eligiblePosts / collectPublicPosts / POST_FIRST_WAVE / POST_PAGE_BUDGET used
