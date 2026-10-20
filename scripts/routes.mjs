@@ -26,6 +26,7 @@ export const PRERENDER_STATIC = [
   '/blog',
   '/interview-questions',
   '/faq',
+  '/employers',
   '/help',
   '/contact',
   '/privacy',

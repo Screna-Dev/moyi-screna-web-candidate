@@ -138,6 +138,33 @@ export type Candidate = {
   contact: ContactStatus;
 };
 
+// Employer subscription (Figma 2451:1052). Free is a one-time pool of report
+// unlocks; Business is a monthly allowance with per-unit overage up to a cap.
+export type PlanTier = 'free' | 'business';
+
+export type Invoice = {
+  id: string;
+  date: string; // "Oct 1, 2026"
+  description: string;
+  amount: number; // USD
+};
+
+export type EmployerPlan = {
+  tier: PlanTier;
+  unlockAllowance: number;
+  unlocksUsed: number;
+  sponsoredAllowance: number;
+  sponsoredUsed: number;
+  renewsOn: string; // "Nov 1, 2026"
+  resetsOn: string; // "Nov 1"
+  seats: number;
+  seatsUsed: number;
+  overageUnitPrice: number; // per report unlock past the allowance
+  overageCap: number; // USD; 0 = no overage allowed
+  overageThisMonth: number; // USD
+  invoices: Invoice[];
+};
+
 // In-page navigation for the Employers admin section. The admin console
 // switches pages with state rather than routes, so this does the same.
 export type EmployerView =
@@ -147,4 +174,5 @@ export type EmployerView =
   | { name: 'board'; jobId: string }
   | { name: 'report'; jobId: string; candidateId: string }
   | { name: 'contact'; jobId: string; candidateId: string }
-  | { name: 'wizard'; jobId?: string };
+  | { name: 'wizard'; jobId?: string }
+  | { name: 'plan' };

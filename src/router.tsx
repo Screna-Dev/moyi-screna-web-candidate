@@ -11,6 +11,7 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 // is code-split below.
 import { HomePage } from './pages/newDesign/home/home';
 import FaqPage from './pages/newDesign/home/faq-page';
+import { EmployerLandingPage } from './pages/employerLanding/employer-landing';
 import { BlogListPage } from './pages/newDesign/blog/blog-list';
 import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 import { ContactPage } from './pages/newDesign/contact';
@@ -221,6 +222,7 @@ export const router = createBrowserRouter([
       // (vercel.json also issues a 301 for /pricing at the edge in production.)
       { path: '/pricing', element: <Navigate to="/#pricing" replace /> },
       { path: '/faq', element: <FaqPage /> },
+      { path: '/employers', element: <EmployerLandingPage /> },
       { path: '/blog', element: <BlogListPage /> },
       { path: '/blog/:slug', element: <BlogPostPage /> },
       { path: '/auth', element: <AuthPage /> },

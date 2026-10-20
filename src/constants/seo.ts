@@ -14,6 +14,11 @@ export const SEO_COPY = {
     description:
       'Ace your next interview with AI-powered mock interviews, personalized preparation plans, and expert mentors. Practice technical, behavioral, and system design interviews.',
   },
+  employers: {
+    title: 'Screna for Employers — Ranked AI Interviews for Every Applicant',
+    description:
+      'Every applicant finishes an AI interview first. See the full ranked list, scores and four dimensions free, and pay only to contact the candidates you want.',
+  },
   blog: {
     title: 'Blog — Interview Prep & Career Insights | Screna AI',
     description:

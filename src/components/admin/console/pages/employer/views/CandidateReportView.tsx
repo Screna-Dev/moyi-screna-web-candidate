@@ -9,7 +9,7 @@ import { DecisionPill, ScreeningDots, UnlockDialog, copyText, initialsOf } from 
 const notConnected = (what: string) => () => toast(`${what} is not connected yet`);
 
 export function CandidateReportView({ jobId, candidateId }: { jobId: string; candidateId: string }) {
-  const { getJob, getCandidate, candidatesFor, company, unlockCandidate, setDecision, go } = useEmployerStore();
+  const { getJob, getCandidate, candidatesFor, company, setDecision, go } = useEmployerStore();
   const job = getJob(jobId);
   const c = getCandidate(candidateId);
   const [open, setOpen] = useState<string | null>('e2');
@@ -63,7 +63,7 @@ export function CandidateReportView({ jobId, candidateId }: { jobId: string; can
             }
           />
         </Card>
-        <UnlockDialog candidate={unlocking ? c : null} job={job} unlock={unlockCandidate} onClose={() => setUnlocking(false)} />
+        <UnlockDialog candidate={unlocking ? c : null} job={job} onClose={() => setUnlocking(false)} />
       </div>
     );
   }

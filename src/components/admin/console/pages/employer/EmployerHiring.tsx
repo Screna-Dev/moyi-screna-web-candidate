@@ -123,6 +123,9 @@ function ViewBody() {
       return <CandidateReportView jobId={view.jobId} candidateId={view.candidateId} />;
     case 'contact':
       return <ContactCandidateView jobId={view.jobId} candidateId={view.candidateId} />;
+    case 'plan':
+      // Billing is employer-only (/employer); admins never navigate here.
+      return <DashboardView />;
   }
 }
 

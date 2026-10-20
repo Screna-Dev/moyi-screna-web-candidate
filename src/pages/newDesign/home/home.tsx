@@ -18,27 +18,16 @@ import { SEO_COPY } from '@/constants/seo';
 import { SOCIAL_PROFILE_URLS, SUPPORT_EMAIL } from '@/constants/site';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 // WebP, resized to ~2x display size (see scripts/optimize-images.mjs).
-// These nine images were 9.5 MB as PNGs and dominated the landing page's LCP;
-// they are 1.2 MB now. The .png originals are kept in the repo as the source
-// for that script — nothing imports them.
-import imgFeatureA from '@/imports/featurea-png.webp';
+// The .png originals are kept in the repo as the source for that script —
+// nothing imports them.
 import imgWorkflowDiagram from '@/imports/Group_18.webp';
 import imgTeacup from '@/imports/App/landing-teacup.webp';
 import imgJobOffer from '@/imports/App/landing-job-offer.webp';
 import imgMicrophone from '@/imports/App/landing-microphone.webp';
 import imgNotebook from '@/imports/App/landing-notebook.webp';
-import imgFeatureB from '@/imports/featureb.webp';
-import imgFeatureC from '@/imports/featurec.webp';
-import imgDashboard from '@/imports/image-2.webp';
-// AI-generated testimonial portraits (people who don't exist — commercial-safe)
-import avMaya from '@/imports/avatars/maya-chen.jpg';
-import avDaniel from '@/imports/avatars/daniel-park.jpg';
-import avAisha from '@/imports/avatars/aisha-raman.jpg';
-import avKevin from '@/imports/avatars/kevin-liu.jpg';
-import avSofia from '@/imports/avatars/sofia-martinez.jpg';
-import avJordan from '@/imports/avatars/jordan-blake.jpg';
-import avPriya from '@/imports/avatars/priya-shah.jpg';
-import avEthan from '@/imports/avatars/ethan-wu.jpg';
+import iconCheckMuted from '@/assets/landing-candidate/check-muted.svg';
+import iconCheckPrimary from '@/assets/landing-candidate/check-primary.svg';
+import iconCheckCircle from '@/assets/landing-candidate/check-circle.svg';
 
 // ─── Structured data ────────────────────────────────────────────────────────
 // Site-level Organization entity. index.html carries a separate WebApplication
@@ -61,8 +50,9 @@ const ORGANIZATION_JSON_LD = {
   },
 };
 
+
 // ─── Types ──────────────────────────────────────────────────────────────────
-type Tab = 'AI Mock' | 'Mentorship' | 'InterviewPrep Note';
+type SystemTab = 'Partner Roles' | 'Interview Report' | 'Interview Reports Library';
 
 // Landing-page subscription tier. FREE is UI-only; the paid tiers map to the
 // backend enum (BASIC | ADVANCED | FLAGSHIP), billed MONTHLY for now.
@@ -70,111 +60,120 @@ type PlanTier = 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP';
 
 interface Plan {
   name: string;
-  tier: PlanTier;
+  // null = no purchasable backend product yet (see PLANS below).
+  tier: PlanTier | null;
   price: string;
+  priceSuffix?: string;
   tagline: string;
-  features: string[];
+  // A feature string may be { text, strong } to render it in medium weight.
+  features: (string | { text: string; strong: true })[];
+  footnote?: string;
   cta: string;
   highlighted: boolean;
   badge?: string;
 }
 
 // ─── Data ────────────────────────────────────────────────────────────────────
-const TABS: Tab[] = ['AI Mock', 'Mentorship', 'InterviewPrep Note'];
+const NAV_LINKS: { label: string; href: string }[] = [
+  { label: 'Roles', href: '/opportunities' },
+  { label: 'Interview Reports', href: '/interview-questions' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'Pricing', href: '#pricing' },
+  { label: 'FAQ', href: '#faq' },
+];
+
+const SYSTEM_TABS: SystemTab[] = ['Partner Roles', 'Interview Report', 'Interview Reports Library'];
 
 const FAQ_ITEMS = [
   {
-    q: "What if it doesn't work out — can I get a refund?",
-    a: "We offer a 3-day money-back guarantee on all paid plans. If Screna isn't right for you, reach out and we'll refund you in full — no questions asked.",
+    q: 'Does paying improve my chances of being recommended?',
+    a: 'No. Recommendations come from your interview, not your plan. Every plan, including Free, can interview for partner roles and get recommended. Paid plans show you more about where you stand.',
   },
   {
-    q: "I haven't started applying yet. Is it too early?",
-    a: "Not at all. Starting early means more reps, better stories, and less pressure when the real interviews arrive. Screna helps you build a solid prep foundation before the stakes are high.",
+    q: 'How do you deal with ghost jobs?',
+    a: 'Open roles are re-checked every 24 hours and closed postings come down automatically. Partner roles have a hiring team that agreed to review Screna candidates and reply within 7 days. Roles still being confirmed are clearly marked.',
   },
   {
-    q: 'How much time do I need to put in each week?',
-    a: 'Most users improve with 3–5 focused hours per week. Start with InterviewPrep Notes to understand what to expect, use AI Mock for targeted practice, then bring your toughest answers or strategy questions to a mentor.',
+    q: 'Will the hiring team actually see my interview?',
+    a: 'On partner roles, yes. Your four-dimension report and your interview recording go to the hiring team, and you can see when they open your report.',
   },
   {
-    q: 'How is Screna different from other job search prep platforms?',
-    a: 'Screna is built for the full preparation journey, not just one interview tool. You can understand what companies actually ask, practice with AI around your resume or target role, and get mentor guidance when you need human judgment. Interview prep is our strongest layer, but the system is designed to help you prepare for the job search as a whole.',
+    q: 'Are interview reports really free?',
+    a: 'Yes. Every plan gets a score and rank range for each partner-role interview, and Free includes 3 interview-report analyses a month. Pro adds your exact rank, percentile and question-by-question feedback on every report.',
   },
   {
-    q: "Not sure where to start? You're not alone.",
-    a: 'Email us at operations@screna.ai. A real person on the Screna team will help you figure out what to focus on next. We reply within one business day during working hours.\nMon–Fri, 9:00 AM–5:00 PM ET',
+    q: 'How do I cancel?',
+    a: 'Pro renews monthly until you cancel, and you can cancel anytime in Settings → Billing. Pro 90-Day is charged once and never renews, so there is nothing to cancel.',
+  },
+  {
+    q: "I'm on an existing plan or have credits. What changes?",
+    a: "Your current plan and credit balance stay on your account, and you can see and manage them in Settings → Billing. If anything looks off, email operations@screna.ai and we'll sort it out.",
   },
 ];
 
+// Design: Free $0 / Pro $29 a month / Pro 90-Day $79 one time.
+// Pro checks out as the backend ADVANCED tier, so its price shows what that
+// tier actually charges ($29.99), not the design's rounded $29.
+// Pro 90-Day is a one-time 90-day pass. The backend has no one-time product —
+// FLAGSHIP is a monthly subscription — so the card has no tier and its CTA
+// does not start a checkout until that product exists.
 const PLANS: Plan[] = [
   {
     name: 'Free',
     tier: 'FREE',
-    price: 'Free',
-    tagline: 'Start at no cost',
+    price: '$0',
+    tagline: 'Get seen, see your range',
     features: [
-      'Buy extra credits',
-      'Limited access to InterviewPrep Note',
-      'Book 1-on-1 mentorship sessions with industry experts',
+      '2 partner-role interviews a month',
+      'Recommended and viewed status',
+      'Score and rank range',
+      'Points behind the top 5',
+      '3 interview-report analyses a month',
     ],
     cta: 'Start for free',
     highlighted: false,
   },
   {
-    name: 'Basic',
-    tier: 'BASIC',
-    price: '$7.99/mo',
-    tagline: 'Build your foundation',
-    features: [
-      '100 free credits / month',
-      'Limited access to InterviewPrep Note',
-      'Book 1-on-1 mentorship sessions with industry experts',
-    ],
-    cta: 'Get Basic',
-    highlighted: false,
-  },
-  {
-    name: 'Advanced',
+    name: 'Pro',
     tier: 'ADVANCED',
-    price: '$29.99/mo',
-    tagline: 'For serious prep',
+    price: '$29.99',
+    priceSuffix: '/ month',
+    tagline: 'See exactly where you stand',
     features: [
-      '300 free credits / month',
-      'All access to InterviewPrep Note',
-      'Book 1-on-1 mentorship sessions with industry experts',
+      { text: '15 interviews a month, redos included', strong: true },
+      'Exact rank and percentile',
+      'Gap by dimension vs. the top 3',
+      'Question-by-question feedback',
+      '200 practice minutes a month',
+      'Every interview-report analysis',
     ],
-    cta: 'Start Advanced',
+    footnote: 'Renews monthly until you cancel. Cancel anytime in Account.',
+    cta: 'Get Pro',
     highlighted: true,
-    badge: 'Most Popular',
+    badge: 'For an active search',
   },
   {
-    name: 'Flagship',
-    tier: 'FLAGSHIP',
-    price: '$79.99/mo',
-    tagline: 'For accelerated timelines',
+    name: 'Pro 90-Day',
+    tier: null,
+    price: '$79',
+    priceSuffix: 'one time',
+    tagline: 'One job season, one payment',
     features: [
-      'Unlimited credits',
-      'All access to InterviewPrep Note',
-      'Book 1-on-1 mentorship sessions with industry experts',
+      'Everything in Pro for 90 days',
+      { text: '45 interviews, use them anytime', strong: true },
+      '600 practice minutes',
+      'Reminder before it ends',
     ],
-    cta: 'Get Flagship',
+    footnote: 'Charged once. Never renews.',
+    cta: 'Get 90 days',
     highlighted: false,
   },
 ];
 
-const MARQUEE_ROW1 = [
-  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
-  { name: 'Daniel Park', role: 'Software Engineer', company: 'Final round at Stripe', quote: 'Quick Mock let me practice when I only had 20 minutes. The feedback made the next answer immediately stronger.', initials: 'DP', avatarBg: '#FFF0ED', initialsColor: '#C94025', img: avDaniel },
-  { name: 'Aisha Raman', role: 'Data Analyst', company: 'Offer at Airbnb', quote: 'My mentor helped me turn scattered stories into answers that actually landed.', initials: 'AR', avatarBg: '#EDFFF1', initialsColor: '#1A7F33', img: avAisha },
-  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
-  { name: 'Sofia Martinez', role: 'PMM', company: 'Offer at Figma', quote: 'The notes showed me what candidates actually faced, and the AI Mock helped me rehearse with real context.', initials: 'SM', avatarBg: '#F4EEFF', initialsColor: '#7B3FE4', img: avSofia },
-];
-
-const MARQUEE_ROW2 = [
-  { name: 'Jordan Blake', role: 'Backend Engineer', company: 'Offer at Meta', quote: 'The best part was how flexible the practice felt. I could paste a job description or just jump into a quick session.', initials: 'JB', avatarBg: '#E8F3FF', initialsColor: '#1868D4', img: avJordan },
-  { name: 'Priya Shah', role: 'Strategy', company: 'Interview loop at Uber', quote: 'Mentorship gave me the strategy I was missing. AI Mock gave me the reps.', initials: 'PS', avatarBg: '#FFF0F5', initialsColor: '#C0245A', img: avPriya },
-  { name: 'Ethan Wu', role: 'Designer', company: 'Offer at Dropbox', quote: 'It felt like practicing with signal, not practicing in the dark.', initials: 'EW', avatarBg: '#EDFFFC', initialsColor: '#0E8A79', img: avEthan },
-  { name: 'Maya Chen', role: 'Product Manager', company: 'Offer at Notion', quote: 'InterviewPrep Notes helped me understand what the round was really testing. My mock sessions finally felt specific instead of generic.', initials: 'MC', avatarBg: '#EEF1FF', initialsColor: '#2E5BFF', img: avMaya },
-  { name: 'Kevin Liu', role: 'New Grad SWE', company: 'Offer at Google', quote: 'I stopped guessing what to prepare. Screna gave me a path.', initials: 'KL', avatarBg: '#FFF8E0', initialsColor: '#9A7000', img: avKevin },
+const PARTNER_ROLE_STEPS = [
+  { num: '01', title: 'One AI interview', desc: 'Built from the job description, about 20 minutes.' },
+  { num: '02', title: 'Recommended on every plan', desc: "Completing the interview gets you to the hiring team's list." },
+  { num: '03', title: 'Reply within 7 days', desc: 'You see when the hiring team opens your report.' },
 ];
 
 // ─── Hero logo marquee (old-design scrolling company logos) ───────────────────
@@ -249,253 +248,12 @@ function LogoMarquee({ logos, speed = 30 }: { logos: LogoEntry[]; speed?: number
   );
 }
 
-// ─── Feature Tab Cards ───────────────────────────────────────────────────────
-
-function AiMockCard() {
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: '#2E5CFF' }}>
-      <div
-        className="flex items-center gap-2 px-5 h-[44px]"
-        style={{ background: '#2447E0' }}
-      >
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="rounded-full"
-            style={{ width: 10, height: 10, background: 'rgba(255,255,255,0.45)' }}
-          />
-        ))}
-        <span
-          className="ml-2 text-[12px] font-medium"
-          style={{ color: 'rgba(255,255,255,0.9)', fontFamily: "'Inter', sans-serif" }}
-        >
-          AI Interview Session
-        </span>
-      </div>
-      <div className="p-6 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 space-y-2">
-            {[
-              { w: '80%', op: 0.28 },
-              { w: '60%', op: 0.15 },
-              { w: '90%', op: 0.28 },
-              { w: '55%', op: 0.15 },
-              { w: '78%', op: 0.28 },
-              { w: '58%', op: 0.15 },
-              { w: '62%', op: 0.28 },
-              { w: '38%', op: 0.15 },
-            ].map((l, i) => (
-              <div
-                key={i}
-                className="rounded-[4px]"
-                style={{
-                  height: 9,
-                  width: l.w,
-                  background: `rgba(255,255,255,${l.op})`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex-shrink-0 flex flex-col items-center justify-center rounded-full"
-            style={{
-              width: 88,
-              height: 88,
-              background: 'rgba(255,255,255,0.15)',
-            }}
-          >
-            <span
-              className="text-[32px] font-medium leading-none text-white"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-            >
-              92
-            </span>
-            <span
-              className="text-[10px]"
-              style={{ color: 'rgba(255,255,255,0.65)', fontFamily: "'Inter', sans-serif" }}
-            >
-              /100
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MentorshipCard() {
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: '#2E5CFF' }}>
-      <div
-        className="flex items-center gap-2 px-5 h-[44px]"
-        style={{ background: '#2447E0' }}
-      >
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="rounded-full"
-            style={{ width: 10, height: 10, background: 'rgba(255,255,255,0.45)' }}
-          />
-        ))}
-        <span
-          className="ml-2 text-[12px] font-medium"
-          style={{ color: 'rgba(255,255,255,0.9)', fontFamily: "'Inter', sans-serif" }}
-        >
-          Mentor Match
-        </span>
-      </div>
-      <div className="p-5 space-y-3">
-        <div
-          className="rounded-[14px] p-4 flex items-center gap-3"
-          style={{ background: '#FFF7F2', border: '1px solid #F2D0C1' }}
-        >
-          <div
-            className="rounded-[26px] flex-shrink-0"
-            style={{ width: 52, height: 52, background: '#FFB6A6' }}
-          />
-          <div className="flex-1 min-w-0">
-            <p
-              className="font-semibold text-[18px]"
-              style={{ color: '#1F2328', fontFamily: "'Inter', sans-serif" }}
-            >
-              Lena Chen
-            </p>
-            <p
-              className="text-[13px]"
-              style={{ color: '#6F6F6F', fontFamily: "'Inter', sans-serif" }}
-            >
-              Ex-Google PM • behavioral + strategy
-            </p>
-          </div>
-          <div
-            className="rounded-full px-3 py-1 flex-shrink-0"
-            style={{ background: '#1F2328' }}
-          >
-            <span
-              className="text-[13px] font-semibold text-white"
-              style={{ fontFamily: "'Inter', sans-serif" }}
-            >
-              94% fit
-            </span>
-          </div>
-        </div>
-        {[
-          { label: 'Answer review', detail: 'Tighten stories for impact, scope, and ownership.' },
-          { label: 'Mock debrief', detail: 'Replay weak moments and turn feedback into next steps.' },
-          { label: 'Prep plan', detail: 'A focused weekly plan for your target interview loop.' },
-        ].map((row, i) => (
-          <div
-            key={i}
-            className="rounded-xl px-4 flex items-center gap-4"
-            style={{
-              height: 52,
-              background: '#FFFFFF',
-              border: '1px solid #ECE7DF',
-            }}
-          >
-            <span
-              className="text-[14px] font-semibold w-28 flex-shrink-0"
-              style={{ color: '#1F2328', fontFamily: "'Inter', sans-serif" }}
-            >
-              {row.label}
-            </span>
-            <span
-              className="text-[13px]"
-              style={{ color: '#5E5E5E', fontFamily: "'Inter', sans-serif" }}
-            >
-              {row.detail}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Marquee testimonial card ─────────────────────────────────────────────────
-
-function MarqueeCard({
-  name, role, company, quote, initials, avatarBg, initialsColor, img,
-}: {
-  name: string; role: string; company: string; quote: string;
-  initials: string; avatarBg: string; initialsColor: string; img?: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const [imgFailed, setImgFailed] = useState(false);
-  return (
-    <div
-      className="flex-shrink-0 flex flex-col"
-      style={{
-        width: 304,
-        minHeight: 204,
-        padding: '24px 26px',
-        background: '#FFFFFF',
-        borderRadius: 16,
-        border: `1px solid ${hovered ? '#2E5BFF' : '#E8E8EA'}`,
-        boxShadow: hovered
-          ? '0 6px 24px rgba(46,91,255,0.10)'
-          : '0 2px 10px rgba(46,91,255,0.04)',
-        transition: 'border-color 180ms ease-out, box-shadow 180ms ease-out',
-        cursor: 'default',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Avatar + meta */}
-      <div className="flex items-center gap-3 mb-4">
-        {img && !imgFailed ? (
-          <img
-            src={img}
-            alt={name}
-            className="rounded-full flex-shrink-0 object-cover"
-            style={{ width: 36, height: 36 }}
-            loading="lazy"
-            draggable={false}
-            onError={() => setImgFailed(true)}
-          />
-        ) : (
-          <div
-            className="rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ width: 36, height: 36, background: avatarBg }}
-          >
-            <span
-              className="text-[11px] font-semibold"
-              style={{ color: initialsColor, fontFamily: "'Inter', sans-serif" }}
-            >
-              {initials}
-            </span>
-          </div>
-        )}
-        <div>
-          <p
-            className="text-[13px] font-semibold leading-[18px]"
-            style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif" }}
-          >
-            {name}
-          </p>
-          <p
-            className="text-[11px] leading-[16px]"
-            style={{ color: '#8A8F9A', fontFamily: "'Inter', sans-serif" }}
-          >
-            {role} · {company}
-          </p>
-        </div>
-      </div>
-      {/* Quote */}
-      <p
-        className="text-[13px] leading-[20px] flex-1"
-        style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
-      >
-        "{quote}"
-      </p>
-    </div>
-  );
-}
 
 // ─── How It Works — two-column layout ─────────────────────────────────────────
 
 function HowItWorksSection() {
   return (
-    <div className="bg-white size-full flex items-center justify-center">
+    <div className="w-full flex items-center justify-center">
       <div className="w-full max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col lg:flex-row gap-10 lg:gap-12 xl:gap-16 items-center py-20 lg:py-0">
 
         {/* ── Left text column ── */}
@@ -524,17 +282,17 @@ function HowItWorksSection() {
             className="text-[17px] leading-relaxed mb-10"
             style={{ color: '#2A2A2A', fontFamily: "'Inter', sans-serif", maxWidth: 400 }}
           >
-            Choose direction, practice with context, and improve with the right next step.
+            Choose a real role, interview once, and see exactly where you stand.
           </p>
 
           <div className="flex flex-col gap-4 mb-10">
             {[
-              { num: '01', label: 'Choose' },
-              { num: '02', label: 'Practice' },
-              { num: '03', label: 'Improve' },
+              { num: 'GROUP 01', label: 'Choose' },
+              { num: 'GROUP 02', label: 'Interview' },
+              { num: 'GROUP 03', label: 'Improve' },
             ].map((s, i) => (
               <div key={s.label} data-reveal data-delay={240 + i * 80} className="flex items-center gap-3">
-                <span className="text-[11px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8A8F9A', letterSpacing: '0.06em' }}>
+                <span className="text-[10px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8A8F9A', letterSpacing: '0.06em' }}>
                   {s.num}
                 </span>
                 <div className="h-px w-4 flex-shrink-0" style={{ background: '#E8E8EA' }} />
@@ -587,6 +345,7 @@ function HowItWorksSection() {
   );
 }
 
+
 // ─── Main Home Page ───────────────────────────────────────────────────────────
 export function HomePage() {
   useSeo({ ...SEO_COPY.home, path: '/', jsonLd: [ORGANIZATION_JSON_LD] });
@@ -598,7 +357,6 @@ export function HomePage() {
   const { toast } = useToast();
   const posthog = usePostHog();
 
-  const [activeTab, setActiveTab] = useState<Tab>('AI Mock');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -606,8 +364,6 @@ export function HomePage() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const avatarRef = useRef<HTMLDivElement>(null);
   const [loadingTier, setLoadingTier] = useState<PlanTier | null>(null);
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [pillStyle, setPillStyle] = useState({ left: 4, width: 196 });
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   // P4: how many times this visitor has tried to pay in this page session.
   // A retry after a failure is the same intent, not a second buyer — the
@@ -686,9 +442,19 @@ export function HomePage() {
   // there rather than changing tier from the landing page.
   // Billing cycle is MONTHLY-only for now.
   const handleSelectPlan = async (plan: Plan) => {
+    const tier = plan.tier;
+    // Pro 90-Day has no backend product yet (see PLANS) — don't start a
+    // recurring checkout for a card that promises a one-time charge.
+    if (!tier) {
+      toast({
+        title: 'Not available yet',
+        description: `${plan.name} isn't available to buy yet. Email ${SUPPORT_EMAIL} and we'll help you get set up.`,
+      });
+      return;
+    }
     // 04 — 变现: 选择套餐（发起 checkout 前上报；billing 目前仅 MONTHLY）
     safeCapture(posthog, EVENTS.PLAN_SELECTED, {
-      plan_tier: plan.tier.toLowerCase(),
+      plan_tier: tier.toLowerCase(),
       billing_cycle: 'monthly',
     });
     if (!user) {
@@ -698,12 +464,12 @@ export function HomePage() {
       navigate(buildAuthPath('/#pricing'));
       return;
     }
-    if (plan.tier === 'FREE') {
+    if (tier === 'FREE') {
       navigate('/dashboard');
       return;
     }
     // Clicking the plan you're already on → manage it in Settings → Billing.
-    if (planData.currentPlan.toUpperCase() === plan.tier) {
+    if (planData.currentPlan.toUpperCase() === tier) {
       navigate('/settings?tab=billing');
       return;
     }
@@ -716,12 +482,12 @@ export function HomePage() {
       return;
     }
 
-    setLoadingTier(plan.tier);
+    setLoadingTier(tier);
     const attempt = (paymentAttemptRef.current += 1);
     const paymentProps = {
       entry: 'landing_pricing',
       payment_type: 'subscription',
-      plan_tier: plan.tier.toLowerCase(),
+      plan_tier: tier.toLowerCase(),
       attempt,
     };
     // P4: from here on the front end can see what happened. It cannot see
@@ -731,7 +497,7 @@ export function HomePage() {
     try {
       // changePlan() owns the create-vs-change-tier decision (and its own error
       // toast) using the subscription record fetched when the app loaded.
-      const planType = (plan.tier.charAt(0) + plan.tier.slice(1).toLowerCase()) as PlanType;
+      const planType = (tier.charAt(0) + tier.slice(1).toLowerCase()) as PlanType;
       const result = await changePlan(planType);
       if (!result.success) {
         safeCapture(posthog, EVENTS.PAYMENT_REQUEST_FAILED, { ...paymentProps, reason: 'change_plan_rejected' });
@@ -743,13 +509,13 @@ export function HomePage() {
         return;
       }
 
-      const res = await PaymentService.createSubscription(plan.tier, 'MONTHLY');
+      const res = await PaymentService.createSubscription(tier, 'MONTHLY');
       const url = res?.data?.data?.url ?? res?.data?.url;
       if (url) {
         // Stripe returns to /settings?tab=billing for both success and cancel,
         // and a real payment only lands via webhook — leave a marker so the
         // billing page knows to wait instead of showing "Free".
-        markPendingCheckout('subscription', plan.tier);
+        markPendingCheckout('subscription', tier);
         safeCapture(posthog, EVENTS.CHECKOUT_STARTED, { ...paymentProps, flow: 'create_subscription' });
         window.location.href = url;
       } else {
@@ -782,9 +548,8 @@ export function HomePage() {
   }, []);
 
   // ── Scroll reveal observer ────────────────────────────────────────────────
-  // Content fades/slides in each time its section enters the viewport. With the
-  // section snap above, this means every snap to a section replays its reveal —
-  // including when you scroll back up. Reduced-motion users get a one-shot reveal.
+  // Content fades/slides in each time its section enters the viewport, including
+  // when you scroll back up. Reduced-motion users get a one-shot reveal.
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const timers = new WeakMap<Element, number>();
@@ -850,9 +615,8 @@ export function HomePage() {
     const id = location.hash.slice(1);
     // Poll until the section has mounted — on a cold load the page isn't laid
     // out yet after a fixed delay, so a single deferred attempt can miss.
-    // Scroll must be 'instant' (not 'smooth'/'auto'): the page's
-    // `scroll-behavior: smooth` + `scroll-snap-type: y mandatory` combination
-    // cancels any smooth programmatic scroll before it reaches the target.
+    // Scroll is 'instant' so the reveal observer and late layout shifts can't
+    // interrupt a long smooth scroll before it reaches the target.
     let tries = 0;
     const timer = setInterval(() => {
       const el = document.getElementById(id);
@@ -866,54 +630,6 @@ export function HomePage() {
     return () => clearInterval(timer);
   }, [location.hash]);
 
-  useEffect(() => {
-    const idx = TABS.indexOf(activeTab);
-    const el = tabRefs.current[idx];
-    const parent = el?.parentElement;
-    if (el && parent) {
-      const parentRect = parent.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      setPillStyle({
-        left: elRect.left - parentRect.left,
-        width: elRect.width,
-      });
-    }
-  }, [activeTab]);
-
-  const featureContent = {
-    'AI Mock': {
-      num: '01',
-      title: 'AI Mock Interview',
-      desc: 'Turn your target role and interview notes into focused mock sessions. Choose the question type, difficulty, and length, then get feedback that helps you improve faster.',
-      card: <AiMockCard />,
-    },
-    Mentorship: {
-      num: '02',
-      title: 'Mentorship',
-      desc: 'Get unstuck with someone who has been there. Book time with mentors who can review your answers, sharpen your strategy, and help you understand what strong candidates do differently.',
-      card: <MentorshipCard />,
-    },
-    'InterviewPrep Note': {
-      num: '03',
-      title: 'InterviewPrep Note',
-      desc: 'Browse real interview notes from candidates who have been there, filtered by company, role, and round. See what gets asked, what matters, and where to focus your prep.',
-      card: (
-        <img
-          src={imgFeatureB}
-          alt="InterviewPrep Note"
-          width={1600}
-          height={1341}
-          loading="lazy"
-          decoding="async"
-          className="w-full h-auto object-contain"
-          style={{ display: 'block', maxWidth: '100%' }}
-        />
-      ),
-    },
-  };
-
-  const feature = featureContent[activeTab];
-
   return (
     <div
       className="min-h-screen bg-white"
@@ -925,6 +641,7 @@ export function HomePage() {
           <BuyCreditsModal onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />
         )}
       </AnimatePresence>
+
 
       {/* ─── Nav ─── */}
       <nav
@@ -956,16 +673,10 @@ export function HomePage() {
 
           {/* Desktop nav links */}
           <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {NAV_LINKS.map(({ label: link, href }) => (
               <a
                 key={link}
-                href={
-                  link === 'Blog'
-                    ? '/blog'
-                    : link === 'Interview Questions'
-                    ? '/interview-questions'
-                    : `#${link.toLowerCase()}`
-                }
+                href={href}
                 className="text-[14px] transition-colors duration-150"
                 style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
                 onMouseEnter={(e) =>
@@ -983,11 +694,11 @@ export function HomePage() {
           {/* CTA */}
           <div className="flex items-center gap-3">
             <Link
-              to="/employer/login"
-              className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-full text-[14px] font-medium border transition-colors duration-150 text-[#2E5BFF] border-[#C9D6FF] hover:bg-[#F2F5FF]"
+              to="/employers"
+              className="hidden md:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-colors duration-150 text-[#4A4D57] hover:text-[#0A0A0A]"
               style={{ fontFamily: "'Inter', sans-serif" }}
             >
-              For Employers
+              For employers
             </Link>
             {user ? (
               <div className="relative hidden md:block" ref={avatarRef}>
@@ -1088,16 +799,10 @@ export function HomePage() {
             className="md:hidden bg-white border-t px-6 py-4 flex flex-col gap-4"
             style={{ borderColor: '#E8E8EA' }}
           >
-            {['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ'].map((link) => (
+            {NAV_LINKS.map(({ label: link, href }) => (
               <a
                 key={link}
-                href={
-                  link === 'Blog'
-                    ? '/blog'
-                    : link === 'Interview Questions'
-                    ? '/interview-questions'
-                    : `#${link.toLowerCase()}`
-                }
+                href={href}
                 className="text-[15px]"
                 style={{ color: '#4A4D57' }}
                 onClick={() => setMobileMenuOpen(false)}
@@ -1106,12 +811,12 @@ export function HomePage() {
               </a>
             ))}
             <Link
-              to="/employer/login"
+              to="/employers"
               onClick={() => setMobileMenuOpen(false)}
               className="text-[15px] font-medium"
               style={{ color: '#2E5BFF' }}
             >
-              For Employers
+              For employers
             </Link>
             {user ? (
               <>
@@ -1161,12 +866,55 @@ export function HomePage() {
         )}
       </nav>
 
+
+      {/* ─── Page-wide styles ─── */}
+      <style>{`
+        .hero-cta:hover { background: #1E48E6 !important; box-shadow: 0 10px 32px rgba(46,91,255,0.55) !important; transform: translateY(-1px); }
+        .hero-cta:active { transform: scale(0.97) translateY(0); }
+
+        /* ── Scroll reveal ───────────────────────────────────────────── */
+        [data-reveal] {
+          opacity: 0;
+          transform: translateY(20px);
+          transition: opacity 550ms cubic-bezier(0.16,1,0.3,1),
+                      transform 550ms cubic-bezier(0.16,1,0.3,1);
+          will-change: opacity, transform;
+        }
+        [data-reveal].sr-visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        @media (max-width: 768px) {
+          [data-reveal] { transform: translateY(12px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-reveal] {
+            transform: none !important;
+            transition: opacity 200ms linear !important;
+          }
+          nav {
+            transition: none !important;
+          }
+        }
+
+        /* Hard stop for horizontal overflow from any section (the hero's
+           decorative objects bleed past the edges on purpose). clip, not
+           hidden, so it doesn't create a scroll container. */
+        html, body { overflow-x: clip; max-width: 100%; }
+        html {
+          scroll-padding-top: calc(72px + var(--topbar-h, 0px));
+          scroll-behavior: smooth;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          html { scroll-behavior: auto !important; }
+        }
+      `}</style>
+
       {/* ─── Hero ─── */}
       <section
-        className="snap-s overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(900px,100svh)]"
+        className="relative overflow-visible lg:overflow-hidden"
         style={{
           paddingTop: 'calc(72px + var(--topbar-h, 0px))',
-          minHeight: '100svh',
           backgroundColor: '#ffffff',
           backgroundImage: 'radial-gradient(circle at 12px 12px, rgba(46,91,255,0.13) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
@@ -1180,232 +928,78 @@ export function HomePage() {
             background: 'linear-gradient(to bottom, #ffffff 0%, #ffffff 42%, rgba(255,255,255,0.6) 58%, rgba(255,255,255,0) 72%)',
           }}
         />
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 pt-16 lg:pt-20 pb-10 flex flex-col items-center relative" style={{ zIndex: 2 }}>
-
-          {/* ── Decorative dot clusters ── */}
-          <div
-            className="absolute pointer-events-none hidden lg:block"
-            style={{
-              left: 0,
-              top: 24,
-              width: 220,
-              height: 320,
-              backgroundImage: 'radial-gradient(circle, rgba(46,91,255,0.13) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-              WebkitMaskImage:
-                'linear-gradient(to right, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
-              maskImage:
-                'linear-gradient(to right, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
-              WebkitMaskComposite: 'destination-in',
-              maskComposite: 'intersect' as any,
-            }}
-          />
-          <div
-            className="absolute pointer-events-none hidden lg:block"
-            style={{
-              right: 0,
-              top: 24,
-              width: 220,
-              height: 320,
-              backgroundImage: 'radial-gradient(circle, rgba(46,91,255,0.13) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-              WebkitMaskImage:
-                'linear-gradient(to left, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
-              maskImage:
-                'linear-gradient(to left, white 0%, white 40%, transparent 100%), linear-gradient(to bottom, transparent 0%, white 18%, white 82%, transparent 100%)',
-              WebkitMaskComposite: 'destination-in',
-              maskComposite: 'intersect' as any,
-            }}
-          />
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 pt-16 pb-10 flex flex-col items-center relative" style={{ zIndex: 2 }}>
 
           {/* ── Decorative objects ── */}
           <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2 + 16px)', top: 44, zIndex: 1 }}>
-            <img src={imgTeacup} alt="" width={236} height={214} loading="lazy" decoding="async" style={{ width: 118, height: 94, objectFit: 'contain', transform: 'rotate(22.29deg)', display: 'block' }} />
+            <img src={imgTeacup} alt="" width={236} height={214} decoding="async" style={{ width: 118, height: 94, objectFit: 'contain', transform: 'rotate(22.29deg)', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2)', top: -50, zIndex: 1 }}>
-            <img src={imgNotebook} alt="" width={974} height={930} loading="lazy" decoding="async" style={{ width: 487, height: 325, objectFit: 'contain', transform: 'translateX(22%) rotate(-31.73deg)', transformOrigin: 'top right', display: 'block' }} />
+            <img src={imgNotebook} alt="" width={974} height={930} decoding="async" style={{ width: 487, height: 325, objectFit: 'contain', transform: 'translateX(22%) rotate(-31.73deg)', transformOrigin: 'top right', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ left: 'calc((100% - 100vw) / 2)', top: 270, zIndex: 1 }}>
-            <img src={imgJobOffer} alt="" width={824} height={634} loading="lazy" decoding="async" style={{ width: 412, height: 275, objectFit: 'contain', transform: 'translateX(-56%) rotate(-11.89deg)', display: 'block' }} />
+            <img src={imgJobOffer} alt="" width={824} height={634} decoding="async" style={{ width: 412, height: 275, objectFit: 'contain', transform: 'translateX(-56%) rotate(-11.89deg)', display: 'block' }} />
           </div>
           <div className="absolute pointer-events-none hidden lg:block" style={{ right: 'calc((100% - 100vw) / 2 + 20px)', top: 440, zIndex: 1 }}>
-            <img src={imgMicrophone} alt="" width={428} height={419} loading="lazy" decoding="async" style={{ width: 214, height: 143, objectFit: 'contain', transform: 'rotate(-37.94deg)', display: 'block' }} />
+            <img src={imgMicrophone} alt="" width={428} height={419} decoding="async" style={{ width: 214, height: 143, objectFit: 'contain', transform: 'rotate(-37.94deg)', display: 'block' }} />
           </div>
 
           {/* Pill badge */}
           <div
             data-reveal data-delay="0"
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[12px] mb-8"
-            style={{
-              background: '#F0F3FF',
-              color: '#2E5BFF',
-              fontFamily: "'Inter', sans-serif",
-            }}
+            className="relative inline-flex items-center px-4 py-1.5 rounded-full text-[12px] leading-[18px] mb-8"
+            style={{ background: '#F0F3FF', color: '#2E5BFF', zIndex: 2 }}
           >
-            ✶&nbsp;&nbsp;Your career prep partner
+            ✶ BUILT ONLY FOR TECH ROLES
           </div>
 
           {/* Headline */}
           <h1
             data-reveal data-delay="100"
-            className="text-center font-medium tracking-[-0.5px] sm:tracking-[-1.5px] leading-tight mb-7 max-w-[1100px] px-1"
-            style={{
-              fontSize: 'clamp(30px, 5vw, 60px)',
-              color: '#0A0A0A',
-              fontFamily: "'Inter', sans-serif",
-            }}
+            className="relative text-center font-medium tracking-[-0.5px] sm:tracking-[-1.5px] mb-7 max-w-[820px]"
+            style={{ fontSize: 'clamp(36px, 6vw, 64px)', lineHeight: 1.25, color: '#0A0A0A', zIndex: 2 }}
           >
-            {/* Break to two lines only on wide screens; wrap naturally below xl
-                so the long first line never overflows narrow viewports. */}
-            Turning practice and mentorship{' '}
-            <br className="hidden xl:block" />
-            into your next offer.
+            Know where you stand.{' '}
+            <br className="hidden sm:block" />
+            Get seen by real tech roles.
           </h1>
 
           {/* Sub text */}
-          <div
+          <p
             data-reveal data-delay="200"
-            className="text-center text-[14px] font-medium leading-relaxed mb-10 max-w-[660px]"
-            style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif", letterSpacing: '-0.01em' }}
+            className="relative text-center text-[16px] sm:text-[17px] leading-[27.6px] mb-10 max-w-[620px]"
+            style={{ color: '#4A4D57', zIndex: 2 }}
           >
-            <p>AI mock interviews tailored to your target role, anytime you need them.</p>
-            <p>A mentor who's walked your exact path, not a generalist coach.</p>
-            <p>Real interview questions from real candidates at your target companies.</p>
+            Verified roles only, and a reply within 7 days on partner roles. Your multi-dimension report and interview recording reach the hiring team. See your rank, your gap, and what to fix next.
+          </p>
+
+          {/* CTAs */}
+          <div data-reveal data-delay="300" className="relative flex flex-wrap items-center justify-center gap-3 mb-12" style={{ zIndex: 2 }}>
+            <button
+              onClick={goSignup}
+              className="hero-cta inline-flex items-center gap-2.5 h-12 px-7 rounded-full text-[15px] font-semibold text-white transition-all duration-200"
+              style={{ background: '#2E5BFF', boxShadow: '0 8px 24px rgba(46,91,255,0.4)' }}
+            >
+              <span className="rounded-full bg-white" style={{ width: 5, height: 5, opacity: 0.6 }} />
+              Start Free
+            </button>
+            <Link
+              to="/opportunities"
+              className="inline-flex items-center h-12 px-6 rounded-full text-[15px] font-medium transition-colors duration-150 hover:bg-[#F2F5FF]"
+              style={{ color: '#2E5BFF', border: '1px solid rgba(46,91,255,0.3)' }}
+            >
+              Browse partner roles
+            </Link>
           </div>
 
-          {/* CTA + page-wide styles */}
-          <style>{`
-            @keyframes dotPulse {
-              0%, 100% { opacity: 1; transform: scale(1); }
-              50% { opacity: 0.35; transform: scale(0.6); }
-            }
-            .hero-dot { animation: dotPulse 1.8s ease-in-out infinite; }
+          {/* Product preview */}
+          <div data-reveal data-delay="400" className="relative w-full flex justify-center" style={{ zIndex: 2 }}>
+            <HeroPreview />
+          </div>
 
-            /* Hero dashboard screenshot: small on phones, full-size on desktop.
-               Real CSS (not utility classes) so it always applies, and the
-               inline max-width:100% guarantees it can never overflow the screen. */
-            .hero-dashboard-shot { width: 60%; }
-            @media (min-width: 640px)  { .hero-dashboard-shot { width: 78%; } }
-            @media (min-width: 1024px) { .hero-dashboard-shot { width: 88%; } }
-            .hero-cta:hover { background: #1E48E6 !important; box-shadow: 0 10px 32px rgba(46,91,255,0.55) !important; transform: translateY(-1px); }
-            .hero-cta:active { transform: scale(0.97) translateY(0); }
-
-            /* ── Scroll reveal ───────────────────────────────────────────── */
-            [data-reveal] {
-              opacity: 0;
-              transform: translateY(20px);
-              transition: opacity 550ms cubic-bezier(0.16,1,0.3,1),
-                          transform 550ms cubic-bezier(0.16,1,0.3,1);
-              will-change: opacity, transform;
-            }
-            [data-reveal].sr-visible {
-              opacity: 1;
-              transform: translateY(0);
-            }
-            @media (max-width: 768px) {
-              [data-reveal] { transform: translateY(12px); }
-            }
-            @media (prefers-reduced-motion: reduce) {
-              [data-reveal] {
-                transform: none !important;
-                transition: opacity 200ms linear !important;
-              }
-              nav {
-                transition: none !important;
-              }
-            }
-
-            /* ── Testimonial marquee ─────────────────────────────────────── */
-            @keyframes mLeft  { from { transform: translateX(0); }    to { transform: translateX(-50%); } }
-            @keyframes mRight { from { transform: translateX(-50%); } to { transform: translateX(0); } }
-            .mr-row { overflow: hidden; }
-            .mr-row:hover .mr-track,
-            .mr-row:focus-within .mr-track { animation-play-state: paused; }
-            .mr-track { display: flex; align-items: stretch; gap: 20px; width: max-content; }
-            .mr-l  { animation: mLeft  42s linear infinite; }
-            .mr-r  { animation: mRight 56s linear infinite; }
-            .mr-fade {
-              -webkit-mask-image: linear-gradient(to right, transparent 0%, black 9%, black 91%, transparent 100%);
-              mask-image: linear-gradient(to right, transparent 0%, black 9%, black 91%, transparent 100%);
-            }
-            @media (prefers-reduced-motion: reduce) {
-              .mr-l, .mr-r { animation: none !important; }
-            }
-            @media (max-width: 767px) {
-              .mr-l, .mr-r { animation: none !important; }
-            }
-
-            /* ── Scroll snap: settle on each section, stay smooth ────────── */
-            /* mandatory → every scroll settles on a section (section-by-section).
-               scroll-snap-stop:normal (NOT always) keeps the settle gentle — a
-               continuous scroll can glide rather than hard-locking on each one,
-               which is what felt abrupt before. The footer carries
-               scroll-snap-align:end so the very bottom is itself a snap target;
-               without it, mandatory would trap you above the CTA + footer. */
-            /* Hard stop for horizontal overflow from any section — keeps the
-               page pinned to the viewport width so nothing can shift/spill
-               sideways on mobile. Using clip (not hidden) so the vertical
-               scroll-snap below is unaffected. */
-            html, body { overflow-x: clip; max-width: 100%; }
-            html {
-              scroll-snap-type: y mandatory;
-              scroll-padding-top: calc(72px + var(--topbar-h, 0px));
-              scroll-behavior: smooth;
-            }
-            .snap-s {
-              scroll-snap-align: start;
-              scroll-snap-stop: normal;
-            }
-            .snap-end { scroll-snap-align: end; }
-            @media (max-width: 767px) {
-              html { scroll-snap-type: none; }
-              .snap-s, .snap-end { scroll-snap-align: none; }
-            }
-            @media (prefers-reduced-motion: reduce) {
-              html { scroll-snap-type: none !important; scroll-behavior: auto !important; }
-              .snap-s, .snap-end { scroll-snap-align: none !important; }
-            }
-          `}</style>
-          <button
-            data-reveal data-delay="300"
-            onClick={goSignup}
-            className="hero-cta inline-flex items-center gap-2.5 h-12 px-7 rounded-full text-[15px] font-semibold text-white transition-all duration-200 mb-10"
-            style={{
-              background: '#2E5BFF',
-              boxShadow: '0 8px 24px rgba(46,91,255,0.40)',
-            }}
-          >
-            <span
-              className="hero-dot rounded-full flex-shrink-0"
-              style={{ width: 7, height: 7, background: '#FFFFFF' }}
-            />
-            Start Free
-          </button>
-
-          {/* Dashboard screenshot — scaled down on phones so it doesn't dominate the fold */}
-          {/* LCP element — must not be lazy-loaded. */}
-          <img
-            data-reveal data-delay="420"
-            src={imgDashboard}
-            alt="Screna dashboard"
-            className="hero-dashboard-shot"
-            width={2000}
-            height={1485}
-            fetchPriority="high"
-            decoding="async"
-            style={{ display: 'block', margin: '0 auto', maxWidth: '100%', height: 'auto' }}
-          />
-
-          {/* Logo bar — scrolling company logos (old-design marquee) */}
-          <div
-            data-reveal data-delay="540"
-            className="w-full mt-12"
-            style={{ borderTop: '1px solid #E8E8EA', paddingTop: 28 }}
-          >
-            <p
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              className="text-[10.5px] uppercase tracking-[0.1em] text-slate-400 mb-6 text-center"
-            >
+          {/* Logos */}
+          <div className="relative w-full mt-12 pt-7" style={{ borderTop: '1px solid #E8E8EA', zIndex: 2 }}>
+            <p className="text-center text-[12px] tracking-[0.24px] mb-6" style={{ color: '#90A1B9' }}>
               Members have landed roles at
             </p>
             <LogoMarquee logos={HERO_LOGOS} />
@@ -1413,388 +1007,283 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ─── The Screna System ─── */}
-      <section
-        id="features"
-        className="snap-s overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(900px,100svh)]"
-        style={{ background: '#FBFBFB' }}
-      >
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col gap-8 pt-24 pb-16 lg:block lg:gap-0 lg:pt-0 lg:pb-0 lg:h-full relative">
-          <p
-            data-reveal data-delay="0"
-            className="text-center text-[11px] tracking-[2.5px] static lg:absolute left-0 right-0"
-            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif", top: 72 }}
-          >
-            THE SCRENA SYSTEM
-          </p>
-
-          <h2
-            data-reveal data-delay="100"
-            className="text-center font-normal tracking-[-0.8px] static lg:absolute left-0 right-0 leading-tight lg:leading-[68px] -mt-4 lg:mt-0"
-            style={{
-              fontFamily: "'Playfair Display', serif",
-              fontSize: 'clamp(32px, 4.5vw, 54px)',
-              color: '#0A0A0A',
-              top: 96,
-            }}
-          >
-            How it works
-          </h2>
-
-          {/* Tab switcher */}
-          <div
-            data-reveal data-delay="200"
-            className="static lg:absolute left-0 right-0 flex justify-start sm:justify-center overflow-x-auto -mx-6 px-6 lg:mx-0 lg:px-0"
-            style={{ top: 191, scrollbarWidth: 'none' }}
-          >
-            <div
-              className="relative flex items-center p-1 rounded-[26px] mx-auto"
-              style={{ background: '#EDEDED' }}
-            >
-              <div
-                className="absolute top-1 rounded-[22px] transition-all duration-200 ease-out pointer-events-none"
-                style={{
-                  left: pillStyle.left,
-                  width: pillStyle.width,
-                  height: 44,
-                  background: '#0A0A0A',
-                }}
-              />
-              {TABS.map((tab, idx) => (
-                <button
-                  key={tab}
-                  ref={(el) => { tabRefs.current[idx] = el; }}
-                  onClick={() => setActiveTab(tab)}
-                  className="relative z-10 px-3 sm:px-5 rounded-[22px] text-[13px] sm:text-[15px] font-medium whitespace-nowrap transition-colors duration-200"
-                  style={{
-                    height: 44,
-                    minWidth: 0,
-                    color: activeTab === tab ? '#FBFBFB' : '#767676',
-                    fontFamily: "'Inter', sans-serif",
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
+      {/* ─── Why Screna ─── */}
+      <section className="bg-white py-20 lg:py-28">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10">
+          <SectionIntro
+            eyebrow="WHY SCRENA"
+            title={<>No ghost jobs.<br />No resume pile.</>}
+            sub="One role-specific AI interview fixes the first round on both sides."
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12 lg:mt-16">
+            <AudienceCard
+              eyebrow="For Job Seekers"
+              tone="primary"
+              items={[
+                { title: 'Real roles only', desc: 'Open roles are re-checked every 24 hours. Closed postings come down automatically.' },
+                { title: 'Always hear back', desc: 'Partner roles reply within 7 days, and you see when the hiring team opens your report.' },
+                { title: 'Seen as more than a resume', desc: 'Hiring teams get your four-dimension report and your interview recording, not a one-page PDF.' },
+              ]}
+              action={
+                <Link
+                  to="/opportunities"
+                  className="inline-flex items-center h-10 px-6 rounded-full text-[14px] font-medium text-white transition-colors duration-150 bg-[#2E5BFF] hover:bg-[#1E48E6]"
                 >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Feature content */}
-          <div
-            className="static lg:absolute left-6 right-6 lg:left-10 lg:right-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center"
-            style={{ top: 320, bottom: 60 }}
-          >
-            <div data-reveal data-delay="320">
-              <p
-                className="text-[12px] mb-2"
-                style={{ color: '#999', fontFamily: "'Inter', sans-serif" }}
-              >
-                {feature.num}
-              </p>
-              <h3
-                className="font-normal mb-5"
-                style={{
-                  fontFamily: "'Playfair Display', serif",
-                  fontSize: 'clamp(32px, 3.5vw, 44px)',
-                  color: '#0A0A0A',
-                }}
-              >
-                {feature.title}
-              </h3>
-              <p
-                className="text-[17px] leading-relaxed"
-                style={{ color: '#595959', fontFamily: "'Inter', sans-serif", maxWidth: 480 }}
-              >
-                {feature.desc}
-              </p>
-            </div>
-            <div data-reveal data-delay="440" className="w-full flex items-center justify-center">
-              {activeTab === 'AI Mock' ? (
-                <img
-                  src={imgFeatureA}
-                  alt="AI Mock feature"
-                  width={1600}
-                  height={1161}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-auto object-contain"
-                  style={{ display: 'block', maxWidth: '100%' }}
-                />
-              ) : activeTab === 'InterviewPrep Note' ? (
-                <img
-                  src={imgFeatureB}
-                  alt="InterviewPrep Note feature"
-                  width={1600}
-                  height={1341}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-auto object-contain"
-                  style={{ display: 'block', maxWidth: '100%' }}
-                />
-              ) : activeTab === 'Mentorship' ? (
-                <img
-                  src={imgFeatureC}
-                  alt="Mentorship feature"
-                  width={1600}
-                  height={1139}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-auto object-contain"
-                  style={{ display: 'block', maxWidth: '100%' }}
-                />
-              ) : (
-                feature.card
-              )}
-            </div>
+                  Browse partner roles
+                </Link>
+              }
+            />
+            <AudienceCard
+              eyebrow="For Hiring Teams"
+              tone="neutral"
+              items={[
+                { title: 'No AI-applied resume pile', desc: 'Nobody reaches your list without finishing an interview for your role.' },
+                { title: 'Every candidate arrives with a report', desc: 'Score, four dimensions and checklist results, already ranked.' },
+                { title: 'Questions that fit the role', desc: 'Your job description, requirements and screening checklist shape what candidates are asked.' },
+              ]}
+              action={
+                <Link
+                  to="/employers"
+                  className="inline-flex items-center h-10 px-6 rounded-full text-[14px] font-medium transition-colors duration-150 bg-white hover:bg-[#F7F9FF]"
+                  style={{ color: '#0A0A0A', border: '1px solid #E2E8F0' }}
+                >
+                  For employers
+                </Link>
+              }
+            />
           </div>
         </div>
       </section>
 
-      {/* ─── How It Works ─── */}
-      <section id="how-it-works" className="snap-s bg-white relative overflow-visible lg:overflow-hidden min-h-[100svh] lg:h-[max(980px,100svh)]">
+      {/* ─── The Screna system (tabs) ─── */}
+      <section id="how-it-works" className="py-20" style={{ background: '#FBFBFB' }}>
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10">
+          <SystemTabsSection />
+        </div>
+      </section>
+
+      {/* ─── Process diagram ─── */}
+      <section id="process" className="bg-white relative lg:min-h-[733px] flex">
         <HowItWorksSection />
       </section>
 
-      {/* ─── Testimonials marquee ─── */}
-      {/* Hidden for now — will bring back in a later version */}
-      {false && (
-      <section
-        id="testimonials"
-        className="snap-s bg-white flex flex-col justify-center overflow-hidden"
-        style={{ minHeight: '100svh', paddingTop: 56, paddingBottom: 80 }}
-      >
-        <div className="text-center mb-10 px-6">
-          <p
-            data-reveal data-delay="0"
-            className="text-[11px] tracking-[2.5px] mb-5"
-            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
-          >
-            REAL CANDIDATE MOMENTS
-          </p>
-          <h2
-            data-reveal data-delay="100"
-            className="font-normal tracking-[-0.8px] mb-7 mx-auto"
-            style={{
-              fontFamily: "'Playfair Display', serif",
-              fontSize: 'clamp(32px, 4vw, 52px)',
-              lineHeight: '1.2',
-              color: '#0A0A0A',
-              maxWidth: 620,
-            }}
-          >
-            Proof that better prep changes the room.
-          </h2>
-        </div>
-
-        {/* Marquee rows */}
-        <div data-reveal data-delay="300" className="mr-fade flex flex-col gap-5">
-          <div className="mr-row">
-            <div className="mr-track mr-l pl-5">
-              {[...MARQUEE_ROW1, ...MARQUEE_ROW1].map((c, i) => (
-                <MarqueeCard key={i} {...c} />
-              ))}
-            </div>
+      {/* ─── Partner roles ─── */}
+      <section className="py-20 lg:py-24" style={{ background: '#F7F9FF' }}>
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10">
+          <SectionIntro
+            eyebrow="PARTNER ROLES"
+            title="Verified roles. Real hiring teams."
+            titleSize="clamp(32px, 4vw, 44px)"
+            sub="Every partner role has a hiring team that agreed to review Screna candidates and reply within 7 days."
+            subMaxWidth={520}
+          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-10">
+            {PARTNER_ROLE_STEPS.map((s, i) => (
+              <div
+                key={s.num}
+                data-reveal data-delay={i * 80}
+                className="bg-white rounded-2xl p-6"
+                style={{ border: '1px solid #DDE6FF' }}
+              >
+                <p className="text-[10px] tracking-[0.6px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8A8F9A' }}>
+                  {s.num}
+                </p>
+                <p className="text-[15px] font-semibold leading-[22.5px] mt-3" style={{ color: '#0A0A0A' }}>{s.title}</p>
+                <p className="text-[13px] leading-[21px] mt-1.5" style={{ color: '#4A4D57' }}>{s.desc}</p>
+              </div>
+            ))}
           </div>
-          <div className="mr-row">
-            <div className="mr-track mr-r pl-5">
-              {[...MARQUEE_ROW2, ...MARQUEE_ROW2].map((c, i) => (
-                <MarqueeCard key={i} {...c} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile fallback */}
-        <style>{`
-          @media (max-width: 767px) {
-            .mr-mobile-scroll { display: flex; overflow-x: auto; gap: 16px; padding: 0 24px; scrollbar-width: none; }
-            .mr-mobile-scroll::-webkit-scrollbar { display: none; }
-            .mr-row { display: none; }
-            .mr-mobile { display: block !important; }
-          }
-          @media (min-width: 768px) {
-            .mr-mobile { display: none !important; }
-          }
-        `}</style>
-        <div className="mr-mobile hidden flex-col gap-5 mt-4">
-          <div className="mr-mobile-scroll">
-            {MARQUEE_ROW1.map((c, i) => <MarqueeCard key={i} {...c} />)}
-          </div>
-          <div className="mr-mobile-scroll">
-            {MARQUEE_ROW2.map((c, i) => <MarqueeCard key={i} {...c} />)}
+          <div className="flex justify-center">
+            <Link
+              to="/opportunities"
+              className="hero-cta inline-flex items-center h-12 px-8 rounded-full text-[15px] font-semibold text-white transition-all duration-200"
+              style={{ background: '#2E5BFF', boxShadow: '0 6px 20px rgba(46,91,255,0.3)' }}
+            >
+              Browse partner roles
+            </Link>
           </div>
         </div>
       </section>
-      )}
 
       {/* ─── Pricing ─── */}
-      <section
-        id="pricing"
-        className="snap-s py-24 lg:py-28 flex flex-col justify-center"
-        style={{ background: '#D0E0F8', minHeight: '100svh' }}
-      >
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
-          <p
-            data-reveal data-delay="0"
-            className="text-center text-[11px] tracking-[2.5px] mb-6"
-            style={{ color: '#2E5BFF', fontFamily: "'Inter', sans-serif" }}
-          >
-            PRICING
-          </p>
-          <div
-            data-reveal data-delay="100"
-            className="text-center font-normal tracking-[-0.8px] mb-14"
-            style={{
-              fontFamily: "'Playfair Display', serif",
-              fontSize: 'clamp(36px, 4.5vw, 52px)',
-              lineHeight: '64px',
-              color: '#0A0A0A',
-            }}
-          >
-            <p>Start free.</p>
-            <p>Grow at your pace.</p>
-          </div>
-
-          {/* Pricing cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+      <section id="pricing" className="py-20 lg:py-28" style={{ background: '#D0E0F8' }}>
+        <div className="max-w-[1257px] mx-auto px-4 sm:px-6 lg:px-10">
+          <SectionIntro
+            eyebrow="PRICING"
+            title="Start free. Get seen on every plan."
+            sub="Every plan can interview for partner roles and get recommended. Paid plans show exactly where you stand."
+            subMaxWidth={560}
+          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-14">
             {PLANS.map((plan, i) => (
               <PricingCard
-                key={i}
+                key={plan.name}
                 plan={plan}
-                revealDelay={i * 90}
-                loading={loadingTier === plan.tier}
-                isCurrent={!!user && !isPlanLoading && planData.currentPlan.toUpperCase() === plan.tier}
+                revealDelay={i * 80}
+                loading={!!plan.tier && loadingTier === plan.tier}
+                isCurrent={!!user && !isPlanLoading && !!plan.tier && plan.tier !== 'FREE' && planData.currentPlan.toUpperCase() === plan.tier}
                 onSelect={() => handleSelectPlan(plan)}
               />
             ))}
           </div>
+          <div className="pt-6">
+            <AddOnRow onAdd={handleAddCredits} />
+          </div>
+        </div>
+      </section>
 
-          {/* Credits add-on */}
-          <CreditsAddOn revealDelay={400} onAddCredits={handleAddCredits} />
+      {/* ─── For hiring teams ─── */}
+      <section className="bg-white py-20 lg:py-28">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+          <div>
+            <p data-reveal className="text-[11px] tracking-[2.5px]" style={{ color: '#2E5BFF' }}>FOR HIRING TEAMS</p>
+            <h2
+              data-reveal data-delay="80"
+              className="font-normal tracking-[-0.8px] mt-5"
+              style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(34px, 4.2vw, 52px)', lineHeight: 1.15, color: '#0A0A0A' }}
+            >
+              Only see candidates who showed up.
+            </h2>
+            <p data-reveal data-delay="160" className="text-[17px] leading-[27.6px] mt-5" style={{ color: '#4A4D57' }}>
+              See the full ranked list free. Unlock the people you want to talk to.
+            </p>
+            <ul data-reveal data-delay="240" className="flex flex-col gap-4 mt-8">
+              {[
+                'No pile of AI-applied resumes',
+                'Only candidates with a finished first-round interview and a report',
+                'Questions shaped by your job description and screening checklist',
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-3">
+                  <img src={iconCheckCircle} alt="" width={18} height={18} className="flex-shrink-0 mt-0.5" />
+                  <span className="text-[15px] leading-[20.6px]" style={{ color: '#0A0A0A' }}>{t}</span>
+                </li>
+              ))}
+            </ul>
+            <div data-reveal data-delay="320" className="flex flex-wrap items-center gap-3 mt-10">
+              <Link
+                to="/employer/login"
+                className="inline-flex items-center h-12 px-7 rounded-full text-[15px] font-semibold text-white transition-colors duration-150 bg-[#0A0A0A] hover:bg-[#262626]"
+              >
+                Post a role free
+              </Link>
+              <Link
+                to="/employers"
+                className="inline-flex items-center h-12 px-6 rounded-full text-[15px] font-medium transition-colors duration-150 hover:bg-[#F7F9FF]"
+                style={{ color: '#4A4D57', border: '1px solid #E2E8F0' }}
+              >
+                See how it works for employers
+              </Link>
+            </div>
+            <p data-reveal data-delay="360" className="text-[12px] leading-[18px] mt-5" style={{ color: '#90A1B9' }}>
+              Free to start · Business from $399 a month
+            </p>
+          </div>
+          <div data-reveal data-delay="200">
+            <EmployerPreview />
+          </div>
         </div>
       </section>
 
       {/* ─── FAQ ─── */}
-      <section id="faq" className="snap-s py-24 lg:py-28 bg-white flex flex-col justify-center" style={{ minHeight: '100svh' }}>
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20">
-            <div data-reveal data-delay="0">
-              <p
-                className="text-[12px] font-semibold tracking-[1.68px] uppercase mb-5"
-                style={{ color: '#3C77F6', fontFamily: "'Inter', sans-serif" }}
-              >
-                FAQ
-              </p>
-              <h2
-                className="font-normal tracking-[-0.8px] leading-[64px]"
-                style={{
-                  fontFamily: "'Playfair Display', serif",
-                  fontSize: 'clamp(36px, 4vw, 52px)',
-                  color: '#0A0A0A',
-                }}
-              >
-                Common Questions
-              </h2>
-            </div>
-            <div>
+      <section id="faq" className="bg-white py-20 lg:py-28">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20">
+            <h2
+              data-reveal
+              className="font-normal tracking-[-0.8px]"
+              style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(34px, 4.2vw, 52px)', lineHeight: 1.2, color: '#0A0A0A' }}
+            >
+              Common Questions
+            </h2>
+            <div style={{ borderBottom: '1px solid #E1E4EA' }}>
               {FAQ_ITEMS.map((item, i) => (
                 <FaqRow
-                  key={i}
+                  key={item.q}
                   item={item}
                   open={openFaq === i}
                   onToggle={() => setOpenFaq(openFaq === i ? null : i)}
-                  revealDelay={i * 90}
+                  revealDelay={i * 60}
                 />
               ))}
-              <div style={{ height: 1, background: '#E1E4EA' }} />
             </div>
+          </div>
+          <div
+            data-reveal
+            className="mt-16 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6"
+            style={{ background: '#F7F9FF', border: '1px solid #DDE6FF' }}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-[17px] font-semibold leading-[25.5px]" style={{ color: '#0A0A0A' }}>Not sure where to start?</p>
+              <p className="text-[14px] leading-[22.75px] mt-2" style={{ color: '#4A4D57' }}>
+                You're not alone. Email us at{' '}
+                <a href="mailto:operations@screna.ai" className="hover:underline" style={{ color: '#2E5BFF' }}>operations@screna.ai</a>
+                . A real person on the Screna team will help you figure out what to focus on next. We reply within one business day, Mon–Fri, 9:00 AM–5:00 PM ET.
+              </p>
+            </div>
+            <a
+              href="mailto:operations@screna.ai"
+              className="self-start sm:self-center inline-flex items-center h-10 px-6 rounded-full text-[14px] font-medium text-white whitespace-nowrap transition-colors duration-150 bg-[#2E5BFF] hover:bg-[#1E48E6]"
+            >
+              Email the team
+            </a>
           </div>
         </div>
       </section>
 
       {/* ─── Final CTA ─── */}
       <section
-        className="snap-s py-24 lg:py-32 overflow-hidden relative"
+        className="py-24 lg:py-32 overflow-hidden relative"
         style={{
-          background:
-            'linear-gradient(172.342deg, rgb(18,49,184) 8.49%, rgb(46,91,255) 50%, rgb(74,123,255) 91.51%)',
+          background: 'linear-gradient(176.59deg, rgb(18,49,184) 12.75%, rgb(46,91,255) 50%, rgb(74,123,255) 87.25%)',
         }}
       >
-        <div className="max-w-[1440px] mx-auto px-6 lg:px-10 text-center relative">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 text-center relative">
           <div data-reveal data-delay="0" className="flex items-center justify-center gap-3 mb-8">
             <div style={{ width: 24, height: 1, background: 'rgba(255,255,255,0.6)' }} />
-            <span
-              className="text-[12px] font-semibold tracking-[1.68px] uppercase"
-              style={{ color: 'rgba(255,255,255,0.85)', fontFamily: "'Inter', sans-serif" }}
-            >
+            <span className="text-[12px] font-semibold tracking-[1.68px] uppercase" style={{ color: 'rgba(255,255,255,0.85)' }}>
               Get started
             </span>
             <div style={{ width: 24, height: 1, background: 'rgba(255,255,255,0.6)' }} />
           </div>
           <h2
             data-reveal data-delay="100"
-            className="font-medium tracking-[-1.68px] leading-tight mb-4 mx-auto"
+            className="font-normal tracking-[-1.5px] mb-4 mx-auto"
             style={{
               fontFamily: "'Playfair Display', serif",
-              fontSize: 'clamp(32px, 5vw, 48px)',
+              fontSize: 'clamp(34px, 4.2vw, 52px)',
+              lineHeight: 1.25,
               color: '#FFFFFF',
-              maxWidth: 907,
+              maxWidth: 700,
             }}
           >
             Your next role is already within reach.
           </h2>
-          <p
-            data-reveal data-delay="200"
-            className="text-[18px] mb-10"
-            style={{
-              color: 'rgba(255,255,255,0.8)',
-              fontFamily: "'Inter', sans-serif",
-            }}
-          >
+          <p data-reveal data-delay="200" className="text-[18px] mb-10" style={{ color: 'rgba(255,255,255,0.8)' }}>
             Start free in under 2 minutes.
           </p>
           <button
             data-reveal data-delay="300"
             onClick={goSignup}
-            className="inline-flex items-center gap-2 h-12 px-8 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95"
-            style={{
-              background: '#FFFFFF',
-              color: '#1231B8',
-              fontFamily: "'Inter', sans-serif",
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLElement).style.background = '#F0F3FF')
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLElement).style.background = '#FFFFFF')
-            }
+            className="inline-flex items-center gap-2 h-12 px-8 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95 bg-white hover:bg-[#F0F3FF]"
+            style={{ color: '#1231B8' }}
           >
-            <div
-              className="rounded-full"
-              style={{ width: 6, height: 6, background: '#2E5BFF' }}
-            />
+            <span className="rounded-full" style={{ width: 6, height: 6, background: '#2E5BFF' }} />
             Start free
           </button>
         </div>
       </section>
 
       {/* ─── Footer ─── */}
-      <footer className="snap-end" style={{ background: '#F9FAFB' }}>
+      <footer style={{ background: '#F9FAFB' }}>
         <div className="max-w-[1280px] mx-auto px-6 py-20">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 pb-12">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-10 md:gap-12 pb-12">
             {/* Brand column */}
-            <div>
-              <Link to="/" className="inline-block mb-4">
+            <div className="col-span-2">
+              <Link to="/" className="inline-block mb-[22px]">
                 <img src={imgLogo} alt="Screna" className="h-6 w-auto object-contain" />
               </Link>
-              <p
-                className="text-[15px] mb-6"
-                style={{ color: '#62748E', fontFamily: "'Inter', sans-serif" }}
-              >
-                Empowering careers through AI and human judgment.
+              <p className="text-[15px] leading-[22.5px] mb-6" style={{ color: '#62748E' }}>
+                Know where you stand. Get seen by real tech roles.
               </p>
               <div className="flex gap-3">
                 <SocialIcon aria-label="X" href="https://x.com/screnaai_">
@@ -1826,60 +1315,39 @@ export function HomePage() {
               </div>
             </div>
 
-            {/* Resources */}
-            <div>
-              <p
-                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
-                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
-              >
-                Resources
-              </p>
-              {[
-                { label: 'Blog', to: '#' },
+            <FooterColumn
+              title="Product"
+              links={[
+                { label: 'Roles', to: '/opportunities' },
+                { label: 'Interview Reports', to: '/interview-questions' },
+                { label: 'Pricing', to: '#pricing' },
+                { label: 'For hiring teams', to: '/employers' },
+              ]}
+            />
+            <FooterColumn
+              title="Resources"
+              links={[
+                { label: 'Blog', to: '/blog' },
                 { label: 'FAQ', to: '/faq' },
                 { label: 'Help Center', to: '/help' },
                 { label: 'Contact', to: '/contact' },
-              ].map((item) => (
-                <FooterLink key={item.label} {...item} />
-              ))}
-            </div>
-
-            {/* Community */}
+              ]}
+            />
             <div>
-              <p
-                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
-                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
-              >
-                Community
-              </p>
-              <a
-                href="https://discord.gg/7FqHDtea5X"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-[14px] leading-[20px] mb-3 transition-colors duration-150"
-                style={{ color: '#656D81', fontFamily: "'Inter', sans-serif" }}
-                onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#2E5BFF')}
-                onMouseLeave={(e) => ((e.target as HTMLElement).style.color = '#656D81')}
-              >
-                Join our Discord
-              </a>
-            </div>
-
-            {/* Legal */}
-            <div>
-              <p
-                className="text-[14px] font-semibold tracking-[-0.35px] mb-5"
-                style={{ color: '#0F172B', fontFamily: "'Inter', sans-serif" }}
-              >
-                Legal
-              </p>
-              {[
-                { label: 'Terms of Service', to: '/terms' },
-                { label: 'Privacy Policy', to: '/privacy' },
-                { label: 'Cookies', to: '/cookies' },
-              ].map((item) => (
-                <FooterLink key={item.label} {...item} />
-              ))}
+              <FooterColumn
+                title="Community"
+                links={[{ label: 'Join our Discord', to: 'https://discord.gg/7FqHDtea5X' }]}
+              />
+              <div className="mt-8">
+                <FooterColumn
+                  title="Legal"
+                  links={[
+                    { label: 'Terms of Service', to: '/terms' },
+                    { label: 'Privacy Policy', to: '/privacy' },
+                    { label: 'Cookies', to: '/cookies' },
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
@@ -1888,10 +1356,7 @@ export function HomePage() {
             className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-8 gap-3"
             style={{ borderTop: '1px solid #F8FAFC' }}
           >
-            <p
-              className="text-[14px]"
-              style={{ color: '#90A1B9', fontFamily: "'Inter', sans-serif" }}
-            >
+            <p className="text-[14px]" style={{ color: '#90A1B9' }}>
               © 2026 Screna AI. All rights reserved.
             </p>
             <div className="flex items-center gap-6">
@@ -1899,10 +1364,7 @@ export function HomePage() {
                 <a
                   key={item}
                   href="#"
-                  className="text-[14px] transition-colors duration-150"
-                  style={{ color: '#90A1B9', fontFamily: "'Inter', sans-serif" }}
-                  onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#2E5BFF')}
-                  onMouseLeave={(e) => ((e.target as HTMLElement).style.color = '#90A1B9')}
+                  className="text-[14px] transition-colors duration-150 text-[#90A1B9] hover:text-[#2E5BFF]"
                 >
                   {item}
                 </a>
@@ -1931,7 +1393,7 @@ function FooterLink({ label, to }: { label: string; to: string }) {
     );
   }
   return (
-    <a href={to} className={className} style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <a href={to} {...(/^https?:/.test(to) ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className={className} style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       {label}
     </a>
   );
@@ -1980,6 +1442,379 @@ function SocialIcon({ children, 'aria-label': label, href }: { children: ReactNo
   );
 }
 
+
+// ─── Section building blocks ──────────────────────────────────────────────────
+
+function SectionIntro({
+  eyebrow,
+  title,
+  sub,
+  titleSize = 'clamp(34px, 4.2vw, 52px)',
+  subMaxWidth,
+}: {
+  eyebrow: string;
+  title: ReactNode;
+  sub?: string;
+  titleSize?: string;
+  subMaxWidth?: number;
+}) {
+  return (
+    <div className="flex flex-col items-center text-center">
+      <p data-reveal className="text-[11px] leading-[16.5px] tracking-[2.5px]" style={{ color: '#2E5BFF' }}>
+        {eyebrow}
+      </p>
+      <h2
+        data-reveal data-delay="80"
+        className="font-normal tracking-[-0.8px] mt-5"
+        style={{ fontFamily: "'Playfair Display', serif", fontSize: titleSize, lineHeight: 1.2, color: '#0A0A0A' }}
+      >
+        {title}
+      </h2>
+      {sub && (
+        <p
+          data-reveal data-delay="160"
+          className="text-[16px] sm:text-[17px] leading-[25.5px] mt-5"
+          style={{ color: '#595959', maxWidth: subMaxWidth }}
+        >
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AudienceCard({
+  eyebrow,
+  tone,
+  items,
+  action,
+}: {
+  eyebrow: string;
+  tone: 'primary' | 'neutral';
+  items: { title: string; desc: string }[];
+  action: ReactNode;
+}) {
+  const primary = tone === 'primary';
+  return (
+    <div
+      data-reveal
+      data-delay={primary ? 0 : 100}
+      className="rounded-2xl p-6 sm:p-8 flex flex-col"
+      style={{
+        background: primary ? '#F7F9FF' : '#F9FAFB',
+        border: `1px solid ${primary ? '#DDE6FF' : '#E2E8F0'}`,
+      }}
+    >
+      <p
+        className="text-[11px] font-semibold leading-[16.5px] tracking-[1.5px] uppercase"
+        style={{ color: primary ? '#2E5BFF' : '#0A0A0A' }}
+      >
+        {eyebrow}
+      </p>
+      <div className="flex flex-col gap-6 pt-6 pb-8">
+        {items.map((item) => (
+          <div key={item.title} className="flex items-start gap-4">
+            <span
+              className="rounded-full flex-shrink-0 mt-1"
+              style={{ width: 8, height: 8, background: primary ? '#2E5BFF' : '#4A4D57' }}
+            />
+            <div>
+              <p className="text-[15px] font-semibold leading-[22.5px]" style={{ color: '#0A0A0A' }}>{item.title}</p>
+              <p className="text-[14px] leading-[22.75px] mt-1" style={{ color: '#4A4D57' }}>{item.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-auto">{action}</div>
+    </div>
+  );
+}
+
+function Tag({ children, tone }: { children: ReactNode; tone: 'partner' | 'confirmed' | 'pending' }) {
+  const styles = {
+    partner: { background: '#EEF1FF', color: '#2563EB', border: '1px solid #C7D2FF' },
+    confirmed: { background: '#DCFCE7', color: '#16A34A', border: '1px solid transparent' },
+    pending: { background: '#FFF7ED', color: '#C2410C', border: '1px solid transparent' },
+  }[tone];
+  return (
+    <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold leading-[15px] whitespace-nowrap" style={styles}>
+      {children}
+    </span>
+  );
+}
+
+function TabBullets({ items }: { items: string[] }) {
+  return (
+    <ul className="flex flex-col gap-3 pt-6">
+      {items.map((t) => (
+        <li key={t} className="flex items-start gap-3">
+          <span className="rounded-full flex-shrink-0 mt-[7px]" style={{ width: 6, height: 6, background: '#2E5BFF' }} />
+          <span className="text-[15px] leading-[20.6px]" style={{ color: '#4A4D57' }}>{t}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Only the Partner Roles tab is drawn in the design; the other two tabs reuse
+// its layout with copy taken from elsewhere on the page.
+function SystemTabsSection() {
+  const [active, setActive] = useState<SystemTab>('Partner Roles');
+
+  return (
+    <div>
+      <SectionIntro eyebrow="THE SCRENA SYSTEM" title="How it works" titleSize="clamp(38px, 4.4vw, 54px)" />
+
+      <div data-reveal data-delay="200" className="flex justify-center pt-10">
+        <div role="tablist" className="flex max-w-full overflow-x-auto rounded-[26px] p-1" style={{ background: '#EDEDED' }}>
+          {SYSTEM_TABS.map((tab) => {
+            const on = tab === active;
+            return (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={on}
+                onClick={() => setActive(tab)}
+                className="h-11 min-w-[100px] px-4 sm:px-5 rounded-[22px] text-[13px] sm:text-[14px] font-medium whitespace-nowrap transition-colors duration-200"
+                style={{ background: on ? '#0A0A0A' : 'transparent', color: on ? '#FBFBFB' : '#767676' }}
+              >
+                {tab}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 pt-12">
+        {active === 'Partner Roles' && (
+          <>
+            <div>
+              <p className="text-[16px] sm:text-[17px] leading-[27.6px]" style={{ color: '#595959' }}>
+                Roles where the hiring team has agreed to review Screna candidates. Take one AI interview built from the job description and you're recommended, on every plan.
+              </p>
+              <TabBullets
+                items={[
+                  'Limited spots and a set time window',
+                  'See when the hiring team views your report',
+                  'A response within 7 days',
+                  'Roles still being confirmed are clearly marked',
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-3">
+              {[
+                { title: 'Machine Learning Engineer', meta: '[Company] · 21 of 40 spots left', tags: <><Tag tone="partner">Partner</Tag><Tag tone="confirmed">Confirmed</Tag></> },
+                { title: 'Data Engineer', meta: '[Company] · Hiring team not yet confirmed', tags: <><Tag tone="partner">Partner</Tag><Tag tone="pending">Pending</Tag></> },
+                { title: 'Site Reliability Engineer', meta: '[Company] · Checked 3 hours ago', tags: <Tag tone="partner">Open role</Tag> },
+              ].map((role) => (
+                <div
+                  key={role.title}
+                  className="bg-white rounded-2xl p-5 flex items-start justify-between gap-3"
+                  style={{ border: '1px solid #E2E6F0', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold leading-[22.5px]" style={{ color: '#0A0A0A' }}>{role.title}</p>
+                    <p className="text-[12px] leading-[18px] mt-1" style={{ color: '#6B7280' }}>{role.meta}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1.5 flex-shrink-0">{role.tags}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {active === 'Interview Report' && (
+          <>
+            <div>
+              <p className="text-[16px] sm:text-[17px] leading-[27.6px]" style={{ color: '#595959' }}>
+                Every interview ends in a report: an overall score, four dimensions and your screening checklist results. On partner roles it goes to the hiring team with your recording.
+              </p>
+              <TabBullets
+                items={[
+                  'Score and rank against everyone who interviewed',
+                  'Four dimensions, so you know which one to work on',
+                  'Your recording travels with the report',
+                  'See when the hiring team opens it',
+                ]}
+              />
+            </div>
+            <div className="flex lg:justify-start">
+              <ReportCard />
+            </div>
+          </>
+        )}
+
+        {active === 'Interview Reports Library' && (
+          <>
+            <div>
+              <p className="text-[16px] sm:text-[17px] leading-[27.6px]" style={{ color: '#595959' }}>
+                Real interview questions shared by candidates, filtered by company, role and round. Know what gets asked before you sit down.
+              </p>
+              <TabBullets
+                items={[
+                  'Questions from real interview loops',
+                  'Filter by company, role and round',
+                  'Use them to prepare before a partner-role interview',
+                ]}
+              />
+              <Link
+                to="/interview-questions"
+                className="inline-flex items-center h-10 px-6 mt-8 rounded-full text-[14px] font-medium text-white transition-colors duration-150 bg-[#2E5BFF] hover:bg-[#1E48E6]"
+              >
+                Browse interview reports
+              </Link>
+            </div>
+            <div className="flex flex-col gap-3">
+              {[
+                { title: 'Backend Engineer · System design', meta: 'Onsite round · 4 questions' },
+                { title: 'Data Engineer · SQL and pipelines', meta: 'Technical screen · 6 questions' },
+                { title: 'Machine Learning Engineer · Behavioral', meta: 'Hiring manager round · 5 questions' },
+              ].map((r) => (
+                <div
+                  key={r.title}
+                  className="bg-white rounded-2xl p-5"
+                  style={{ border: '1px solid #E2E6F0', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                >
+                  <p className="text-[15px] font-semibold leading-[22.5px]" style={{ color: '#0A0A0A' }}>{r.title}</p>
+                  <p className="text-[12px] leading-[18px] mt-1" style={{ color: '#6B7280' }}>{r.meta}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Product previews (static illustrations) ──────────────────────────────────
+
+const MONO = "'IBM Plex Mono', monospace";
+
+function BrowserChrome({ url, children, dot = 10 }: { url: string; children: ReactNode; dot?: number }) {
+  return (
+    <div className="bg-white rounded-2xl overflow-hidden w-full" style={{ border: '1px solid #E2E8F0' }}>
+      <div className="flex items-center gap-2 h-9 px-4" style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+        {['#FF5F57', '#FEBC2E', '#28C840'].map((c) => (
+          <span key={c} className="rounded-full flex-shrink-0" style={{ width: dot, height: dot, background: c }} />
+        ))}
+        <div className="flex-1 min-w-0 px-3">
+          <div className="h-[22px] max-w-[340px] rounded-lg px-3 flex items-center" style={{ background: '#EAECEF' }}>
+            <span className="text-[10px] truncate" style={{ color: '#6B7280' }}>{url}</span>
+          </div>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ReportCard() {
+  const dims = [
+    { label: 'Technical accuracy', score: 84, color: '#2E5BFF' },
+    { label: 'Communication', score: 80, color: '#2E5BFF' },
+    { label: 'Structure', score: 66, color: '#FCD34D', scoreColor: '#F59E0B' },
+    { label: 'Completeness', score: 79, color: '#2E5BFF' },
+  ];
+  return (
+    <div
+      className="bg-white rounded-[14px] p-5 w-full max-w-[420px]"
+      style={{ border: '1px solid #E2E8F0', boxShadow: '0 4px 8px rgba(0,0,0,0.05)' }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-semibold leading-[16.5px]" style={{ color: '#0A0A0A' }}>Your interview report</p>
+          <div className="flex gap-1.5 pt-1.5">
+            <span className="px-2 py-0.5 rounded-full text-[8px] font-semibold leading-3" style={{ background: '#DCFCE7', color: '#16A34A' }}>Recommended</span>
+            <span className="px-2 py-0.5 rounded-full text-[8px] font-semibold leading-3" style={{ background: '#EEF1FF', color: '#2563EB' }}>Viewed</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-[26px] leading-[26px] font-semibold" style={{ fontFamily: MONO, color: '#2E5BFF' }}>78</p>
+          <p className="text-[8px] leading-3" style={{ color: '#90A1B9' }}>score</p>
+        </div>
+      </div>
+      <div className="mt-3 py-2 flex items-center gap-2" style={{ borderTop: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9' }}>
+        <span className="text-[10px]" style={{ color: '#4A4D57' }}>Your rank</span>
+        <span className="text-[11px] font-semibold" style={{ fontFamily: MONO, color: '#0A0A0A' }}>#3 of 28</span>
+        <span className="ml-auto text-[9px]" style={{ color: '#90A1B9' }}>Recording · 21:04</span>
+      </div>
+      <p className="text-[8px] leading-3 pt-1" style={{ color: '#90A1B9' }}>Shared with the hiring team with your report</p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-3">
+        {dims.map((d) => (
+          <div key={d.label}>
+            <div className="flex items-center justify-between">
+              <span className="text-[8px] leading-3" style={{ color: '#90A1B9' }}>{d.label}</span>
+              <span className="text-[9px] font-semibold" style={{ fontFamily: MONO, color: d.scoreColor ?? '#0A0A0A' }}>{d.score}</span>
+            </div>
+            <div className="mt-0.5 h-[3px] rounded-full overflow-hidden" style={{ background: '#F1F5F9' }}>
+              <div className="h-full rounded-full" style={{ width: `${d.score}%`, background: d.color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HeroPreview() {
+  return (
+    <div className="w-full max-w-[820px]" style={{ boxShadow: '0 24px 64px rgba(46,91,255,0.13), 0 4px 16px rgba(0,0,0,0.06)', borderRadius: 16 }}>
+      <BrowserChrome url="app.screna.ai/roles/backend-engineer">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 sm:p-5" style={{ background: '#FAFBFF' }}>
+          <div className="rounded-[14px] p-5 flex flex-col text-left" style={{ background: '#2E5CFF', boxShadow: '0 8px 12px rgba(46,91,255,0.25)' }}>
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-full" style={{ width: 6, height: 6, background: 'rgba(255,255,255,0.7)' }} />
+              <span className="text-[10px] font-semibold tracking-[0.5px] uppercase" style={{ color: 'rgba(255,255,255,0.7)' }}>Partner role</span>
+            </div>
+            <p className="text-[18px] font-semibold leading-[22.5px] text-white pt-3">Backend Engineer</p>
+            <p className="text-[12px] leading-[18px] pt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>[Company]</p>
+            <div className="mt-4 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.2)' }}>
+              <div className="h-full rounded-full" style={{ width: '24%', background: 'rgba(255,255,255,0.85)' }} />
+            </div>
+            <p className="text-[10px] leading-[15px] pt-1.5 pb-4" style={{ color: 'rgba(255,255,255,0.65)' }}>12 of 50 spots left · Closes in 9 days</p>
+            <div className="mt-auto h-9 rounded-full bg-white flex items-center justify-center text-[12px] font-semibold" style={{ color: '#1231B8' }}>
+              Start interview
+            </div>
+          </div>
+          <ReportCard />
+        </div>
+      </BrowserChrome>
+    </div>
+  );
+}
+
+function EmployerPreview() {
+  const rows = [
+    { rank: '#1', name: 'Jamie R.', score: 91, status: 'Contacted', bg: '#FFF7ED', fg: '#C2410C' },
+    { rank: '#2', name: 'Candidate', score: 87, status: 'Locked', bg: '#F3F4F6', fg: '#6B7280' },
+    { rank: '#3', name: 'Alex P.', score: 84, status: 'Reviewed', bg: '#F0FDF4', fg: '#16A34A' },
+  ];
+  return (
+    <div className="rounded-2xl p-4 sm:p-6" style={{ background: '#FAFBFF', border: '1px solid #E2E8F0' }}>
+      <div style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.06)', borderRadius: 14 }}>
+        <BrowserChrome url="app.screna.ai/employer" dot={8}>
+          <div className="p-4">
+            <p className="text-[11px] font-semibold leading-[16.5px]" style={{ color: '#0F172A' }}>Backend Engineer · 5 candidates</p>
+            <div className="pt-3">
+              {rows.map((r) => (
+                <div key={r.rank} className="flex items-center gap-3 py-2.5" style={{ borderBottom: '1px solid #F8FAFC' }}>
+                  <span className="w-5 text-[10px]" style={{ fontFamily: MONO, color: '#90A1B9' }}>{r.rank}</span>
+                  <span className="flex-1 min-w-0 truncate text-[12px] font-medium" style={{ color: '#0A0A0A' }}>{r.name}</span>
+                  <span className="text-[12px] font-semibold" style={{ fontFamily: MONO, color: '#2E5BFF' }}>{r.score}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold leading-[13.5px]" style={{ background: r.bg, color: r.fg }}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </BrowserChrome>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pricing ──────────────────────────────────────────────────────────────────
+
 function PricingCard({
   plan,
   revealDelay = 0,
@@ -1993,97 +1828,52 @@ function PricingCard({
   isCurrent?: boolean;
   onSelect: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
+  const hl = plan.highlighted;
   return (
     <div
       data-reveal
       data-delay={revealDelay}
-      className="relative rounded-[18px] p-7 flex flex-col transition-all duration-200"
+      className="relative rounded-2xl p-7 flex flex-col"
       style={{
-        background: plan.highlighted ? '#F7F9FF' : '#FFFFFF',
-        border: plan.highlighted ? '2px solid #2E5BFF' : '1px solid #2E5BFF',
-        boxShadow: hovered
-          ? plan.highlighted
-            ? '0 20px 48px rgba(46,91,255,0.18)'
-            : '0 12px 28px rgba(46,91,255,0.10)'
-          : plan.highlighted
-          ? '0 18px 42px rgba(46,91,255,0.14)'
-          : '0 10px 24px rgba(46,91,255,0.04)',
-        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
-        minHeight: 408,
+        background: hl ? '#F7F9FF' : '#FFFFFF',
+        border: hl ? '2px solid #2E5BFF' : '1px solid #E2E6F0',
+        boxShadow: hl ? '0 18px 42px rgba(46,91,255,0.14)' : '0 1px 3px rgba(0,0,0,0.06)',
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       {plan.badge && (
-        <div
-          className="absolute -top-3 right-6 px-3 py-1 rounded-full text-[10px] font-medium text-white"
-          style={{ background: '#2E5BFF' }}
-        >
+        <div className="absolute -top-3 right-5 px-3 py-1 rounded-full text-[10px] font-medium leading-[15px] text-white" style={{ background: '#2E5BFF' }}>
           {plan.badge}
         </div>
       )}
-      <p
-        className="text-[15px] font-semibold mb-2"
-        style={{
-          color: plan.highlighted ? '#2E5BFF' : '#0A0A0A',
-          fontFamily: "'Inter', sans-serif",
-        }}
-      >
-        {plan.name}
+      <p className="text-[15px] font-medium leading-[22.5px] pb-2" style={{ color: '#0A0A0A' }}>{plan.name}</p>
+      <p className="flex items-baseline gap-2">
+        <span className="text-[30px] leading-[45px] tracking-[-0.5px]" style={{ fontFamily: MONO, color: hl ? '#2E5BFF' : '#0A0A0A' }}>
+          {plan.price}
+        </span>
+        {plan.priceSuffix && <span className="text-[13px]" style={{ color: '#90A1B9' }}>{plan.priceSuffix}</span>}
       </p>
-      <p
-        className="text-[30px] tracking-[-0.5px] mb-1"
-        style={{
-          color: plan.highlighted ? '#2E5BFF' : '#0A0A0A',
-          fontFamily: "'IBM Plex Mono', monospace",
-        }}
-      >
-        {plan.price}
-      </p>
-      <p
-        className="text-[12px] mb-6"
-        style={{
-          color: plan.highlighted ? '#2E5BFF' : '#4A4D57',
-          fontFamily: "'Inter', sans-serif",
-        }}
-      >
-        {plan.tagline}
-      </p>
-      <div className="flex-1 space-y-2 mb-8">
-        {plan.features.map((f, i) => (
-          <p
-            key={i}
-            className="text-[12px] leading-[18px]"
-            style={{
-              color: plan.highlighted ? '#2E5BFF' : '#4A4D57',
-              fontFamily: "'Inter', sans-serif",
-            }}
-          >
-            ✓&nbsp;&nbsp;{f}
-          </p>
-        ))}
-      </div>
+      <p className="text-[12px] leading-[18px] pb-6" style={{ color: '#90A1B9' }}>{plan.tagline}</p>
+      <ul className="flex-1 flex flex-col gap-3 pb-4">
+        {plan.features.map((f) => {
+          const text = typeof f === 'string' ? f : f.text;
+          return (
+            <li key={text} className="flex items-start gap-2.5">
+              <img src={hl ? iconCheckPrimary : iconCheckMuted} alt="" width={14} height={14} className="flex-shrink-0 mt-0.5" />
+              <span className={`text-[13px] leading-[19.5px] ${typeof f === 'string' ? '' : 'font-medium'}`} style={{ color: '#0A0A0A' }}>
+                {text}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {plan.footnote && <p className="text-[11px] leading-[16.5px] pb-4" style={{ color: '#90A1B9' }}>{plan.footnote}</p>}
       <button
         onClick={onSelect}
         disabled={loading}
-        className="w-full h-[38px] rounded-[7px] text-[13px] font-medium transition-all duration-150 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
-        style={{
-          background: plan.highlighted ? '#2E5BFF' : '#FFFFFF',
-          color: plan.highlighted ? '#FFFFFF' : '#1231B8',
-          border: '1px solid #2E5BFF',
-          fontFamily: "'Inter', sans-serif",
-        }}
-        onMouseEnter={(e) => {
-          if (plan.highlighted) {
-            (e.currentTarget as HTMLElement).style.background = '#1E48E6';
-          } else {
-            (e.currentTarget as HTMLElement).style.background = '#F0F3FF';
-          }
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.background = plan.highlighted ? '#2E5BFF' : '#FFFFFF';
-        }}
+        className={`w-full h-10 rounded-[7px] text-[13px] font-medium transition-colors duration-150 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center ${
+          hl ? 'bg-[#2E5BFF] hover:bg-[#1E48E6] text-white' : 'bg-white hover:bg-[#F0F3FF] text-[#1231B8]'
+        }`}
+        style={{ border: '1px solid #2E5BFF' }}
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isCurrent ? 'Current plan' : plan.cta}
       </button>
@@ -2091,78 +1881,51 @@ function PricingCard({
   );
 }
 
-function CreditsAddOn({ revealDelay = 0, onAddCredits }: { revealDelay?: number; onAddCredits: () => void }) {
-  const [hovered, setHovered] = useState(false);
+function AddOnRow({ onAdd }: { onAdd: () => void }) {
   return (
     <div
-      data-reveal
-      data-delay={revealDelay}
-      className="rounded-2xl px-6 py-4 flex flex-wrap items-center gap-4 transition-all duration-200"
-      style={{
-        background: '#FFFFFF',
-        border: '1px solid #2E5BFF',
-        boxShadow: hovered
-          ? '0 12px 28px rgba(46,91,255,0.10)'
-          : '0 12px 28px rgba(46,91,255,0.05)',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      data-reveal data-delay="300"
+      className="bg-white rounded-2xl px-6 py-5 flex flex-col md:flex-row md:items-center gap-4"
+      style={{ border: '1px solid #2E5BFF', boxShadow: '0 12px 14px rgba(46,91,255,0.06)' }}
     >
-      <div
-        className="self-stretch"
-        style={{ width: 3, background: '#2E5BFF', borderRadius: 2, minHeight: 28 }}
-      />
-      <div className="flex-shrink-0">
-        <p
-          className="text-[11px] font-semibold"
-          style={{
-            color: '#1231B8',
-            fontFamily: "'IBM Plex Mono', monospace",
-            letterSpacing: '0.08em',
-          }}
-        >
-          PAY AS YOU GO
-        </p>
-        <p
-          className="text-[15px] font-semibold"
-          style={{ color: '#0A0A0A', fontFamily: "'Inter', sans-serif" }}
-        >
-          Need a few extra practice reps?
-        </p>
-      </div>
-      <p
-        className="text-[14px] flex-1 min-w-[200px]"
-        style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
-      >
-        Buy credits anytime without upgrading your plan.
-      </p>
-      <div className="flex items-center gap-3 ml-auto">
-        <div
-          className="inline-flex items-center justify-center h-10 px-5 rounded-full text-[14px] font-semibold"
-          style={{
-            background: '#F7F9FF',
-            border: '1px solid #2E5BFF',
-            color: '#1231B8',
-            fontFamily: "'IBM Plex Mono', monospace",
-          }}
-        >
-          $0.10 / credit
+      <div className="flex items-stretch gap-4 flex-shrink-0">
+        <span className="w-[3px] min-h-[28px] rounded-sm" style={{ background: '#2E5BFF' }} />
+        <div>
+          <p className="text-[11px] font-semibold leading-[16.5px] tracking-[0.88px]" style={{ fontFamily: MONO, color: '#1231B8' }}>ADD-ON</p>
+          <p className="text-[15px] font-semibold leading-[22.5px]" style={{ color: '#0A0A0A' }}>Need a few more interviews?</p>
         </div>
-        <button
-          onClick={onAddCredits}
-          className="inline-flex items-center justify-center h-10 px-5 rounded-full text-[14px] font-semibold transition-all duration-150 active:scale-95"
-          style={{
-            background: '#FFFFFF',
-            border: '1px solid #2E5BFF',
-            color: '#1231B8',
-            fontFamily: "'Inter', sans-serif",
-          }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#F0F3FF')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#FFFFFF')}
+      </div>
+      <p className="flex-1 text-[14px] leading-[21px]" style={{ color: '#4A4D57' }}>
+        Add 5 partner-role interviews anytime. For Pro and Pro 90-day members, valid 90 days.
+      </p>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <span
+          className="inline-flex items-center h-10 px-5 rounded-full text-[14px] font-semibold"
+          style={{ fontFamily: MONO, color: '#1231B8', background: '#F7F9FF', border: '1px solid #2E5BFF' }}
         >
-          Add credits
+          $12
+        </span>
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center h-10 px-5 rounded-full text-[14px] font-semibold transition-colors duration-150 bg-white hover:bg-[#F0F3FF]"
+          style={{ color: '#1231B8', border: '1px solid #2E5BFF' }}
+        >
+          Add interviews
         </button>
       </div>
+    </div>
+  );
+}
+
+function FooterColumn({ title, links }: { title: string; links: { label: string; to: string }[] }) {
+  return (
+    <div>
+      <p className="text-[14px] font-semibold tracking-[-0.35px] mb-5" style={{ color: '#0F172B' }}>
+        {title}
+      </p>
+      {links.map((item) => (
+        <FooterLink key={item.label} {...item} />
+      ))}
     </div>
   );
 }

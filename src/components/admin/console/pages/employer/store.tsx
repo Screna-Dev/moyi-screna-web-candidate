@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { Candidate, Company, EmployerView, HiringDecision, Job } from './types';
-import { EMPTY_COMPANY_FIELDS, blankJob, mockCandidates, mockCompanies, mockJobs } from './mockData';
+import type { Candidate, Company, EmployerPlan, EmployerView, HiringDecision, Job } from './types';
+import { quoteUnlock, type UnlockQuote } from './planQuote';
+import { EMPTY_COMPANY_FIELDS, blankJob, mockCandidates, mockCompanies, mockJobs, mockPlan } from './mockData';
 
 // In-memory state for the Employers admin section. No API yet — edits last
 // until the admin console is reloaded. When endpoints land, swap the setters
@@ -24,9 +25,18 @@ type EmployerStore = {
 
   candidatesFor: (jobId: string) => Candidate[]; // ranked, highest score first
   getCandidate: (id: string) => Candidate | undefined;
-  unlockCandidate: (id: string) => void;
+  // Consumes one report unlock from the plan, or bills overage once the
+  // allowance is spent. Returns false (and changes nothing) when neither is
+  // possible; check unlockQuote first to show why.
+  unlockCandidate: (id: string) => boolean;
+  unlockQuote: () => UnlockQuote;
   setDecision: (id: string, decision: HiringDecision) => void;
   markContacted: (id: string, contacted: boolean) => void;
+
+  plan: EmployerPlan;
+  unlocksLeft: number;
+  sponsoredLeft: number;
+  setOverageCap: (cap: number) => void;
 
   view: EmployerView;
   go: (view: EmployerView) => void;
@@ -44,6 +54,7 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
   const [allJobs, setAllJobs] = useState<Job[]>(mockJobs);
   const [candidates, setCandidates] = useState<Candidate[]>(mockCandidates);
   const [view, setView] = useState<EmployerView>({ name: 'dashboard' });
+  const [plan, setPlan] = useState<EmployerPlan>(mockPlan);
 
   const company = companies.find((c) => c.id === companyId) ?? companies[0];
   const jobs = useMemo(() => allJobs.filter((j) => j.companyId === company.id), [allJobs, company.id]);
@@ -91,10 +102,29 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
 
     candidatesFor: (jobId) => candidates.filter((c) => c.jobId === jobId).sort((a, b) => b.score - a.score),
     getCandidate: (id) => candidates.find((c) => c.id === id),
-    unlockCandidate: (id) => setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, unlocked: true } : c))),
+    unlockCandidate: (id) => {
+      const c = candidates.find((x) => x.id === id);
+      if (!c) return false;
+      if (c.unlocked) return true;
+      const quote = quoteUnlock(plan);
+      if (quote.kind === 'blocked') return false;
+      setPlan((p) =>
+        quote.kind === 'included'
+          ? { ...p, unlocksUsed: p.unlocksUsed + 1 }
+          : { ...p, unlocksUsed: p.unlocksUsed + 1, overageThisMonth: p.overageThisMonth + quote.price },
+      );
+      setCandidates((prev) => prev.map((x) => (x.id === id ? { ...x, unlocked: true } : x)));
+      return true;
+    },
+    unlockQuote: () => quoteUnlock(plan),
     setDecision: (id, decision) => setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, decision } : c))),
     markContacted: (id, contacted) =>
       setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, contact: contacted ? 'contacted' : 'not_contacted' } : c))),
+
+    plan,
+    unlocksLeft: Math.max(0, plan.unlockAllowance - plan.unlocksUsed),
+    sponsoredLeft: Math.max(0, plan.sponsoredAllowance - plan.sponsoredUsed),
+    setOverageCap: (cap) => setPlan((p) => ({ ...p, overageCap: Math.max(0, cap) })),
 
     view,
     go,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Briefcase, CircleHelp, LayoutGrid, LogOut, UsersRound } from 'lucide-react';
+import { ChevronLeft, CircleHelp, CreditCard, LayoutDashboard, LogOut, UserRoundSearch, Users } from 'lucide-react';
 import { EmployerStoreProvider, useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { SECTION_VIEW, sectionOf, type EmployerSection } from '@/components/admin/console/pages/employer/sections';
 import { cx } from '@/components/admin/console/pages/employer/ui';
@@ -12,26 +12,33 @@ import { CandidateBoardView } from '@/components/admin/console/pages/employer/vi
 import { CandidateReportView } from '@/components/admin/console/pages/employer/views/CandidateReportView';
 import { ContactCandidateView } from '@/components/admin/console/pages/employer/views/ContactCandidateView';
 import { HiringGuide } from '@/components/admin/console/pages/employer/views/HiringGuide';
+import { PlanUsageView } from '@/components/admin/console/pages/employer/views/PlanUsageView';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 import { clearEmployerSession, getEmployerSession, type EmployerSession } from './employerAuth';
 
 // /employer — the employer-facing app. Same screens and in-memory store as the
 // admin console's Hiring section (src/components/admin/console/pages/employer),
 // but scoped to the signed-in employer's own company with no company switcher.
-// Shell follows Figma 2010:52. Billing & Credits, Notifications, Company
-// Profile and Account Settings from the design are left out, as in admin.
+// Shell follows Figma 2451:1052 / 2451:3188. Plan & Usage is employer-only
+// (not in the admin console), so it is tracked as its own nav key rather than
+// an EmployerSection. Notifications, Company Profile and Account Settings from
+// the design have no screens yet and are left out.
 // No employer API yet: data resets on reload.
 
-const NAV: { section: EmployerSection; label: string; icon: ReactNode }[] = [
-  { section: 'employer-dashboard', label: 'Dashboard', icon: <LayoutGrid size={18} /> },
-  { section: 'employer-jobs', label: 'Jobs', icon: <Briefcase size={18} /> },
-  { section: 'employer-candidates', label: 'Applications', icon: <UsersRound size={18} /> },
+type NavKey = EmployerSection | 'plan';
+
+const NAV: { key: NavKey; label: string; icon: ReactNode }[] = [
+  { key: 'employer-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+  { key: 'employer-jobs', label: 'Jobs', icon: <UserRoundSearch size={16} /> },
+  { key: 'employer-candidates', label: 'Applications', icon: <Users size={16} /> },
+  { key: 'plan', label: 'Plan & Usage', icon: <CreditCard size={16} /> },
 ];
 
-const TITLES: Record<EmployerSection, string> = {
+const TITLES: Record<NavKey, string> = {
   'employer-dashboard': 'Dashboard',
   'employer-jobs': 'Jobs',
   'employer-candidates': 'Applications',
+  plan: 'Plan & Usage',
 };
 
 function initials(name: string) {
@@ -86,7 +93,57 @@ function ViewBody() {
       return <CandidateReportView jobId={view.jobId} candidateId={view.candidateId} />;
     case 'contact':
       return <ContactCandidateView jobId={view.jobId} candidateId={view.candidateId} />;
+    case 'plan':
+      return <PlanUsageView />;
   }
+}
+
+function CurrentPlanCard() {
+  const { plan, unlocksLeft, sponsoredLeft, go } = useEmployerStore();
+  return (
+    <div className="m-3 rounded-2xl bg-[rgba(60,119,246,0.08)] p-4 flex flex-col gap-2.5">
+      <div className="flex items-center gap-1.5">
+        <CreditCard size={14} className="text-[#3c77f6]" />
+        <span className="text-[13px] leading-[19.5px] font-semibold text-[#1e232f]">Current Plan</span>
+        <span className="px-1.5 py-0.5 rounded bg-[rgba(60,119,246,0.12)] text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">
+          {plan.tier === 'business' ? 'Business' : 'Free'}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 text-[12px] leading-[18px]">
+        <div className="flex justify-between">
+          <span className="text-[#5a6172]">Unlocks</span>
+          <span className="font-bold text-[#1e232f]">{unlocksLeft} left</span>
+        </div>
+        {plan.tier === 'business' && (
+          <div className="flex justify-between">
+            <span className="text-[#5a6172]">Sponsored</span>
+            <span className="font-bold text-[#1e232f]">{sponsoredLeft} left</span>
+          </div>
+        )}
+      </div>
+      <div className="h-px bg-[rgba(60,119,246,0.15)]" />
+      <button type="button" onClick={() => go({ name: 'plan' })} className="w-fit text-[12px] leading-[18px] font-semibold text-[#3c77f6] hover:underline">
+        Manage plan →
+      </button>
+    </div>
+  );
+}
+
+function UsageBadges() {
+  const { plan, unlocksLeft, sponsoredLeft, go } = useEmployerStore();
+  const badge = 'px-2.5 py-[3px] rounded-full bg-[#eef2ff] text-[12px] leading-[18px] font-semibold text-[#2e5bff] whitespace-nowrap hover:bg-[#e0e7ff]';
+  return (
+    <div className="hidden sm:flex items-center gap-2">
+      <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
+        Unlocks {unlocksLeft} left
+      </button>
+      {plan.tier === 'business' && (
+        <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
+          Sponsored {sponsoredLeft} left
+        </button>
+      )}
+    </div>
+  );
 }
 
 function AccountMenu({ session, onSignOut }: { session: EmployerSession; onSignOut: () => void }) {
@@ -126,9 +183,11 @@ function AccountMenu({ session, onSignOut }: { session: EmployerSession; onSignO
 function Shell({ session }: { session: EmployerSession }) {
   useBindCompany(session);
   const navigate = useNavigate();
-  const { view, go, company } = useEmployerStore();
+  const { view, go } = useEmployerStore();
   const [guideOpen, setGuideOpen] = useState(false);
-  const active = sectionOf(view);
+  const active: NavKey = view.name === 'plan' ? 'plan' : sectionOf(view);
+  const goNav = (key: NavKey) => go(key === 'plan' ? { name: 'plan' } : SECTION_VIEW[key]);
+  const title = view.name === 'board' ? 'Candidates' : TITLES[active];
 
   const signOut = () => {
     clearEmployerSession();
@@ -138,44 +197,50 @@ function Shell({ session }: { session: EmployerSession }) {
   return (
     <div className="h-screen flex bg-[#f9fafb] font-['Inter',sans-serif]">
       <aside className="hidden md:flex w-[256px] shrink-0 flex-col bg-white border-r border-[#e5e7eb]">
-        <div className="h-[72px] flex items-center gap-2.5 px-6 border-b border-[#e5e7eb]">
+        <div className="h-[72px] flex items-center px-6 border-b border-[#e5e7eb]">
           <img src={imgLogo} alt="Screna" className="h-6 w-auto object-contain" />
-          <span className="text-[10px] uppercase tracking-[0.06em] text-[#3c77f6] bg-[#eef4ff] rounded-full px-2 py-0.5">Employer</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-6 flex flex-col gap-6">
           <NavGroup label="Hiring">
             {NAV.map((n) => (
-              <NavItem key={n.section} icon={n.icon} label={n.label} active={active === n.section} onClick={() => go(SECTION_VIEW[n.section])} />
+              <NavItem key={n.key} icon={n.icon} label={n.label} active={active === n.key} onClick={() => goNav(n.key)} />
             ))}
           </NavGroup>
-          <NavGroup label="Help">
-            <NavItem icon={<CircleHelp size={18} />} label="How hiring works" active={false} onClick={() => setGuideOpen(true)} />
+          <NavGroup label="Activity & Account">
+            <NavItem icon={<CircleHelp size={16} />} label="Help Center" active={false} onClick={() => setGuideOpen(true)} />
           </NavGroup>
         </nav>
-        <div className="m-3 rounded-2xl bg-[rgba(60,119,246,0.08)] p-4 flex flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-[0.06em] text-[#5a6172]">Company</span>
-          <span className="text-[14px] font-semibold text-[#1e232f] truncate">{company.name}</span>
-          <span className="text-[12px] text-[#5a6172] truncate">{session.domain}</span>
-        </div>
+        <CurrentPlanCard />
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
+        {view.name === 'board' && (
+          <div className="h-10 shrink-0 bg-white border-b border-[#e5e7eb] flex items-center px-4 md:px-6">
+            <button type="button" onClick={() => go({ name: 'applications' })} className="flex items-center gap-1.5 text-[13px] text-[#5a6172] hover:text-[#1e232f]">
+              <ChevronLeft size={14} /> Back to Applications
+            </button>
+          </div>
+        )}
         <header className="h-[72px] shrink-0 bg-white border-b border-[#e5e7eb] flex items-center gap-4 px-4 md:px-8">
-          <h1 className="text-[18px] font-semibold text-[#1e232f]">{TITLES[active]}</h1>
+          <h1 className="text-[22px] font-bold text-[#1e232f] font-[family-name:var(--font-serif)] whitespace-nowrap">{title}</h1>
           {/* Narrow screens: sidebar collapses into tabs. */}
           <div className="flex md:hidden gap-1 overflow-x-auto">
             {NAV.map((n) => (
               <button
-                key={n.section}
+                key={n.key}
                 type="button"
-                onClick={() => go(SECTION_VIEW[n.section])}
-                className={cx('px-2.5 py-1 rounded-lg text-[13px] whitespace-nowrap', active === n.section ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-semibold' : 'text-[#5a6172]')}
+                onClick={() => goNav(n.key)}
+                className={cx('px-2.5 py-1 rounded-lg text-[13px] whitespace-nowrap', active === n.key ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-semibold' : 'text-[#5a6172]')}
               >
                 {n.label}
               </button>
             ))}
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-6">
+            <UsageBadges />
+            <button type="button" onClick={() => setGuideOpen(true)} className="hidden sm:block text-[14px] font-medium text-[#5a6172] hover:text-[#1e232f]">
+              Help
+            </button>
             <AccountMenu session={session} onSignOut={signOut} />
           </div>
         </header>
@@ -215,7 +280,7 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: str
       onClick={onClick}
       className={cx(
         'flex items-center gap-3 px-3 py-2 rounded-[10px] text-[14px] text-left transition-colors',
-        active ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-semibold' : 'text-[#1e232f] font-medium hover:bg-[#f3f4f7]',
+        active ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-medium' : 'text-[#1e232f] font-medium hover:bg-[#f3f4f7]',
       )}
     >
       {icon}

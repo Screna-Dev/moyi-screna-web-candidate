@@ -11,7 +11,7 @@ type ScoreFilter = 'Score: All' | '80+' | '70+' | 'Below 70';
 const PAGE_SIZE = 8;
 
 export function CandidateBoardView({ jobId }: { jobId: string }) {
-  const { getJob, jobs, candidatesFor, unlockCandidate, closeJob, go } = useEmployerStore();
+  const { getJob, jobs, candidatesFor, unlocksLeft, closeJob, go } = useEmployerStore();
   const job = getJob(jobId);
   const ranked = candidatesFor(jobId);
 
@@ -177,7 +177,7 @@ export function CandidateBoardView({ jobId }: { jobId: string }) {
           <div className="grid grid-cols-5 gap-4">
             <StatCard label="Applications" value={job.applicants} hint={`${Math.max(0, job.applicants - ranked.length)} have not completed the interview`} />
             <StatCard label="Interviews completed" value={ranked.length} hint="8 completed this week" />
-            <StatCard label="Reports unlocked" value={unlocked} hint={`${ranked.length - unlocked} still locked`} />
+            <StatCard label="Reports unlocked" value={unlocked} hint={`${unlocksLeft} report unlock${unlocksLeft === 1 ? '' : 's'} remaining`} />
             <StatCard label="Moved forward" value={moved} hint="Candidates notified" />
             <StatCard label="Rejected" value={rejected} hint={rejected === 1 ? 'Candidate notified' : 'Candidates notified'} />
           </div>
@@ -256,7 +256,7 @@ export function CandidateBoardView({ jobId }: { jobId: string }) {
                         </div>
                       ) : (
                         <Button size="sm" variant="primary" onClick={() => setUnlocking(c)}>
-                          Unlock report
+                          Unlock Report
                         </Button>
                       )}
                     </td>
@@ -295,7 +295,6 @@ export function CandidateBoardView({ jobId }: { jobId: string }) {
       <UnlockDialog
         candidate={unlocking}
         job={job}
-        unlock={unlockCandidate}
         onClose={() => setUnlocking(null)}
         onUnlocked={(c) => go({ name: 'report', jobId: job.id, candidateId: c.id })}
       />

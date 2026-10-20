@@ -24,6 +24,7 @@
     { "source": "/blog", "destination": "/app.html" },
     { "source": "/blog/:slug", "destination": "/app.html" },
     { "source": "/faq", "destination": "/app.html" },
+    { "source": "/employers", "destination": "/app.html" },
     { "source": "/help", "destination": "/app.html" },
     { "source": "/contact", "destination": "/app.html" },
     { "source": "/privacy", "destination": "/app.html" },
@@ -75,6 +76,9 @@
     { "source": "/guest-dashboard", "destination": "/app.html" },
     { "source": "/select-dashboard", "destination": "/app.html" },
     { "source": "/mentor-dashboard", "destination": "/app.html" },
+
+    { "source": "/employer", "destination": "/app.html" },
+    { "source": "/employer/login", "destination": "/app.html" },
 
     { "source": "/admin", "destination": "/app.html" },
     { "source": "/redeem-code", "destination": "/app.html" },

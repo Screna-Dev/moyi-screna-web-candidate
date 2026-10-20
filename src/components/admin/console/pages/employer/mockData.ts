@@ -1,4 +1,4 @@
-import type { Candidate, Company, Criterion, InterviewQuestion, Job } from './types';
+import type { Candidate, Company, Criterion, EmployerPlan, InterviewQuestion, Job } from './types';
 
 // Mock data for the admin-operated employer flow. Replace with API calls
 // once the employer endpoints exist.
@@ -259,3 +259,29 @@ export const mockCandidates: Candidate[] = [
 export const applicationsSeries = [
   0, 2, 3, 1, 3, 2, 4, 1, 3, 5, 2, 3, 2, 4, 1, 3, 5, 2, 3, 2, 4, 5, 2, 3, 4, 1, 5, 3, 4, 2,
 ].map((v, i) => ({ day: i + 1, value: v }));
+
+// Plan pricing mirrors the employer landing page (/employers).
+export const BUSINESS_PRICE = 399;
+export const BUSINESS_ANNUAL_PRICE = 3990;
+export const FREE_UNLOCKS = 20;
+export const BUSINESS_UNLOCKS = 50;
+
+export const mockPlan: EmployerPlan = {
+  tier: 'business',
+  unlockAllowance: BUSINESS_UNLOCKS,
+  unlocksUsed: 36,
+  sponsoredAllowance: 50,
+  sponsoredUsed: 18,
+  renewsOn: 'Nov 1, 2026',
+  resetsOn: 'Nov 1',
+  seats: 3,
+  seatsUsed: 3,
+  overageUnitPrice: 12,
+  overageCap: 200,
+  overageThisMonth: 0,
+  invoices: [
+    { id: 'inv-1001', date: 'Oct 1, 2026', description: 'Business · Monthly', amount: 399 },
+    { id: 'inv-0930', date: 'Sep 30, 2026', description: 'Business · Monthly', amount: 399 },
+    { id: 'inv-0901', date: 'Sep 1, 2026', description: 'Business · Monthly', amount: 399 },
+  ],
+};

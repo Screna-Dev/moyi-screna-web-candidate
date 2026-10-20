@@ -23,9 +23,10 @@ function checkAuth() {
   return !!localStorage.getItem('authToken') || !!sessionStorage.getItem('authToken');
 }
 
-// The candidate signup promo has no place on the employer side.
+// The candidate signup promo has no place on the employer side, including the
+// /employers landing page (it carries its own announcement bar).
 function isEmployerPath(pathname: string) {
-  return pathname === '/employer' || pathname.startsWith('/employer/');
+  return pathname === '/employer' || pathname === '/employers' || pathname.startsWith('/employer/');
 }
 
 function TopBarWrapper() {
