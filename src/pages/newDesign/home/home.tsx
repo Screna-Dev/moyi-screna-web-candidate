@@ -1789,8 +1789,9 @@ export function HomePage() {
                 Resources
               </p>
               {[
-                { label: 'Blog', to: '#' },
+                { label: 'Blog', to: '/blog' },
                 { label: 'FAQ', to: '/faq' },
+                { label: 'About', to: '/about' },
                 { label: 'Help Center', to: '/help' },
                 { label: 'Contact', to: '/contact' },
               ].map((item) => (

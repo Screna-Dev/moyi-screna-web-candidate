@@ -77,7 +77,7 @@ export function Footer() {
               <img src={Logo} alt="Screna" className="h-7 w-auto" />
             </div>
             <p className="text-[hsl(222,12%,45%)] text-sm leading-relaxed mb-5 max-w-xs">
-              An AI-driven tech career community where you can share real interview experiences and practice role-specific question sets with explainable, actionable feedback.
+              Empowering careers through AI and human judgment.
             </p>
             <div className="flex items-center gap-1">
               {SOCIAL_LINKS.map(({ icon: Icon, label, href }) => (
