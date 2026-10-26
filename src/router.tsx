@@ -70,6 +70,7 @@ const BackendEngineerDetailPage = lazy(() => import('./pages/newDesign/opportuni
 const InterviewResultPage = lazy(() => import('./pages/newDesign/opportunities/InterviewResultPage').then((m) => ({ default: m.InterviewResultPage })));
 const NotQualifiedResultPage = lazy(() => import('./pages/newDesign/opportunities/NotQualifiedResultPage').then((m) => ({ default: m.NotQualifiedResultPage })));
 const ContactRecruiterPage = lazy(() => import('./pages/newDesign/opportunities/ContactRecruiterPage').then((m) => ({ default: m.ContactRecruiterPage })));
+const CareerInterviewPage = lazy(() => import('./pages/newDesign/opportunities/CareerInterviewPage').then((m) => ({ default: m.CareerInterviewPage })));
 const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
 const AIMockPage = lazy(() => import('./pages/newDesign/ai-mock').then((m) => ({ default: m.AIMockPage })));
 const AIMockWhitePage = lazy(() => import('./pages/newDesign/ai-mock-white').then((m) => ({ default: m.AIMockWhitePage })));
@@ -235,10 +236,12 @@ export const router = createBrowserRouter([
       { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
       { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
       { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
-      // Opportunities (apply to jobs directly). UI-only for now — no API yet;
-      // pages read mock data from components/newDesign/opportunities/mockJobs.
-      // Job 1 (partner job) and job 8 (not-qualified result) have their own
-      // design frames, so they sit on static paths that outrank :id.
+      // Opportunities: the original design, fed by the /careers/* API where it
+      // has data (job list, detail, applications, interview). Score/report/
+      // recruiter-email pages still show the design's sample data until the
+      // backend catches up with the design. Job 1 (partner job) and job 8
+      // (not-qualified result) are the design's sample frames on static paths;
+      // real job ids are UUIDs, so they never collide.
       {
         element: <RequireAuth><OpportunitiesLayout /></RequireAuth>,
         children: [
@@ -251,6 +254,8 @@ export const router = createBrowserRouter([
           { path: '/opportunities/job/:id/contact', element: <ContactRecruiterPage /> },
         ],
       },
+      // Full-screen interview room, outside the dashboard shell.
+      { path: '/opportunities/applications/:applicationId/interview', element: <RequireAuth><CareerInterviewPage /></RequireAuth> },
       { path: '/session-confirm', element: <RequireAuth><SessionConfirmPage /></RequireAuth> },
       { path: '/ai-mock', element: <RequireAuth><AIMockPage /></RequireAuth> },
       { path: '/ai-mockwhite', element: <RequireAuth><AIMockWhitePage /></RequireAuth> },
@@ -376,6 +381,8 @@ export const router = createBrowserRouter([
       // employer side — separate company-email sign-in, no Google
       { path: '/employer/login', element: <EmployerLoginPage /> },
       { path: '/employer', element: <EmployerApp /> },
+      // Stripe return after buying employer credits (?checkout=…&jobId=…)
+      { path: '/employer/credits', element: <EmployerApp /> },
 
       // admin — ADMIN sees full console; OPS sees only Job Applications
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },

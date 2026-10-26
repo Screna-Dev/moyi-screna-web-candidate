@@ -61,7 +61,7 @@ function UsageBar({ label, used, total, color }: { label: string; used: number; 
 }
 
 export function PlanUsageView() {
-  const { plan, unlocksLeft, setOverageCap } = useEmployerStore();
+  const { plan, unlocksLeft, sponsoredLeft, setOverageCap } = useEmployerStore();
   const [cap, setCap] = useState(String(plan.overageCap));
   const business = plan.tier === 'business';
 
@@ -112,7 +112,7 @@ export function PlanUsageView() {
             <div className="flex flex-col gap-1">
               <span className="text-[16px] leading-6 font-bold text-[#0a0a0a]">Free</span>
               <span className="text-[13px] leading-[19.5px] text-[#4a4d57]">
-                {unlocksLeft} of {plan.unlockAllowance} free unlocks left
+                {unlocksLeft} of {plan.unlockAllowance} free unlocks left · {sponsoredLeft} of {plan.sponsoredAllowance} sponsored interviews left
               </span>
             </div>
             <OutlineButton onClick={() => window.open('/employers#pricing', '_blank', 'noopener')}>See Business</OutlineButton>

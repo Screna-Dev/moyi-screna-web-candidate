@@ -264,7 +264,26 @@ export const applicationsSeries = [
 export const BUSINESS_PRICE = 399;
 export const BUSINESS_ANNUAL_PRICE = 3990;
 export const FREE_UNLOCKS = 20;
+export const FREE_INTERVIEWS = 10;
 export const BUSINESS_UNLOCKS = 50;
+
+// One-time starter credits granted when a new employer verifies their email
+// (POST /auth/signup/employer): 20 Report, 10 Interview.
+export const freeStarterPlan: EmployerPlan = {
+  tier: 'free',
+  unlockAllowance: FREE_UNLOCKS,
+  unlocksUsed: 0,
+  sponsoredAllowance: FREE_INTERVIEWS,
+  sponsoredUsed: 0,
+  renewsOn: '',
+  resetsOn: '',
+  seats: 1,
+  seatsUsed: 1,
+  overageUnitPrice: 0,
+  overageCap: 0,
+  overageThisMonth: 0,
+  invoices: [],
+};
 
 export const mockPlan: EmployerPlan = {
   tier: 'business',

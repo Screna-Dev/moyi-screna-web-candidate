@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Job } from '../types';
 import { backendCriteria, backendQuestions } from '../mockData';
@@ -138,6 +138,9 @@ export function CreateJobWizard({ jobId }: { jobId?: string }) {
   const heading = originalStatus === 'Draft' ? 'Create a new job' : originalStatus === 'Closed' ? 'Reopen job' : 'Edit job';
   const finalLabel = mode === 'publish' ? 'Publish job' : mode === 'reopen' ? 'Reopen job' : 'Save changes';
   const stepProps = { job, update, showErrors: errorsStep === step, company };
+  // Employer app only: the API requires a complete company profile before a
+  // job goes live. Editing an already-live job is not gated.
+  const gated = mode !== 'update' && !!store.publishGate;
 
   return (
     <div className="flex flex-col gap-6">
@@ -207,10 +210,31 @@ export function CreateJobWizard({ jobId }: { jobId?: string }) {
           {step === 1 && <StepInterview {...stepProps} />}
           {step === 2 && <StepApplication {...stepProps} />}
           {step === 3 && <StepPreview {...stepProps} />}
+          {step === 3 && gated && (
+            <div className="mt-6 flex flex-col gap-3">
+              <div className="flex items-start gap-2 rounded-xl border border-[#f5c451] bg-[#fffbeb] px-4 py-3 text-[14px] text-[#b45309]">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  <span className="font-semibold">Complete your company profile before publishing.</span> Still needed: {store.publishGate?.join(', ')}.
+                </span>
+              </div>
+              <Button
+                variant="link"
+                className="w-fit"
+                onClick={() => {
+                  // Keep the work: the draft is saved before leaving for the profile.
+                  persist();
+                  go({ name: 'profile', returnJobId: job.id });
+                }}
+              >
+                Complete company profile <ArrowRight size={14} />
+              </Button>
+            </div>
+          )}
         </div>
 
         <aside className="w-[300px] shrink-0 sticky top-[76px]">
-          {step < 3 ? <DraftSummary job={job} companyName={company.name} maxStep={maxStep} /> : <PublishSummary job={job} companyName={company.name} ready={allValid} />}
+          {step < 3 ? <DraftSummary job={job} companyName={company.name} maxStep={maxStep} /> : <PublishSummary job={job} companyName={company.name} ready={allValid} gated={gated} />}
         </aside>
       </div>
 
@@ -233,7 +257,7 @@ export function CreateJobWizard({ jobId }: { jobId?: string }) {
               {CONTINUE_LABELS[step]} <ArrowRight size={15} />
             </Button>
           ) : (
-            <Button variant="primary" disabled={!allValid} onClick={onFinal}>
+            <Button variant="primary" disabled={!allValid || gated} onClick={onFinal}>
               {finalLabel} <ArrowRight size={15} />
             </Button>
           )}
@@ -341,7 +365,21 @@ function StatusCell({ ok, okLabel, pending }: { ok: boolean; okLabel: string; pe
   );
 }
 
-function DraftSummary({ job, companyName, maxStep }: { job: Job; companyName: string; maxStep: number }) {
+// note / sponsoredLabel: the employer app's "Application & credits" design uses
+// its own footer copy and "Recruiter sponsored".
+export function DraftSummary({
+  job,
+  companyName,
+  maxStep,
+  note,
+  sponsoredLabel = 'Employer sponsored',
+}: {
+  job: Job;
+  companyName: string;
+  maxStep: number;
+  note?: string;
+  sponsoredLabel?: string;
+}) {
   return (
     <Card className="p-5 flex flex-col gap-3">
       <span className="text-[15px] font-semibold text-[#1e232f]">Job draft</span>
@@ -357,23 +395,24 @@ function DraftSummary({ job, companyName, maxStep }: { job: Job; companyName: st
         v={
           <StatusCell
             ok={maxStep >= 2 && stepValid(job, 2)}
-            okLabel={job.sponsor === 'employer' ? 'Employer sponsored' : 'Candidate-paid'}
+            okLabel={job.sponsor === 'employer' ? sponsoredLabel : 'Candidate-paid'}
             pending="Not selected"
           />
         }
       />
       <Divider />
-      <p className="text-[12px] text-[#5a6172]">Nothing is visible to candidates until the job is published.</p>
+      <p className="text-[12px] text-[#5a6172]">{note ?? 'Nothing is visible to candidates until the job is published.'}</p>
     </Card>
   );
 }
 
-function PublishSummary({ job, companyName, ready }: { job: Job; companyName: string; ready: boolean }) {
+export function PublishSummary({ job, companyName, ready, gated }: { job: Job; companyName: string; ready: boolean; gated: boolean }) {
   const sponsored = job.sponsor === 'employer';
   const missing = [
     !stepValid(job, 0) && 'Job details',
     !stepValid(job, 1) && 'Interview review',
     !stepValid(job, 2) && 'Application & sponsorship',
+    gated && 'Company profile',
   ].filter(Boolean) as string[];
 
   return (
@@ -397,7 +436,7 @@ function PublishSummary({ job, companyName, ready }: { job: Job; companyName: st
           </p>
         </>
       )}
-      {!ready ? (
+      {!ready || gated ? (
         <div className="bg-[#fffbeb] border border-[#fde68a] rounded-lg p-3 text-[12px] text-[#b45309]">
           Before publishing, finish: {missing.join(', ')}.
         </div>

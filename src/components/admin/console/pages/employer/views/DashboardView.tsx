@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bell, Briefcase, Check, CheckCircle2, ClipboardList, HelpCircle, Plus, Trophy, Users } from 'lucide-react';
 import { useEmployerStore } from '../store';
@@ -25,6 +25,21 @@ function seriesFor(metric: Metric, range: Range) {
   const scale = metric === 'applications' ? 1 : metric === 'interviews' ? 0.66 : 0.2;
   return values.map((v, i) => ({ day: i + 1, value: Math.round(v * scale * 10) / 10 }));
 }
+
+export type DashboardAttention = { title: string; body: string; action: string; tone: 'amber' | 'gray'; onClick: () => void };
+
+// Employer app only: real figures for the parts the employer API covers
+// (jobs list + counts). Everything else keeps the design's sample data until
+// the backend adds it (product decision 2026-10-23: the design leads, the API
+// follows). Without it the dashboard is the admin console's mock version.
+export type LiveDashboard = {
+  totalJobs: number;
+  open: number;
+  scheduled: number;
+  interviewsCompleted: number | null; // null = couldn't be totalled; sample value shown
+  attention: DashboardAttention[]; // real items; sample "waiting for a decision" is added
+  jobsTable: ReactNode;
+};
 
 function greetingPrefix() {
   const h = new Date().getHours();
@@ -132,7 +147,7 @@ function FirstTimeDashboard() {
             <button type="button" onClick={() => setGuideOpen(true)} className="text-[13px] font-semibold text-[#3c77f6] hover:underline">
               See how employer hiring works →
             </button>
-            <p className="text-[12px] text-[#5a6172]">No credits are used while drafting. Publishing uses 1 Interview Credit.</p>
+            <p className="text-[12px] text-[#5a6172]">No credits are used while drafting. Publishing a job is free.</p>
           </div>
         </div>
         <div className="flex flex-col gap-3" aria-hidden>
@@ -257,18 +272,21 @@ function FirstTimeDashboard() {
 
 // ─── Regular dashboard ───────────────────────────────────────────────────────
 
-export function DashboardView() {
+export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
   const { company, jobs, candidatesFor, go } = useEmployerStore();
   const [metric, setMetric] = useState<Metric>('applications');
   const [range, setRange] = useState<Range>('30d');
-  const stats = useCompanyStats(jobs, candidatesFor);
+  const mockStats = useCompanyStats(jobs, candidatesFor);
+  const stats = live
+    ? { ...mockStats, open: live.open, scheduled: live.scheduled, interviews: live.interviewsCompleted ?? mockStats.interviews }
+    : mockStats;
   const [guideOpen, setGuideOpen] = useState(false);
 
   const series = useMemo(() => seriesFor(metric, range), [metric, range]);
   const total = Math.round(series.reduce((s, p) => s + p.value, 0));
   const avg = (total / series.length).toFixed(1);
 
-  if (jobs.length === 0) return <FirstTimeDashboard />;
+  if (live ? live.totalJobs === 0 : jobs.length === 0) return <FirstTimeDashboard />;
 
   const firstName = company.contact.name.trim().split(/\s+/)[0] || 'there';
   const firstOpen = jobs.find((j) => j.status === 'Open' && j.interviewsCompleted > 0);
@@ -276,8 +294,9 @@ export function DashboardView() {
   const drafts = jobs.filter((j) => j.status === 'Draft');
   const closingSoon = jobs.find((j) => j.status === 'Open' && j.interviewsCompleted > 0);
 
-  const attention: { title: string; body: string; action: string; tone: 'amber' | 'gray'; onClick: () => void }[] = [];
-  if (closingSoon) {
+  const attention: DashboardAttention[] = [];
+  if (live) attention.push(...live.attention);
+  else if (closingSoon) {
     attention.push({
       title: `${closingSoon.title} closes ${applicationWindowLabel(closingSoon).replace('Closes ', '')}`,
       body: `${closingSoon.interviewsCompleted} candidates have completed the interview.`,
@@ -295,7 +314,7 @@ export function DashboardView() {
       onClick: () => go({ name: 'applications' }),
     });
   }
-  for (const d of drafts) {
+  for (const d of live ? [] : drafts) {
     attention.push({
       title: `${d.title || 'Untitled job'} is still a draft`,
       body: d.lastEditedLabel ?? 'Not published yet.',
@@ -501,7 +520,7 @@ export function DashboardView() {
           right={<button type="button" onClick={() => go({ name: 'jobs' })} className="text-[13px] font-medium text-[#3c77f6] hover:underline">View all jobs</button>}
         />
         <div className="mt-4">
-          <JobsTable jobs={jobs.filter((j) => j.status !== 'Closed').slice(0, 5)} />
+          {live ? live.jobsTable : <JobsTable jobs={jobs.filter((j) => j.status !== 'Closed').slice(0, 5)} />}
         </div>
       </Card>
 

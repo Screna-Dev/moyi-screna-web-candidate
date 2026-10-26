@@ -79,6 +79,13 @@
 
     { "source": "/employer", "destination": "/app.html" },
     { "source": "/employer/login", "destination": "/app.html" },
+    { "source": "/employer/credits", "destination": "/app.html" },
+    { "source": "/opportunities", "destination": "/app.html" },
+    { "source": "/opportunities/my-jobs", "destination": "/app.html" },
+    { "source": "/opportunities/job/:id", "destination": "/app.html" },
+    { "source": "/opportunities/job/:id/results", "destination": "/app.html" },
+    { "source": "/opportunities/job/:id/contact", "destination": "/app.html" },
+    { "source": "/opportunities/applications/:applicationId/interview", "destination": "/app.html" },
 
     { "source": "/admin", "destination": "/app.html" },
     { "source": "/redeem-code", "destination": "/app.html" },

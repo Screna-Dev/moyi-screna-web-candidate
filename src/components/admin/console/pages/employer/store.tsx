@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Candidate, Company, EmployerPlan, EmployerView, HiringDecision, Job } from './types';
 import { quoteUnlock, type UnlockQuote } from './planQuote';
-import { EMPTY_COMPANY_FIELDS, blankJob, mockCandidates, mockCompanies, mockJobs, mockPlan } from './mockData';
+import { EMPTY_COMPANY_FIELDS, blankJob, freeStarterPlan, mockCandidates, mockCompanies, mockJobs, mockPlan } from './mockData';
 
 // In-memory state for the Employers admin section. No API yet — edits last
 // until the admin console is reloaded. When endpoints land, swap the setters
@@ -22,6 +22,9 @@ type EmployerStore = {
   publishJob: (id: string, status?: 'Open' | 'Scheduled') => void;
   deleteJob: (id: string) => void;
   closeJob: (id: string) => void;
+  // "Repost" a closed job: a new draft with the same role and interview, but
+  // no dates, applicants or candidates. Returns the new job.
+  repostJob: (id: string) => Job | undefined;
 
   candidatesFor: (jobId: string) => Candidate[]; // ranked, highest score first
   getCandidate: (id: string) => Candidate | undefined;
@@ -32,6 +35,12 @@ type EmployerStore = {
   unlockQuote: () => UnlockQuote;
   setDecision: (id: string, decision: HiringDecision) => void;
   markContacted: (id: string, contacted: boolean) => void;
+
+  // Employer app only: required company-profile fields still missing (labels),
+  // from GET /employer/organization. null = nothing blocks publishing (admin
+  // console, or profile complete).
+  publishGate: string[] | null;
+  setPublishGate: (missing: string[] | null) => void;
 
   plan: EmployerPlan;
   unlocksLeft: number;
@@ -55,6 +64,7 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
   const [candidates, setCandidates] = useState<Candidate[]>(mockCandidates);
   const [view, setView] = useState<EmployerView>({ name: 'dashboard' });
   const [plan, setPlan] = useState<EmployerPlan>(mockPlan);
+  const [publishGate, setPublishGate] = useState<string[] | null>(null);
 
   const company = companies.find((c) => c.id === companyId) ?? companies[0];
   const jobs = useMemo(() => allJobs.filter((j) => j.companyId === company.id), [allJobs, company.id]);
@@ -81,6 +91,8 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
         { ...EMPTY_COMPANY_FIELDS, id, name, initials: initialsOf(name) },
       ]);
       setCompanyId(id);
+      // A brand-new organization starts on the free starter credits.
+      setPlan(freeStarterPlan);
       go({ name: 'dashboard' });
     },
     updateCompany: (patch) =>
@@ -99,6 +111,23 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
     publishJob: (id, status = 'Open') => setAllJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status, updatedAt: touch() } : j))),
     deleteJob: (id) => setAllJobs((prev) => prev.filter((j) => j.id !== id)),
     closeJob: (id) => setAllJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: 'Closed', updatedAt: touch() } : j))),
+    repostJob: (id) => {
+      const src = allJobs.find((j) => j.id === id);
+      if (!src) return undefined;
+      const job: Job = {
+        ...src,
+        id: `j-${Date.now()}`,
+        status: 'Draft',
+        opensAt: '',
+        closesAt: '',
+        applicants: 0,
+        interviewsCompleted: 0,
+        updatedAt: touch(),
+        lastEditedLabel: `Reposted from ${src.title}.`,
+      };
+      setAllJobs((prev) => [...prev, job]);
+      return job;
+    },
 
     candidatesFor: (jobId) => candidates.filter((c) => c.jobId === jobId).sort((a, b) => b.score - a.score),
     getCandidate: (id) => candidates.find((c) => c.id === id),
@@ -120,6 +149,9 @@ export function EmployerStoreProvider({ children }: { children: ReactNode }) {
     setDecision: (id, decision) => setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, decision } : c))),
     markContacted: (id, contacted) =>
       setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, contact: contacted ? 'contacted' : 'not_contacted' } : c))),
+
+    publishGate,
+    setPublishGate,
 
     plan,
     unlocksLeft: Math.max(0, plan.unlockAllowance - plan.unlocksUsed),

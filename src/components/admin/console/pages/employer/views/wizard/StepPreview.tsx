@@ -66,7 +66,7 @@ function PostingPreview({ job, companyName, initials }: { job: Job; companyName:
         <Chip>{job.workplace}</Chip>
         <Chip>{job.employmentType}</Chip>
         {salary && <Chip>{salary}</Chip>}
-        <Chip>{job.sponsor === 'employer' ? 'Employer-sponsored interview' : 'Candidate-paid interview'}</Chip>
+        {job.sponsor && <Chip>{job.sponsor === 'employer' ? 'Employer-sponsored interview' : 'Candidate-paid interview'}</Chip>}
       </div>
       <div className="h-px bg-[#e1e4ea]" />
 

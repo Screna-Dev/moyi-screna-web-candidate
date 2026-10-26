@@ -3,7 +3,8 @@
 // No backend yet: everything here is in-memory mock state (see store.tsx).
 
 export type WorkplaceType = 'On-site' | 'Hybrid' | 'Remote';
-export type EmploymentType = 'Full-time' | 'Part-time' | 'Contract' | 'Internship';
+// Temporary only arrives from the employer API; the wizard doesn't offer it.
+export type EmploymentType = 'Full-time' | 'Part-time' | 'Contract' | 'Internship' | 'Temporary';
 export type PayPeriod = 'Hourly' | 'Annual';
 
 export type JobStatus = 'Draft' | 'Scheduled' | 'Open' | 'Closed';
@@ -22,6 +23,7 @@ export type Company = {
   id: string;
   name: string;
   initials: string;
+  logoUrl?: string; // set when the org profile comes from the employer API
   website: string;
   linkedin: string;
   industry: string;
@@ -35,10 +37,13 @@ export type Company = {
   authorized: boolean;
 };
 
+// source/edited are tracked for the employer API only (AI-suggested vs typed,
+// and whether an AI question's text was changed).
 export type Criterion = {
   id: string;
   name: string;
   description: string;
+  source?: 'AI' | 'MANUAL';
 };
 
 export type InterviewQuestion = {
@@ -46,6 +51,8 @@ export type InterviewQuestion = {
   text: string;
   criteriaIds: string[];
   minutes: number;
+  source?: 'AI' | 'MANUAL';
+  edited?: boolean;
 };
 
 export type Sponsorship = {
@@ -83,7 +90,9 @@ export type Job = {
   closesAt: string;  // display string
   timeZone: string;
   maxApplicants: string;
-  sponsor: InterviewSponsor;
+  // null = not chosen yet (employer app: the employer must pick one; the
+  // admin console always starts from 'employer').
+  sponsor: InterviewSponsor | null;
   sponsorship: Sponsorship;
   // Board stats (mock). For drafts/scheduled these are 0.
   applicants: number;
@@ -174,5 +183,8 @@ export type EmployerView =
   | { name: 'board'; jobId: string }
   | { name: 'report'; jobId: string; candidateId: string }
   | { name: 'contact'; jobId: string; candidateId: string }
-  | { name: 'wizard'; jobId?: string }
-  | { name: 'plan' };
+  // checkout: back from Stripe after buying Interview Credits (employer app).
+  | { name: 'wizard'; jobId?: string; checkout?: 'success' | 'cancelled' }
+  | { name: 'plan' }
+  // Employer-only. returnJobId: came from the wizard's publish gate.
+  | { name: 'profile'; returnJobId?: string };

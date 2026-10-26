@@ -1,11 +1,19 @@
 const imgAlertTriangle = "/images/opportunities/819a3.svg";
 const imgLine = "/images/opportunities/5b0dc.svg";
 
+// Design numbers (12 / 30 / 18) are the defaults; the careers flow passes the
+// candidate's real balance and the interview's required credits.
 interface Props {
   onClose: () => void;
+  minutes?: number;
+  balance?: number;
+  required?: number;
+  onBuy?: () => void;
+  buying?: boolean;
 }
 
-export function QuickInterviewModal({ onClose }: Props) {
+export function QuickInterviewModal({ onClose, minutes = 30, balance = 12, required = 30, onBuy, buying = false }: Props) {
+  const needed = Math.max(0, required - balance);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -32,15 +40,15 @@ export function QuickInterviewModal({ onClose }: Props) {
             className="text-[#5a6172] text-[14px] leading-5 text-center"
             style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
           >
-            This interview can last up to 30 minutes. You need at least 30 credits available to begin.
+            This interview can last up to {minutes} minutes. You need at least {required} credits available to begin.
           </p>
 
           {/* Credit summary */}
           <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-1.5 mt-1">
             {[
-              { label: "Your balance",      value: "12 credits" },
-              { label: "Required balance",  value: "30 credits" },
-              { label: "Credits needed",    value: "18 credits" },
+              { label: "Your balance",      value: `${balance} credits` },
+              { label: "Required balance",  value: `${required} credits` },
+              { label: "Credits needed",    value: `${needed} credits` },
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between">
                 <span
@@ -88,7 +96,9 @@ export function QuickInterviewModal({ onClose }: Props) {
             Cancel
           </button>
           <button
-            className="bg-[#3c77f6] hover:bg-[#2d6ae0] text-white text-[14px] font-semibold px-4 py-2.5 rounded-lg transition-colors"
+            onClick={onBuy}
+            disabled={buying}
+            className="bg-[#3c77f6] hover:bg-[#2d6ae0] text-white text-[14px] font-semibold px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60"
             style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
           >
             Buy credits

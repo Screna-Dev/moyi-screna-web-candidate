@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, GripVertical, Info, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Criterion, InterviewQuestion, Job } from '../../types';
 import { backendQuestions, SUGGESTED_CRITERIA } from '../../mockData';
 import { Button, Card, Dialog, Divider, Field, Pill, Segmented, Select, TextArea, TextInput, cx } from '../../ui';
 import { CardTitle, ErrorHint } from './shared';
-import { interviewErrors, LANGUAGES, type StepProps } from './logic';
+import { interviewErrors, LANGUAGES, MAX_CRITERIA, MAX_QUESTIONS, type InterviewAI, type StepProps } from './logic';
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -20,12 +20,15 @@ function regenerateQuestions(criteria: Criterion[]): InterviewQuestion[] {
   });
 }
 
-export function StepInterview({ job, update, showErrors }: StepProps) {
-  const err = showErrors ? interviewErrors(job) : ({} as Record<string, boolean>);
+// showSettings: the employer app moves length/language/instructions to its own
+// step (the API saves them separately); only the review sign-off stays here.
+export function StepInterview({ job, update, showErrors, ai, showSettings = true }: StepProps & { showSettings?: boolean }) {
+  const err = showErrors ? interviewErrors(job, !!ai) : ({} as Record<string, boolean>);
   const [editingCriterion, setEditingCriterion] = useState<string | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [regenOpen, setRegenOpen] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   // Any change to what the interview asks invalidates the reviewer's sign-off.
   const patchInterview = (fn: (j: Job) => Partial<Job>) => update((j) => ({ ...fn(j), interviewConfirmed: false }));
@@ -36,8 +39,34 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
 
   const setCriterion = (id: string, patch: Partial<Criterion>) =>
     patchInterview((j) => ({ criteria: j.criteria.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
+  // Rewording an AI question marks it edited (reported to the API).
   const setQuestion = (id: string, patch: Partial<InterviewQuestion>) =>
-    patchInterview((j) => ({ questions: j.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) }));
+    patchInterview((j) => ({
+      questions: j.questions.map((q) => (q.id === id ? { ...q, ...patch, ...(patch.text !== undefined && q.source === 'AI' ? { edited: true } : {}) } : q)),
+    }));
+
+  const regenerate = async () => {
+    if (!ai) {
+      patchInterview((j) => ({ questions: regenerateQuestions(j.criteria) }));
+      setEditingQuestion(null);
+      setRegenOpen(false);
+      toast.success('Questions regenerated');
+      return;
+    }
+    setRegenerating(true);
+    try {
+      const questions = await ai.suggestQuestions(job.criteria);
+      patchInterview(() => ({ questions }));
+      setEditingQuestion(null);
+      setRegenOpen(false);
+      toast.success('Questions regenerated');
+      if (questions.some((q) => q.criteriaIds.length === 0)) toast('Some questions need an evaluation criterion. Edit them to pick one.');
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'Could not generate questions');
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -88,7 +117,7 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
             );
           })}
           {job.criteria.length === 0 && <p className="text-[13px] text-[#5a6172] py-2">No criteria yet. Add your own or generate suggestions.</p>}
-          <ErrorHint show={!!err.criteria}>Add at least one named criterion</ErrorHint>
+          <ErrorHint show={!!err.criteria}>{ai ? `Add 1–${MAX_CRITERIA} criteria with distinct names` : 'Add at least one named criterion'}</ErrorHint>
         </div>
         <div className="flex items-center justify-between">
           <button
@@ -189,7 +218,9 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
             );
           })}
           {job.questions.length === 0 && <p className="text-[13px] text-[#5a6172] py-2">No questions yet.</p>}
-          <ErrorHint show={!!err.questions}>Add at least one question, and fill in every question</ErrorHint>
+          <ErrorHint show={!!err.questions}>
+            {ai ? `Add 1–${MAX_QUESTIONS} questions; each needs text and at least one criterion` : 'Add at least one question, and fill in every question'}
+          </ErrorHint>
         </div>
 
         {job.criteria.length > 0 && job.questions.length > 0 && (
@@ -216,34 +247,21 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
           >
             <Plus size={14} /> Add a question
           </button>
-          <Button size="sm" onClick={() => setRegenOpen(true)} disabled={job.criteria.length === 0}>
-            <RefreshCw size={14} className="text-[#3c77f6]" /> Regenerate questions
+          <Button size="sm" onClick={() => setRegenOpen(true)} disabled={job.criteria.length === 0 || regenerating}>
+            <RefreshCw size={14} className={cx('text-[#3c77f6]', regenerating && 'animate-spin')} /> {regenerating ? 'Generating…' : 'Regenerate questions'}
           </Button>
         </div>
       </Card>
 
       {/* ── Settings ── */}
       <Card className="p-6 flex flex-col gap-5">
-        <CardTitle>Interview settings</CardTitle>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-[#1e232f]">Estimated interview length</span>
-          <Segmented<20 | 30 | 45>
-            value={job.interviewLength}
-            onChange={(v) => update({ interviewLength: v })}
-            options={[
-              { value: 20, label: '20 min' },
-              { value: 30, label: '30 min (Suggested)' },
-              { value: 45, label: '45 min' },
-            ]}
-          />
-        </div>
-        <Field label="Candidate instructions">
-          <TextArea rows={3} value={job.candidateInstructions} onChange={(e) => update({ candidateInstructions: e.target.value })} />
-        </Field>
-        <Field label="Interview language">
-          <Select value={job.language} onChange={(v) => update({ language: v })} options={LANGUAGES} />
-        </Field>
-        <Divider />
+        {showSettings && (
+          <>
+            <CardTitle>Interview settings</CardTitle>
+            <InterviewSettingsFields job={job} update={update} />
+            <Divider />
+          </>
+        )}
         <label className="flex items-center gap-2 text-[13px] text-[#1e232f] w-fit cursor-pointer">
           <input type="checkbox" checked={job.interviewConfirmed} onChange={(e) => update({ interviewConfirmed: e.target.checked })} className="w-4 h-4 accent-[#3c77f6]" />
           I reviewed the evaluation criteria and every interview question.
@@ -261,6 +279,7 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
         open={suggestOpen}
         onClose={() => setSuggestOpen(false)}
         job={job}
+        ai={ai}
         onAdd={(picked) => {
           patchInterview((j) => ({ criteria: [...j.criteria, ...picked] }));
           toast.success(`${picked.length} ${picked.length === 1 ? 'criterion' : 'criteria'} added`);
@@ -274,16 +293,8 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
         actions={
           <>
             <Button onClick={() => setRegenOpen(false)}>Keep current questions</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                patchInterview((j) => ({ questions: regenerateQuestions(j.criteria) }));
-                setEditingQuestion(null);
-                setRegenOpen(false);
-                toast.success('Questions regenerated');
-              }}
-            >
-              Regenerate
+            <Button variant="primary" disabled={regenerating} onClick={regenerate}>
+              {regenerating ? 'Generating…' : 'Regenerate'}
             </Button>
           </>
         }
@@ -294,11 +305,63 @@ export function StepInterview({ job, update, showErrors }: StepProps) {
   );
 }
 
-function SuggestedCriteriaDialog({ open, onClose, job, onAdd }: { open: boolean; onClose: () => void; job: Job; onAdd: (c: Criterion[]) => void }) {
+export function InterviewSettingsFields({ job, update }: Pick<StepProps, 'job' | 'update'>) {
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-medium text-[#1e232f]">Estimated interview length</span>
+        <Segmented<20 | 30 | 45>
+          value={job.interviewLength}
+          onChange={(v) => update({ interviewLength: v })}
+          options={[
+            { value: 20, label: '20 min' },
+            { value: 30, label: '30 min (Suggested)' },
+            { value: 45, label: '45 min' },
+          ]}
+        />
+      </div>
+      <Field label="Candidate instructions">
+        <TextArea rows={3} value={job.candidateInstructions} onChange={(e) => update({ candidateInstructions: e.target.value })} />
+      </Field>
+      <Field label="Interview language">
+        <Select value={job.language} onChange={(v) => update({ language: v })} options={LANGUAGES} />
+      </Field>
+    </>
+  );
+}
+
+function SuggestedCriteriaDialog({ open, onClose, job, onAdd, ai }: { open: boolean; onClose: () => void; job: Job; onAdd: (c: Criterion[]) => void; ai?: InterviewAI }) {
+  // With real AI the suggestions are fetched each time the dialog opens.
+  const [fetched, setFetched] = useState<Criterion[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const suggestions = ai ? fetched ?? [] : SUGGESTED_CRITERIA;
   const existing = new Set(job.criteria.map((c) => c.name.trim().toLowerCase()));
-  const options = SUGGESTED_CRITERIA.filter((s) => !existing.has(s.name.toLowerCase()));
+  const options = suggestions.filter((s) => !existing.has(s.name.trim().toLowerCase()));
   const [selected, setSelected] = useState<Set<string>>(() => new Set(SUGGESTED_CRITERIA.slice(0, 2).map((s) => s.id)));
   const picked = options.filter((o) => selected.has(o.id));
+
+  const load = async () => {
+    if (!ai) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      const list = await ai.suggestCriteria();
+      setFetched(list);
+      setSelected(new Set(list.slice(0, 2).map((c) => c.id)));
+    } catch (e) {
+      setFetched([]);
+      setLoadError(e instanceof Error && e.message ? e.message : 'Could not load suggestions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && ai) void load();
+    // Refetch per open only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -355,28 +418,37 @@ function SuggestedCriteriaDialog({ open, onClose, job, onAdd }: { open: boolean;
           </div>
         )}
 
-        {options.map((o) => {
-          const on = selected.has(o.id);
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => toggle(o.id)}
-              className={cx(
-                'text-left flex items-start gap-3 rounded-xl border p-3 transition-colors',
-                on ? 'border-[#3c77f6] bg-[#f8fbff]' : 'border-[#e1e4ea] bg-white hover:bg-[#f9fafb]',
-              )}
-            >
-              <input type="checkbox" readOnly checked={on} className="w-4 h-4 mt-0.5 accent-[#3c77f6] pointer-events-none" />
-              <span className="flex-1 flex flex-col gap-1">
-                <span className="text-[14px] font-semibold text-[#1e232f]">{o.name}</span>
-                <span className="text-[13px] text-[#5a6172]">{o.description}</span>
-                <Pill tone="blue" className="w-fit">AI suggested</Pill>
-              </span>
-            </button>
-          );
-        })}
-        {options.length === 0 && <p className="text-[13px] text-[#5a6172]">Every suggestion is already included.</p>}
+        {!loading &&
+          options.map((o) => {
+            const on = selected.has(o.id);
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => toggle(o.id)}
+                className={cx(
+                  'text-left flex items-start gap-3 rounded-xl border p-3 transition-colors',
+                  on ? 'border-[#3c77f6] bg-[#f8fbff]' : 'border-[#e1e4ea] bg-white hover:bg-[#f9fafb]',
+                )}
+              >
+                <input type="checkbox" readOnly checked={on} className="w-4 h-4 mt-0.5 accent-[#3c77f6] pointer-events-none" />
+                <span className="flex-1 flex flex-col gap-1">
+                  <span className="text-[14px] font-semibold text-[#1e232f]">{o.name}</span>
+                  <span className="text-[13px] text-[#5a6172]">{o.description}</span>
+                  <Pill tone="blue" className="w-fit">AI suggested</Pill>
+                </span>
+              </button>
+            );
+          })}
+        {loading ? (
+          <p className="text-[13px] text-[#5a6172] flex items-center gap-2">
+            <RefreshCw size={13} className="animate-spin" /> Generating suggestions…
+          </p>
+        ) : loadError ? (
+          <p className="text-[13px] text-[#dc2626]">{loadError} You can still add criteria manually.</p>
+        ) : (
+          options.length === 0 && <p className="text-[13px] text-[#5a6172]">Every suggestion is already included.</p>
+        )}
 
         <div className="flex items-start gap-2 bg-[#f9fafb] rounded-lg p-3 text-[12px] text-[#5a6172]">
           <Info size={14} className="shrink-0 mt-0.5" />
@@ -384,11 +456,13 @@ function SuggestedCriteriaDialog({ open, onClose, job, onAdd }: { open: boolean;
         </div>
         <button
           type="button"
+          disabled={loading}
           onClick={() => {
+            if (ai) return void load();
             setSelected(new Set());
             toast('Suggestions refreshed');
           }}
-          className="flex items-center gap-1.5 text-[13px] text-[#1e232f] hover:underline w-fit"
+          className="flex items-center gap-1.5 text-[13px] text-[#1e232f] hover:underline w-fit disabled:opacity-50"
         >
           <RefreshCw size={13} /> Regenerate suggestions
         </button>

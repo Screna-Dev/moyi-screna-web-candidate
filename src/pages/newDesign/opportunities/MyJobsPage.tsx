@@ -1,6 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { myJobs, type MyJob, type AssessmentStatus, type ApplicationStatus } from "@/components/newDesign/opportunities/mockJobs";
+import { type MyJob, type AssessmentStatus, type ApplicationStatus } from "@/components/newDesign/opportunities/mockJobs";
+import { toMyJob, type LiveMyJob } from "@/components/newDesign/opportunities/careersDesignData";
+import { StartInterviewDialog } from "@/components/newDesign/opportunities/careersShared";
+import { listMyApplications, type CareerApplication } from "@/services/careersApi";
+
+// Design page (Downloads export) fed by GET /careers/applications. Rows are
+// mapped onto the design's MyJob shape; scores, qualification and location
+// aren't returned yet and come from the design's sample data (see
+// careersDesignData). Search and status filters run client-side.
+
+const PAGE_LIMIT = 5; // 50 applications
 
 const assetPathPrefix = "/images/opportunities";
 const imgSearch = `${assetPathPrefix}/cd8fa.svg`;
@@ -58,7 +68,7 @@ function JobTypeBadge({ type, isClosed }: { type: string; isClosed?: boolean }) 
   );
 }
 
-function MyJobCard({ job, onBrowse }: { job: MyJob; onBrowse: () => void }) {
+function MyJobCard({ job, onBrowse, onAction }: { job: MyJob; onBrowse: () => void; onAction?: (label: string) => void }) {
   const ab = assessmentBadge(job.assessmentStatus);
   const appB = applicationBadge(job.applicationStatus);
 
@@ -78,6 +88,10 @@ function MyJobCard({ job, onBrowse }: { job: MyJob; onBrowse: () => void }) {
           <div className="flex flex-col gap-1 flex-1 min-w-0">
             <a
               href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                onAction?.("View details");
+              }}
               className="text-[#3c77f6] text-[18px] font-semibold leading-6 underline decoration-solid decoration-from-font"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
             >
@@ -195,6 +209,7 @@ function MyJobCard({ job, onBrowse }: { job: MyJob; onBrowse: () => void }) {
               action.variant === "secondary" ? (
                 <button
                   key={action.label}
+                  onClick={() => onAction?.(action.label)}
                   className="bg-white border border-[#e1e4ea] text-[#1e232f] text-[14px] font-medium leading-5 px-3 py-2 rounded-xl hover:bg-[#f9fafb] transition-colors"
                   style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
                 >
@@ -203,7 +218,7 @@ function MyJobCard({ job, onBrowse }: { job: MyJob; onBrowse: () => void }) {
               ) : (
                 <button
                   key={action.label}
-                  onClick={action.label === "Browse opportunities" ? onBrowse : undefined}
+                  onClick={action.label === "Browse opportunities" ? onBrowse : () => onAction?.(action.label)}
                   className="bg-[#3c77f6] text-white text-[14px] font-medium leading-5 px-3 py-2 rounded-xl hover:bg-[#2d6ae0] transition-colors"
                   style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
                 >
@@ -230,8 +245,33 @@ export function MyJobsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [rows, setRows] = useState<LiveMyJob[] | null>(null);
+  const [starting, setStarting] = useState<CareerApplication | null>(null);
 
-  const filtered = myJobs.filter((job) => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const all: LiveMyJob[] = [];
+      for (let page = 0; page < PAGE_LIMIT; page++) {
+        const res = await listMyApplications(page);
+        res.content.forEach((a) => all.push(toMyJob(a, all.length)));
+        if (res.pageMeta.last || res.content.length === 0) break;
+      }
+      if (!cancelled) setRows(all);
+    })().catch(() => !cancelled && setRows([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const act = (row: LiveMyJob, label: string) => {
+    const jobPath = `/opportunities/job/${encodeURIComponent(row.career.jobId)}`;
+    if (label === "View details") return row.career.jobStatus === "OPEN" ? navigate(jobPath) : undefined;
+    if (label === "Start interview" || label === "Continue interview") return setStarting(row.career);
+    if (label === "View report") return navigate(`${jobPath}/results`);
+  };
+
+  const filtered = (rows ?? []).filter((job) => {
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!job.title.toLowerCase().includes(q) && !job.company.toLowerCase().includes(q)) {
@@ -347,7 +387,7 @@ export function MyJobsPage() {
       {/* Job cards */}
       <div className="flex flex-col gap-4 pb-12">
         {filtered.map((job) => (
-          <MyJobCard key={job.id} job={job} onBrowse={() => navigate("/opportunities")} />
+          <MyJobCard key={job.id} job={job} onBrowse={() => navigate("/opportunities")} onAction={(label) => act(job, label)} />
         ))}
         {filtered.length === 0 && (
           <div className="bg-white border border-[#e1e4ea] rounded-2xl px-6 py-12 text-center">
@@ -355,11 +395,12 @@ export function MyJobsPage() {
               className="text-[#5a6172] text-[14px] leading-5"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              No jobs match this filter.
+              {!rows ? "Loading your jobs…" : "No jobs match this filter."}
             </p>
           </div>
         )}
       </div>
+      {starting && <StartInterviewDialog app={starting} onClose={() => setStarting(null)} />}
     </div>
   );
 }

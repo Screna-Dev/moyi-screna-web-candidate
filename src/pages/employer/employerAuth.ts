@@ -1,12 +1,23 @@
-// Employer sign-in. Employers are separate from candidate accounts: no Google
-// sign-in, and only a company (work-domain) email is accepted. There is no
-// employer auth API yet, so the session is mocked in localStorage and the
-// verification code is not sent anywhere — swap requestCode/verifyCode for
-// service calls when the backend lands and keep the session shape.
+import axios from 'axios';
+
+// Employer auth. Employers are separate accounts from candidates (role
+// EMPLOYER): no Google sign-in, company email only, password + emailed code.
+//   POST /auth/signup/employer  { email, password, name, companyName }
+//   POST /auth/verify-email     { email, confirmationCode }  (shared with candidates)
+//   POST /auth/signin/employer  { email, password } → tokens, isFirstLogin
+// Verifying grants the organization's one-time starter credits.
+//
+// Tokens are kept in the employer session below, NOT in the candidate
+// authToken/refreshToken keys, so an employer sign-in never makes the
+// candidate app think someone is signed in (and vice versa). Requests go
+// through a bare axios instance for the same reason: the shared API instance
+// would attach the candidate bearer and run the candidate refresh/redirect flow.
+
+const authApi = axios.create({ baseURL: '/api/v1', withCredentials: true });
 
 const SESSION_KEY = 'screna_employer_session';
-// Profiles entered at first sign-in, keyed by email, so returning employers
-// skip the "tell us about you" step.
+// Name and company entered at signup, keyed by email. Signin returns only
+// tokens, so this is how the app shows who is signed in on this device.
 const PROFILES_KEY = 'screna_employer_profiles';
 
 // Consumer mailbox providers. Anything on this list is a personal address and
@@ -48,12 +59,16 @@ export type EmployerSession = {
   title: string;
   companyName: string;
   signedInAt: string;
+  accessToken: string;
+  refreshToken: string;
 };
 
 export function getEmployerSession(): EmployerSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as EmployerSession) : null;
+    const session = raw ? (JSON.parse(raw) as EmployerSession) : null;
+    // Sessions saved by the old mock sign-in have no tokens; make them sign in again.
+    return session?.accessToken ? session : null;
   } catch {
     return null;
   }
@@ -107,14 +122,82 @@ export function companyNameFromDomain(domain: string) {
     .join(' ');
 }
 
-// Mock delivery: any 6-digit code is accepted until the endpoint exists.
-// Both take the email so call sites don't change when the API is wired.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function requestCode(_email: string): Promise<void> {
-  await new Promise((r) => setTimeout(r, 600));
+// --- API -------------------------------------------------------------------
+
+export const AUTH_EMAIL_NOT_CORPORATE = 'AUTH_EMAIL_NOT_CORPORATE';
+export const AUTH_EMAIL_ALREADY_REGISTERED = 'AUTH_EMAIL_ALREADY_REGISTERED';
+export const AUTH_EMAIL_NOT_VERIFIED = 'AUTH_EMAIL_NOT_VERIFIED';
+export const AUTH_WRONG_ACCOUNT_TYPE = 'AUTH_WRONG_ACCOUNT_TYPE';
+export const VALIDATION_ERROR = 'VALIDATION_ERROR';
+
+type ErrorEnvelope = { message?: string; errorCode?: string; error?: string; data?: unknown };
+
+export function authErrorCode(err: unknown): string {
+  if (!axios.isAxiosError(err)) return '';
+  const d = err.response?.data as ErrorEnvelope | undefined;
+  return d?.errorCode ?? d?.error ?? '';
 }
 
-export async function verifyCode(_email: string, code: string): Promise<boolean> {
-  await new Promise((r) => setTimeout(r, 500));
-  return /^\d{6}$/.test(code);
+export function authErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) return '';
+  const d = err.response?.data as ErrorEnvelope | undefined;
+  // VALIDATION_ERROR puts field errors in data: [{ property, message }].
+  if (Array.isArray(d?.data)) {
+    const first = (d.data as { message?: string }[]).find((e) => e?.message);
+    if (first?.message) return first.message;
+  }
+  return d?.message ?? '';
+}
+
+// Same rules as candidate signup (auth.tsx validatePassword).
+export function passwordProblems(pwd: string): string[] {
+  const out: string[] = [];
+  if (pwd.length < 8 || pwd.length > 16) out.push('8–16 characters');
+  if (!/[A-Z]/.test(pwd)) out.push('an uppercase letter');
+  if (!/[a-z]/.test(pwd)) out.push('a lowercase letter');
+  if (!/\d/.test(pwd)) out.push('a number');
+  if (!/[^\w\s]/.test(pwd)) out.push('a special character');
+  return out;
+}
+
+export async function signUpEmployer(body: { email: string; password: string; name: string; companyName: string }) {
+  await authApi.post('/auth/signup/employer', body);
+}
+
+export async function verifyEmployerEmail(email: string, code: string) {
+  await authApi.post('/auth/verify-email', { email, confirmationCode: code });
+}
+
+export async function resendEmployerCode(email: string) {
+  await authApi.post('/auth/resend-confirmation-code', { email });
+}
+
+export type EmployerSignIn = { accessToken: string; refreshToken: string; isFirstLogin: boolean };
+
+export async function signInEmployer(email: string, password: string): Promise<EmployerSignIn> {
+  const res = await authApi.post('/auth/signin/employer', { email, password });
+  const data = (res.data?.data ?? res.data) as Partial<EmployerSignIn>;
+  if (!data?.accessToken) throw new Error('No access token in employer signin response');
+  return { accessToken: data.accessToken, refreshToken: data.refreshToken ?? '', isFirstLogin: !!data.isFirstLogin };
+}
+
+// Reads display claims from the access token, if it carries them. Not used for
+// authorization.
+export function tokenClaims(token: string): { email?: string; name?: string } {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(b64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(''),
+    );
+    const p = JSON.parse(json) as Record<string, unknown>;
+    return {
+      email: typeof p.email === 'string' ? p.email : undefined,
+      name: typeof p.name === 'string' ? p.name : undefined,
+    };
+  } catch {
+    return {};
+  }
 }

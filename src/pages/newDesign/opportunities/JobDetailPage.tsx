@@ -1,5 +1,102 @@
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
+import { languageLabel, useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
+import { seniorityLabel, workplaceLabel } from "@/components/newDesign/opportunities/careersDesignData";
+import { getCareerJob, type CareerJobDetail, type CareerPosting } from "@/services/careersApi";
+
+// Design page (Downloads export). Real jobs (non-numeric ids) are filled from
+// GET /careers/jobs/{id}; anything the API doesn't return yet keeps the
+// design's sample text. Numeric ids are the design's own sample jobs and
+// render the design unchanged. The score / report / retake / recruiter-email
+// panels are design sample content until the backend supports them.
+
+const SAMPLE = {
+  title: "Software Engineer",
+  company: "Driftvale",
+  jobType: "Screna Sponsored",
+  meta: "Seattle, WA · Hybrid · Full-time",
+  level: "Entry level · 0–2 years",
+  salary: "$85,000 – $110,000 / year",
+  skills: ["Python", "SQL", "Backend Development"],
+  overview:
+    "Driftvale is looking for an early-career Software Engineer to help build and maintain backend services. You'll work with engineering teammates to deliver reliable features, improve data handling, and investigate technical issues.",
+  responsibilities: [
+    "Build and maintain backend services and APIs.",
+    "Work with SQL databases and improve query performance.",
+    "Write tests and contribute to code reviews.",
+    "Investigate bugs and help improve service reliability.",
+    "Collaborate with teammates to deliver product features.",
+  ],
+  requirements: [
+    "Programming experience with Python or a similar language.",
+    "Understanding of APIs, SQL, and relational databases.",
+    "Ability to break down problems and explain technical decisions.",
+    "Experience contributing to a software project through coursework, internships, or work.",
+    "Clear communication and a collaborative approach.",
+  ],
+  preferred: [
+    "Experience with cloud services.",
+    "Familiarity with automated testing and CI/CD.",
+    "Experience investigating performance or reliability issues.",
+  ],
+  minutes: 30,
+  language: "English",
+  cost: "30 credits",
+  deadline: "Oct 28, 2026 · 11:59 PM PT",
+};
+
+const PERIOD: Record<string, string> = { YEAR: "year", MONTH: "month", WEEK: "week", DAY: "day", HOUR: "hour" };
+const EMPLOYMENT: Record<string, string> = { FULL_TIME: "Full-time", PART_TIME: "Part-time", CONTRACT: "Contract", INTERNSHIP: "Internship", TEMPORARY: "Temporary" };
+
+function money(n: number, currency: string | null) {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD", maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return n.toLocaleString("en-US");
+  }
+}
+
+function deadlineLabel(iso: string, tz: string | null) {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+  try {
+    const d = new Intl.DateTimeFormat("en-US", { ...opts, timeZone: tz || undefined }).format(new Date(iso));
+    const t = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone: tz || undefined }).format(new Date(iso));
+    return `${d} · ${t}`;
+  } catch {
+    return new Intl.DateTimeFormat("en-US", opts).format(new Date(iso));
+  }
+}
+
+// Real values where the posting has them, design sample text otherwise.
+function viewOf(p: CareerPosting | null) {
+  if (!p) return SAMPLE;
+  const years =
+    p.yearsExperienceMin != null || p.yearsExperienceMax != null
+      ? `${p.yearsExperienceMin ?? 0}${p.yearsExperienceMax != null ? `–${p.yearsExperienceMax}` : "+"} years`
+      : "";
+  const minutes = p.interview.durationMinutes;
+  return {
+    title: p.title,
+    company: p.company.name,
+    jobType: "Partner Job",
+    meta: [p.location, workplaceLabel(p.workplaceType), p.employmentType ? EMPLOYMENT[p.employmentType] : ""].filter(Boolean).join(" · ") || SAMPLE.meta,
+    level: [seniorityLabel(p.seniority), years].filter(Boolean).join(" · ") || SAMPLE.level,
+    salary:
+      p.salaryMin != null || p.salaryMax != null
+        ? `${[p.salaryMin, p.salaryMax].filter((n): n is number => n != null).map((n) => money(n, p.salaryCurrency)).join(" – ")}${p.salaryPeriod ? ` / ${PERIOD[p.salaryPeriod]}` : ""}`
+        : SAMPLE.salary,
+    skills: p.skills.length ? p.skills : SAMPLE.skills,
+    overview: p.roleOverview || SAMPLE.overview,
+    responsibilities: p.responsibilities.length ? p.responsibilities : SAMPLE.responsibilities,
+    requirements: p.requirements.length ? p.requirements : SAMPLE.requirements,
+    preferred: p.preferredQualifications.length ? p.preferredQualifications : SAMPLE.preferred,
+    minutes,
+    language: languageLabel(p.interview.language),
+    cost: p.interview.interviewPayer === "EMPLOYER" ? "Free · sponsored by recruiter" : `${minutes} credits`,
+    deadline: p.closesAt ? deadlineLabel(p.closesAt, p.timezone) : SAMPLE.deadline,
+  };
+}
 
 const assetPathPrefix = "/images/opportunities";
 const imgMapPin = `${assetPathPrefix}/0e220.svg`;
@@ -42,8 +139,41 @@ export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const jobId = id ?? "5";
   const { interviewStatus, emailStatus, setInterviewCompleted } = useOpportunities();
-  const isCompleted = interviewStatus[jobId] === "completed";
+  // Numeric ids are the design's sample jobs; real job ids are UUIDs.
+  const isSample = /^\d+$/.test(jobId);
+  const [detail, setDetail] = useState<CareerJobDetail | null>(null);
+  const [missing, setMissing] = useState(false);
+  const starter = useCareerInterviewStarter((app) => setDetail((d) => (d ? { ...d, myApplication: app } : d)));
+
+  useEffect(() => {
+    if (isSample) return;
+    let cancelled = false;
+    getCareerJob(jobId)
+      .then((d) => !cancelled && setDetail(d))
+      .catch(() => !cancelled && setMissing(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, isSample]);
+
+  const v = viewOf(detail?.posting ?? null);
+  const isCompleted = isSample ? interviewStatus[jobId] === "completed" : detail?.myApplication?.interviewStatus === "COMPLETED";
   const isEmailSent = emailStatus[jobId] === "sent";
+
+  if (!isSample && !detail) {
+    return (
+      <div className="bg-white border border-[#e1e4ea] rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
+        <p className="text-[#1e232f] text-[18px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
+          {missing ? "This role isn't open" : "Loading…"}
+        </p>
+        {missing && (
+          <button onClick={() => navigate("/opportunities")} className="text-[#3c77f6] text-[14px] hover:underline" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>
+            ← Back to Opportunities
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -65,20 +195,20 @@ export function JobDetailPage() {
               className="text-[#1e232f] text-[24px] font-semibold leading-8"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
             >
-              Software Engineer
+              {v.title}
             </p>
             <p
               className="text-[#5a6172] text-[16px] font-medium leading-[normal]"
               style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
             >
-              Driftvale
+              {v.company}
             </p>
           </div>
           <span
             className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold leading-5 border bg-[rgba(60,119,246,0.1)] border-[rgba(60,119,246,0.2)] text-[#3c77f6] shrink-0"
             style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
           >
-            Screna Sponsored
+            {v.jobType}
           </span>
         </div>
 
@@ -90,7 +220,7 @@ export function JobDetailPage() {
               className="text-[#5a6172] text-[14px] leading-[normal]"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              Seattle, WA · Hybrid · Full-time
+              {v.meta}
             </p>
           </div>
           <div className="flex gap-1.5 items-center">
@@ -99,7 +229,7 @@ export function JobDetailPage() {
               className="text-[#5a6172] text-[14px] leading-[normal]"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              Entry level · 0–2 years
+              {v.level}
             </p>
           </div>
           <div className="flex gap-1.5 items-center">
@@ -108,14 +238,14 @@ export function JobDetailPage() {
               className="text-[#1e232f] text-[14px] font-semibold leading-[normal]"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
             >
-              $85,000 – $110,000 / year
+              {v.salary}
             </p>
           </div>
         </div>
 
         {/* Skills */}
         <div className="flex flex-wrap gap-2">
-          {["Python", "SQL", "Backend Development"].map((tag) => (
+          {v.skills.map((tag) => (
             <span
               key={tag}
               className="bg-[#f3f4f7] border border-[#e1e4ea] text-[#1e232f] text-[12px] font-medium leading-[normal] px-3 py-1 rounded-full"
@@ -223,7 +353,7 @@ export function JobDetailPage() {
                 className="text-[#5a6172] text-[14px] leading-[22px]"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
-                Driftvale is looking for an early-career Software Engineer to help build and maintain backend services. You'll work with engineering teammates to deliver reliable features, improve data handling, and investigate technical issues.
+                {v.overview}
               </p>
             </div>
             <Divider />
@@ -234,13 +364,7 @@ export function JobDetailPage() {
               >
                 What you'll do
               </p>
-              <BulletList items={[
-                "Build and maintain backend services and APIs.",
-                "Work with SQL databases and improve query performance.",
-                "Write tests and contribute to code reviews.",
-                "Investigate bugs and help improve service reliability.",
-                "Collaborate with teammates to deliver product features.",
-              ]} />
+              <BulletList items={v.responsibilities} />
             </div>
             <Divider />
             <div className="flex flex-col gap-3">
@@ -250,13 +374,7 @@ export function JobDetailPage() {
               >
                 What we're looking for
               </p>
-              <BulletList items={[
-                "Programming experience with Python or a similar language.",
-                "Understanding of APIs, SQL, and relational databases.",
-                "Ability to break down problems and explain technical decisions.",
-                "Experience contributing to a software project through coursework, internships, or work.",
-                "Clear communication and a collaborative approach.",
-              ]} />
+              <BulletList items={v.requirements} />
             </div>
             <Divider />
             <div className="flex flex-col gap-3">
@@ -266,11 +384,7 @@ export function JobDetailPage() {
               >
                 Nice to have
               </p>
-              <BulletList items={[
-                "Experience with cloud services.",
-                "Familiarity with automated testing and CI/CD.",
-                "Experience investigating performance or reliability issues.",
-              ]} />
+              <BulletList items={v.preferred} />
             </div>
           </div>
 
@@ -292,9 +406,9 @@ export function JobDetailPage() {
             </div>
             <div className="bg-[#f9fafb] rounded-lg p-3 flex gap-6 flex-wrap">
               {[
-                { icon: imgClock, label: "30 minutes" },
+                { icon: imgClock, label: `${v.minutes} minutes` },
                 { icon: imgMic, label: "Voice interview" },
-                { icon: imgGlobe, label: "English" },
+                { icon: imgGlobe, label: v.language },
               ].map(({ icon, label }) => (
                 <div key={label} className="flex gap-1.5 items-center">
                   <img src={icon} alt="" className="w-4 h-4 shrink-0" />
@@ -359,10 +473,10 @@ export function JobDetailPage() {
             <Divider />
             <div className="flex flex-col gap-4">
               {[
-                { icon: imgClock, label: "DURATION", value: "30 minutes" },
-                { icon: imgMic, label: "FORMAT", value: "Voice · English" },
-                { icon: imgAward, label: "ASSESSMENT COST", value: "30 credits" },
-                { icon: imgCalendar, label: "ASSESSMENT DEADLINE", value: "Oct 28, 2026 · 11:59 PM PT" },
+                { icon: imgClock, label: "DURATION", value: `${v.minutes} minutes` },
+                { icon: imgMic, label: "FORMAT", value: `Voice · ${v.language}` },
+                { icon: imgAward, label: "ASSESSMENT COST", value: v.cost },
+                { icon: imgCalendar, label: "ASSESSMENT DEADLINE", value: v.deadline },
               ].map(({ icon, label, value }) => (
                 <div key={label} className="flex gap-3 items-center">
                   <img src={icon} alt="" className="w-4 h-4 shrink-0" />
@@ -384,7 +498,12 @@ export function JobDetailPage() {
               ))}
             </div>
             <button
-              onClick={() => { setInterviewCompleted(jobId); navigate(`/opportunities/job/${jobId}/results`); }}
+              onClick={() => {
+                if (!isSample) return void starter.begin(jobId);
+                setInterviewCompleted(jobId);
+                navigate(`/opportunities/job/${jobId}/results`);
+              }}
+              disabled={starter.busyJob === jobId}
               className="bg-[#3c77f6] text-white text-[14px] font-semibold leading-[normal] px-4 py-3 rounded-xl flex items-center justify-center gap-2.5 hover:bg-[#2d6ae0] transition-colors w-full"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif", boxShadow: "0px 4px 3px rgba(60,119,246,0.2)" }}
             >
@@ -607,6 +726,7 @@ export function JobDetailPage() {
           </div>
         </div>
       </div>
+      {starter.ui}
     </div>
   );
 }

@@ -1,14 +1,15 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { OpportunitiesProvider } from '@/components/newDesign/opportunities/OpportunitiesContext';
 import { opportunityJobs } from '@/components/newDesign/opportunities/mockJobs';
+import { getCareerJob } from '@/services/careersApi';
 
 // Shared shell for every /opportunities/* route. The provider sits above the
 // Outlet so assessment/email status set on one page (job detail, contact
 // recruiter) is still there on the next. No API yet — all state is in-memory
 // mock and resets on reload.
-function headerFor(pathname: string): { title: string; breadcrumb?: { label: string; path: string } } {
+function headerFor(pathname: string, liveTitle: string | null): { title: string; breadcrumb?: { label: string; path: string } } {
   if (pathname === '/opportunities/my-jobs') {
     return { title: 'My Jobs', breadcrumb: { label: 'Opportunities', path: '/opportunities' } };
   }
@@ -18,7 +19,8 @@ function headerFor(pathname: string): { title: string; breadcrumb?: { label: str
 
   const [, jobId, sub] = match;
   const job = opportunityJobs.find((j) => j.id === jobId);
-  const detailLabel = job ? `${job.title} details` : 'Job details';
+  const title = job?.title ?? liveTitle;
+  const detailLabel = title ? `${title} details` : 'Job details';
 
   if (!sub) return { title: detailLabel, breadcrumb: { label: 'Opportunities', path: '/opportunities' } };
   return {
@@ -29,7 +31,20 @@ function headerFor(pathname: string): { title: string; breadcrumb?: { label: str
 
 export function OpportunitiesLayout() {
   const { pathname } = useLocation();
-  const { title, breadcrumb } = headerFor(pathname);
+  // Real (non-numeric) job ids: look the title up for the header.
+  const liveId = pathname.match(/^\/opportunities\/job\/([^/]+)/)?.[1];
+  const [liveTitle, setLiveTitle] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => {
+    if (!liveId || /^\d+$/.test(liveId) || liveTitle?.id === liveId) return;
+    let cancelled = false;
+    getCareerJob(decodeURIComponent(liveId))
+      .then((d) => !cancelled && setLiveTitle({ id: liveId, title: d.posting.title }))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [liveId, liveTitle?.id]);
+  const { title, breadcrumb } = headerFor(pathname, liveTitle && liveTitle.id === liveId ? liveTitle.title : null);
 
   return (
     <OpportunitiesProvider>

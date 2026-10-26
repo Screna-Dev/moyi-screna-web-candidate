@@ -7,7 +7,8 @@ import { CURRENCIES, EMPLOYMENT_TYPES, jobDetailsErrors, type StepProps } from '
 
 const OVERVIEW_MAX = 2000;
 
-export function StepJobDetails({ job, update, showErrors }: StepProps) {
+// showPhone: the employer jobs API has no HR contact number field.
+export function StepJobDetails({ job, update, showErrors, showPhone = true }: StepProps & { showPhone?: boolean }) {
   const err = showErrors ? jobDetailsErrors(job) : ({} as Record<string, boolean>);
 
   return (
@@ -48,15 +49,17 @@ export function StepJobDetails({ job, update, showErrors }: StepProps) {
           <Field label="Job location" required hint={<ErrorHint show={!!err.location} />}>
             <TextInput value={job.location} onChange={(e) => update({ location: e.target.value })} placeholder="e.g. Chicago, Illinois" />
           </Field>
-          <Field label="HR contact number">
-            <TextInput
-              type="tel"
-              autoComplete="tel"
-              value={job.hrContactPhone}
-              onChange={(e) => update({ hrContactPhone: e.target.value })}
-              placeholder="e.g. (312) 555-0148"
-            />
-          </Field>
+          {showPhone && (
+            <Field label="HR contact number">
+              <TextInput
+                type="tel"
+                autoComplete="tel"
+                value={job.hrContactPhone}
+                onChange={(e) => update({ hrContactPhone: e.target.value })}
+                placeholder="e.g. (312) 555-0148"
+              />
+            </Field>
+          )}
         </div>
 
         <Divider />

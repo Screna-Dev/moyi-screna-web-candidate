@@ -1,12 +1,20 @@
-import type { Company, Job } from '../../types';
+import type { Company, Criterion, InterviewQuestion, Job } from '../../types';
 
 export type JobPatch = Partial<Job> | ((j: Job) => Partial<Job>);
+
+// Real AI suggestions (employer app). Without it the interview step falls back
+// to the canned mock suggestions the admin console uses.
+export type InterviewAI = {
+  suggestCriteria: () => Promise<Criterion[]>;
+  suggestQuestions: (criteria: Criterion[]) => Promise<InterviewQuestion[]>;
+};
 
 export type StepProps = {
   job: Job;
   update: (patch: JobPatch) => void;
   showErrors: boolean;
   company: Company;
+  ai?: InterviewAI;
 };
 
 export const STEPS = ['Job details', 'Interview', 'Application & sponsorship', 'Preview & publish'] as const;
@@ -30,10 +38,23 @@ export function jobDetailsErrors(j: Job): Record<string, boolean> {
   };
 }
 
-export function interviewErrors(j: Job): Record<string, boolean> {
+// Limits enforced by PUT /employer/jobs/{id}/assessment.
+export const MAX_CRITERIA = 8;
+export const MAX_QUESTIONS = 15;
+
+// apiRules adds what the employer API rejects: too many criteria/questions,
+// duplicate criterion names, and questions that evaluate no criterion.
+export function interviewErrors(j: Job, apiRules = false): Record<string, boolean> {
+  const names = j.criteria.map((c) => c.name.trim().toLowerCase());
   return {
-    criteria: j.criteria.length === 0 || j.criteria.some((c) => !filled(c.name)),
-    questions: j.questions.length === 0 || j.questions.some((q) => !filled(q.text)),
+    criteria:
+      j.criteria.length === 0 ||
+      j.criteria.some((c) => !filled(c.name)) ||
+      (apiRules && (j.criteria.length > MAX_CRITERIA || new Set(names).size !== names.length)),
+    questions:
+      j.questions.length === 0 ||
+      j.questions.some((q) => !filled(q.text)) ||
+      (apiRules && (j.questions.length > MAX_QUESTIONS || j.questions.some((q) => q.criteriaIds.length === 0))),
     confirmed: !j.interviewConfirmed,
   };
 }
@@ -42,7 +63,8 @@ export function applicationErrors(j: Job): Record<string, boolean> {
   const sponsored = j.sponsor === 'employer';
   return {
     opensAt: !filled(j.opensAt),
-    closesAt: !filled(j.closesAt),
+    // Also blocks a closing time at or before the opening time.
+    closesAt: !filled(j.closesAt) || (filled(j.opensAt) && displayToInput(j.closesAt) <= displayToInput(j.opensAt)),
     timeZone: !filled(j.timeZone),
     totalBudget: sponsored && !filled(j.sponsorship.totalBudget),
     dailyBudget: sponsored && !filled(j.sponsorship.dailyBudget),

@@ -1,8 +1,16 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router";
-import { opportunityJobs, sortJobs, type SortOption, type OpportunityJob } from "@/components/newDesign/opportunities/mockJobs";
-import { QuickInterviewModal } from "@/components/newDesign/opportunities/QuickInterviewModal";
-import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
+import { sortJobs, type SortOption, type OpportunityJob } from "@/components/newDesign/opportunities/mockJobs";
+import { toOpportunityJob, type LiveOpportunityJob } from "@/components/newDesign/opportunities/careersDesignData";
+import { useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
+import { listCareerJobs } from "@/services/careersApi";
+
+// Design page (Downloads export) fed by GET /careers/jobs. Cards are mapped
+// onto the design's OpportunityJob shape; fields the API doesn't have yet come
+// from the design's sample data (see careersDesignData). Search, tabs and sort
+// run client-side over the loaded jobs, as in the design.
+
+const PAGE_LIMIT = 5; // 50 jobs
 
 const assetPathPrefix = "/images/opportunities";
 const imgSearch = `${assetPathPrefix}/cd8fa.svg`;
@@ -277,15 +285,32 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
 
 export function OpportunitiesPage() {
   const navigate = useNavigate();
-  const { interviewStatus, emailStatus } = useOpportunities();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [activeTab, setActiveTab] = useState<JobTab>("all");
   const [sortOpen, setSortOpen] = useState(false);
-  const [showInterviewModal, setShowInterviewModal] = useState(false);
+  const [liveJobs, setLiveJobs] = useState<LiveOpportunityJob[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const starter = useCareerInterviewStarter();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const all: LiveOpportunityJob[] = [];
+      for (let page = 0; page < PAGE_LIMIT; page++) {
+        const res = await listCareerJobs({ page });
+        res.content.forEach((j) => all.push(toOpportunityJob(j, all.length)));
+        if (res.pageMeta.last || res.content.length === 0) break;
+      }
+      if (!cancelled) setLiveJobs(all);
+    })().catch(() => !cancelled && setFailed(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
-    let jobs = opportunityJobs;
+    let jobs: OpportunityJob[] = liveJobs ?? [];
     if (activeTab === "partner") jobs = jobs.filter((j) => j.jobType === "Partner Job");
     if (activeTab === "sponsored") jobs = jobs.filter((j) => j.jobType === "Screna Sponsored");
     if (search.trim()) {
@@ -297,7 +322,7 @@ export function OpportunitiesPage() {
       );
     }
     return sortJobs(jobs, sort);
-  }, [search, sort, activeTab]);
+  }, [search, sort, activeTab, liveJobs]);
 
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Newest";
 
@@ -440,16 +465,10 @@ export function OpportunitiesPage() {
           <JobCard
               key={job.id}
               job={job}
-              onViewDetail={
-                job.id === "5" ? () => navigate("/opportunities/job/5") :
-                job.id === "1" ? () => navigate("/opportunities/job/1") :
-                undefined
-              }
-              onViewReport={job.id === "8" ? () => navigate("/opportunities/job/8/results") : undefined}
-              onQuickInterview={() => setShowInterviewModal(true)}
-              onContactRecruiter={job.id === "5" ? () => navigate("/opportunities/job/5/contact") : undefined}
-              interviewCompleted={job.id === "5" && interviewStatus["5"] === "completed"}
-              emailSent={job.id === "5" && emailStatus["5"] === "sent"}
+              onViewDetail={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
+              onViewReport={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/results`)}
+              onQuickInterview={() => void starter.begin(job.id)}
+              onContactRecruiter={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/contact`)}
             />
         ))}
         {filtered.length === 0 && (
@@ -458,7 +477,7 @@ export function OpportunitiesPage() {
               className="text-[#5a6172] text-[14px] leading-5"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              No jobs match your search.
+              {failed ? "We couldn't load open roles. Refresh to try again." : !liveJobs ? "Loading open roles…" : "No jobs match your search."}
             </p>
           </div>
         )}
@@ -469,10 +488,8 @@ export function OpportunitiesPage() {
         <div className="fixed inset-0 z-[5]" onClick={() => setSortOpen(false)} />
       )}
 
-      {/* Quick interview modal */}
-      {showInterviewModal && (
-        <QuickInterviewModal onClose={() => setShowInterviewModal(false)} />
-      )}
+      {/* Apply → start interview (confirm, resume upload, not-enough-credits) */}
+      {starter.ui}
     </div>
   );
 }
