@@ -38,6 +38,7 @@ function getTypeLabel(type: string): string {
     product: 'Product Sense',
     'system-design': 'System Design',
     resume: 'Resume Deep-Dive',
+    job: 'AI Job Interview', // /opportunities application interviews
   };
   return map[type] || 'Mock Interview';
 }

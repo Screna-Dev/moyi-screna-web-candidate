@@ -218,11 +218,14 @@ describe('Shared Navbar (marketing pages)', () => {
   });
 });
 
+// The home page's own nav follows the candidate landing redesign (Roles,
+// Interview Reports), so it no longer mirrors the shared Navbar — but it keeps
+// About, like the shared one.
 describe('Home page nav bar (its own copy)', () => {
-  it('lists the same links as the shared Navbar, About included', () => {
+  it('lists the landing links, About included', () => {
     const { container } = renderAt(<HomePage />, '/');
     const { labels, row } = desktopNavLabels(container);
-    expect(labels).toEqual(NAV_ORDER);
+    expect(labels).toEqual(['Roles', 'Interview Reports', 'Blog', 'Pricing', 'FAQ', 'About']);
     expect(within(row).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
   });
 
@@ -233,8 +236,8 @@ describe('Home page nav bar (its own copy)', () => {
       within(row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]),
     );
     expect(hrefs).toEqual({
-      Features: '#features',
-      'Interview Questions': '/interview-questions',
+      Roles: '/opportunities',
+      'Interview Reports': '/interview-questions',
       Blog: '/blog',
       Pricing: '#pricing',
       FAQ: '#faq',

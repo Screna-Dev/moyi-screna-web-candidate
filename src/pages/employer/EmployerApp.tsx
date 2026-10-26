@@ -1,0 +1,452 @@
+import axios from 'axios';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Building, ChevronLeft, CircleHelp, CreditCard, LayoutDashboard, LogOut, UserRoundSearch, Users } from 'lucide-react';
+import { EmployerStoreProvider, useEmployerStore } from '@/components/admin/console/pages/employer/store';
+import { SECTION_VIEW, sectionOf, type EmployerSection } from '@/components/admin/console/pages/employer/sections';
+import { cx } from '@/components/admin/console/pages/employer/ui';
+import { ApplicationsView } from '@/components/admin/console/pages/employer/views/ApplicationsView';
+import { CandidateBoardView } from '@/components/admin/console/pages/employer/views/CandidateBoardView';
+import { CandidateReportView } from '@/components/admin/console/pages/employer/views/CandidateReportView';
+import { ContactCandidateView } from '@/components/admin/console/pages/employer/views/ContactCandidateView';
+import { HiringGuide } from '@/components/admin/console/pages/employer/views/HiringGuide';
+import { PlanUsageView } from '@/components/admin/console/pages/employer/views/PlanUsageView';
+import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
+import { authErrorCode, clearEmployerSession, getEmployerSession, type EmployerSession } from './employerAuth';
+import { ORGANIZATION_NOT_FOUND, getCredits, getNewApplicationsCount, getOrganization, type CreditBalances, type Organization } from './employerApi';
+import { CompanyProfileView } from './CompanyProfileView';
+import { EmployerDashboard } from './EmployerDashboard';
+import { EmployerJobsView } from './EmployerJobsView';
+import { EmployerJobWizard } from './EmployerJobWizard';
+import { OrgContext, useOrg, type OrgState } from './orgContext';
+import { FIELD_LABELS, orgToCompany } from './orgOptions';
+
+// /employer — the employer-facing app. Same screens and in-memory store as the
+// admin console's Hiring section (src/components/admin/console/pages/employer),
+// but scoped to the signed-in employer's own company with no company switcher.
+// Shell follows Figma 2451:1052 / 2451:3188. Plan & Usage and Company Profile
+// are employer-only (not in the admin console), so they are tracked as their
+// own nav keys rather than EmployerSections. Notifications and Account
+// Settings from the design have no screens yet and are left out.
+// The company profile is real (GET/PUT /employer/organization) and is copied
+// into the shared store. The Jobs page and the create-job wizard are real
+// (/employer/jobs, see EmployerJobWizard). The dashboard is partly real (see
+// EmployerDashboard); applications, candidates and the plan are still mock.
+
+type NavKey = EmployerSection | 'plan' | 'profile';
+
+const NAV: { key: NavKey; label: string; icon: ReactNode }[] = [
+  { key: 'employer-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+  { key: 'employer-jobs', label: 'Jobs', icon: <UserRoundSearch size={16} /> },
+  { key: 'employer-candidates', label: 'Applications', icon: <Users size={16} /> },
+  { key: 'plan', label: 'Plan & Usage', icon: <CreditCard size={16} /> },
+];
+
+const TITLES: Record<NavKey, string> = {
+  'employer-dashboard': 'Dashboard',
+  'employer-jobs': 'Jobs',
+  'employer-candidates': 'Applications',
+  plan: 'Plan & Usage',
+  profile: 'Company Profile',
+};
+
+function initials(name: string) {
+  return name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '—';
+}
+
+// Points the shared store at the signed-in employer's company: a seeded mock
+// company when the email matches one, otherwise a fresh company created from
+// the sign-in profile.
+function useBindCompany(session: EmployerSession) {
+  const { companies, company, selectCompany, addCompany, updateCompany } = useEmployerStore();
+  const bound = useRef(false);
+
+  useEffect(() => {
+    if (bound.current) return;
+    bound.current = true;
+    const match =
+      companies.find((c) => c.contact.email.toLowerCase() === session.email) ??
+      companies.find((c) => c.website && new URL(c.website).hostname.replace(/^www\./, '') === session.domain) ??
+      companies.find((c) => c.name.toLowerCase() === session.companyName.toLowerCase());
+    if (match) selectCompany(match.id);
+    else addCompany(session.companyName);
+  }, [companies, session, selectCompany, addCompany]);
+
+  // A newly created company has no hiring contact yet; fill it from sign-in so
+  // the dashboard greeting and email drafts use the employer's details.
+  useEffect(() => {
+    if (company.name === session.companyName && !company.contact.email) {
+      updateCompany({
+        website: `https://${session.domain}`,
+        contact: { name: session.name, title: session.title, email: session.email, phone: '' },
+        authorized: true,
+      });
+    }
+  }, [company, session, updateCompany]);
+}
+
+function ViewBody() {
+  const { view } = useEmployerStore();
+  switch (view.name) {
+    case 'dashboard':
+      return <EmployerDashboard />;
+    case 'jobs':
+      return <EmployerJobsView />;
+    case 'wizard':
+      // Keyed so opening another job (or a new one) starts a fresh wizard.
+      return <EmployerJobWizard key={view.jobId ?? 'new'} jobId={view.jobId} checkout={view.checkout} />;
+    case 'applications':
+      return <ApplicationsView />;
+    case 'board':
+      return <CandidateBoardView jobId={view.jobId} />;
+    case 'report':
+      return <CandidateReportView jobId={view.jobId} candidateId={view.candidateId} />;
+    case 'contact':
+      return <ContactCandidateView jobId={view.jobId} candidateId={view.candidateId} />;
+    case 'plan':
+      return <PlanUsageView />;
+    case 'profile':
+      return <CompanyProfileView returnJobId={view.returnJobId} />;
+  }
+}
+
+// Loads the signed-in employer's organization once and keeps the shared store
+// in step with it: the store's company mirrors the profile, and publishGate
+// carries the fields the API still requires before a job can be published.
+function OrgProvider({ children }: { children: ReactNode }) {
+  const { updateCompany, setPublishGate } = useEmployerStore();
+  const [org, setOrg] = useState<Organization | null>(null);
+  const [status, setStatus] = useState<OrgState['status']>('loading');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    getOrganization()
+      .then((o) => {
+        if (cancelled) return;
+        setOrg(o);
+        setStatus('ready');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const notFound = authErrorCode(err) === ORGANIZATION_NOT_FOUND || (axios.isAxiosError(err) && err.response?.status === 404);
+        setStatus(notFound ? 'missing' : 'error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    if (!org) return;
+    updateCompany(orgToCompany(org));
+    setPublishGate(org.completion.profileComplete ? null : org.completion.missingFields.map((f) => FIELD_LABELS[f]));
+    // updateCompany/setPublishGate are recreated every render; org is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org]);
+
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const value = useMemo<OrgState>(() => ({ org, status, setOrg: (o) => { setOrg(o); setStatus('ready'); }, reload }), [org, status, reload]);
+  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
+}
+
+// Design labels (Unlocks / Sponsored) with real balances from GET
+// /employer/credits: unlocks = Report Credits, sponsored = Interview Credits.
+// The plan tier is still mock. null = not loaded (or failed), shown as a dash.
+const countOf = (n: number | undefined) => (n === undefined ? '—' : n);
+
+function CurrentPlanCard({ credits }: { credits: CreditBalances | null }) {
+  const { plan, go } = useEmployerStore();
+  return (
+    <div className="m-3 rounded-2xl bg-[rgba(60,119,246,0.08)] p-4 flex flex-col gap-2.5">
+      <div className="flex items-center gap-1.5">
+        <CreditCard size={14} className="text-[#3c77f6]" />
+        <span className="text-[13px] leading-[19.5px] font-semibold text-[#1e232f]">Current Plan</span>
+        <span className="px-1.5 py-0.5 rounded bg-[rgba(60,119,246,0.12)] text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">
+          {plan.tier === 'business' ? 'Business' : 'Free'}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 text-[12px] leading-[18px]">
+        <div className="flex justify-between">
+          <span className="text-[#5a6172]">Unlocks</span>
+          <span className="font-bold text-[#1e232f]">{countOf(credits?.report)} left</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[#5a6172]">Sponsored</span>
+          <span className="font-bold text-[#1e232f]">{countOf(credits?.interview)} left</span>
+        </div>
+      </div>
+      <div className="h-px bg-[rgba(60,119,246,0.15)]" />
+      <button type="button" onClick={() => go({ name: 'plan' })} className="w-fit text-[12px] leading-[18px] font-semibold text-[#3c77f6] hover:underline">
+        Manage plan →
+      </button>
+    </div>
+  );
+}
+
+function UsageBadges({ credits }: { credits: CreditBalances | null }) {
+  const { go } = useEmployerStore();
+  const badge = 'px-2.5 py-[3px] rounded-full bg-[#eef2ff] text-[12px] leading-[18px] font-semibold text-[#2e5bff] whitespace-nowrap hover:bg-[#e0e7ff]';
+  return (
+    <div className="hidden sm:flex items-center gap-2">
+      <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
+        Unlocks {countOf(credits?.report)} left
+      </button>
+      <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
+        Sponsored {countOf(credits?.interview)} left
+      </button>
+    </div>
+  );
+}
+
+function AccountMenu({ session, onSignOut }: { session: EmployerSession; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Account menu"
+        className="w-9 h-9 rounded-full bg-[#3c77f6] text-white text-[13px] font-semibold flex items-center justify-center hover:opacity-90"
+      >
+        {initials(session.name)}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[40]" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 z-[50] w-[240px] bg-white border border-[#e1e4ea] rounded-xl shadow-[0px_8px_24px_rgba(0,0,0,0.08)] p-1.5">
+            <div className="px-3 py-2 border-b border-[#e1e4ea] mb-1">
+              <p className="text-[14px] font-semibold text-[#1e232f] truncate">{session.name}</p>
+              <p className="text-[12px] text-[#5a6172] truncate">{session.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[#dc2626] hover:bg-[#fef2f2] rounded-lg"
+            >
+              <LogOut size={15} /> Sign out
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Shell({ session }: { session: EmployerSession }) {
+  useBindCompany(session);
+  const navigate = useNavigate();
+  const { view, go } = useEmployerStore();
+  // First sign-in after verifying the email: walk them through hiring.
+  const firstLogin = (useLocation().state as { firstLogin?: boolean } | null)?.firstLogin === true;
+  const [guideOpen, setGuideOpen] = useState(firstLogin);
+  const active: NavKey = view.name === 'plan' ? 'plan' : view.name === 'profile' ? 'profile' : sectionOf(view);
+  const goNav = (key: NavKey) => go(key === 'plan' ? { name: 'plan' } : key === 'profile' ? { name: 'profile' } : SECTION_VIEW[key]);
+  const title = view.name === 'board' ? 'Candidates' : TITLES[active];
+  const newCount = useNewApplicationsCount(view.name);
+  const credits = useCredits(view.name);
+  useCheckoutReturn();
+
+  const signOut = () => {
+    clearEmployerSession();
+    navigate('/employer/login', { replace: true });
+  };
+
+  return (
+    <div className="h-screen flex bg-[#f9fafb] font-['Inter',sans-serif]">
+      <aside className="hidden md:flex w-[256px] shrink-0 flex-col bg-white border-r border-[#e5e7eb]">
+        <div className="h-[72px] flex items-center px-6 border-b border-[#e5e7eb]">
+          <img src={imgLogo} alt="Screna" className="h-6 w-auto object-contain" />
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 py-6 flex flex-col gap-6">
+          <NavGroup label="Hiring">
+            {NAV.map((n) => (
+              <NavItem
+                key={n.key}
+                icon={n.icon}
+                label={
+                  n.key === 'employer-candidates' ? (
+                    <span className="flex-1 flex items-center justify-between gap-2">
+                      {n.label}
+                      <NewBadge count={newCount} />
+                    </span>
+                  ) : (
+                    n.label
+                  )
+                }
+                active={active === n.key}
+                onClick={() => goNav(n.key)}
+              />
+            ))}
+          </NavGroup>
+          <NavGroup label="Activity & Account">
+            <ProfileNavItem active={active === 'profile'} onClick={() => goNav('profile')} />
+            <NavItem icon={<CircleHelp size={16} />} label="Help Center" active={false} onClick={() => setGuideOpen(true)} />
+          </NavGroup>
+        </nav>
+        <CurrentPlanCard credits={credits} />
+      </aside>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        {view.name === 'board' && (
+          <div className="h-10 shrink-0 bg-white border-b border-[#e5e7eb] flex items-center px-4 md:px-6">
+            <button type="button" onClick={() => go({ name: 'applications' })} className="flex items-center gap-1.5 text-[13px] text-[#5a6172] hover:text-[#1e232f]">
+              <ChevronLeft size={14} /> Back to Applications
+            </button>
+          </div>
+        )}
+        <header className="h-[72px] shrink-0 bg-white border-b border-[#e5e7eb] flex items-center gap-4 px-4 md:px-8">
+          <h1 className="text-[22px] font-bold text-[#1e232f] font-[family-name:var(--font-serif)] whitespace-nowrap">{title}</h1>
+          {/* Narrow screens: sidebar collapses into tabs. */}
+          <div className="flex md:hidden gap-1 overflow-x-auto">
+            {NAV.map((n) => (
+              <button
+                key={n.key}
+                type="button"
+                onClick={() => goNav(n.key)}
+                className={cx('px-2.5 py-1 rounded-lg text-[13px] whitespace-nowrap', active === n.key ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-semibold' : 'text-[#5a6172]')}
+              >
+                {n.label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-6">
+            <UsageBadges credits={credits} />
+            <button type="button" onClick={() => setGuideOpen(true)} className="hidden sm:block text-[14px] font-medium text-[#5a6172] hover:text-[#1e232f]">
+              Help
+            </button>
+            <AccountMenu session={session} onSignOut={signOut} />
+          </div>
+        </header>
+        {/* The store scrolls <main> to top on navigation. */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-4 md:px-8 py-6 max-w-[1280px] w-full mx-auto">
+            <ViewBody />
+          </div>
+        </main>
+      </div>
+
+      <HiringGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        onFinish={() => {
+          setGuideOpen(false);
+          go({ name: 'wizard' });
+        }}
+      />
+    </div>
+  );
+}
+
+// Stripe sends the employer back to /employer/credits?checkout=success|cancelled
+// &jobId=<id> after buying Interview Credits from the wizard's publish step.
+// Reopen that job's wizard (it polls until the credits land) and drop the URL
+// back to /employer so a reload doesn't repeat it.
+function useCheckoutReturn() {
+  const { go } = useEmployerStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (location.pathname !== '/employer/credits') return;
+    const params = new URLSearchParams(location.search);
+    const result = params.get('checkout');
+    const jobId = params.get('jobId');
+    if (jobId && (result === 'success' || result === 'cancelled')) go({ name: 'wizard', jobId, checkout: result });
+    else go({ name: 'plan' });
+    navigate('/employer', { replace: true });
+  }, [location.pathname, location.search, go, navigate]);
+}
+
+// GET /employer/credits, re-read on every screen change (publishing spends an
+// Interview Credit; a Stripe return lands on a new view). Failures show dashes.
+function useCredits(viewName: string) {
+  const [credits, setCredits] = useState<CreditBalances | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getCredits()
+      .then((c) => !cancelled && setCredits(c))
+      .catch(() => !cancelled && setCredits(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [viewName]);
+  return credits;
+}
+
+// GET /employer/applications/new-count, re-read whenever the employer moves
+// between screens so the badge drops after they open a board. Failures (incl.
+// 404 for an account with no org) just hide the badge.
+function useNewApplicationsCount(viewName: string) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    getNewApplicationsCount()
+      .then((n) => !cancelled && setCount(n))
+      .catch(() => !cancelled && setCount(0));
+    return () => {
+      cancelled = true;
+    };
+  }, [viewName]);
+  return count;
+}
+
+function NewBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className="text-[11px] font-semibold text-white bg-[#3c77f6] rounded-full px-1.5 py-0.5 whitespace-nowrap">{count > 99 ? '99+' : count} New</span>;
+}
+
+function ProfileNavItem({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const { org } = useOrg();
+  const pct = org && !org.completion.profileComplete ? org.completion.percent : null;
+  return (
+    <NavItem
+      icon={<Building size={16} />}
+      label={
+        <span className="flex-1 flex items-center justify-between gap-2">
+          Company Profile
+          {pct !== null && <span className="text-[11px] font-semibold text-[#d98c00] bg-[#fff7e6] rounded-full px-1.5 py-0.5">{pct}%</span>}
+        </span>
+      }
+      active={active}
+      onClick={onClick}
+    />
+  );
+}
+
+function NavGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="px-3 pb-1 text-[11px] uppercase tracking-[0.06em] text-[#5a6172]">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: ReactNode; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'flex items-center gap-3 px-3 py-2 rounded-[10px] text-[14px] text-left transition-colors',
+        active ? 'bg-[rgba(60,119,246,0.08)] text-[#3c77f6] font-medium' : 'text-[#1e232f] font-medium hover:bg-[#f3f4f7]',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+export function EmployerApp() {
+  const session = getEmployerSession();
+  if (!session) return <Navigate to="/employer/login" replace />;
+  return (
+    <EmployerStoreProvider>
+      <OrgProvider>
+        <Shell session={session} />
+      </OrgProvider>
+    </EmployerStoreProvider>
+  );
+}

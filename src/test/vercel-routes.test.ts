@@ -125,6 +125,7 @@ describe('vercel.json route coverage', () => {
       '/contact',
       '/cookies',
       '/data-protection',
+      '/employers',
       '/faq',
       '/help',
       '/interview-questions',   // public twin of /interview-insights
