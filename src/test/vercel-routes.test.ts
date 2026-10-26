@@ -22,7 +22,7 @@ const SSR_DESTINATIONS = [
 ];
 
 const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
-  redirects: { source: string }[];
+  redirects: { source: string; destination: string; permanent?: boolean }[];
   rewrites: { source: string; destination: string }[];
 };
 
@@ -383,5 +383,41 @@ describe('/experience is open to everyone, on one document', () => {
     const matcher = src.match(/matcher:\s*\[([^\]]*)\]/)![1];
     const patterns = [...matcher.matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(patterns).toEqual(['/api/v1/:path*']);
+  });
+});
+
+// Company display-name cleanup (company-display-name-mapping.en.csv): MERGE rows
+// whose slug changes 301 to the surviving company, CLEAR_COMPANY rows to the
+// directory. `:path*` takes /page/:n along with the company page itself.
+describe('vercel.json company redirects', () => {
+  const companyRedirects = vercel.redirects.filter((r) => r.source.startsWith('/interview-questions/'));
+  const slugOf = (src: string) => src.match(/^\/interview-questions\/([a-z0-9-]+)\/:path\*$/)?.[1];
+
+  it('has one rule per retired slug (82 merges + 10 clears)', () => {
+    expect(companyRedirects).toHaveLength(92);
+    expect(new Set(companyRedirects.map((r) => r.source)).size).toBe(92);
+  });
+
+  it('is permanent and well-formed', () => {
+    for (const r of companyRedirects) {
+      expect(slugOf(r.source), r.source).toBeTruthy();
+      expect(r.permanent).toBe(true);
+      expect(r.destination).toMatch(/^\/interview-questions(\/[a-z0-9-]+)?$/);
+    }
+  });
+
+  it('never chains: no destination is itself retired', () => {
+    const retired = new Set(companyRedirects.map((r) => slugOf(r.source)));
+    for (const r of companyRedirects) {
+      expect(retired.has(r.destination.split('/')[2]), `${r.source} -> ${r.destination}`).toBe(false);
+    }
+  });
+
+  it.each([
+    ['/interview-questions/snapchat', '/interview-questions/snap'],
+    ['/interview-questions/amazon-aws', '/interview-questions/amazon-web-services'],
+    ['/interview-questions/early-stage-startup', '/interview-questions'],
+  ])('%s -> %s', (source, destination) => {
+    expect(vercel.redirects.find((r) => r.source === `${source}/:path*`)?.destination).toBe(destination);
   });
 });

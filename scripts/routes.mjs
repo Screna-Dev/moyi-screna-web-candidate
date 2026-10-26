@@ -270,6 +270,50 @@ export const SEO_TITLE_MAX = 60;
  * bundle boots. It is also og:title and twitter:title.
  */
 export function noteSeoTitle(post) {
+  return `${noteSeoTitleCore(post)}${SEO_BRAND}`;
+}
+
+/**
+ * Rollout of the backend's per-note `seoTitle` ("{headline} — {Company}
+ * {RoleShort} {RoundShort}", deduplicated server-side).
+ *   'half' — notes whose id hashes even use seoTitle; the rest are the control
+ *            group, compared in GSC after 4–6 weeks.
+ *   'all'  — every note that has one.
+ *   'off'  — the old title everywhere.
+ * Notes without a seoTitle (not yet backfilled, or no questions) always get
+ * the old title.
+ */
+export const SEO_TITLE_ROLLOUT = 'half';
+
+/** FNV-1a, 32-bit. Deterministic in Node and the browser, so SSR and the client agree. */
+function fnv1a(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Does this note's title come from seoTitle? Decided here and only here: the
+ * SSR head and the client's useSeo both go through noteSeoTitle, and two
+ * separate checks would let the title change once the bundle boots.
+ */
+export function usesSeoTitle(post, rollout = SEO_TITLE_ROLLOUT) {
+  if (!post?.seoTitle || rollout === 'off') return false;
+  return rollout === 'all' || fnv1a(String(post.id ?? '')) % 2 === 0;
+}
+
+/**
+ * The title without the brand — also the JSON-LD Article headline.
+ *
+ * seoTitle is NOT cut to fit: the headline leads, so whatever Google drops past
+ * 60 characters is the company and round, which the h1 carries anyway. Cutting
+ * it at the old 48-character budget puts duplicates back up to 12.5%.
+ */
+export function noteSeoTitleCore(post, rollout = SEO_TITLE_ROLLOUT) {
+  if (usesSeoTitle(post, rollout)) return post.seoTitle;
   const core = `${post?.company ?? ''} ${post?.role ?? ''} Interview${post?.round ? ` — ${post.round}` : ''}`.trim();
   const budget = SEO_TITLE_MAX - SEO_BRAND.length;
   let head = core.slice(0, budget);
@@ -277,7 +321,7 @@ export function noteSeoTitle(post) {
     const lastSpace = head.lastIndexOf(' ');
     if (lastSpace > 0) head = head.slice(0, lastSpace);
   }
-  return `${head.replace(/[\s\u2014\-/·|,;:]+$/, '')}${SEO_BRAND}`;
+  return head.replace(/[\s\u2014\-/·|,;:]+$/, '');
 }
 
 /**

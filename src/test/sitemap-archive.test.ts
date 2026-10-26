@@ -44,6 +44,11 @@ globalThis.fetch = async (input) => {
       id: company + '-' + (total - i),
       company,
       updatedAt: day(i),
+      // Meta-25 got its seoTitle after its last edit; Meta-24 before it.
+      seoTitleUpdatedAt:
+        company === 'Meta' && i === 0 ? '2026-10-20T00:00:00.000Z'
+        : company === 'Meta' && i === 1 ? '2026-01-01T00:00:00.000Z'
+        : undefined,
       questions: [{ title: 'Q', notes: 'One sentence.' }],
     })).slice(page * 10, page * 10 + 10);
     return json({ posts, total, size: 10, page });
@@ -132,5 +137,23 @@ describe('sitemap — company archive pages', () => {
       // the company page itself is still listed.
       'https://www.screna.ai/interview-questions/broken',
     ]);
+  });
+});
+
+describe('sitemap — note lastmod and seoTitleUpdatedAt', () => {
+  const day = (i: number) => new Date(Date.UTC(2026, 8, 30) - i * 864e5).toISOString();
+  const lastmodOf = (xml: string, id: string) =>
+    xml.match(new RegExp(`<loc>https://www\\.screna\\.ai/experience/${id}</loc>\\s*<lastmod>([^<]+)</lastmod>`))?.[1];
+
+  it('takes seoTitleUpdatedAt when it is the later of the two, and stays in its own month file', () => {
+    const xml = read('sitemap-notes-2026-09.xml');
+    expect(lastmodOf(xml, 'Meta-25')).toBe('2026-10-20T00:00:00.000Z');
+    expect(readdirSync(dist).some((f) => f.startsWith('sitemap-notes-2026-10'))).toBe(false);
+  });
+
+  it('keeps the note date when seoTitleUpdatedAt is older or absent', () => {
+    const xml = read('sitemap-notes-2026-09.xml');
+    expect(lastmodOf(xml, 'Meta-24')).toBe(day(1));
+    expect(lastmodOf(xml, 'Meta-23')).toBe(day(2));
   });
 });

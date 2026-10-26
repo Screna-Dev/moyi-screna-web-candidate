@@ -7,6 +7,8 @@ import {
   companyPageWindow,
   isIndexablePost,
   noteSeoTitle,
+  noteSeoTitleCore,
+  usesSeoTitle,
 } from '../../scripts/routes.mjs';
 
 // The arithmetic and copy rules behind the crawlable surface. Three consumers
@@ -130,6 +132,56 @@ describe('noteSeoTitle', () => {
 
   it('leaves a short title untouched', () => {
     expect(noteSeoTitle({ company: 'Meta', role: 'PM' })).toBe('Meta PM Interview | Screna AI');
+  });
+});
+
+describe('noteSeoTitle — backend seoTitle rollout', () => {
+  // FNV-1a parity of these ids, fixed: 'a' hashes even (treatment), 'b' odd
+  // (control). Asserted below so a hash change cannot silently flip the groups.
+  const TREATED = 'a';
+  const CONTROL = 'b';
+  const base = { company: 'Apple', role: 'Software Engineer', round: 'Technical Phone Screen' };
+  const LONG = 'Lexicographically Smallest Topological Ordering (Jul 2026, #2) — Meta SWE Coding';
+
+  it('splits ids into the two groups', () => {
+    expect(usesSeoTitle({ id: TREATED, seoTitle: 'x' })).toBe(true);
+    expect(usesSeoTitle({ id: CONTROL, seoTitle: 'x' })).toBe(false);
+  });
+
+  it('uses seoTitle in the treatment group, uncut past 60 characters', () => {
+    const title = noteSeoTitle({ ...base, id: TREATED, seoTitle: LONG });
+    expect(title).toBe(`${LONG} | Screna AI`);
+    expect(title.length).toBeGreaterThan(60);
+  });
+
+  it('keeps the old title in the control group', () => {
+    const title = noteSeoTitle({ ...base, id: CONTROL, seoTitle: LONG });
+    expect(title).toBe(noteSeoTitle(base));
+    expect(title.startsWith('Apple Software Engineer Interview — ')).toBe(true);
+  });
+
+  it('keeps the old title when there is no seoTitle yet', () => {
+    for (const seoTitle of [undefined, null, '']) {
+      expect(noteSeoTitleCore({ ...base, id: TREATED, seoTitle })).toBe(noteSeoTitleCore(base));
+    }
+  });
+
+  it('gives the same answer for the same id every time', () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `9dc86733-4682-4085-80a3-${String(i).padStart(12, '0')}`);
+    const first = ids.map((id) => usesSeoTitle({ id, seoTitle: 'x' }));
+    expect(ids.map((id) => usesSeoTitle({ id, seoTitle: 'x' }))).toEqual(first);
+    // And it really is a split, not everything on one side.
+    expect(first.filter(Boolean).length).toBeGreaterThan(10);
+    expect(first.filter((x) => !x).length).toBeGreaterThan(10);
+  });
+
+  it("'all' uses seoTitle everywhere, 'off' nowhere", () => {
+    const control = { ...base, id: CONTROL, seoTitle: LONG };
+    const treated = { ...base, id: TREATED, seoTitle: LONG };
+    expect(noteSeoTitleCore(control, 'all')).toBe(LONG);
+    expect(noteSeoTitleCore(treated, 'all')).toBe(LONG);
+    expect(noteSeoTitleCore(treated, 'off')).toBe(noteSeoTitleCore(base));
+    expect(noteSeoTitleCore({ ...base, id: CONTROL }, 'all')).toBe(noteSeoTitleCore(base));
   });
 });
 
