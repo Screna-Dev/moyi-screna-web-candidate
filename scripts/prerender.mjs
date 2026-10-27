@@ -335,7 +335,9 @@ for (const route of routes) {
       // break the query and leave that post flashing on every visit.
       const res = await fetchWithRetry(
         sanity(`*[_type == "post" && slug.current == $slug][0]{
-           _id, title, "slug": slug.current, excerpt, category, publishedAt, author, cover, seoTitle, body
+           _id, title, "slug": slug.current, excerpt, category, publishedAt, author, cover, seoTitle, body,
+           "relatedPosts": relatedPosts[defined(@->slug.current)]->{
+             _id, title, "slug": slug.current, excerpt, category, publishedAt, author, cover, seoTitle }
          }`) + `&%24slug=${encodeURIComponent(JSON.stringify(slug))}`,
       );
       const result = res.ok ? (await res.json()).result : null;

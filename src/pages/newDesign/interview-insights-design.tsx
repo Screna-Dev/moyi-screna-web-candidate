@@ -57,8 +57,11 @@ function timeAgo(iso: string | undefined): string {
 // mounts no proxy on purpose). So scripts/prerender.mjs fetches the stats
 // payload server-side and plants it before the bundle evaluates.
 //
-// Read at module scope, exactly once, as readPrerenderSeed requires.
-const PRERENDER_SEED = readPrerenderSeed<{ stats?: unknown }>('__prerender_directory__');
+// Read at module scope, exactly once, as readPrerenderSeed requires. It is a
+// build-time snapshot, so it only paints the first view: the page always
+// fetches the live stats too (see below), and `let` + clearing it on use stops
+// a later visit in the same session from starting from stale numbers.
+let PRERENDER_SEED = readPrerenderSeed<{ stats?: unknown }>('__prerender_directory__');
 
 // Shape returned per-company by GET /community/companies/stats
 // (companies are nested under data.categories[].companies[]; each carries its own category).
@@ -75,6 +78,31 @@ type CompanyCategoryGroup = {
   postCount: number;
   companies: CompanyStat[];
 };
+
+type StatsRollup = { totalCompanyCount: number; totalPostCount: number; totalRecentPostCount: number };
+
+/**
+ * Flatten the stats payload: companies are grouped under
+ * data.categories[].companies[]; each carries its own category, the group's is
+ * the fallback.
+ */
+function parseCompanyStats(data: any): { list: CompanyStat[]; rollup: StatsRollup } {
+  const groups: CompanyCategoryGroup[] = Array.isArray(data?.categories) ? data.categories : [];
+  const list: CompanyStat[] = groups.flatMap((g) =>
+    (Array.isArray(g.companies) ? g.companies : []).map((c) => ({
+      ...c,
+      category: c.category ?? g.category,
+    }))
+  );
+  return {
+    list,
+    rollup: {
+      totalCompanyCount: data?.totalCompanyCount ?? list.length,
+      totalPostCount: data?.totalPostCount ?? 0,
+      totalRecentPostCount: data?.totalRecentPostCount ?? 0,
+    },
+  };
+}
 
 // Curated metadata only (category / description / slug). Counts + "updated"
 // come live from the API; companies not listed here still render from the API
@@ -228,9 +256,16 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
     clearAllCompanyPostFilters();
   }, []);
 
-  const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
-  const [rollup, setRollup] = useState<{ totalCompanyCount: number; totalPostCount: number; totalRecentPostCount: number } | null>(null);
-  const [companiesLoading, setCompaniesLoading] = useState(true);
+  // First view of a prerendered load starts from the snapshot, so the grid the
+  // HTML already shows is not blanked; the effect below then replaces it.
+  const [seeded] = useState(() => {
+    const stats = PRERENDER_SEED?.stats;
+    PRERENDER_SEED = null;
+    return stats ? parseCompanyStats(stats) : null;
+  });
+  const [companyStats, setCompanyStats] = useState<CompanyStat[]>(seeded?.list ?? []);
+  const [rollup, setRollup] = useState<StatsRollup | null>(seeded?.rollup ?? null);
+  const [companiesLoading, setCompaniesLoading] = useState(!seeded);
 
   // The "Latest" ticker that used to live here is commented out further down
   // (search for latest-marquee). Its fetch went with it: the result was written
@@ -247,32 +282,20 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
     let cancelled = false;
     (async () => {
       try {
-        // Prerendered load: the grid is already rendered from the seed, so
-        // refetching would blank and repaint the content the snapshot exists
-        // to deliver.
-        const res = PRERENDER_SEED?.stats
-          ? { data: { data: PRERENDER_SEED.stats } }
-          : signedOut
-            ? await getPublicCompaniesStats()
-            : await getCompaniesStats();
+        // Always fetch, even on a prerendered load: the seed is frozen at the
+        // last build (it showed 718 companies after the company cleanup took
+        // the API to 638). Replacing it in place keeps the grid on screen; a
+        // failure leaves the seeded numbers up rather than an empty grid.
+        const res = signedOut
+          ? await getPublicCompaniesStats()
+          : await getCompaniesStats();
         const data = res.data?.data ?? res.data;
-        if (cancelled || !data) return;
-        // New shape: companies are grouped under data.categories[].companies[];
-        // each company carries its own category. Flatten to a single list,
-        // tagging each company with its group's category as a fallback.
-        const groups: CompanyCategoryGroup[] = Array.isArray(data?.categories) ? data.categories : [];
-        const list: CompanyStat[] = groups.flatMap((g) =>
-          (Array.isArray(g.companies) ? g.companies : []).map((c) => ({
-            ...c,
-            category: c.category ?? g.category,
-          }))
-        );
+        // Not a stats payload (e.g. the HTML shell the snapshot browser gets
+        // for an unproxied /api path): keep what is on screen.
+        if (cancelled || !Array.isArray(data?.categories)) return;
+        const { list, rollup: next } = parseCompanyStats(data);
         setCompanyStats(list);
-        setRollup({
-          totalCompanyCount: data?.totalCompanyCount ?? list.length,
-          totalPostCount: data?.totalPostCount ?? 0,
-          totalRecentPostCount: data?.totalRecentPostCount ?? 0,
-        });
+        setRollup(next);
       } catch (err) {
         console.error("Failed to fetch company stats:", err);
       } finally {
