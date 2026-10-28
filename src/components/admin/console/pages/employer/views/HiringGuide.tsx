@@ -47,7 +47,7 @@ function Callout({ icon, title, body }: { icon: ReactNode; title: string; body: 
 
 function CreditsBox() {
   const items = [
-    { name: 'Publish a job', badge: '1 Interview Credit', body: 'Charged immediately when the job is published.' },
+    { name: 'Publish a job', badge: 'Free', body: 'No credits are used to publish a job.' },
     { name: 'Sponsored interview', badge: '1 Interview Credit', body: 'Charged after each sponsored candidate completes the interview.' },
     { name: 'Unlock a candidate', badge: '1 Report Credit', body: 'Charged for that candidate and job.' },
   ];
@@ -108,8 +108,8 @@ function StepCreate() {
       />
       <Callout
         icon={<Check size={12} strokeWidth={3} />}
-        title="Publishing uses 1 Interview Credit immediately."
-        body="No credits are used while in draft, editing, or testing mode."
+        title="Publishing is free."
+        body="No credits are used while in draft, editing, testing, or publishing."
       />
     </>
   );

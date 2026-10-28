@@ -22,7 +22,6 @@ export const STEPS = ['Job details', 'Interview', 'Application & sponsorship', '
 export const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship'] as const;
 export const CURRENCIES = ['USD ($)', 'EUR (€)', 'GBP (£)', 'CAD ($)'];
 export const TIME_ZONES = ['Pacific Time (PT)', 'Mountain Time (MT)', 'Central Time (CT)', 'Eastern Time (ET)', 'UTC'];
-export const LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Mandarin Chinese'];
 
 const filled = (s: string) => s.trim().length > 0;
 
@@ -111,11 +110,12 @@ export function inputToDisplay(v: string): string {
   return `${MONTHS[Number(m[2]) - 1]} ${pad(Number(m[3]))}, ${m[1]} ${pad(h12)}:${m[5]} ${h24 >= 12 ? 'PM' : 'AM'}`;
 }
 
-// "Oct 24 – Nov 7, 2026"
+// "Oct 24 – Nov 7, 2026"; "On publish – Nov 7, 2026" when opensAt is blank.
 export function windowLabel(j: Job): string {
   const a = parseDisplay(j.opensAt);
   const b = parseDisplay(j.closesAt);
-  if (!a || !b) return 'Not set';
+  if (!b) return 'Not set';
+  if (!a) return `On publish – ${MONTHS[b.m]} ${b.d}, ${b.y}`;
   const left = `${MONTHS[a.m]} ${a.d}${a.y !== b.y ? `, ${a.y}` : ''}`;
   return `${left} – ${MONTHS[b.m]} ${b.d}, ${b.y}`;
 }

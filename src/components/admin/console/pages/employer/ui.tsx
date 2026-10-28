@@ -232,6 +232,8 @@ export function Dialog({
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-[rgba(30,35,47,0.35)]" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
         className="bg-white rounded-2xl shadow-[0px_24px_48px_rgba(0,0,0,0.12)] w-full max-h-[90vh] overflow-y-auto"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}

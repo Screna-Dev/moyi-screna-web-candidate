@@ -72,8 +72,7 @@ function LiveJobsTable({ jobs }: { jobs: JobListItem[] }) {
           {jobs.map((j) => {
             const status = jobStatusOf(j.status);
             const published = j.status !== 'DRAFT';
-            // Design labels (admin nextAction). Board links open the candidate
-            // board, which is still mock until the board API is wired.
+            // Design labels (admin nextAction). Board links open the candidate board.
             const action: { label: string; view: EmployerView } =
               j.status === 'OPEN'
                 ? { label: j.completedCount > 0 ? 'Review candidates' : 'View progress', view: { name: 'board', jobId: j.jobId } }

@@ -366,19 +366,22 @@ function StatusCell({ ok, okLabel, pending }: { ok: boolean; okLabel: string; pe
 }
 
 // note / sponsoredLabel: the employer app's "Application & credits" design uses
-// its own footer copy and "Recruiter sponsored".
+// its own footer copy and "Recruiter sponsored". isValid: the employer app's
+// own step rules (its steps differ from the admin flow's); defaults to stepValid.
 export function DraftSummary({
   job,
   companyName,
   maxStep,
   note,
   sponsoredLabel = 'Employer sponsored',
+  isValid = (s: number) => stepValid(job, s),
 }: {
   job: Job;
   companyName: string;
   maxStep: number;
   note?: string;
   sponsoredLabel?: string;
+  isValid?: (step: number) => boolean;
 }) {
   return (
     <Card className="p-5 flex flex-col gap-3">
@@ -387,14 +390,14 @@ export function DraftSummary({
       <KV k="Status" v={<Pill tone={statusTone(job.status)}>{job.status}</Pill>} />
       <KV k="Company" v={companyName} />
       <Divider />
-      <KV k="Job details" v={<StatusCell ok={stepValid(job, 0)} okLabel="Complete" pending="Incomplete" />} />
-      <KV k="Interview" v={<StatusCell ok={stepValid(job, 1)} okLabel="Confirmed" pending="Not reviewed" />} />
+      <KV k="Job details" v={<StatusCell ok={isValid(0)} okLabel="Complete" pending="Incomplete" />} />
+      <KV k="Interview" v={<StatusCell ok={isValid(1)} okLabel="Confirmed" pending="Not reviewed" />} />
       <KV k="Application window" v={<StatusCell ok={!!job.opensAt && !!job.closesAt} okLabel="Set" pending="Not set" />} />
       <KV
         k="Sponsorship"
         v={
           <StatusCell
-            ok={maxStep >= 2 && stepValid(job, 2)}
+            ok={maxStep >= 2 && isValid(2)}
             okLabel={job.sponsor === 'employer' ? sponsoredLabel : 'Candidate-paid'}
             pending="Not selected"
           />
@@ -406,12 +409,24 @@ export function DraftSummary({
   );
 }
 
-export function PublishSummary({ job, companyName, ready, gated }: { job: Job; companyName: string; ready: boolean; gated: boolean }) {
+export function PublishSummary({
+  job,
+  companyName,
+  ready,
+  gated,
+  isValid = (s: number) => stepValid(job, s),
+}: {
+  job: Job;
+  companyName: string;
+  ready: boolean;
+  gated: boolean;
+  isValid?: (step: number) => boolean;
+}) {
   const sponsored = job.sponsor === 'employer';
   const missing = [
-    !stepValid(job, 0) && 'Job details',
-    !stepValid(job, 1) && 'Interview review',
-    !stepValid(job, 2) && 'Application & sponsorship',
+    !isValid(0) && 'Job details',
+    !isValid(1) && 'Interview review',
+    !isValid(2) && 'Application & sponsorship',
     gated && 'Company profile',
   ].filter(Boolean) as string[];
 

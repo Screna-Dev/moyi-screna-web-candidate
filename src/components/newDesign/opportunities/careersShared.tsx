@@ -13,6 +13,7 @@ import {
   type CareerInterviewSession,
 } from "@/services/careersApi";
 import { QuickInterviewModal } from "./QuickInterviewModal";
+import { isBeingScored } from "./careersEnded";
 
 // The careers (apply → AI interview) flow used by the design's Opportunities
 // pages, plus the few dialogs the design has no frame for yet: the start
@@ -99,6 +100,9 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [short, setShort] = useState(false);
+  // RESUME_REQUIRED on start: the interview service has no parsed resume yet
+  // (upload failed to parse or is still parsing). Nothing was charged.
+  const [needResume, setNeedResume] = useState(false);
   const rejoin = app.interviewStatus === "IN_PROGRESS";
   const candidatePays = app.interviewPayer === "CANDIDATE";
   const cost = interviewCost(app.interviewDurationMinutes, video);
@@ -115,6 +119,7 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     } catch (err) {
       const code = careersErrorCode(err);
       if (code === "INSUFFICIENT_CREDITS") setShort(true);
+      else if (code === "RESUME_REQUIRED") setNeedResume(true);
       else if (code === "INTERVIEW_UNAVAILABLE") setError("This company can't host interviews right now. Please try again later.");
       else if (code === "HIRING_AI_UNAVAILABLE") setError("The interview service is unavailable right now. Nothing was charged. Please try again.");
       else if (code === "INVALID_STATE") setError(careersErrorMessage(err) || "This interview can't be started right now. Refresh and try again.");
@@ -129,6 +134,20 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     if (url) window.location.href = url;
     else setBusy(false);
   };
+
+  if (needResume) {
+    return (
+      <ResumeModal
+        title="Upload your resume again"
+        body="The interview needs a resume we can read, and yours is missing or still being processed. Upload it again and we'll start your interview. Nothing was charged."
+        onClose={onClose}
+        onUploaded={() => {
+          setNeedResume(false);
+          void start();
+        }}
+      />
+    );
+  }
 
   if (short) {
     return <QuickInterviewModal onClose={onClose} minutes={app.interviewDurationMinutes} balance={creditBalance} required={cost} onBuy={() => void buy()} buying={busy} />;
@@ -188,7 +207,17 @@ const RESUME_EXTS = [".pdf", ".doc", ".docx"];
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
 // RESUME_REQUIRED: upload in place (same contract as the Profile tab), then retry.
-function ResumeModal({ onUploaded, onClose }: { onUploaded: () => void; onClose: () => void }) {
+function ResumeModal({
+  onUploaded,
+  onClose,
+  title = "Add a resume to continue",
+  body = "Recruiters receive the resume on your profile with your assessment. Upload one and we'll continue right away.",
+}: {
+  onUploaded: () => void;
+  onClose: () => void;
+  title?: string;
+  body?: string;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -216,10 +245,10 @@ function ResumeModal({ onUploaded, onClose }: { onUploaded: () => void; onClose:
         <FileText size={20} className="text-[#b45309] shrink-0 mt-0.5" />
         <div className="flex flex-col gap-1">
           <h2 className="text-[#1e232f] text-[18px] font-semibold" style={{ fontFamily: font.semibold }}>
-            Add a resume to continue
+            {title}
           </h2>
           <p className="text-[13px] text-[#5a6172]" style={{ fontFamily: font.regular }}>
-            Recruiters receive the resume on your profile with your assessment. Upload one and we'll continue right away.
+            {body}
           </p>
         </div>
       </div>
@@ -264,6 +293,7 @@ export function useCareerInterviewStarter(onApplied?: (app: CareerApplication) =
       const a = await applyToJob(jobId);
       onApplied?.(a);
       if (a.interviewStatus === "COMPLETED") setNotice("You've already completed the interview for this role. The recruiter will review it.");
+      else if (isBeingScored(a)) setNotice("We're processing your interview. Check My Jobs in a few minutes.");
       else if (!a.canStartInterview) setNotice("This role is no longer accepting interviews.");
       else setApp(a);
     } catch (err) {

@@ -5,10 +5,6 @@ import { Building, ChevronLeft, CircleHelp, CreditCard, LayoutDashboard, LogOut,
 import { EmployerStoreProvider, useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { SECTION_VIEW, sectionOf, type EmployerSection } from '@/components/admin/console/pages/employer/sections';
 import { cx } from '@/components/admin/console/pages/employer/ui';
-import { ApplicationsView } from '@/components/admin/console/pages/employer/views/ApplicationsView';
-import { CandidateBoardView } from '@/components/admin/console/pages/employer/views/CandidateBoardView';
-import { CandidateReportView } from '@/components/admin/console/pages/employer/views/CandidateReportView';
-import { ContactCandidateView } from '@/components/admin/console/pages/employer/views/ContactCandidateView';
 import { HiringGuide } from '@/components/admin/console/pages/employer/views/HiringGuide';
 import { PlanUsageView } from '@/components/admin/console/pages/employer/views/PlanUsageView';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
@@ -19,6 +15,11 @@ import { EmployerDashboard } from './EmployerDashboard';
 import { EmployerJobsView } from './EmployerJobsView';
 import { EmployerJobWizard } from './EmployerJobWizard';
 import { OrgContext, useOrg, type OrgState } from './orgContext';
+import { CreditsContext, REPORT_CHECKOUT_KEY } from './creditsContext';
+import { EmployerApplicationsView } from './EmployerApplicationsView';
+import { EmployerBoardView } from './EmployerBoardView';
+import { EmployerReportView } from './EmployerReportView';
+import { EmployerContactView } from './EmployerContactView';
 import { FIELD_LABELS, orgToCompany } from './orgOptions';
 
 // /employer — the employer-facing app. Same screens and in-memory store as the
@@ -30,8 +31,10 @@ import { FIELD_LABELS, orgToCompany } from './orgOptions';
 // Settings from the design have no screens yet and are left out.
 // The company profile is real (GET/PUT /employer/organization) and is copied
 // into the shared store. The Jobs page and the create-job wizard are real
-// (/employer/jobs, see EmployerJobWizard). The dashboard is partly real (see
-// EmployerDashboard); applications, candidates and the plan are still mock.
+// (/employer/jobs, see EmployerJobWizard), and so are Applications, the
+// candidate board, the report and Contact candidate (Employer*View, backend
+// guide frontend-employer-board-api.md; view candidateId = applicationId).
+// The dashboard is partly real (see EmployerDashboard); the plan is mock.
 
 type NavKey = EmployerSection | 'plan' | 'profile';
 
@@ -96,13 +99,14 @@ function ViewBody() {
       // Keyed so opening another job (or a new one) starts a fresh wizard.
       return <EmployerJobWizard key={view.jobId ?? 'new'} jobId={view.jobId} checkout={view.checkout} />;
     case 'applications':
-      return <ApplicationsView />;
+      return <EmployerApplicationsView />;
     case 'board':
-      return <CandidateBoardView jobId={view.jobId} />;
+      // Keyed so switching jobs starts a fresh board (filters, visit).
+      return <EmployerBoardView key={view.jobId} jobId={view.jobId} />;
     case 'report':
-      return <CandidateReportView jobId={view.jobId} candidateId={view.candidateId} />;
+      return <EmployerReportView key={view.candidateId} jobId={view.jobId} applicationId={view.candidateId} />;
     case 'contact':
-      return <ContactCandidateView jobId={view.jobId} candidateId={view.candidateId} />;
+      return <EmployerContactView key={view.candidateId} jobId={view.jobId} applicationId={view.candidateId} />;
     case 'plan':
       return <PlanUsageView />;
     case 'profile':
@@ -245,7 +249,8 @@ function Shell({ session }: { session: EmployerSession }) {
   const goNav = (key: NavKey) => go(key === 'plan' ? { name: 'plan' } : key === 'profile' ? { name: 'profile' } : SECTION_VIEW[key]);
   const title = view.name === 'board' ? 'Candidates' : TITLES[active];
   const newCount = useNewApplicationsCount(view.name);
-  const credits = useCredits(view.name);
+  const creditsState = useCredits(view.name);
+  const { credits } = creditsState;
   useCheckoutReturn();
 
   const signOut = () => {
@@ -322,7 +327,9 @@ function Shell({ session }: { session: EmployerSession }) {
         {/* The store scrolls <main> to top on navigation. */}
         <main className="flex-1 overflow-y-auto">
           <div className="px-4 md:px-8 py-6 max-w-[1280px] w-full mx-auto">
-            <ViewBody />
+            <CreditsContext.Provider value={creditsState}>
+              <ViewBody />
+            </CreditsContext.Provider>
           </div>
         </main>
       </div>
@@ -340,9 +347,10 @@ function Shell({ session }: { session: EmployerSession }) {
 }
 
 // Stripe sends the employer back to /employer/credits?checkout=success|cancelled
-// &jobId=<id> after buying Interview Credits from the wizard's publish step.
-// Reopen that job's wizard (it polls until the credits land) and drop the URL
-// back to /employer so a reload doesn't repeat it.
+// &jobId=<id>. Interview Credits (wizard's publish step): reopen that job's
+// wizard, which polls until the credits land. Report Credits (board's unlock
+// dialog, marked in sessionStorage): back to that job's board. Then drop the
+// URL back to /employer so a reload doesn't repeat it.
 function useCheckoutReturn() {
   const { go } = useEmployerStore();
   const location = useLocation();
@@ -352,16 +360,25 @@ function useCheckoutReturn() {
     const params = new URLSearchParams(location.search);
     const result = params.get('checkout');
     const jobId = params.get('jobId');
-    if (jobId && (result === 'success' || result === 'cancelled')) go({ name: 'wizard', jobId, checkout: result });
+    let reportJob: string | null = null;
+    try {
+      reportJob = sessionStorage.getItem(REPORT_CHECKOUT_KEY);
+      sessionStorage.removeItem(REPORT_CHECKOUT_KEY);
+    } catch {
+      /* storage blocked: treat as the wizard's purchase */
+    }
+    if (jobId && reportJob === jobId) go({ name: 'board', jobId });
+    else if (jobId && (result === 'success' || result === 'cancelled')) go({ name: 'wizard', jobId, checkout: result });
     else go({ name: 'plan' });
     navigate('/employer', { replace: true });
   }, [location.pathname, location.search, go, navigate]);
 }
 
-// GET /employer/credits, re-read on every screen change (publishing spends an
-// Interview Credit; a Stripe return lands on a new view). Failures show dashes.
+// GET /employer/credits, re-read on every screen change (a Stripe return lands
+// on a new view) and on refresh() (unlocking a report). Failures show dashes.
 function useCredits(viewName: string) {
   const [credits, setCredits] = useState<CreditBalances | null>(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     getCredits()
@@ -370,8 +387,9 @@ function useCredits(viewName: string) {
     return () => {
       cancelled = true;
     };
-  }, [viewName]);
-  return credits;
+  }, [viewName, tick]);
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  return useMemo(() => ({ credits, refresh }), [credits, refresh]);
 }
 
 // GET /employer/applications/new-count, re-read whenever the employer moves

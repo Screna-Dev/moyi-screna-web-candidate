@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { EmploymentType, PayPeriod, WorkplaceType } from '../../types';
@@ -8,7 +9,9 @@ import { CURRENCIES, EMPLOYMENT_TYPES, jobDetailsErrors, type StepProps } from '
 const OVERVIEW_MAX = 2000;
 
 // showPhone: the employer jobs API has no HR contact number field.
-export function StepJobDetails({ job, update, showErrors, showPhone = true }: StepProps & { showPhone?: boolean }) {
+// windowSection: the employer app's application window, shown at the end of
+// the Role information card (design 2026-10-28).
+export function StepJobDetails({ job, update, showErrors, showPhone = true, windowSection }: StepProps & { showPhone?: boolean; windowSection?: ReactNode }) {
   const err = showErrors ? jobDetailsErrors(job) : ({} as Record<string, boolean>);
 
   return (
@@ -45,7 +48,7 @@ export function StepJobDetails({ job, update, showErrors, showPhone = true }: St
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className={showPhone ? 'grid grid-cols-2 gap-4' : 'flex flex-col'}>
           <Field label="Job location" required hint={<ErrorHint show={!!err.location} />}>
             <TextInput value={job.location} onChange={(e) => update({ location: e.target.value })} placeholder="e.g. Chicago, Illinois" />
           </Field>
@@ -91,6 +94,7 @@ export function StepJobDetails({ job, update, showErrors, showPhone = true }: St
           <input type="checkbox" checked={job.showSalary} onChange={(e) => update({ showSalary: e.target.checked })} className="w-4 h-4 accent-[#3c77f6]" />
           Show salary range on this job post
         </label>
+        {windowSection}
       </Card>
 
       <Card className="p-6 flex flex-col gap-5">

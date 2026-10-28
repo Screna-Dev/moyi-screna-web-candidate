@@ -55,10 +55,14 @@ export type InterviewQuestion = {
   edited?: boolean;
 };
 
+// What happens once every sponsored interview spot is used (employer app).
+export type AfterSponsorshipLimit = 'keep' | 'close';
+
 export type Sponsorship = {
   totalBudget: string;
   dailyBudget: string;
   maxCandidates: string;
+  afterLimit?: AfterSponsorshipLimit | null;
 };
 
 export type Job = {

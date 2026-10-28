@@ -338,7 +338,7 @@ export async function suggestCriteria(jobId: string): Promise<AiTask> {
 }
 
 // Takes the criteria currently on the form (unsaved is fine). Duration and
-// language come from the saved draft (30 min / en until step 3 is saved).
+// language come from the saved draft (20 min / en until step 3 is saved).
 export async function suggestQuestions(jobId: string, criteria: { name: string; description?: string | null }[]): Promise<AiTask> {
   const { taskId } = data<{ taskId: string }>(await employerApi.post(`${jobPath(jobId)}/ai/question-suggestions`, { criteria }));
   return pollAiTask(jobId, taskId);
@@ -351,9 +351,10 @@ export type PublishCheck = {
   missing: string[]; // job fields, same values as JOB_NOT_READY
   profileComplete: boolean;
   profileMissingFields: OrgField[];
-  creditsRequired: number;
+  interviewPayer: InterviewPayer | null;
   interviewCreditsAvailable: number;
-  enoughCredits: boolean;
+  // EMPLOYER-sponsored with no Interview Credit: a warning, never a blocker.
+  sponsorshipUnfunded: boolean;
 };
 
 export type PublishResult = {
@@ -364,18 +365,15 @@ export type PublishResult = {
   closesAt: string;
   timezone: string;
   publishedAt: string;
-  creditsCharged: number;
-  interviewCreditsRemaining: number;
-  alreadyPublished: boolean; // retry of a published job: nothing charged
+  alreadyPublished: boolean; // retry of a published job
 };
 
 export async function getPublishCheck(jobId: string): Promise<PublishCheck> {
   return data(await employerApi.get(`${jobPath(jobId)}/publish-check`));
 }
 
-// Costs 1 Interview Credit. Safe to retry. Errors, checked in this order and
-// none of them charging: 400 JOB_NOT_READY {missing}, 400
-// ORGANIZATION_PROFILE_INCOMPLETE {missingFields}, 403 INSUFFICIENT_CREDITS.
+// Free (since 2026-10-20) and safe to retry. Errors, in this order: 400
+// JOB_NOT_READY {missing}, 400 ORGANIZATION_PROFILE_INCOMPLETE {missingFields}.
 export async function publishJob(jobId: string): Promise<PublishResult> {
   return data(await employerApi.post(`${jobPath(jobId)}/publish`));
 }
@@ -444,6 +442,193 @@ export async function updateJobWindow(jobId: string, body: { opensAt: string | n
 
 export async function closeJob(jobId: string): Promise<ApiJob> {
   return data(await employerApi.post(`${jobPath(jobId)}/close`));
+}
+
+// --- Applications / board / report / outreach ----------------------------------
+// Backend guide: docs/frontend-employer-board-api.md. The org comes from the
+// token. Other orgs' jobs and applications 404. Lists are 0-based pages of 10.
+// Errors: 404 NOT_FOUND, 403 REPORT_LOCKED (not unlocked), 403
+// INSUFFICIENT_CREDITS {required, available}, 409 INVALID_STATE.
+
+export type Page<T> = { content: T[]; pageMeta: { pageNumber: number; pageSize: number; totalElements: number; totalPages: number; first: boolean; last: boolean } };
+
+export type ApplicationsJobFilter = 'ALL' | 'ACTIVE' | 'CLOSED'; // ACTIVE = OPEN + SCHEDULED
+export type ApplicationsJob = {
+  jobId: string;
+  title: string;
+  location: string | null;
+  workplaceType: ApiWorkplaceType | null;
+  status: 'OPEN' | 'SCHEDULED' | 'CLOSED';
+  opensAt: string | null;
+  closesAt: string | null;
+  closedAt: string | null;
+  timezone: string | null;
+  applicationCount: number;
+  completedCount: number;
+  unlockedCount: number;
+  newCount: number; // completed since this user last opened the board
+  updatedAt: string;
+};
+export type ApplicationsJobList = {
+  counts: { active: number; closed: number; total: number }; // ignores q and status
+  items: ApplicationsJob[];
+  pageMeta: Page<unknown>['pageMeta'];
+};
+
+export async function listApplicationsJobs(params: { q?: string; status: ApplicationsJobFilter; sort: JobListSort; page: number }): Promise<ApplicationsJobList> {
+  return data(await employerApi.get('/employer/applications/jobs', { params: { ...params, q: params.q?.trim() || undefined } }));
+}
+
+export type BoardSummary = {
+  job: { id: string; title: string; status: ApiJobStatus; closesAt: string | null; closedAt: string | null; timezone: string | null };
+  rankingUpdatedAt: string | null;
+  cards: {
+    applications: number;
+    notCompleted: number;
+    interviewsCompleted: number;
+    completedLast7Days: number;
+    reportsUnlocked: number;
+    reportCreditsRemaining: number;
+    movedForward: number;
+    movedForwardContacted: number;
+    rejected: number;
+  };
+  inProgressCount: number;
+};
+
+export async function getBoardSummary(jobId: string): Promise<BoardSummary> {
+  return data(await employerApi.get(`${jobPath(jobId)}/board/summary`));
+}
+
+export type ReportStatus = 'LOCKED' | 'UNLOCKED';
+export type HiringStatus = 'AWAITING' | 'MOVED_FORWARD' | 'REJECTED';
+export type CriterionScoreDto = { criterionId: string; name: string; score: number | null };
+
+export type BoardCandidate = {
+  applicationId: string;
+  rank: number;
+  movement: number | null; // rank at last visit − rank now: + up, − down, null = no snapshot
+  isNew: boolean;
+  candidate: { label: string; candidateNo: number; unlocked: boolean }; // locked: label "Candidate #117", no name
+  latestInterview: { completedAt: string; durationMinutes: number | null };
+  score: number;
+  criteria: CriterionScoreDto[];
+  weakestCriterion: { name: string; score: number } | null; // null when every criterion ≥ 80
+  minCriterionScore: number | null;
+  screening: { met: number; total: number }; // {0, 0} this release: AI doesn't assess screening
+  reportStatus: ReportStatus;
+  hiringStatus: HiringStatus;
+};
+
+export type CandidateFilters = {
+  q?: string; // digits / "#digits": exact candidate number (finds locked); text: unlocked names only
+  report: 'ALL' | 'UNLOCKED' | 'LOCKED';
+  hiringStatus?: 'ALL' | HiringStatus;
+  minScore?: number;
+  maxScore?: number;
+  page: number;
+};
+
+// Ranked, completed interviews only. Call board/visits only AFTER rendering
+// this, or isNew and movement come back as "no change".
+export async function listBoardCandidates(jobId: string, f: CandidateFilters): Promise<Page<BoardCandidate>> {
+  const params = Object.fromEntries(Object.entries({ ...f, q: f.q?.trim() || undefined }).filter(([, v]) => v !== undefined && v !== ''));
+  return data(await employerApi.get(`${jobPath(jobId)}/candidates`, { params }));
+}
+
+// Records "last visit" (rank snapshot for movement; resets the job's newCount).
+export async function recordBoardVisit(jobId: string): Promise<void> {
+  await employerApi.post(`${jobPath(jobId)}/board/visits`);
+}
+
+const appPath = (applicationId: string) => `/employer/applications/${encodeURIComponent(applicationId)}`;
+
+// 1 Report Credit per (org, application). Idempotent: repeats don't charge.
+export async function unlockApplication(applicationId: string): Promise<{ applicationId: string; unlocked: boolean; reportCreditsBalance: number }> {
+  return data(await employerApi.post(`${appPath(applicationId)}/unlock`));
+}
+
+export type ContactStatus = 'NOT_CONTACTED' | 'CONTACTED';
+
+export type ReportQuestion = {
+  questionId: string | null; // only on older interviews
+  seq: number; // interview order, AI follow-ups included
+  text: string;
+  score: number | null;
+  summary: string | null;
+  criteria: { criterionId: string; name: string }[];
+  evidenceObserved: string | null;
+  areasToProbe: string | null;
+  answerText: string | null;
+  gapAnalysis: string | null;
+  hasTranscript: boolean;
+  hasAudio: boolean;
+  audioSeconds: number | null;
+};
+
+export type CandidateReport = {
+  candidate: { name: string; email: string; initials: string };
+  job: { id: string; title: string; companyName: string };
+  reportStatus: ReportStatus;
+  hiringStatus: HiringStatus;
+  contactStatus: ContactStatus;
+  interview: { assessmentId: string; completedAt: string; durationMinutes: number | null; language: string; questionCount: number };
+  overallScore: number;
+  rank: { position: number; outOf: number };
+  screening: { met: number; total: number; items: { text: string; met: boolean; evidence: string | null }[] };
+  criteria: (CriterionScoreDto & { evidence: string | null })[];
+  questions: ReportQuestion[];
+  strengths: string[];
+  probeAreas: string[];
+  resume: { fileName: string | null; available: boolean };
+  applicationsStillOpen: boolean;
+};
+
+export async function getCandidateReport(applicationId: string): Promise<CandidateReport> {
+  return data(await employerApi.get(`${appPath(applicationId)}/report`));
+}
+
+// Presigned links valid 15 minutes: fetch on demand, never cache.
+export async function getResumeLink(applicationId: string): Promise<{ fileName: string | null; url: string | null; expiresAt: string | null }> {
+  return data(await employerApi.get(`${appPath(applicationId)}/resume`));
+}
+
+export async function getQuestionMedia(
+  applicationId: string,
+  questionId: string,
+): Promise<{ transcriptUrl: string | null; audioUrl: string | null; durationSeconds: number | null; expiresAt: string | null }> {
+  return data(await employerApi.get(`${appPath(applicationId)}/questions/${encodeURIComponent(questionId)}/media`));
+}
+
+// Doesn't notify the candidate and can change any time. Returns the board row.
+export async function setHiringDecision(applicationId: string, decision: HiringStatus): Promise<BoardCandidate> {
+  return data(await employerApi.put(`${appPath(applicationId)}/decision`, { decision }));
+}
+
+// Needs an unlocked, MOVED_FORWARD application (else 403 REPORT_LOCKED / 409).
+// Screna never sends the email: open mailtoUrl, then mark-sent.
+export type Outreach = {
+  applicationId: string;
+  status: 'DRAFT' | 'SENT';
+  to: string;
+  subject: string;
+  body: string;
+  isEdited: boolean;
+  sentAt: string | null;
+  contactStatus: ContactStatus;
+  mailtoUrl: string; // RFC 6068; assign to window.location.href as is
+};
+
+export async function getOutreach(applicationId: string): Promise<Outreach> {
+  return data(await employerApi.get(`${appPath(applicationId)}/outreach`));
+}
+
+export async function saveOutreach(applicationId: string, body: { subject: string; body: string }): Promise<Outreach> {
+  return data(await employerApi.put(`${appPath(applicationId)}/outreach`, body));
+}
+
+export async function outreachAction(applicationId: string, action: 'reset' | 'mark-sent' | 'undo-sent'): Promise<Outreach> {
+  return data(await employerApi.post(`${appPath(applicationId)}/outreach/${action}`));
 }
 
 // --- Errors ------------------------------------------------------------------

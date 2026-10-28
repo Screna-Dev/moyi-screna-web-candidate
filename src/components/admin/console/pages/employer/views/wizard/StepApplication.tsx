@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Circle, Info, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Info } from 'lucide-react';
 import type { InterviewSponsor, Job, Sponsorship } from '../../types';
 import { Card, Divider, Field, KV, Select, TextInput, cx } from '../../ui';
 import { CardTitle, ErrorHint } from './shared';
@@ -34,7 +34,6 @@ function localNow(): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// opensOptional: the employer API opens the job on publish when opensAt is blank.
 // opensLocked: the job is already open, so only the close date can move.
 // now: the current time as a datetime-local value in the JOB's time zone (the
 // inputs hold wall-clock time there); defaults to the browser's clock.
@@ -44,14 +43,12 @@ export function ApplicationWindowCard({
   job,
   update,
   err,
-  opensOptional,
   opensLocked,
   now,
 }: {
   job: Job;
   update: StepProps['update'];
   err: CardErrors;
-  opensOptional?: boolean;
   opensLocked?: boolean;
   now?: string;
 }) {
@@ -68,14 +65,12 @@ export function ApplicationWindowCard({
       <div className="grid grid-cols-2 gap-4">
         <Field
           label="Applications open"
-          required={!opensOptional}
+          required
           hint={
             err.opensAt ? (
               <ErrorHint show>{msg(err.opensAt)}</ErrorHint>
             ) : opensLocked ? (
               'This job is already open.'
-            ) : opensOptional ? (
-              'Leave blank to open as soon as the job is published.'
             ) : undefined
           }
         >
@@ -106,27 +101,7 @@ export function ApplicationWindowCard({
   );
 }
 
-// credits: the employer's available Interview Credits. Passing it (employer
-// app) switches to the credits version of the design (Figma "Application &
-// credits"): publishing-cost and balance rows, a low-balance warning with
-// onAddCredits, the report-unlocking note and the cost summary. Without it the
-// card is the admin console's original. The three limits are form-only in the
-// employer app for now: the jobs API has no fields for them.
-export function SponsorCard({
-  job,
-  update,
-  err,
-  credits,
-  onAddCredits,
-}: {
-  job: Job;
-  update: StepProps['update'];
-  err: CardErrors;
-  credits?: number | null;
-  onAddCredits?: () => void;
-}) {
-  const creditsMode = credits !== undefined;
-  const lowBalance = creditsMode && credits !== null && credits < job.interviewLength;
+export function SponsorCard({ job, update, err }: { job: Job; update: StepProps['update']; err: CardErrors }) {
   const sp = job.sponsorship;
   const setSp = (patch: Partial<Sponsorship>) => update((j) => ({ sponsorship: { ...j.sponsorship, ...patch } }));
 
@@ -144,7 +119,7 @@ export function SponsorCard({
         current={job.sponsor}
         onSelect={(sponsor) => update({ sponsor })}
         title="Sponsor candidates' first interviews"
-        body="Cover eligible candidates' first interviews at 1 Interview Credit per minute. Candidates pay for their own retakes."
+        body="Cover eligible candidates' first interviews at 1 Interview Credit per completed interview. Candidates pay for their own retakes."
       >
         <div className="border border-[#e1e4ea] rounded-xl bg-white p-4 flex flex-col gap-4">
           <span className="text-[14px] font-semibold text-[#1e232f]">Sponsorship limits</span>
@@ -155,8 +130,8 @@ export function SponsorCard({
               </Suffixed>
             </Field>
             <Field label="Daily interview budget" required hint={err.dailyBudget ? <ErrorHint show /> : 'Daily limit resets at midnight in the selected job time zone.'}>
-              <Suffixed suffix={creditsMode ? 'Interview Credits' : 'credits'}>
-                <TextInput value={sp.dailyBudget} onChange={(e) => setSp({ dailyBudget: e.target.value })} placeholder="300" inputMode="numeric" className={creditsMode ? 'pr-32' : 'pr-16'} />
+              <Suffixed suffix="credits">
+                <TextInput value={sp.dailyBudget} onChange={(e) => setSp({ dailyBudget: e.target.value })} placeholder="300" inputMode="numeric" className="pr-16" />
               </Suffixed>
             </Field>
             <Field label="Maximum sponsored candidates" required hint={err.maxCandidates ? <ErrorHint show /> : 'Each candidate can receive sponsorship for their first interview only.'}>
@@ -168,52 +143,20 @@ export function SponsorCard({
 
           <div className="border border-[#e1e4ea] rounded-xl p-4 flex flex-col gap-2.5">
             <span className="text-[14px] font-semibold text-[#1e232f]">Estimated sponsorship usage</span>
-            {creditsMode && <KV k="Publishing cost" v={<span className="text-[#15a560]">Free · 0 credits</span>} />}
             <KV k="Interview rate" v="1 credit / minute" />
             <KV k="Typical interview duration" v={`Approximately ${job.interviewLength} minutes`} />
             <KV k="Maximum sponsored candidates" v={maxCandidates ? fmt(maxCandidates) : '—'} />
             <KV k={<span className="font-semibold text-[#1e232f]">Estimated usage{maxCandidates ? ` for ${fmt(maxCandidates)} interviews` : ''}</span>} v={<span className="text-[#3c77f6]">{estimate ? `Approximately ${fmt(estimate)} credits` : '—'}</span>} strong />
             <KV k="Total interview budget" v={sp.totalBudget ? `${sp.totalBudget} credits` : '—'} />
             <KV k="Daily interview budget" v={sp.dailyBudget ? `${sp.dailyBudget} credits` : '—'} />
-            {creditsMode && <KV k="Current available balance" v={<span className="text-[#3c77f6]">{credits === null ? '—' : `${fmt(credits)} Interview Credits`}</span>} />}
             <Divider className="my-1" />
             <p className="text-[12px] text-[#5a6172]">
-              {creditsMode
-                ? `Estimate based on ${maxCandidates ? fmt(maxCandidates) : 'the maximum'} candidates × ${job.interviewLength} minutes. Actual charges depend on interview duration. Your limits may allow fewer candidates to receive sponsorship.`
-                : `Estimate based on ${maxCandidates ? fmt(maxCandidates) : 'the maximum'} candidates × ${job.interviewLength} minutes. Actual usage depends on interview duration; the limits may allow fewer candidates to receive sponsorship.`}
+              {`Estimate based on ${maxCandidates ? fmt(maxCandidates) : 'the maximum'} candidates × ${job.interviewLength} minutes. Actual usage depends on interview duration; the limits may allow fewer candidates to receive sponsorship.`}
             </p>
-            {lowBalance && (
-              <div className="flex items-start gap-2 rounded-lg border-l-2 border-[#f5c451] bg-[#fffbeb] px-3 py-3 text-[12px] text-[#b45309]">
-                <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-semibold">Your balance may not cover a typical {job.interviewLength}-minute sponsored interview.</span>
-                  <span>
-                    You can still publish for free. Add Interview Credits to fund sponsorship. Candidates will be shown self-funded pricing before starting if sponsorship is unavailable.
-                  </span>
-                  {onAddCredits && (
-                    <button type="button" onClick={onAddCredits} className="w-fit text-[12px] font-semibold hover:underline">
-                      Add Interview Credits →
-                    </button>
-                  )}
-                  <span className="text-[11px]">Sponsorship availability is checked before each interview starts.</span>
-                </div>
-              </div>
-            )}
-            {creditsMode && (
-              <div className="flex items-start gap-2 rounded-lg bg-[#f3f4f7] px-3 py-3 text-[12px] text-[#5a6172]">
-                <Sparkles size={14} className="shrink-0 mt-0.5 text-[#3c77f6]" />
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-semibold text-[#1e232f]">Report unlocking is separate</span>
-                  <span>Unlocking a candidate's report costs 1 Report Credit for that candidate and job. Publishing and sponsoring an interview do not unlock reports automatically.</span>
-                </div>
-              </div>
-            )}
           </div>
 
           <p className="text-[12px] text-[#5a6172]">
-            {creditsMode
-              ? 'All three limits apply. Sponsorship stops for new interviews when any limit is reached or your available Interview Credits are insufficient. Additional candidates can continue using their own credits.'
-              : 'All three limits apply. Sponsorship stops for new interviews when any limit is reached. Additional candidates can continue using their own credits.'}
+            All three limits apply. Sponsorship stops for new interviews when any limit is reached. Additional candidates can continue using their own credits.
           </p>
           <div className="flex items-start gap-2 bg-[#f9fafb] rounded-lg px-3 py-2.5 text-[12px] text-[#5a6172]">
             <Info size={14} className="shrink-0 mt-0.5" />
@@ -227,16 +170,8 @@ export function SponsorCard({
         current={job.sponsor}
         onSelect={(sponsor) => update({ sponsor })}
         title="Candidates use their own credits"
-        body={creditsMode ? 'Publishing remains free. Candidates pay for their interviews using their own Interview Credits.' : 'Candidates pay for their interviews using their own Interview Credits.'}
+        body="Candidates pay for their interviews using their own Interview Credits."
       />
-      {creditsMode && (
-        <div className="flex flex-col text-[12px] text-[#5a6172]">
-          <span className="font-semibold text-[#1e232f]">
-            Your interview sponsorship cost: {job.sponsor === 'employer' && estimate ? `up to ${fmt(Math.min(estimate, numberOf(sp.totalBudget) || estimate))} credits` : '0 credits'}
-          </span>
-          <span>Report unlocking is charged separately.</span>
-        </div>
-      )}
     </Card>
   );
 }

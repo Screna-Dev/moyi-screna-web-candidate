@@ -1,5 +1,5 @@
 import type { Criterion, EmploymentType, InterviewQuestion, Job, JobStatus, PayPeriod, WorkplaceType } from '@/components/admin/console/pages/employer/types';
-import { CURRENCIES, LANGUAGES, TIME_ZONES, displayToInput, inputToDisplay } from '@/components/admin/console/pages/employer/views/wizard/logic';
+import { CURRENCIES, TIME_ZONES, displayToInput, inputToDisplay } from '@/components/admin/console/pages/employer/views/wizard/logic';
 import type {
   ApiEmploymentType,
   ApiJob,
@@ -40,13 +40,9 @@ const ZONES: Record<string, string> = {
   UTC: 'UTC',
 };
 
-const LANGUAGE_CODES: Record<string, string> = {
-  English: 'en',
-  Spanish: 'es',
-  French: 'fr',
-  German: 'de',
-  'Mandarin Chinese': 'zh',
-};
+// Interviews are English only (product decision 2026-10-28): the wizard has
+// no language field, and every save sends 'en'.
+const INTERVIEW_LANGUAGE = { label: 'English', code: 'en' };
 
 function invert<K extends string, V extends string>(m: Record<K, V>): Record<V, K> {
   return Object.fromEntries(Object.entries(m).map(([k, v]) => [v, k])) as Record<V, K>;
@@ -55,7 +51,6 @@ function invert<K extends string, V extends string>(m: Record<K, V>): Record<V, 
 const EMPLOYMENT_API = invert(EMPLOYMENT);
 const WORKPLACE_API = invert(WORKPLACE);
 const ZONE_LABELS = invert(ZONES);
-const LANGUAGE_LABELS = invert(LANGUAGE_CODES);
 
 export const jobStatusOf = (s: ApiJobStatus): JobStatus => STATUS[s];
 export const workplaceLabel = (w: ApiWorkplaceType | null) => (w ? WORKPLACE[w] : '');
@@ -147,15 +142,54 @@ export function formatInZone(iso: string | null, tz: string | null, withTime = t
   return new Intl.DateTimeFormat('en-US', { ...opts, timeZone: safeZone(tz || 'UTC') }).format(new Date(iso));
 }
 
-// Default application window for a new or reposted job: opens tomorrow 9:00,
-// closes in 30 days 17:00, in the job's zone. The API needs a closing time to
-// create a draft; the employer adjusts it on the Application & credits step.
+// ─── Application window (dates only, per the design) ─────────────────────────
+// The wizard picks dates; a job opens at 00:00 on its opening date and closes
+// at 23:59 on its closing date, wall clock in the job's zone.
+
+// Today's date (YYYY-MM-DD) in the job's zone.
+export function todayIn(timeZone: string): string {
+  return isoToWall(new Date().toISOString(), timeZoneIana(timeZone)).slice(0, 10);
+}
+
+// "2026-11-07" + n days.
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// "2026-01-31" + n months, clamped to the month's last day ("2026-02-28").
+export function addMonths(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+// Product rule (2026-10-28): applications stay open at least 3 days and at
+// most 1 month after the opening date.
+export const MIN_OPEN_DAYS = 3;
+export const closingRange = (opens: string) => ({ min: addDays(opens, MIN_OPEN_DAYS), max: addMonths(opens, 1) });
+
+// Job display string → its date (YYYY-MM-DD), '' when unset.
+export const dateOf = (display: string) => displayToInput(display).slice(0, 10);
+
+// Date + "HH:MM" → Job display string.
+export const withDate = (date: string, time: string) => inputToDisplay(`${date}T${time}`);
+
+// What to send as opensAt. An opening date of today (or earlier) is sent as
+// null, which the API reads as "open on publish": a past instant would make
+// the job SCHEDULED, which candidates can't see. A later date schedules it.
+export function opensAtIso(job: Pick<Job, 'opensAt' | 'timeZone'>): string | null {
+  const date = dateOf(job.opensAt);
+  if (!date || date <= todayIn(job.timeZone)) return null;
+  return displayToIso(job.opensAt, job.timeZone);
+}
+
+// Default application window for a new or reposted job: opens today, closes 7
+// days later (the design's default), in the job's zone. The API needs a
+// closing time to create a draft.
 export function defaultWindow(timeZone: string): Pick<Job, 'opensAt' | 'closesAt'> {
-  const day = (offset: number, time: string) => {
-    const wall = isoToWall(new Date(Date.now() + offset * 86_400_000).toISOString(), timeZoneIana(timeZone));
-    return inputToDisplay(`${wall.slice(0, 10)}T${time}`);
-  };
-  return { opensAt: day(1, '09:00'), closesAt: day(30, '17:00') };
+  const today = todayIn(timeZone);
+  return { opensAt: withDate(today, '00:00'), closesAt: withDate(addDays(today, 7), '23:59') };
 }
 
 // ─── ApiJob → Job ─────────────────────────────────────────────────────────────
@@ -199,17 +233,18 @@ export function apiToJob(api: ApiJob, companyId: string): Job {
     preferred: api.preferredQualifications ?? [],
     criteria,
     questions,
-    interviewLength: s?.durationMinutes ?? 30,
+    interviewLength: s?.durationMinutes ?? 20,
     candidateInstructions: s?.candidateInstructions ?? '',
-    language: LANGUAGE_LABELS[s?.language ?? 'en'] ?? s?.language ?? LANGUAGES[0],
+    language: INTERVIEW_LANGUAGE.label,
     interviewConfirmed: !!api.questionsReviewedAt,
-    opensAt: isoToDisplay(api.opensAt, tz),
+    // A draft without an opening date opens on publish: the design shows today.
+    opensAt: api.opensAt ? isoToDisplay(api.opensAt, tz) : api.status === 'DRAFT' ? withDate(todayIn(tz), '00:00') : '',
     closesAt: isoToDisplay(api.closesAt, tz),
     timeZone: timeZoneLabel(api.timezone),
     maxApplicants: api.maxApplicants == null ? '' : String(api.maxApplicants),
     // null until the employer picks one on step 3; nothing is preselected.
     sponsor: s?.interviewPayer === 'CANDIDATE' ? 'candidate' : s?.interviewPayer === 'EMPLOYER' ? 'employer' : null,
-    sponsorship: { totalBudget: '', dailyBudget: '', maxCandidates: '' },
+    sponsorship: { totalBudget: '', dailyBudget: '', maxCandidates: '', afterLimit: null },
     applicants: 0,
     interviewsCompleted: 0,
     updatedAt: api.updatedAt,
@@ -253,7 +288,7 @@ export function detailsBody(job: Job, base?: ApiJob | null): JobDetailsBody {
     requirements: items(job.requirements),
     preferredQualifications: items(job.preferred),
     benefits: base?.benefits ?? [],
-    opensAt: displayToIso(job.opensAt, job.timeZone),
+    opensAt: opensAtIso(job),
     closesAt: displayToIso(job.closesAt, job.timeZone) ?? '',
     timezone: timeZoneIana(job.timeZone),
     maxApplicants: max == null ? null : Math.round(max),
@@ -288,7 +323,7 @@ export function assessmentBody(job: Job, serverIds: Set<string>, assessmentAreas
 export function settingsBody(job: Job, base?: ApiJob | null): InterviewSettings {
   return {
     durationMinutes: job.interviewLength,
-    language: LANGUAGE_CODES[job.language] ?? job.language,
+    language: INTERVIEW_LANGUAGE.code,
     candidateInstructions: text(job.candidateInstructions),
     passScore: base?.interviewSettings?.passScore ?? null,
     interviewPayer: job.sponsor === 'candidate' ? 'CANDIDATE' : job.sponsor === 'employer' ? 'EMPLOYER' : null,

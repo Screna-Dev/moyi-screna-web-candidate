@@ -9,6 +9,8 @@ import { listMyBookings, cancelBooking, rescheduleBooking, getMentor, getMentorS
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
+import { listCareerJobs } from '@/services/careersApi';
+import { toOpportunityJob, type LiveOpportunityJob } from '@/components/newDesign/opportunities/careersDesignData';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
@@ -18,7 +20,7 @@ import { EVENTS } from '@/constants/analyticsEvents';
 // 'premium' = Advanced/Flagship tiers (full dashboard); 'basic' and 'free' see
 // the reduced layout.
 type Plan = 'free' | 'basic' | 'premium';
-type ChartTab = 'applications' | 'learning' | 'sessions';
+type ChartTab = 'learning' | 'sessions';
 type TimeRange = '7d' | '30d' | '3m';
 
 export type DashboardStats = {
@@ -185,9 +187,6 @@ function IconSend() {
 function IconTrend() {
   return <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><polyline points="2,11 6,7 9,9 14,3"/><polyline points="14,3 14,7"/><polyline points="14,3 10,3"/></svg>;
 }
-function IconLock() {
-  return <svg viewBox="0 0 12 12" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5.5" width="6" height="4" rx="1"/><path d="M4.5 5.5V4a1.5 1.5 0 0 1 3 0v1.5"/></svg>;
-}
 function IconArrow() {
   return <svg viewBox="0 0 10 10" width={10} height={10} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M3 7L7 3M4 3h3v3"/></svg>;
 }
@@ -279,14 +278,14 @@ type Series = {
   dates?: string[];
   summaryA: { label: string; value: string };
   summaryB: { label: string; value: string };
+  summaryC: { label: string; value: string };
   legend: string;
 };
 // Labels per tab used for the empty-state series. There is no timeseries endpoint
 // yet, so when the API returns no daily data we render the empty state — never mock.
-const TAB_LABELS: Record<ChartTab, { a: string; b: string; legend: string }> = {
-  applications: { a: 'Total Applications', b: 'Daily Average', legend: 'Applications submitted' },
-  learning: { a: 'Total Learning Time', b: 'Daily Average', legend: 'Learning time per day (min)' },
-  sessions: { a: 'Total Sessions', b: 'Avg per Day', legend: 'Sessions per day' },
+const TAB_LABELS: Record<ChartTab, { a: string; b: string; c: string; legend: string }> = {
+  learning: { a: 'Total Learning Time', b: 'Daily Average', c: 'Peak Day', legend: 'Learning time per day (min)' },
+  sessions: { a: 'Total Sessions', b: 'Avg per Day', c: 'Peak Day', legend: 'Sessions per day' },
 };
 
 function formatValue(tab: ChartTab, v: number): string {
@@ -329,23 +328,18 @@ function TrendChartSkeleton() {
 }
 
 function TrendChart({
-  plan,
   isLoading,
   learningDaily,
   sessionsDaily,
 }: {
-  plan: Plan;
   isLoading: boolean;
   learningDaily?: DailyEntry[];
   sessionsDaily?: DailyEntry[];
 }) {
-  const isPremium = plan === 'premium';
   const [activeTab, setActiveTab] = useState<ChartTab>('learning');
   const [range, setRange] = useState<TimeRange>('30d');
   const [hover, setHover] = useState<{ x: number; y: number; i: number; v: number } | null>(null);
-
-  // Free/Basic: applications tab is locked
-  const effectiveTab: ChartTab = !isPremium && activeTab === 'applications' ? 'learning' : activeTab;
+  const effectiveTab = activeTab;
 
   const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
   const series: Series = useMemo(() => {
@@ -360,6 +354,7 @@ function TrendChart({
         dates,
         summaryA: { label: 'Total Learning Time', value: formatMinutesAsHm(total) },
         summaryB: { label: 'Daily Average', value: `${avg}m` },
+        summaryC: { label: 'Peak Day', value: `${Math.max(0, ...data)}m` },
         legend: 'Learning time per day (min)',
       };
     }
@@ -374,6 +369,7 @@ function TrendChart({
         dates,
         summaryA: { label: 'Total Sessions', value: String(total) },
         summaryB: { label: 'Avg per Day', value: avg },
+        summaryC: { label: 'Peak Day', value: String(Math.max(0, ...data)) },
         legend: 'Sessions per day',
       };
     }
@@ -385,6 +381,7 @@ function TrendChart({
       dates: [],
       summaryA: { label: lbl.a, value: '—' },
       summaryB: { label: lbl.b, value: '—' },
+      summaryC: { label: lbl.c, value: '—' },
       legend: lbl.legend,
     };
   }, [effectiveTab, learningDaily, sessionsDaily, rangeDays]);
@@ -433,7 +430,6 @@ function TrendChart({
   }, [points]);
 
   const tabs: Array<{ key: ChartTab; label: string }> = [
-    { key: 'applications', label: 'Applications' },
     { key: 'learning', label: 'Learning Time' },
     { key: 'sessions', label: 'Sessions' },
   ];
@@ -495,31 +491,26 @@ function TrendChart({
           background: T.bgSecondary, borderRadius: 9999, padding: 3,
         }}>
           {tabs.map((t) => {
-            const locked = t.key === 'applications' && !isPremium;
             const selected = effectiveTab === t.key;
             return (
               <button
                 key={t.key}
                 role="tab"
                 aria-selected={selected}
-                aria-disabled={locked}
-                disabled={locked}
-                onClick={() => !locked && setActiveTab(t.key)}
+                onClick={() => setActiveTab(t.key)}
                 style={{
                   fontSize: 13, fontWeight: 500,
                   padding: '6px 14px', borderRadius: 9999,
-                  color: locked ? T.textMuted : selected ? T.blue600 : T.textSecondary,
+                  color: selected ? T.blue600 : T.textSecondary,
                   background: selected ? '#fff' : 'transparent',
                   boxShadow: selected ? T.shadowCard : 'none',
                   display: 'flex', alignItems: 'center', gap: 6,
-                  cursor: locked ? 'not-allowed' : 'pointer',
-                  pointerEvents: locked ? 'none' : 'auto',
+                  cursor: 'pointer',
                   border: 'none',
                   fontFamily: 'inherit',
                   transition: 'all 160ms cubic-bezier(.4,0,.2,1)',
                 }}
               >
-                {locked && <IconLock />}
                 {t.label}
               </button>
             );
@@ -559,6 +550,10 @@ function TrendChart({
         <div style={summaryCellStyle}>
           <div style={{ fontSize: 12, color: T.textSecondary }}>{series.summaryB.label}</div>
           <div style={summaryValueStyle}>{series.summaryB.value}</div>
+        </div>
+        <div style={summaryCellStyle}>
+          <div style={{ fontSize: 12, color: T.textSecondary }}>{series.summaryC.label}</div>
+          <div style={summaryValueStyle}>{series.summaryC.value}</div>
         </div>
       </div>
 
@@ -1942,6 +1937,172 @@ function tagStyle(color: string, bg: string): CSSProperties {
 }
 
 // ─── Dashboard Home (main export) ────────────────────────────────────────────
+// ─── Featured Opportunities ──────────────────────────────────────────────────
+// The three newest /careers jobs, mapped like the Opportunities page
+// (toOpportunityJob) so both show the same values and sample fallbacks.
+// "Why recommended" has no API field yet: it is the design's sample copy,
+// picked by position, and must be replaced before launch.
+const WHY_RECOMMENDED_SAMPLES = [
+  'Strong match for your product strategy coursework and case study experience.',
+  'Your data analysis skills and SQL proficiency align well with this role.',
+  "Your mentorship progress in growth strategy matches this team's focus area.",
+];
+
+const SALARY_PERIOD: Record<string, string> = { YEAR: '/yr', MONTH: '/mo', WEEK: '/wk', DAY: '/day', HOUR: '/hr' };
+
+function salaryLabel(job: LiveOpportunityJob): string {
+  let money: Intl.NumberFormat;
+  try {
+    money = new Intl.NumberFormat('en-US', { style: 'currency', currency: job.career.salaryCurrency || 'USD', maximumFractionDigits: 0 });
+  } catch {
+    money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  }
+  const period = SALARY_PERIOD[job.career.salaryPeriod ?? 'YEAR'] ?? '/yr';
+  return `${money.format(job.salaryMin)} – ${money.format(job.salaryMax)}${period}`;
+}
+
+function assessmentLabel(job: LiveOpportunityJob): string {
+  const minutes = job.career.interviewDurationMinutes;
+  return job.career.interviewPayer === 'EMPLOYER' ? `${minutes} min · Free` : `${minutes} min · ${minutes} credits`;
+}
+
+const FEATURED_LABEL: CSSProperties = { fontSize: 11, fontWeight: 500, lineHeight: '16.5px', letterSpacing: 0.4, textTransform: 'uppercase', color: T.textSecondary };
+
+function OpportunityCard({ job, why, onOpen }: { job: LiveOpportunityJob; why: string; onOpen: () => void }) {
+  const place = [job.location, job.workType].filter(Boolean).join(' · ');
+  return (
+    <Panel style={{ borderRadius: 16, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+          background: T.blue50, color: T.blue700,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, fontWeight: 600,
+        }}>
+          {job.initials}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, lineHeight: '19.5px', color: T.textPrimary }}>{job.company}</div>
+          <span style={{ fontSize: 11, fontWeight: 500, lineHeight: '16.5px', padding: '2px 8px', borderRadius: 4, background: T.blue50, color: T.blue600 }}>
+            {job.jobType}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: '22.5px', color: T.textPrimary }}>{job.title}</div>
+        {place && <div style={{ fontSize: 12, lineHeight: '18px', color: T.textSecondary }}>{place}</div>}
+        {job.level && <div style={{ fontSize: 12, lineHeight: '18px', color: T.textSecondary }}>{job.level}</div>}
+        <div style={{ fontSize: 12, fontWeight: 500, lineHeight: '18px', color: T.textPrimary }}>{salaryLabel(job)}</div>
+      </div>
+
+      <div style={{ background: T.bgSecondary, borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={FEATURED_LABEL}>Why recommended</div>
+        <div style={{ fontSize: 13, lineHeight: '18.2px', color: T.textSecondary }}>{why}</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={FEATURED_LABEL}>Assessment</div>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: T.textPrimary }}>{assessmentLabel(job)}</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={FEATURED_LABEL}>Closing date</div>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: T.textPrimary }}>{job.closingDateLabel}</div>
+        </div>
+      </div>
+
+      <button
+        onClick={onOpen}
+        style={{
+          alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 4,
+          fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: T.blue500,
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        View details <IconArrow />
+      </button>
+    </Panel>
+  );
+}
+
+function OpportunityCardSkeleton() {
+  return (
+    <Panel style={{ borderRadius: 16 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+        <Skeleton width={36} height={36} radius={10} />
+        <div style={{ flex: 1 }}>
+          <Skeleton width="50%" height={14} style={{ marginBottom: 6 }} />
+          <Skeleton width={70} height={16} radius={4} />
+        </div>
+      </div>
+      <Skeleton width="70%" height={16} style={{ marginBottom: 8 }} />
+      <Skeleton width="55%" height={12} style={{ marginBottom: 6 }} />
+      <Skeleton width="40%" height={12} style={{ marginBottom: 14 }} />
+      <Skeleton width="100%" height={64} radius={12} />
+    </Panel>
+  );
+}
+
+function FeaturedOpportunities() {
+  const navigate = useNavigate();
+  const [jobs, setJobs] = useState<LiveOpportunityJob[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    listCareerJobs({ page: 0 })
+      .then((res) => !cancelled && setJobs(res.content.slice(0, 3).map((j, i) => toOpportunityJob(j, i))))
+      .catch(() => !cancelled && setFailed(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section style={{ marginTop: 20 }} aria-labelledby="featured-opportunities-title">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <h2 id="featured-opportunities-title" style={{ fontSize: 15, fontWeight: 600, lineHeight: '22.5px', color: T.textPrimary, margin: 0 }}>
+            Featured Opportunities
+          </h2>
+          <p style={{ fontSize: 12, lineHeight: '18px', color: T.textSecondary, margin: 0 }}>
+            Explore the latest roles and opportunities that match your background.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/opportunities')}
+          style={{
+            fontSize: 12, fontWeight: 500, color: T.blue500, flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 4,
+            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          View all opportunities <IconArrow />
+        </button>
+      </div>
+
+      {failed || (jobs && jobs.length === 0) ? (
+        <EmptyState message={failed ? "We couldn't load open roles. Refresh to try again." : 'No open roles right now. Check back soon.'} />
+      ) : (
+        <div data-dashboard-grid style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'start' }}>
+          {jobs
+            ? jobs.map((job, i) => (
+                <OpportunityCard
+                  key={job.id}
+                  job={job}
+                  why={WHY_RECOMMENDED_SAMPLES[i % WHY_RECOMMENDED_SAMPLES.length]}
+                  onOpen={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
+                />
+              ))
+            : [0, 1, 2].map((i) => <OpportunityCardSkeleton key={i} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 export function DashboardHome({
   userData,
   plan: planProp,
@@ -2018,7 +2179,6 @@ export function DashboardHome({
 
       <TrendChart
         key={plan}
-        plan={plan}
         isLoading={loading}
         learningDaily={apiStats?.dailyLearningTimeMinutes}
         sessionsDaily={apiStats?.dailySessionCount}
@@ -2037,6 +2197,8 @@ export function DashboardHome({
         <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
         <CommunityCard />
       </div>
+
+      <FeaturedOpportunities />
     </div>
   );
 }

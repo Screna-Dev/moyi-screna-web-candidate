@@ -5,6 +5,7 @@ import { LiveInterview } from "@/components/newDesign/live-interview";
 import { VideoInterview } from "@/components/newDesign/video-interview";
 import { endCareerInterview, careersErrorCode, careersErrorMessage, getMyApplication, startCareerInterview, type CareerInterviewSession } from "@/services/careersApi";
 import { PrimaryButton, SecondaryButton, font, type CareerRoomState } from "@/components/newDesign/opportunities/careersShared";
+import { clearInterviewEnded, isBeingScored, markInterviewEnded } from "@/components/newDesign/opportunities/careersEnded";
 
 // Live AI interview for a job application. Reuses the mock-interview room
 // components, but never the /ai-mock page: that page ends by calling the
@@ -15,7 +16,9 @@ import { PrimaryButton, SecondaryButton, font, type CareerRoomState } from "@/co
 // careers session (from the start dialog's navigation state, or by rejoining
 // after a reload). Ending calls POST .../interview/end, then polls the
 // application until the backend has finished scoring (interviewStatus =
-// COMPLETED); candidates never see the score.
+// COMPLETED); candidates never see the score. While it scores, the
+// application still reads IN_PROGRESS, so the room marks it as ended
+// (careersEnded) and a reload keeps polling instead of rejoining.
 
 type Phase = "joining" | "live" | "ending" | "done" | "error";
 
@@ -49,9 +52,12 @@ export function CareerInterviewPage() {
     }
   });
   const [title, setTitle] = useState(fromDialog?.title ?? "");
-  const [minutes, setMinutes] = useState(fromDialog?.session.maxInterviewDuration ?? fromDialog?.minutes ?? 30);
+  // Interviews last at most 20 minutes.
+  const [minutes, setMinutes] = useState(fromDialog?.session.maxInterviewDuration ?? fromDialog?.minutes ?? 20);
   const [phase, setPhase] = useState<Phase>(fromDialog ? "live" : "joining");
   const [message, setMessage] = useState("");
+  // Polling gave up before the result arrived.
+  const [pending, setPending] = useState(false);
 
   // Remember audio vs video so a reload rejoins the same way.
   useEffect(() => {
@@ -75,7 +81,12 @@ export function CareerInterviewPage() {
         const app = await getMyApplication(applicationId);
         setTitle(app.jobTitle);
         setMinutes(app.interviewDurationMinutes);
-        if (app.interviewStatus === "COMPLETED") return setPhase("done");
+        if (app.interviewStatus === "COMPLETED") {
+          clearInterviewEnded(applicationId);
+          return setPhase("done");
+        }
+        // Ended here and still scoring: wait for the result, don't rejoin.
+        if (isBeingScored(app)) return void waitForResult();
         if (app.interviewStatus !== "IN_PROGRESS" || !app.canStartInterview) {
           setMessage("This interview hasn't started. Start it from My Jobs.");
           return setPhase("error");
@@ -93,24 +104,20 @@ export function CareerInterviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ended = useRef(false);
-  const finish = async () => {
-    if (ended.current) return;
-    ended.current = true;
+  // Polls the application until scoring finishes (≤ POLL_LIMIT_MS).
+  const waitForResult = async () => {
     setPhase("ending");
-    try {
-      await endCareerInterview(applicationId);
-    } catch (err) {
-      // Already over on the server (e.g. the bot ended it) is fine.
-      if (careersErrorCode(err) !== "INVALID_STATE") console.warn("End interview failed", err);
-    }
     const deadline = Date.now() + POLL_LIMIT_MS;
     for (;;) {
       try {
         const app = await getMyApplication(applicationId);
-        if (app.interviewStatus === "COMPLETED") break;
+        if (app.interviewStatus === "COMPLETED") {
+          clearInterviewEnded(applicationId);
+          break;
+        }
         // Back to NOT_STARTED = the attempt didn't count (dropped / never spoke).
         if (app.interviewStatus === "NOT_STARTED") {
+          clearInterviewEnded(applicationId);
           setMessage("This attempt didn't count — the interview didn't really get going. Any credits held were refunded, and you can start again from My Jobs.");
           return setPhase("error");
         }
@@ -118,7 +125,7 @@ export function CareerInterviewPage() {
         /* keep polling */
       }
       if (Date.now() > deadline) {
-        setMessage("We're still processing your interview. Check My Jobs in a few minutes.");
+        setPending(true);
         break;
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
@@ -129,6 +136,22 @@ export function CareerInterviewPage() {
       /* ignore */
     }
     setPhase("done");
+  };
+
+  const ended = useRef(false);
+  const finish = async () => {
+    if (ended.current) return;
+    ended.current = true;
+    // Before /end: from here until scoring finishes, "continue" is hidden.
+    markInterviewEnded(applicationId);
+    setPhase("ending");
+    try {
+      await endCareerInterview(applicationId);
+    } catch (err) {
+      // Already over on the server (e.g. the bot ended it) is fine.
+      if (careersErrorCode(err) !== "INVALID_STATE") console.warn("End interview failed", err);
+    }
+    await waitForResult();
   };
 
   if (phase === "live" && session) {
@@ -171,10 +194,12 @@ export function CareerInterviewPage() {
           <CheckCircle2 size={24} />
         </span>
         <p className="text-[20px] font-semibold text-[#1e232f]" style={{ fontFamily: font.semibold }}>
-          Interview complete
+          {pending ? "Interview submitted" : "Interview complete"}
         </p>
         <p className="text-[14px] text-[#5a6172]" style={{ fontFamily: font.regular }}>
-          {message || `Thanks! Your interview${title ? ` for ${title}` : ""} has been sent to the employer. They'll review it and reach out if it's a match.`}
+          {pending
+            ? "We're still processing your interview. Check My Jobs in a few minutes."
+            : `Thanks! Your interview${title ? ` for ${title}` : ""} has been sent to the employer. They'll review it and reach out if it's a match.`}
         </p>
         <div className="flex gap-3">
           <SecondaryButton onClick={() => navigate("/opportunities")}>Browse more roles</SecondaryButton>

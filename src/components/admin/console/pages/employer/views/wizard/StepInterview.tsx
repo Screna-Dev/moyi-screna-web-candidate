@@ -3,9 +3,9 @@ import { Check, Copy, GripVertical, Info, Pencil, Plus, RefreshCw, Sparkles, Tra
 import { toast } from 'sonner';
 import type { Criterion, InterviewQuestion, Job } from '../../types';
 import { backendQuestions, SUGGESTED_CRITERIA } from '../../mockData';
-import { Button, Card, Dialog, Divider, Field, Pill, Segmented, Select, TextArea, TextInput, cx } from '../../ui';
+import { Button, Card, Dialog, Divider, Field, Pill, Segmented, TextArea, TextInput, cx } from '../../ui';
 import { CardTitle, ErrorHint } from './shared';
-import { interviewErrors, LANGUAGES, MAX_CRITERIA, MAX_QUESTIONS, type InterviewAI, type StepProps } from './logic';
+import { interviewErrors, MAX_CRITERIA, MAX_QUESTIONS, type InterviewAI, type StepProps } from './logic';
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -322,9 +322,6 @@ export function InterviewSettingsFields({ job, update }: Pick<StepProps, 'job' |
       </div>
       <Field label="Candidate instructions">
         <TextArea rows={3} value={job.candidateInstructions} onChange={(e) => update({ candidateInstructions: e.target.value })} />
-      </Field>
-      <Field label="Interview language">
-        <Select value={job.language} onChange={(v) => update({ language: v })} options={LANGUAGES} />
       </Field>
     </>
   );

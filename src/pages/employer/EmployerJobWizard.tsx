@@ -2,32 +2,28 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import axios from 'axios';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Job } from '@/components/admin/console/pages/employer/types';
+import type { Job, Sponsorship } from '@/components/admin/console/pages/employer/types';
 import { blankJob } from '@/components/admin/console/pages/employer/mockData';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { BackLink, Button, Card, Dialog, KV, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import {
   STEPS,
-  applicationErrors,
   closeLabel,
   interviewErrors,
   jobDetailsErrors,
   numberOf,
-  stepValid,
   windowLabel,
   type InterviewAI,
   type JobPatch,
 } from '@/components/admin/console/pages/employer/views/wizard/logic';
 import { StepJobDetails } from '@/components/admin/console/pages/employer/views/wizard/StepJobDetails';
 import { StepInterview } from '@/components/admin/console/pages/employer/views/wizard/StepInterview';
-import { ApplicationWindowCard, SponsorCard } from '@/components/admin/console/pages/employer/views/wizard/StepApplication';
 import { StepPreview } from '@/components/admin/console/pages/employer/views/wizard/StepPreview';
 import { DraftSummary, PublishSummary } from '@/components/admin/console/pages/employer/views/CreateJobWizard';
 import { authErrorCode, authErrorMessage } from './employerAuth';
 import {
   createJob,
   errorData,
-  getCredits,
   getJob,
   getPublishCheck,
   publishJob,
@@ -51,12 +47,14 @@ import {
   defaultWindow,
   detailsBody,
   displayToIso,
-  isoToWall,
+  opensAtIso,
   serverIdsOf,
   settingsBody,
-  timeZoneIana,
+  todayIn,
 } from './jobMapping';
 import { FIELD_LABELS } from './orgOptions';
+import { ApplicationWindowSection, SponsorshipCard } from './wizardSections';
+import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
 // Employer-app create / edit job wizard, backed by /employer/jobs. It follows
 // the design (Figma "Create Job", Application & credits version); the API is
@@ -64,17 +62,19 @@ import { FIELD_LABELS } from './orgOptions';
 // CreateJobWizard; both share the step components and summary cards.
 //
 // Design steps vs API saves (each PUT is a full replace of its body):
-//   1 Job details                      → details body (POST the first time)
+//   1 Job details, incl. the application window
+//                                      → details body (POST the first time)
 //   2 Interview (criteria, questions, length/instructions/language)
 //                                      → assessment body; interview settings too
 //                                        once who-pays is known
-//   3 Application & credits (window, who pays, sponsorship limits)
-//                                      → details body (window) + interview settings
+//   3 Application & credits (who pays, sponsorship limits)
+//                                      → interview settings
 //   4 Preview & publish
-// The API needs a closing time when the draft is created, so a new job starts
-// with a default window (opens tomorrow 9:00, closes in 30 days 17:00) that
-// step 3 lets the employer change. HR contact number and the sponsorship
-// limits are in the design but not in the API yet: they live in the form only.
+// The window is dates only (design 2026-10-28): it opens today and closes 7
+// days later by default; an opening date of today is sent as "open on
+// publish" (opensAtIso). Maximum sponsored candidates and the after-limit
+// choice are in the design but not in the API yet: they live in the form,
+// kept per job in localStorage so a reload (e.g. back from Stripe) keeps them.
 //
 // Nothing saves while typing; a step saves when the employer leaves it or
 // presses Save draft. Published jobs open the same wizard as "Edit job": the
@@ -86,7 +86,7 @@ const CONTINUE_LABELS = ['Continue to interview', 'Continue to application setti
 // Request bodies: 0 details, 1 assessment, 2 interview settings.
 type SavedBodies = [string, string, string];
 // Which bodies each design step edits.
-const STEP_BODIES: number[][] = [[0], [1, 2], [0, 2]];
+const STEP_BODIES: number[][] = [[0], [1, 2], [2]];
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -97,8 +97,8 @@ const MISSING: Record<string, { label: string; step: number }> = {
   workplaceType: { label: 'Workplace type', step: 0 },
   location: { label: 'Job location', step: 0 },
   roleOverview: { label: 'Role overview', step: 0 },
-  timezone: { label: 'Time zone', step: 2 },
-  closesAt: { label: 'A closing date in the future', step: 2 },
+  timezone: { label: 'Time zone', step: 0 },
+  closesAt: { label: 'A closing date in the future', step: 0 },
   criteria: { label: 'Evaluation criteria', step: 1 },
   questions: { label: 'Interview questions', step: 1 },
   questionCriteria: { label: 'A criterion on every question', step: 1 },
@@ -113,21 +113,13 @@ function errorText(err: unknown, fallback: string): string {
 }
 
 // Application window rules (design: both dates required) plus what the API
-// enforces on save, publish or window change.
+// enforces on save, publish or window change. maxApplicants has no UI in the
+// design; a value loaded from the API is kept and still checked.
 function windowErrors(job: Job, opensLocked = false): Record<string, boolean | string> {
-  const closes = displayToIso(job.closesAt, job.timeZone);
-  const opens = displayToIso(job.opensAt, job.timeZone);
   const max = job.maxApplicants.trim();
   const maxN = numberOf(max);
   return {
-    opensAt: !opensLocked && !opens,
-    closesAt: !closes
-      ? true
-      : opens && Date.parse(closes) <= Date.parse(opens)
-        ? 'Must be after the opening time'
-        : Date.parse(closes) <= Date.now()
-          ? 'Must be in the future'
-          : false,
+    ...windowSectionErrors(job, todayIn(job.timeZone), opensLocked),
     timeZone: !job.timeZone,
     maxApplicants: !!max && (!/^\d[\d,]*$/.test(max) || maxN < 1 || maxN > 10000) ? 'Enter a whole number from 1 to 10,000' : false,
   };
@@ -137,13 +129,10 @@ const none = (e: Record<string, unknown>) => !Object.values(e).some(Boolean);
 
 // What blocks leaving a design step.
 function stepErrors(job: Job, step: number, opensLocked = false): Record<string, boolean | string> {
-  if (step === 0) return jobDetailsErrors(job);
+  if (step === 0) return { ...jobDetailsErrors(job), ...windowErrors(job, opensLocked) };
   if (step === 1) return interviewErrors(job, true);
-  if (step === 2) {
-    // Sponsorship limits are form-only (no API fields yet) but required by the design.
-    const { totalBudget, dailyBudget, maxCandidates } = applicationErrors(job);
-    return { ...windowErrors(job, opensLocked), sponsor: !job.sponsor, totalBudget, dailyBudget, maxCandidates };
-  }
+  // Sponsorship limits are form-only (no API fields yet) but required by the design.
+  if (step === 2) return sponsorshipErrors(job);
   return {};
 }
 
@@ -151,7 +140,7 @@ function stepErrors(job: Job, step: number, opensLocked = false): Record<string,
 // than stepErrors: only what the API itself rejects.
 function bodyErrors(job: Job, body: number): Record<string, boolean | string> {
   if (body === 0) {
-    const w = windowErrors(job);
+    const w = windowErrors(job, true);
     return { ...jobDetailsErrors(job), closesAt: w.closesAt, timeZone: w.timeZone, maxApplicants: w.maxApplicants };
   }
   if (body === 1) return interviewErrors(job, true);
@@ -163,13 +152,31 @@ function snapshot(j: Job, a: ApiJob | null, areas: string[]): SavedBodies {
   return [JSON.stringify(detailsBody(j, a)), JSON.stringify(assessmentBody(j, a ? serverIdsOf(a) : new Set(), areas)), JSON.stringify(settingsBody(j, a))];
 }
 
-// Current time as a datetime-local value in the job's own time zone.
-const nowIn = (job: Job) => isoToWall(new Date().toISOString(), timeZoneIana(job.timeZone));
+// Form-only sponsorship fields (no API fields yet), kept per job so a reload
+// doesn't lose them. Best effort: storage may be blocked.
+const FORM_ONLY_KEY = (jobId: string) => `screna_employer_job_form_${jobId}`;
+
+function loadFormOnly(jobId: string): Partial<Sponsorship> | null {
+  try {
+    const raw = localStorage.getItem(FORM_ONLY_KEY(jobId));
+    return raw ? (JSON.parse(raw) as Partial<Sponsorship>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveFormOnly(jobId: string, sp: Sponsorship) {
+  try {
+    localStorage.setItem(FORM_ONLY_KEY(jobId), JSON.stringify({ maxCandidates: sp.maxCandidates, afterLimit: sp.afterLimit ?? null }));
+  } catch {
+    /* storage blocked: the fields stay in this page only */
+  }
+}
 
 function newJob(companyId: string): Job {
   const timeZone = defaultTimeZoneLabel();
   // Who pays starts unselected: the employer has to choose on step 3.
-  return { ...blankJob(companyId, ''), timeZone, ...defaultWindow(timeZone), sponsor: null };
+  return { ...blankJob(companyId, ''), timeZone, ...defaultWindow(timeZone), interviewLength: 20, sponsor: null };
 }
 
 export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkout?: 'success' | 'cancelled' }) {
@@ -194,8 +201,6 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const [publishAck, setPublishAck] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [live, setLive] = useState<PublishResult | null>(null);
-  // Interview Credits balance for the sponsorship estimate (step 3).
-  const [credits, setCredits] = useState<number | null>(null);
 
   // ── Load an existing job ──
   useEffect(() => {
@@ -204,7 +209,9 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     getJob(jobId)
       .then((res) => {
         if (cancelled) return;
-        const form = apiToJob(res, company.id);
+        const stored = loadFormOnly(res.id);
+        const loaded = apiToJob(res, company.id);
+        const form = stored ? { ...loaded, sponsorship: { ...loaded.sponsorship, ...stored } } : loaded;
         setApi(res);
         setJob(form);
         setInitial(form);
@@ -287,16 +294,11 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     })();
   }, [step, ai, job, api?.id]);
 
+  const formOnlyJobId = api?.id;
+  const formOnlySponsorship = job?.sponsorship;
   useEffect(() => {
-    if (step !== 2) return;
-    let cancelled = false;
-    getCredits()
-      .then((c) => !cancelled && setCredits(c.interview))
-      .catch(() => !cancelled && setCredits(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [step]);
+    if (formOnlyJobId && formOnlySponsorship) saveFormOnly(formOnlyJobId, formOnlySponsorship);
+  }, [formOnlyJobId, formOnlySponsorship]);
 
   // ── Preview: what still blocks publishing ──
   const refreshCheck = async (id: string) => {
@@ -326,13 +328,14 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       return;
     }
     const id = api.id;
+    const before = takeCreditsBefore();
     const deadline = Date.now() + 30_000;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       const c = await refreshCheck(id);
       if (cancelled) return;
-      if (c?.enoughCredits) return void toast.success('Interview Credits added.', { id: 'employer-checkout' });
+      if (c && c.interviewCreditsAvailable > before) return void toast.success('Interview Credits added.', { id: 'employer-checkout' });
       if (Date.now() > deadline) return void toast('Your payment is still processing. Refresh in a moment to see your credits.', { id: 'employer-checkout' });
       timer = setTimeout(tick, 2000);
     };
@@ -381,7 +384,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const iso = (j: Job, f: 'opensAt' | 'closesAt') => displayToIso(j[f], j.timeZone);
   const postingOf = (j: Job) => JSON.stringify({ ...detailsBody(j, api), opensAt: null, closesAt: '' });
   const windowChanged =
-    !!initial && (iso(job, 'closesAt') !== iso(initial, 'closesAt') || job.timeZone !== initial.timeZone || (!opensLocked && iso(job, 'opensAt') !== iso(initial, 'opensAt')));
+    !!initial && (iso(job, 'closesAt') !== iso(initial, 'closesAt') || job.timeZone !== initial.timeZone || (!opensLocked && opensAtIso(job) !== opensAtIso(initial)));
   const postingChanged = !!initial && postingOf(job) !== postingOf(initial);
   const dirty = draft ? (!api ? bodies[0] !== saved[0] : [0, 1, 2].some(dirtyBody)) : postingChanged || windowChanged;
   const valid = (s: number) => none(stepErrors(job, s, opensLocked));
@@ -519,9 +522,8 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     if (!api) return false;
     const errs = { ...jobDetailsErrors(job), ...windowErrors(job, opensLocked) };
     if (!none(errs)) {
-      const at = none(jobDetailsErrors(job)) ? 2 : 0;
-      setStep(at);
-      setErrorsStep(at);
+      setStep(0);
+      setErrorsStep(0);
       toast.error('Complete the required fields to save');
       return false;
     }
@@ -533,7 +535,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     try {
       if (postingChanged) await saveJobPosting(api.id, { ...detailsBody(job, api), opensAt: api.opensAt, closesAt: api.closesAt ?? '' });
       const closesAt = iso(job, 'closesAt');
-      if (windowChanged && closesAt) await updateJobWindow(api.id, { opensAt: opensLocked ? api.opensAt : iso(job, 'opensAt'), closesAt });
+      if (windowChanged && closesAt) await updateJobWindow(api.id, { opensAt: opensLocked ? api.opensAt : opensAtIso(job), closesAt });
       setInitial(job);
       setJustSaved(true);
       toast.success('Job updated');
@@ -578,9 +580,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     } catch (err) {
       setPublishOpen(false);
       const code = authErrorCode(err);
-      if (code === 'INSUFFICIENT_CREDITS') {
-        setCreditsOpen(true);
-      } else if (code === 'JOB_NOT_READY') {
+      if (code === 'JOB_NOT_READY') {
         const missing = errorData<{ missing?: string[] }>(err)?.missing ?? [];
         setCheck((c) => (c ? { ...c, ready: false, missing } : c));
         toast.error(`Before publishing, fix: ${missing.map((m) => MISSING[m]?.label ?? m).join(', ')}`);
@@ -595,7 +595,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   };
 
   const stepProps = { job, update, showErrors: errorsStep === step, company, ai };
-  const allValid = stepValid(job, 3);
+  const allValid = [0, 1, 2].every(valid);
   // Employer app gates on publish-check; the design shows it in the summary card.
   const gated = !!check && (!check.profileComplete || check.missing.length > 0);
   const finalLabel = draft ? 'Publish job' : 'Save changes';
@@ -665,7 +665,21 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       {/* Body */}
       <div className="flex gap-6 items-start">
         <div className="flex-1 min-w-0 flex flex-col gap-5">
-          {step === 0 && <StepJobDetails {...stepProps} />}
+          {step === 0 && (
+            <StepJobDetails
+              {...stepProps}
+              showPhone={false}
+              windowSection={
+                <ApplicationWindowSection
+                  job={job}
+                  update={update}
+                  err={errorsStep === 0 ? windowErrors(job, opensLocked) : {}}
+                  today={todayIn(job.timeZone)}
+                  opensLocked={opensLocked}
+                />
+              }
+            />
+          )}
           {step === 1 && (
             <>
               {generating && (
@@ -685,15 +699,8 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
                 <h2 className="text-[#1e232f] text-[18px] font-semibold leading-7">Set the application window and interview sponsorship</h2>
                 <p className="text-[#5a6172] text-[13px]">Publishing is free. Choose whether to sponsor candidates' first interviews and set your spending limits.</p>
               </div>
-              <ApplicationWindowCard job={job} update={update} err={errorsStep === 2 ? windowErrors(job, opensLocked) : {}} opensLocked={opensLocked} now={nowIn(job)} />
               <fieldset disabled={!draft} className={cx('min-w-0', !draft && 'opacity-60')}>
-                <SponsorCard
-                  job={job}
-                  update={update}
-                  err={errorsStep === 2 ? stepErrors(job, 2, opensLocked) : {}}
-                  credits={credits}
-                  onAddCredits={api ? () => setCreditsOpen(true) : undefined}
-                />
+                <SponsorshipCard job={job} update={update} err={errorsStep === 2 ? stepErrors(job, 2) : {}} />
               </fieldset>
             </>
           )}
@@ -709,10 +716,10 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
 
         <aside className="w-[300px] shrink-0 sticky top-[76px]">
           {step < 3 ? (
-            <DraftSummary job={job} companyName={company.name} maxStep={maxStep} note={DRAFT_NOTE} sponsoredLabel="Recruiter sponsored" />
+            <DraftSummary job={job} companyName={company.name} maxStep={maxStep} note={DRAFT_NOTE} sponsoredLabel="Recruiter sponsored" isValid={valid} />
           ) : (
             // A live job has nothing left to publish.
-            <PublishSummary job={job} companyName={company.name} ready={!draft || (allValid && (!check || check.ready))} gated={draft && gated} />
+            <PublishSummary job={job} companyName={company.name} ready={!draft || (allValid && (!check || check.ready))} gated={draft && gated} isValid={valid} />
           )}
         </aside>
       </div>
@@ -733,12 +740,11 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
           ) : (
             <Button
               variant="primary"
-              // Publishing: credits are the one blocker the button itself
-              // resolves; when the check failed to load, the publish call decides.
+              // Only `ready` gates publishing; when the check failed to load,
+              // the publish call decides.
               disabled={!!busy || (draft && (checkLoading || !allValid || gated))}
               onClick={() => {
                 if (!draft) return void saveLiveChanges(true);
-                if (check && !check.enoughCredits) return setCreditsOpen(true);
                 setPublishAck(false);
                 setPublishOpen(true);
               }}
@@ -818,7 +824,6 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
               <KV k="Interview payment" v={job.sponsor === 'employer' ? 'Employer-sponsored' : 'Candidate-paid'} />
             </div>
             <div className="flex flex-col gap-2">
-              {/* The candidate board is still mock; it opens once the board API is wired. */}
               <Button variant="primary" className="w-full" onClick={() => go({ name: 'board', jobId: live.jobId })}>
                 View job overview
               </Button>
@@ -867,10 +872,10 @@ function PublishBlockers({
       </p>
     );
   }
-  if (!check || check.ready) return null;
+  if (!check) return null;
   return (
     <div className="flex flex-col gap-3">
-      {check.missing.length > 0 && (
+      {!check.ready && check.missing.length > 0 && (
         <Blocker title="Finish the job before publishing.">
           <ul className="flex flex-col gap-1">
             {check.missing.map((m) => (
@@ -886,7 +891,7 @@ function PublishBlockers({
           </ul>
         </Blocker>
       )}
-      {!check.profileComplete && (
+      {!check.ready && !check.profileComplete && (
         <Blocker title="Complete your company profile before publishing.">
           <span>Still needed: {check.profileMissingFields.map((f) => FIELD_LABELS[f] ?? f).join(', ')}.</span>
           <Button variant="link" className="w-fit" onClick={onProfile}>
@@ -894,10 +899,10 @@ function PublishBlockers({
           </Button>
         </Blocker>
       )}
-      {!check.enoughCredits && (
-        <Blocker title="Not enough Interview Credits.">
+      {check.sponsorshipUnfunded && (
+        <Blocker title="No Interview Credits for sponsored interviews.">
           <span>
-            Publishing uses {check.creditsRequired} Interview Credit. You have {check.interviewCreditsAvailable}.
+            You can still publish, but candidates can't start an interview until you add Interview Credits. You have {check.interviewCreditsAvailable}.
           </span>
           <Button variant="link" className="w-fit" onClick={onBuy}>
             Buy Interview Credits <ArrowRight size={14} />
@@ -922,6 +927,29 @@ function Blocker({ title, children }: { title: string; children: ReactNode }) {
 
 // ─── Buy credits → Stripe ─────────────────────────────────────────────────────
 
+// The Interview Credit balance before checkout, so the return poll can tell
+// when the purchase has landed.
+const CREDITS_BEFORE_KEY = 'screna_employer_credits_before';
+
+function stashCreditsBefore(n: number) {
+  try {
+    sessionStorage.setItem(CREDITS_BEFORE_KEY, String(n));
+  } catch {
+    /* storage blocked: the poll falls back to "any credits" */
+  }
+}
+
+function takeCreditsBefore(): number {
+  try {
+    const v = sessionStorage.getItem(CREDITS_BEFORE_KEY);
+    sessionStorage.removeItem(CREDITS_BEFORE_KEY);
+    const n = Number(v);
+    return v !== null && Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
 // beforeCheckout saves the draft first (step 3 may have unsaved edits); it
 // returns false when that failed, and checkout doesn't start.
 function BuyCreditsDialog({
@@ -937,20 +965,20 @@ function BuyCreditsDialog({
   check: PublishCheck | null;
   beforeCheckout: () => Promise<boolean>;
 }) {
-  const short = check ? Math.max(1, check.creditsRequired - check.interviewCreditsAvailable) : 1;
-  const [quantity, setQuantity] = useState(String(short));
+  const [quantity, setQuantity] = useState('1');
   const [busy, setBusy] = useState(false);
   const n = Math.round(Number(quantity));
   const validQty = Number.isFinite(n) && n >= 1 && n <= 100;
 
   useEffect(() => {
-    if (open) setQuantity(String(short));
-  }, [open, short]);
+    if (open) setQuantity('1');
+  }, [open]);
 
   const buy = async () => {
     setBusy(true);
     try {
       if (!(await beforeCheckout())) return setBusy(false);
+      stashCreditsBefore(check?.interviewCreditsAvailable ?? 0);
       window.location.href = await startCreditsCheckout({ creditType: 'EMPLOYER_INTERVIEW', quantity: n, jobId });
     } catch (err) {
       toast.error(errorText(err, 'Could not start checkout.'));
@@ -974,7 +1002,7 @@ function BuyCreditsDialog({
       }
     >
       <p className="text-[14px] text-[#5a6172]">
-        Interview Credits fund sponsored interviews{check && check.creditsRequired > 0 ? ` and publishing (${check.creditsRequired} per job)` : ''}.{check ? ` You have ${check.interviewCreditsAvailable}.` : ''} You'll come back here after paying, and the job stays saved as a draft.
+        Interview Credits fund sponsored interviews: 1 per completed interview.{check ? ` You have ${check.interviewCreditsAvailable}.` : ''} You'll come back here after paying, and the job stays saved as a draft.
       </p>
       <label className="flex flex-col gap-1.5 text-[13px] font-medium text-[#1e232f]">
         Number of credits

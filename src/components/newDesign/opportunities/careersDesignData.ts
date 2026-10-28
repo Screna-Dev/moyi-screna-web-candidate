@@ -1,4 +1,5 @@
 import type { CareerApplication, CareerJob } from "@/services/careersApi";
+import { isBeingScored } from "./careersEnded";
 import { myJobs, opportunityJobs, type AssessmentStatus, type MyJob, type OpportunityJob } from "./mockJobs";
 
 // Maps /careers/* data onto the design's data shapes (mockJobs.ts) so the
@@ -88,6 +89,8 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
   const sample = myJobs[index % myJobs.length];
   const closed = app.jobStatus !== "OPEN";
   const done = app.interviewStatus === "COMPLETED";
+  // Ended in this browser and still being scored: nothing to continue.
+  const scoring = isBeingScored(app);
   // Scores and qualification aren't returned to candidates yet: sample values.
   const sampleResult: AssessmentStatus = sample.assessmentStatus === "Not yet qualified" ? "Not yet qualified" : "Qualified";
   const assessmentStatus: AssessmentStatus = done ? sampleResult : app.interviewStatus === "IN_PROGRESS" ? "In progress" : "Not started";
@@ -96,7 +99,9 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
         { label: "View report", variant: "secondary" },
         { label: "Retake interview", variant: "primary" },
       ]
-    : app.canStartInterview
+    : scoring
+      ? [{ label: closed ? "Browse opportunities" : "View details", variant: closed ? ("primary" as const) : ("secondary" as const) }]
+      : app.canStartInterview
       ? [
           ...(closed ? [] : [{ label: "View details", variant: "secondary" as const }]),
           { label: app.interviewStatus === "IN_PROGRESS" ? "Continue interview" : "Start interview", variant: "primary" as const },
@@ -117,7 +122,7 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
     guidance: done && sampleResult === "Qualified" ? "" : closed ? "This role is closed." : "",
     updatedLabel: updatedLabel(app.interviewCompletedAt ?? app.appliedAt),
     actions,
-    creditInfo: !done && app.canStartInterview && app.interviewPayer === "CANDIDATE" ? `${app.interviewDurationMinutes} credits · up to ${app.interviewDurationMinutes} minutes` : done ? sample.creditInfo : undefined,
+    creditInfo: !done && !scoring && app.canStartInterview && app.interviewPayer === "CANDIDATE" ? `${app.interviewDurationMinutes} credits · up to ${app.interviewDurationMinutes} minutes` : done ? sample.creditInfo : undefined,
     career: app,
   };
 }
