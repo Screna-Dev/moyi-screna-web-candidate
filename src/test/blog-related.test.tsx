@@ -6,7 +6,7 @@
  * the automatic same-category list.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 const getPost = vi.fn();
@@ -77,5 +77,24 @@ describe('blog post — related articles', () => {
     getRelatedPosts.mockResolvedValue([card(4)]);
     renderPost();
     expect((await relatedLinks()).map((a) => a.getAttribute('href'))).toEqual(['/blog/related-4']);
+  });
+
+  it("never shows the previous article's fallback list while the next one loads", async () => {
+    // A (no picks) links to B via its fallback list; B's own fallback never resolves.
+    getPost.mockImplementation((slug: string) =>
+      Promise.resolve(
+        slug === 'main-post'
+          ? { _id: 'main', slug: 'main-post', title: 'Main', category: 'interview-prep' }
+          : { _id: 'r1', slug: 'related-1', title: 'Related title 1', category: 'interview-prep' },
+      ),
+    );
+    getRelatedPosts.mockImplementation(({ excludeId }: { excludeId: string }) =>
+      excludeId === 'main' ? Promise.resolve([card(1)]) : new Promise(() => {}),
+    );
+    renderPost();
+    fireEvent.click((await relatedLinks())[0]);
+    await waitFor(() => expect(getRelatedPosts).toHaveBeenCalledWith(expect.objectContaining({ excludeId: 'r1' })));
+    // A's list linked to B itself — it must not be on B's page.
+    expect(screen.queryByRole('heading', { name: 'Related articles' })).toBeNull();
   });
 });

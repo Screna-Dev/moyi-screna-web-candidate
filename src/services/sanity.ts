@@ -139,8 +139,9 @@ export async function getPost(slug: string): Promise<Post | null> {
 
 /**
  * Fallback for the "Related articles" block when the editor picked none
- * (post.relatedPosts empty). Prefers the same category and falls back to the newest posts overall, so a
- * single-post category still produces internal links instead of a dead end.
+ * (post.relatedPosts empty). Prefers the same category and falls back to the
+ * newest posts overall, so a single-post category still produces internal
+ * links instead of a dead end.
  */
 export async function getRelatedPosts(opts: {
   category?: string;

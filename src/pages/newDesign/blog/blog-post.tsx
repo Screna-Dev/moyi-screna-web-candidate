@@ -61,7 +61,9 @@ export function BlogPostPage() {
   const [fetched, setFetched] = useState<Post | null>(seeded);
   const [loading, setLoading] = useState(!seeded);
   const [notFound, setNotFound] = useState(false);
-  const [related, setRelated] = useState<PostListItem[]>([]);
+  // Keyed by the post it was fetched for, so the previous article's fallback
+  // list never shows (or links to the current post) while the next one loads.
+  const [related, setRelated] = useState<{ forId: string; items: PostListItem[] } | null>(null);
 
   // While navigating from one article to the next, `fetched` still holds the
   // previous post for a render. Never show — or describe in <head> — a post
@@ -129,16 +131,18 @@ export function BlogPostPage() {
   // same-category posts, fetched separately — internal-linking only, so that
   // fetch must never gate `data-seo-ready`.
   const curated = post?.relatedPosts?.filter((p) => p?.slug) ?? [];
-  const relatedItems = curated.length > 0 ? curated : related;
+  const relatedItems =
+    curated.length > 0 ? curated : related && related.forId === post?._id ? related.items : [];
   useEffect(() => {
     if (!post?._id || curated.length > 0) return;
     let cancelled = false;
-    getRelatedPosts({ category: post.category, excludeId: post._id, limit: 3 })
+    const forId = post._id;
+    getRelatedPosts({ category: post.category, excludeId: forId, limit: 3 })
       .then((items) => {
-        if (!cancelled) setRelated(items ?? []);
+        if (!cancelled) setRelated({ forId, items: items ?? [] });
       })
       .catch(() => {
-        if (!cancelled) setRelated([]);
+        if (!cancelled) setRelated({ forId, items: [] });
       });
     return () => {
       cancelled = true;
