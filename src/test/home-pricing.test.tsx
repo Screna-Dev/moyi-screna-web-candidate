@@ -55,16 +55,17 @@ describe('home page pricing', () => {
     expect(screen.queryByText('Build your foundation')).toBeNull();
   });
 
-  it('shows Free, Advanced and Flagship, each with its button', () => {
+  it('shows Free, Pro and Pro 90-Day, each with its button', () => {
     renderHome();
-    for (const cta of ['Start for free', 'Start Advanced', 'Get Flagship']) {
+    for (const cta of ['Start for free', 'Get Pro', 'Get 90 days']) {
       expect(screen.getByText(cta)).toBeInTheDocument();
     }
   });
 
   it('lays the three cards out three across', () => {
     const src = readFileSync('src/pages/newDesign/home/home.tsx', 'utf8');
-    const grid = src.match(/\{\/\* Pricing cards \*\/\}\s*<div className="([^"]+)"/)![1];
+    const section = src.slice(src.indexOf('<section id="pricing"'));
+    const grid = section.match(/<div className="(grid [^"]+)"/)![1];
     expect(grid).toContain('md:grid-cols-3');
     expect(grid).not.toContain('grid-cols-4');
   });

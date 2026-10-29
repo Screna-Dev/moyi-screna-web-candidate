@@ -11,6 +11,7 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 // is code-split below.
 import { HomePage } from './pages/newDesign/home/home';
 import FaqPage from './pages/newDesign/home/faq-page';
+import { EmployerLandingPage } from './pages/employerLanding/employer-landing';
 import { BlogListPage } from './pages/newDesign/blog/blog-list';
 import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 import { ContactPage } from './pages/newDesign/contact';
@@ -62,6 +63,15 @@ const MockInterviewPage = lazy(() => import('./pages/newDesign/home/mock-intervi
 const PersonalizedPracticePage = lazy(() => import('./pages/newDesign/personalized-practice-design').then((m) => ({ default: m.PersonalizedPracticePage })));
 const QuickMockPage = lazy(() => import('./pages/newDesign/quick-mock-page').then((m) => ({ default: m.QuickMockPage })));
 const CoachingPage = lazy(() => import('./pages/newDesign/coaching-page').then((m) => ({ default: m.CoachingPage })));
+const OpportunitiesLayout = lazy(() => import('./pages/newDesign/opportunities/opportunities-layout').then((m) => ({ default: m.OpportunitiesLayout })));
+const OpportunitiesPage = lazy(() => import('./pages/newDesign/opportunities/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
+const MyJobsPage = lazy(() => import('./pages/newDesign/opportunities/MyJobsPage').then((m) => ({ default: m.MyJobsPage })));
+const JobDetailPage = lazy(() => import('./pages/newDesign/opportunities/JobDetailPage').then((m) => ({ default: m.JobDetailPage })));
+const BackendEngineerDetailPage = lazy(() => import('./pages/newDesign/opportunities/BackendEngineerDetailPage').then((m) => ({ default: m.BackendEngineerDetailPage })));
+const InterviewResultPage = lazy(() => import('./pages/newDesign/opportunities/InterviewResultPage').then((m) => ({ default: m.InterviewResultPage })));
+const NotQualifiedResultPage = lazy(() => import('./pages/newDesign/opportunities/NotQualifiedResultPage').then((m) => ({ default: m.NotQualifiedResultPage })));
+const ContactRecruiterPage = lazy(() => import('./pages/newDesign/opportunities/ContactRecruiterPage').then((m) => ({ default: m.ContactRecruiterPage })));
+const CareerInterviewPage = lazy(() => import('./pages/newDesign/opportunities/CareerInterviewPage').then((m) => ({ default: m.CareerInterviewPage })));
 const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
 const AIMockPage = lazy(() => import('./pages/newDesign/ai-mock').then((m) => ({ default: m.AIMockPage })));
 const AIMockWhitePage = lazy(() => import('./pages/newDesign/ai-mock-white').then((m) => ({ default: m.AIMockWhitePage })));
@@ -87,6 +97,8 @@ const MentorDashboardPage = lazy(() => import('./pages/mentor/mentor-dashboard')
 const SelectDashboardPage = lazy(() => import('./pages/mentor/select-dashboard').then((m) => ({ default: m.SelectDashboardPage })));
 
 // Admin
+const EmployerLoginPage = lazy(() => import('./pages/employer/EmployerLoginPage').then((m) => ({ default: m.EmployerLoginPage })));
+const EmployerApp = lazy(() => import('./pages/employer/EmployerApp').then((m) => ({ default: m.EmployerApp })));
 const AdminRoute = lazy(() => import('./components/AdminRoute'));
 const AdminConsole = lazy(() => import('./components/admin/console/AdminConsole'));
 const AdminRedeemCodes = lazy(() => import('./pages/AdminRedeemCodes'));
@@ -212,6 +224,7 @@ export const router = createBrowserRouter([
       // (vercel.json also issues a 301 for /pricing at the edge in production.)
       { path: '/pricing', element: <Navigate to="/#pricing" replace /> },
       { path: '/faq', element: <FaqPage /> },
+      { path: '/employers', element: <EmployerLandingPage /> },
       { path: '/blog', element: <BlogListPage /> },
       { path: '/blog/:slug', element: <BlogPostPage /> },
       { path: '/auth', element: <AuthPage /> },
@@ -224,6 +237,26 @@ export const router = createBrowserRouter([
       { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
       { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
       { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
+      // Opportunities: the original design, fed by the /careers/* API where it
+      // has data (job list, detail, applications, interview). Score/report/
+      // recruiter-email pages still show the design's sample data until the
+      // backend catches up with the design. Job 1 (partner job) and job 8
+      // (not-qualified result) are the design's sample frames on static paths;
+      // real job ids are UUIDs, so they never collide.
+      {
+        element: <RequireAuth><OpportunitiesLayout /></RequireAuth>,
+        children: [
+          { path: '/opportunities', element: <OpportunitiesPage /> },
+          { path: '/opportunities/my-jobs', element: <MyJobsPage /> },
+          { path: '/opportunities/job/1', element: <BackendEngineerDetailPage /> },
+          { path: '/opportunities/job/:id', element: <JobDetailPage /> },
+          { path: '/opportunities/job/8/results', element: <NotQualifiedResultPage /> },
+          { path: '/opportunities/job/:id/results', element: <InterviewResultPage /> },
+          { path: '/opportunities/job/:id/contact', element: <ContactRecruiterPage /> },
+        ],
+      },
+      // Full-screen interview room, outside the dashboard shell.
+      { path: '/opportunities/applications/:applicationId/interview', element: <RequireAuth><CareerInterviewPage /></RequireAuth> },
       { path: '/session-confirm', element: <RequireAuth><SessionConfirmPage /></RequireAuth> },
       { path: '/ai-mock', element: <RequireAuth><AIMockPage /></RequireAuth> },
       { path: '/ai-mockwhite', element: <RequireAuth><AIMockWhitePage /></RequireAuth> },
@@ -346,6 +379,12 @@ export const router = createBrowserRouter([
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },
+
+      // employer side — separate company-email sign-in, no Google
+      { path: '/employer/login', element: <EmployerLoginPage /> },
+      { path: '/employer', element: <EmployerApp /> },
+      // Stripe return after buying employer credits (?checkout=…&jobId=…)
+      { path: '/employer/credits', element: <EmployerApp /> },
 
       // admin — ADMIN sees full console; OPS sees only Job Application
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },
