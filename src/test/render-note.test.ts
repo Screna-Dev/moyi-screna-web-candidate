@@ -102,6 +102,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('renderNotePage — backend seoTitle', () => {
+  // ID hashes into the treatment group (see usesSeoTitle in scripts/routes.mjs).
+  it('writes seoTitle to <title>, og:title and the JSON-LD headline alike', async () => {
+    const seoTitle = 'Token Bucket Rate Limiter — AT&T SWE Onsite';
+    mockFetch((url) =>
+      url.includes('/posts/search')
+        ? json({ data: { posts: [post({ seoTitle })], total: 1 } })
+        : happyPath(url),
+    );
+    const page = await renderNotePage(req, ID);
+    expect(page.status).toBe(200);
+    const escaped = 'Token Bucket Rate Limiter — AT&amp;T SWE Onsite | Screna AI';
+    expect(page.html).toContain(`<title>${escaped}</title>`);
+    expect(page.html).toMatch(new RegExp(`property="og:title" content="${escaped}"`));
+    const ld = [...page.html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1]))
+      .find((d) => d['@type'] === 'Article');
+    expect(ld?.headline).toBe(seoTitle);
+  });
+});
+
 describe('renderNotePage — the happy path', () => {
   it('returns one document with the content, the head and the seed', async () => {
     mockFetch(happyPath);

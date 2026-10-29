@@ -117,6 +117,9 @@ interface Post {
   status: string;
   isAnonymous?: boolean;
   createdAt: string;
+  headline?: string | null;
+  seoTitle?: string | null;
+  seoTitleUpdatedAt?: string | null;
   commentCount?: number;
   likeCount?: number;
   saveCount?: number;

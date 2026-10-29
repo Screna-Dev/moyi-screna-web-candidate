@@ -10,6 +10,7 @@ import {
   isIndexablePost as isIndexablePostImpl,
   postContentWords as postContentWordsImpl,
   noteSeoTitle as noteSeoTitleImpl,
+  noteSeoTitleCore as noteSeoTitleCoreImpl,
   MIN_POST_CONTENT_WORDS as MIN_WORDS,
 } from '../../scripts/routes.mjs';
 
@@ -45,8 +46,15 @@ export const isIndexablePost = (post: IndexablePostInput): boolean =>
  * copies of the truncation rule is how the brand went missing from all 40
  * prerendered titles — see noteSeoTitle in scripts/routes.mjs.
  */
-export const noteSeoTitle = (post: {
+type SeoTitleInput = {
+  id?: string | null;
   company?: string | null;
   role?: string | null;
   round?: string | null;
-} | null | undefined): string => noteSeoTitleImpl(post);
+  seoTitle?: string | null;
+} | null | undefined;
+
+export const noteSeoTitle = (post: SeoTitleInput): string => noteSeoTitleImpl(post);
+
+/** noteSeoTitle without " | Screna AI" — the JSON-LD Article headline. */
+export const noteSeoTitleCore = (post: SeoTitleInput): string => noteSeoTitleCoreImpl(post);

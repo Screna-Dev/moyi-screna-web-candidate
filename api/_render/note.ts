@@ -16,7 +16,7 @@ import {
   type PublicPost,
 } from './community.js';
 // Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
-import { companySlug, isIndexablePost, noteSeoTitle } from '../../scripts/routes.mjs';
+import { companySlug, isIndexablePost, noteSeoTitle, noteSeoTitleCore } from '../../scripts/routes.mjs';
 
 // /experience/:id, rendered per request.
 //
@@ -325,9 +325,7 @@ export async function renderNotePage(req: IncomingMessage, id: string): Promise<
             {
               '@context': 'https://schema.org',
               '@type': 'Article',
-              headline: `${post.company ?? ''} ${post.role ?? ''} interview${
-                post.round ? ` — ${post.round}` : ''
-              }`.trim(),
+              headline: noteSeoTitleCore(post),
               ...(post.summary ? { description: post.summary } : {}),
               ...(post.date && !Number.isNaN(new Date(post.date).getTime())
                 ? { datePublished: new Date(post.date).toISOString() }

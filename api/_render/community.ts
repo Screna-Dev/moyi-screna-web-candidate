@@ -53,6 +53,10 @@ export interface PublicPost {
   commentCount?: number;
   likeCount?: number;
   saveCount?: number;
+  // Backend SEO title (PostDto); null until the headline backfill reaches the note.
+  headline?: string | null;
+  seoTitle?: string | null;
+  seoTitleUpdatedAt?: string | null;
 }
 
 export interface AiHints {

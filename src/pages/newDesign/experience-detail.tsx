@@ -22,7 +22,7 @@ import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { useSeo } from '@/hooks/useSeo';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
-import { isIndexablePost, noteSeoTitle } from '@/utils/postIndexing';
+import { isIndexablePost, noteSeoTitle, noteSeoTitleCore } from '@/utils/postIndexing';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -111,6 +111,9 @@ interface ExperiencePost {
   status: string;
   createdAt: string;
   questions: PostQuestion[];
+  headline?: string | null;
+  seoTitle?: string | null;
+  seoTitleUpdatedAt?: string | null;
   commentCount?: number;
   likeCount?: number;
   saveCount?: number;
@@ -563,7 +566,7 @@ export function ExperienceDetailPage() {
                 {
                   '@context': 'https://schema.org',
                   '@type': 'Article',
-                  headline: `${post.company} ${post.role} interview${post.round ? ` — ${post.round}` : ''}`,
+                  headline: noteSeoTitleCore(post),
                   ...(post.summary ? { description: post.summary } : {}),
                   ...(post.date ? { datePublished: new Date(post.date).toISOString() } : {}),
                   isAccessibleForFree: false,

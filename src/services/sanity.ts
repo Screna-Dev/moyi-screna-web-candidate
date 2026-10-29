@@ -52,6 +52,9 @@ export interface PostListItem {
 export interface Post extends PostListItem {
   // Portable Text blocks — rendered with @portabletext/react.
   body?: unknown[];
+  // Editor-picked in the Studio (optional, up to 3, unique), in the editor's
+  // order. Already dereferenced, with anything not published filtered out.
+  relatedPosts?: PostListItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -76,10 +79,17 @@ const POSTS_QUERY = `
   | order(publishedAt desc){ ${POST_LIST_FIELDS} }
 `;
 
+// Related posts are strong references, but an anonymous read still sees only
+// published documents — anything else dereferences to null. Filtering on the
+// target's slug BEFORE `->` drops those and keeps the editor's order.
+// (Filtering after the projection does not work: it yields [null, null, …].)
+const RELATED_POSTS_PROJECTION = `"relatedPosts": relatedPosts[defined(@->slug.current)]->{ ${POST_LIST_FIELDS} }`;
+
 const POST_QUERY = `
   *[_type == "post" && slug.current == $slug][0]{
     ${POST_LIST_FIELDS},
-    body
+    body,
+    ${RELATED_POSTS_PROJECTION}
   }
 `;
 
@@ -128,9 +138,10 @@ export async function getPost(slug: string): Promise<Post | null> {
 }
 
 /**
- * Sibling posts for the "Related articles" block at the foot of an article.
- * Prefers the same category and falls back to the newest posts overall, so a
- * single-post category still produces internal links instead of a dead end.
+ * Fallback for the "Related articles" block when the editor picked none
+ * (post.relatedPosts empty). Prefers the same category and falls back to the
+ * newest posts overall, so a single-post category still produces internal
+ * links instead of a dead end.
  */
 export async function getRelatedPosts(opts: {
   category?: string;

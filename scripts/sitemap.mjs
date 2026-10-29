@@ -277,9 +277,14 @@ async function main() {
   const months = new Map();
   for (const note of notes) {
     const stamp = isoDate(note.updatedAt ?? note.createdAt ?? note.date);
+    // A new seoTitle changes the page's <title>, so it counts as a modification.
+    const titled = isoDate(note.seoTitleUpdatedAt);
+    const lastmod = titled && (!stamp || titled > stamp) ? titled : stamp;
+    // Files still split on the note's own date: splitting on lastmod would pile
+    // all ~19k backfilled notes into the backfill month's file.
     const key = stamp ? stamp.slice(0, 7) : 'undated';
     if (!months.has(key)) months.set(key, []);
-    months.get(key).push(urlEntry(`${SITE_URL}/experience/${note.id}`, stamp));
+    months.get(key).push(urlEntry(`${SITE_URL}/experience/${note.id}`, lastmod));
   }
   for (const key of [...months.keys()].sort()) {
     const entries = months.get(key);

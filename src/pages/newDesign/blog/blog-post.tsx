@@ -61,7 +61,9 @@ export function BlogPostPage() {
   const [fetched, setFetched] = useState<Post | null>(seeded);
   const [loading, setLoading] = useState(!seeded);
   const [notFound, setNotFound] = useState(false);
-  const [related, setRelated] = useState<PostListItem[]>([]);
+  // Keyed by the post it was fetched for, so the previous article's fallback
+  // list never shows (or links to the current post) while the next one loads.
+  const [related, setRelated] = useState<{ forId: string; items: PostListItem[] } | null>(null);
 
   // While navigating from one article to the next, `fetched` still holds the
   // previous post for a render. Never show — or describe in <head> — a post
@@ -124,22 +126,29 @@ export function BlogPostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  // Related posts are internal-linking only — they must never gate
-  // `data-seo-ready`, so this runs independently of the article fetch.
+  // Editor-picked related posts arrive with the article (and so are in the
+  // prerendered HTML). Only when there are none does the page fall back to
+  // same-category posts, fetched separately — internal-linking only, so that
+  // fetch must never gate `data-seo-ready`.
+  const curated = post?.relatedPosts?.filter((p) => p?.slug) ?? [];
+  const relatedItems =
+    curated.length > 0 ? curated : related && related.forId === post?._id ? related.items : [];
   useEffect(() => {
-    if (!post?._id) return;
+    if (!post?._id || curated.length > 0) return;
     let cancelled = false;
-    getRelatedPosts({ category: post.category, excludeId: post._id, limit: 3 })
+    const forId = post._id;
+    getRelatedPosts({ category: post.category, excludeId: forId, limit: 3 })
       .then((items) => {
-        if (!cancelled) setRelated(items ?? []);
+        if (!cancelled) setRelated({ forId, items: items ?? [] });
       })
       .catch(() => {
-        if (!cancelled) setRelated([]);
+        if (!cancelled) setRelated({ forId, items: [] });
       });
     return () => {
       cancelled = true;
     };
-  }, [post?._id, post?.category]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post?._id, post?.category, curated.length]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -234,25 +243,35 @@ export function BlogPostPage() {
           </article>
         )}
 
-        {!loading && post && related.length > 0 && (
+        {!loading && post && relatedItems.length > 0 && (
           <aside className="mt-16 border-t border-[#EEF1F5] pt-10">
             <h2 className="text-[19px] font-semibold text-[#0A0A0A]">Related articles</h2>
-            <ul className="mt-5 space-y-5">
-              {related.map((item) => (
+            <ul className="mt-6 grid gap-8 sm:grid-cols-3 sm:gap-5">
+              {relatedItems.map((item) => (
                 <li key={item._id}>
                   <Link to={`/blog/${item.slug}`} className="group block">
+                    {item.cover?.asset?._ref ? (
+                      <img
+                        src={urlFor(item.cover).width(480).height(270).fit('crop').url()}
+                        alt={item.cover.alt ?? item.title ?? ''}
+                        width={480}
+                        height={270}
+                        loading="lazy"
+                        className="aspect-video w-full rounded-lg object-cover transition-transform duration-300 group-hover:scale-[1.01]"
+                      />
+                    ) : (
+                      <div className="aspect-video w-full rounded-lg bg-gradient-to-br from-[#EEF2FF] to-[#E7EBF3]" />
+                    )}
                     {item.category && (
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#2E5BFF]">
+                      <span className="mt-3 block text-[11px] font-semibold uppercase tracking-wider text-[#2E5BFF]">
                         {CATEGORY_LABELS[item.category] ?? item.category}
                       </span>
                     )}
-                    <p className="mt-1 text-[16px] font-medium leading-snug text-[#0A0A0A] group-hover:text-[#2E5BFF] transition-colors">
+                    <p className="mt-1 text-[15px] font-medium leading-snug text-[#0A0A0A] line-clamp-3 group-hover:text-[#2E5BFF] transition-colors">
                       {item.title}
                     </p>
-                    {item.excerpt && (
-                      <p className="mt-1 text-[14px] leading-relaxed text-[#5b5f6b] line-clamp-2">
-                        {item.excerpt}
-                      </p>
+                    {item.publishedAt && (
+                      <p className="mt-1.5 text-[12px] text-[#8a8f9a]">{formatDate(item.publishedAt)}</p>
                     )}
                   </Link>
                 </li>

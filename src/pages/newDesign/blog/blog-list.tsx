@@ -63,14 +63,18 @@ export function BlogListPage() {
   );
 
   useEffect(() => {
-    // Swallow exactly one run: the prerendered first page is already in state.
-    if (seedPending.current) {
-      seedPending.current = false;
-      return;
-    }
+    // The prerendered first page is already in state, but it is a build-time
+    // snapshot: a post published after the last deploy is missing from it
+    // (and so from "All", while its category chip — always fetched — shows it).
+    // Revalidate silently on that one run: no skeleton, no scroll, and a failed
+    // fetch keeps the snapshot rather than showing the error state.
+    const revalidating = seedPending.current;
+    seedPending.current = false;
     let cancelled = false;
-    setLoading(true);
-    setError(false);
+    if (!revalidating) {
+      setLoading(true);
+      setError(false);
+    }
     getPostsPage({ page, pageSize: PAGE_SIZE, category })
       .then((data) => {
         if (cancelled) return;
@@ -78,10 +82,10 @@ export function BlogListPage() {
         setTotal(data.total ?? 0);
         setCategories((data.categories ?? []).filter(Boolean));
         // Scroll to top on page change so the new page starts at the header.
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!revalidating) window.scrollTo({ top: 0, behavior: 'smooth' });
       })
       .catch(() => {
-        if (!cancelled) setError(true);
+        if (!cancelled && !revalidating) setError(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
