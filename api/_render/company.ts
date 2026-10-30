@@ -17,6 +17,7 @@ import {
   type CompanyProfile,
   type PublicPost,
 } from './community.js';
+import { fetchCompanyGuides, type CompanyGuide } from './blog.js';
 // Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
 import {
   COMPANY_PAGE_SIZE,
@@ -29,6 +30,7 @@ import {
   companySeoDescription,
   companySeoTitle,
   eligibleCompanies,
+  guideLabel,
 } from '../../scripts/routes.mjs';
 
 // /interview-questions/:company and /interview-questions/:company/page/:n,
@@ -224,12 +226,43 @@ function faqSection(name: string, faq: { question: string; answer: string }[]): 
   );
 }
 
+// lucide ArrowRight, the icon the client renders in the same spot.
+const ARROW_RIGHT =
+  '<svg class="shrink-0 text-[hsl(222,12%,55%)]" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+
+/**
+ * Blog posts tagged with this company in the Studio, one card each: eyebrow
+ * (guideLabel), title, arrow. The whole card is a plain <a href> so the links
+ * are in the HTML a crawler reads; card shell as faqSection. No guides, no
+ * section — not even the heading.
+ */
+function guidesSection(name: string, guides: CompanyGuide[]): string {
+  return join(
+    '<section class="mt-10">',
+    `<h2 class="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">${esc(name)} interview guides</h2>`,
+    ...guides.map((g) => {
+      const label = guideLabel(g.title);
+      return join(
+        `<a class="flex items-center gap-6 bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4 p-6" href="/blog/${esc(g.slug)}">`,
+        '<div class="min-w-0 flex-1">',
+        label && `<p class="text-xs font-medium text-[hsl(221,91%,60%)]">${esc(label)}</p>`,
+        `<h3 class="${label ? 'mt-2 ' : ''}text-base font-semibold text-[hsl(222,22%,15%)]">${esc(g.title)}</h3>`,
+        '</div>',
+        ARROW_RIGHT,
+        '</a>',
+      );
+    }),
+    '</section>',
+  );
+}
+
 function renderBody({
   name,
   slug,
   profile,
   intro,
   faq,
+  guides,
   posts,
   noteTotal,
   pageCount,
@@ -242,6 +275,8 @@ function renderBody({
   intro: string;
   /** companyFaq(); empty on /page/:n and on small companies. */
   faq: { question: string; answer: string }[];
+  /** fetchCompanyGuides(); empty on /page/:n. */
+  guides: CompanyGuide[];
   posts: PublicPost[];
   noteTotal: number;
   pageCount: number;
@@ -267,6 +302,8 @@ function renderBody({
     posts.length
       ? join(...posts.map((p) => noteCard(p, name)))
       : '<p class="text-sm text-[hsl(222,12%,45%)]">No published notes for this company yet.</p>',
+    // Notes, then guides, then FAQ; the client renders them in the same order.
+    guides.length && guidesSection(name, guides),
     // Between the cards and the pager (spec F3); the client renders it in the
     // same place.
     faq.length && faqSection(name, faq),
@@ -330,6 +367,7 @@ export async function renderCompanyPage(
   let breakdown: CompanyBreakdown | null = null;
   let posts: PublicPost[] = [];
   let feedTotal = 0;
+  let guides: CompanyGuide[] = [];
 
   try {
     row = (await directory()).find((c) => c.slug === slug);
@@ -339,11 +377,14 @@ export async function renderCompanyPage(
     // are not optional — without them there is no page. The breakdown follows
     // the profile's rule: 400/NOT_FOUND is null (no intro, no FAQ), a 5xx or a
     // timeout is a 503 for the whole page.
-    const [profileResult, breakdownResult, pageResult] = await Promise.all([
+    // Guides are best-effort (never throw) and only on the company page itself.
+    const [profileResult, breakdownResult, pageResult, guidesResult] = await Promise.all([
       fetchCompanyProfile(row.company),
       fetchCompanyBreakdown(row.company),
       collectPage(row.company, current),
+      current === null ? fetchCompanyGuides(slug) : Promise.resolve([]),
     ]);
+    guides = guidesResult;
     profile = profileResult;
     breakdown = breakdownResult;
     posts = pageResult.posts;
@@ -375,6 +416,7 @@ export async function renderCompanyPage(
     profile,
     intro,
     faq,
+    guides,
     posts,
     // The displayed count is the profile's, which is the one number the client
     // page shows too; the feed's total drives pagination and is never rendered.
@@ -432,6 +474,10 @@ export async function renderCompanyPage(
       posts,
       total: feedTotal,
       page: current,
+      guides,
+      // The client applies this as-is: it cannot see the rendered body, so it
+      // would get the word-floor half of the decision wrong.
+      noindex,
     }),
   ];
 

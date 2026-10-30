@@ -536,6 +536,50 @@ export function companyFaqJsonLd(name, breakdown) {
   };
 }
 
+/**
+ * Blog posts an editor tagged with this company (Studio field `post.company`,
+ * which stores the company page's slug). Shown on /interview-questions/:company
+ * between the notes and the FAQ — server render and client both run this query
+ * with `$company` set to the page slug, and both order with sortCompanyGuides.
+ */
+export const COMPANY_GUIDES_QUERY = `*[_type == "post" && company == $company && defined(slug.current)]{
+  title, "slug": slug.current, publishedAt
+}`;
+
+// Whole words, so "OA" does not match "OAuth" or "Koala".
+const isOaGuide = (title) =>
+  /\bOA\b/.test(String(title ?? '')) || /\bonline assessment\b/i.test(String(title ?? ''));
+
+/** OA posts first, then newest first by publishedAt. Returns a new array. */
+export function sortCompanyGuides(guides) {
+  return [...(guides ?? [])]
+    .filter((g) => g && g.slug && g.title)
+    .sort((a, b) => {
+      const oa = Number(isOaGuide(b.title)) - Number(isOaGuide(a.title));
+      if (oa) return oa;
+      return String(b.publishedAt ?? '').localeCompare(String(a.publishedAt ?? ''));
+    });
+}
+
+// The eyebrow on a guide card. Sanity has no role field on posts (category is
+// the blog-wide "interview-prep"), so it is read off the title. First match
+// wins; a title naming no known role gets no eyebrow rather than a guess.
+/** @type {[RegExp, string][]} */
+const GUIDE_LABELS = [
+  [/\bsoftware engineers?\b|\bSDE\b|\bSWE\b/i, 'Software Engineer'],
+  [/\bproduct managers?\b/i, 'Product Manager'],
+  [/\bdata scientists?\b/i, 'Data Scientist'],
+  [/\bAI engineers?\b/i, 'AI Engineer'],
+  [/\bmobile engineers?\b/i, 'Mobile Engineer'],
+];
+
+/** "Online Assessment", a role, or null. Shared by the server and the client. */
+export function guideLabel(title) {
+  if (isOaGuide(title)) return 'Online Assessment';
+  const hit = GUIDE_LABELS.find(([re]) => re.test(String(title ?? '')));
+  return hit ? hit[1] : null;
+}
+
 // eligiblePosts / collectPublicPosts / POST_FIRST_WAVE / POST_PAGE_BUDGET used
 // to live here and are gone with the surface they served.
 //

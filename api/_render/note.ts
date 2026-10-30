@@ -345,7 +345,11 @@ export async function renderNotePage(req: IncomingMessage, id: string): Promise<
   // itself — which is right: the discussion is not in this HTML, and a seed
   // claiming an empty thread would suppress the fetch and show a note with
   // comments as having none.
-  const seeds = [seedTag('__prerender_experience__', { post, hints })];
+  //
+  // `noindex` travels in the seed because the client can only re-run the
+  // content gate, not the word floor — recomputing it there flipped thin notes
+  // back to index after hydration.
+  const seeds = [seedTag('__prerender_experience__', { post, hints, noindex: gated || thin })];
 
   try {
     return { status: 200, html: await composeDocument(req, { head, body, seeds }) };

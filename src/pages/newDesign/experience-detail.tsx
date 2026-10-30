@@ -191,6 +191,11 @@ const PRERENDER_SEED = readPrerenderSeed<{
   post: ExperiencePost;
   comments?: Comment[];
   hints?: Record<string, AiHints>;
+  /**
+   * The server's decision: content gate OR body under the word floor. The
+   * client can only re-run the gate, so it applies this when present.
+   */
+  noindex?: boolean;
 }>('__prerender_experience__');
 
 // ═══════════════════════════════════════════════════════
@@ -550,6 +555,7 @@ export function ExperienceDetailPage() {
   // writes the same head tags a moment before this hook rewrites them, so the
   // rule has to have one definition.
   const seoTitle = post ? noteSeoTitle(post) : '';
+  const seoNoindex = seed?.noindex ?? (post ? !isIndexablePost(post) : true);
   useSeo(
     postLoading
       ? null
@@ -560,8 +566,8 @@ export function ExperienceDetailPage() {
           description: (post.summary || `A ${post.role} interview experience at ${post.company}.`).slice(0, 155),
           path: `/experience/${id}`,
           type: 'article',
-          noindex: !isIndexablePost(post),
-          jsonLd: isIndexablePost(post)
+          noindex: seoNoindex,
+          jsonLd: !seoNoindex
             ? [
                 {
                   '@context': 'https://schema.org',

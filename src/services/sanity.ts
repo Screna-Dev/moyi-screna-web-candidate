@@ -1,5 +1,7 @@
 import { createClient, type ClientConfig } from '@sanity/client';
 import imageUrlBuilder from '@sanity/image-url';
+// Plain .mjs manifest, shared with scripts/ and api/ — see scripts/routes.mjs.
+import { COMPANY_GUIDES_QUERY, sortCompanyGuides, guideLabel } from '../../scripts/routes.mjs';
 
 // Sanity Content Lake client for the blog.
 //
@@ -171,6 +173,25 @@ export async function getRelatedPosts(opts: {
     { seen },
   );
   return [...sameCategory, ...filler].slice(0, limit);
+}
+
+export interface CompanyGuide {
+  title: string;
+  slug: string;
+  publishedAt?: string;
+}
+
+/**
+ * Posts an editor tagged with this company (post.company = the company page's
+ * slug), OA first then newest first. Same query and order as the server render
+ * (api/_render/blog.ts).
+ */
+/** Eyebrow for a guide card ("Online Assessment", a role) or null. */
+export const companyGuideLabel = (title: string): string | null => guideLabel(title);
+
+export async function getCompanyGuides(companySlug: string): Promise<CompanyGuide[]> {
+  const rows = await sanityClient.fetch<CompanyGuide[]>(COMPANY_GUIDES_QUERY, { company: companySlug });
+  return sortCompanyGuides(rows) as CompanyGuide[];
 }
 
 // ---------------------------------------------------------------------------

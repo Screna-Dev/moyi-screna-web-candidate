@@ -82,13 +82,22 @@ function seedOf(html: string): any {
  */
 function mockBackend(
   total: number,
-  opts: { profile?: boolean; breakdown?: number | ReturnType<typeof breakdown> } = {},
+  opts: {
+    profile?: boolean;
+    breakdown?: number | ReturnType<typeof breakdown>;
+    /** The Sanity query's result rows; a number is an HTTP status. */
+    guides?: number | { title: string; slug: string; publishedAt?: string }[];
+  } = {},
 ) {
   const all = library(total);
   globalThis.fetch = vi.fn((input: unknown) => {
     const url = String(input);
     if (url.endsWith('/app.html')) return Promise.resolve(new Response(SHELL));
     if (url.includes('/companies/stats')) return Promise.resolve(json({ data: STATS }));
+    if (url.includes('.sanity.io/')) {
+      const g = opts.guides ?? [];
+      return Promise.resolve(typeof g === 'number' ? json({ error: 'boom' }, g) : json({ result: g }));
+    }
     if (url.includes('/companies/profile')) {
       return Promise.resolve(
         opts.profile === false
@@ -310,6 +319,23 @@ describe('renderCompanyPage — indexing versus existence', () => {
     expect(linkedIds(page.html).length).toBeGreaterThan(0);
   });
 
+  // The client applies the seed's decision as-is. Recomputing it there — with
+  // no word floor and no post count until the profile loads — is what flipped
+  // these pages back to `index` after hydration.
+  it('hands its indexing decision to the client in the seed', async () => {
+    mockBackend(25);
+    for (const n of [null, 1]) {
+      const page = await renderCompanyPage(req, 'tiny-startup', n);
+      expect(page.html).toContain('content="noindex, follow"');
+      expect(seedOf(page.html).noindex).toBe(true);
+    }
+    for (const n of [null, 2]) {
+      const page = await renderCompanyPage(req, 'meta', n);
+      expect(page.html).toContain('content="index, follow"');
+      expect(seedOf(page.html).noindex).toBe(false);
+    }
+  });
+
   it('404s a slug no company in the library matches', async () => {
     mockBackend(25);
     const page = await renderCompanyPage(req, 'this-slug-does-not-exist', null);
@@ -366,5 +392,66 @@ describe('renderCompanyPage — indexing versus existence', () => {
       return Promise.reject(new Error('ECONNRESET'));
     }) as never;
     expect((await fresh.renderCompanyPage(req, 'meta', null)).status).toBe(503);
+  });
+});
+
+describe('renderCompanyPage — blog guides', () => {
+  const GUIDES = [
+    { title: 'Meta system design walkthrough', slug: 'meta-system-design', publishedAt: '2026-09-01T00:00:00Z' },
+    { title: 'Meta behavioral round', slug: 'meta-behavioral', publishedAt: '2026-10-01T00:00:00Z' },
+    { title: 'Meta OA: what to expect', slug: 'meta-oa', publishedAt: '2026-01-01T00:00:00Z' },
+  ];
+  const blogLinks = (html: string) => [...html.matchAll(/href="\/blog\/([^"]+)"/g)].map((m) => m[1]);
+
+  it('links each tagged post, OA first, between the notes and the FAQ', async () => {
+    mockBackend(25, { guides: GUIDES });
+    const page = await renderCompanyPage(req, 'meta', null);
+    expect(page.status).toBe(200);
+    expect(blogLinks(page.html)).toEqual(['meta-oa', 'meta-behavioral', 'meta-system-design']);
+    const at = page.html.indexOf('Meta interview guides</h2>');
+    expect(at).toBeGreaterThan(page.html.lastIndexOf('href="/experience/'));
+    expect(at).toBeLessThan(page.html.indexOf('Meta interview FAQ'));
+    // Queried by the page slug, and handed to the client in the seed.
+    const sanityUrl = vi.mocked(globalThis.fetch).mock.calls.map((c) => String(c[0])).find((u) => u.includes('sanity.io'))!;
+    expect(new URL(sanityUrl).searchParams.get('$company')).toBe('"meta"');
+    expect(seedOf(page.html).guides.map((g: { slug: string }) => g.slug)).toEqual(['meta-oa', 'meta-behavioral', 'meta-system-design']);
+  });
+
+  // One card per guide, the whole card the link; eyebrow only when the title
+  // names something guideLabel knows.
+  it('renders each guide as a linked card with its eyebrow', async () => {
+    mockBackend(25, { guides: GUIDES });
+    const page = await renderCompanyPage(req, 'meta', null);
+    const card = page.html.match(/<a [^>]*href="\/blog\/meta-oa">([\s\S]*?)<\/a>/)![1];
+    expect(card).toContain('>Online Assessment</p>');
+    expect(card).toContain('Meta OA: what to expect</h3>');
+    expect(card).toContain('<svg');
+    const plain = page.html.match(/<a [^>]*href="\/blog\/meta-behavioral">([\s\S]*?)<\/a>/)![1];
+    expect(plain).not.toContain('</p>');
+  });
+
+  it('renders no section at all when nothing is tagged', async () => {
+    mockBackend(25, { guides: [] });
+    const page = await renderCompanyPage(req, 'meta', null);
+    expect(page.status).toBe(200);
+    expect(page.html).not.toContain('interview guides');
+    expect(blogLinks(page.html)).toEqual([]);
+  });
+
+  it('still renders the page when Sanity fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockBackend(25, { guides: 500 });
+    const page = await renderCompanyPage(req, 'meta', null);
+    expect(page.status).toBe(200);
+    expect(page.html).not.toContain('interview guides');
+    expect(linkedIds(page.html)).toHaveLength(10);
+  });
+
+  it('leaves the guides off /page/n', async () => {
+    mockBackend(25, { guides: GUIDES });
+    const page = await renderCompanyPage(req, 'meta', 2);
+    expect(page.status).toBe(200);
+    expect(page.html).not.toContain('interview guides');
+    expect(vi.mocked(globalThis.fetch).mock.calls.some((c) => String(c[0]).includes('sanity.io'))).toBe(false);
   });
 });

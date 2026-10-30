@@ -170,6 +170,7 @@ describe('renderNotePage — the happy path', () => {
     expect(seedJson.post.id).toBe(ID);
     expect(seedJson.hints.q1.pro_tip).toBeTruthy();
     expect('comments' in seedJson).toBe(false);
+    expect(seedJson.noindex).toBe(false);
   });
 
   it('indexes a single-question note and declares the wall', async () => {
@@ -284,6 +285,11 @@ describe('renderNotePage — the three outcomes', () => {
   });
 });
 
+function seedOf(html: string): any {
+  const raw = html.match(/id="__prerender_experience__"[^>]*>([\s\S]*?)<\/script>/)![1];
+  return JSON.parse(raw.replace(/\\u003c/g, '<'));
+}
+
 describe('renderNotePage — degradation', () => {
   it('renders the note when its hints fail, and marks the thin result noindex', async () => {
     mockFetch((url) => {
@@ -300,6 +306,9 @@ describe('renderNotePage — degradation', () => {
     // the only check that can, which is why it runs after rendering.
     expect(page.html).toContain('content="noindex, follow"');
     expect(page.html).not.toContain('"@type":"Article"');
+    // The client can re-run the gate but not the floor, so the decision rides
+    // in the seed — without it this note flipped back to `index` on hydration.
+    expect(seedOf(page.html).noindex).toBe(true);
   });
 
   it('noindexes a note with no questions but still serves it in full', async () => {

@@ -22,7 +22,7 @@ const SSR_DESTINATIONS = [
 ];
 
 const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
-  redirects: { source: string; destination: string; permanent?: boolean }[];
+  redirects: { source: string; destination: string; permanent?: boolean; statusCode?: number }[];
   rewrites: { source: string; destination: string }[];
 };
 
@@ -388,20 +388,29 @@ describe('/experience is open to everyone, on one document', () => {
 
 // Company display-name cleanup (company-display-name-mapping.en.csv): MERGE rows
 // whose slug changes 301 to the surviving company, CLEAR_COMPANY rows to the
-// directory. `:path*` takes /page/:n along with the company page itself.
+// directory. Each slug gets a bare rule plus a `/:path+` rule (`:path+` does
+// not match the bare URL); /page/:n lands on the new company's first page.
+// statusCode 301, not `permanent: true` — that one sends 308.
 describe('vercel.json company redirects', () => {
   const companyRedirects = vercel.redirects.filter((r) => r.source.startsWith('/interview-questions/'));
-  const slugOf = (src: string) => src.match(/^\/interview-questions\/([a-z0-9-]+)\/:path\*$/)?.[1];
+  const slugOf = (src: string) => src.match(/^\/interview-questions\/([a-z0-9-]+)(?:\/:path\+)?$/)?.[1];
 
-  it('has one rule per retired slug (82 merges + 10 clears)', () => {
-    expect(companyRedirects).toHaveLength(92);
-    expect(new Set(companyRedirects.map((r) => r.source)).size).toBe(92);
+  it('has a bare + /:path+ rule per retired slug (82 merges + 10 clears)', () => {
+    expect(companyRedirects).toHaveLength(184);
+    expect(new Set(companyRedirects.map((r) => r.source)).size).toBe(184);
+    const bare = companyRedirects.filter((r) => !r.source.endsWith('/:path+'));
+    expect(bare).toHaveLength(92);
+    for (const r of bare) {
+      const sub = companyRedirects.find((s) => s.source === `${r.source}/:path+`);
+      expect(sub?.destination, r.source).toBe(r.destination);
+    }
   });
 
-  it('is permanent and well-formed', () => {
+  it('is 301 and well-formed', () => {
     for (const r of companyRedirects) {
       expect(slugOf(r.source), r.source).toBeTruthy();
-      expect(r.permanent).toBe(true);
+      expect(r.statusCode).toBe(301);
+      expect(r.permanent).toBeUndefined();
       expect(r.destination).toMatch(/^\/interview-questions(\/[a-z0-9-]+)?$/);
     }
   });
@@ -418,6 +427,7 @@ describe('vercel.json company redirects', () => {
     ['/interview-questions/amazon-aws', '/interview-questions/amazon-web-services'],
     ['/interview-questions/early-stage-startup', '/interview-questions'],
   ])('%s -> %s', (source, destination) => {
-    expect(vercel.redirects.find((r) => r.source === `${source}/:path*`)?.destination).toBe(destination);
+    expect(vercel.redirects.find((r) => r.source === source)?.destination).toBe(destination);
+    expect(vercel.redirects.find((r) => r.source === `${source}/:path+`)?.destination).toBe(destination);
   });
 });

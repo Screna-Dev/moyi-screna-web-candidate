@@ -16,6 +16,7 @@ import {
   FileText,
   X,
   CheckCircle2,
+  ArrowRight,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
@@ -24,7 +25,7 @@ import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, s
          getCompanyProfile, getPublicCompanyProfile, getPublicCompanyBreakdown, getPostOptions } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
 import { buildAuthPath } from '@/utils/returnTo';
-import { companySlug, resolveCompanyName } from '@/utils/companySlug';
+import { companySlug, resolveCompanyName, MIN_POSTS_FOR_PAGE } from '@/utils/companySlug';
 import {
   COMPANY_PAGE_SIZE,
   companyPageCount,
@@ -33,6 +34,7 @@ import {
   companySeoTitle,
 } from '@/utils/companyPaging';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
+import { companyGuideLabel, type CompanyGuide } from '@/services/sanity';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -90,6 +92,14 @@ type CompanySeed = {
    * under the same URL would differ.
    */
   page?: number | null;
+  /** Blog posts tagged with this company, already sorted. Company page only. */
+  guides?: CompanyGuide[];
+  /**
+   * The server's indexing decision (below MIN_POSTS_FOR_PAGE, or a body under
+   * the word floor). Applied as-is: the client cannot see the rendered body,
+   * so recomputing would flip thin pages back to index after hydration.
+   */
+  noindex?: boolean;
 };
 const PRERENDER_SEED = readPrerenderSeed<CompanySeed>('__prerender_company__');
 
@@ -530,6 +540,32 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     [isPublic, archivePage, company.name, breakdown],
   );
   const descriptionLoading = isPublic ? breakdownLoading : profileLoading;
+
+  // ── Blog guides (public company page only) ──
+  // Posts an editor tagged with this company in the Studio. The server renders
+  // them into the HTML; the seed carries the same list so the client does not
+  // refetch. Without a seed (client-side navigation) one Sanity read. Any
+  // failure is no section, same as the server.
+  const [guides, setGuides] = useState<CompanyGuide[]>([]);
+  useEffect(() => {
+    if (!isPublic || archivePage !== null || !companyId) {
+      setGuides([]);
+      return;
+    }
+    if (seed && Array.isArray(seed.guides)) {
+      setGuides(seed.guides);
+      return;
+    }
+    let cancelled = false;
+    setGuides([]);
+    // Loaded on demand so the Sanity client stays out of this page's chunk.
+    import('@/services/sanity')
+      .then(({ getCompanyGuides }) => getCompanyGuides(companyId))
+      .then((rows) => { if (!cancelled) setGuides(rows); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, isPublic, archivePage]);
 
   // Header stats, sourced solely from GET /community/companies/profile
   // (published-post counts). We show a loading skeleton until it resolves and
@@ -1015,6 +1051,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // hide anything and must not be used to try to.
   const notesCountForSeo = noteTotal ?? posts.length;
   const archivePageCount = companyPageCount(archiveTotal ?? noteTotal ?? posts.length);
+  // Without a seed (client-side navigation) only the post-count half of the
+  // server's rule is available; the word floor is server-only.
+  const seoNoindex = seed?.noindex ?? ((profile?.postCount ?? 0) < MIN_POSTS_FOR_PAGE);
   useSeo(
     !isPublic
       ? {
@@ -1050,7 +1089,8 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               ? `/interview-questions/${companyId}`
               : `/interview-questions/${companyId}/page/${archivePage}`,
           type: 'article',
-          jsonLd: [
+          noindex: seoNoindex,
+          jsonLd: seoNoindex ? undefined : [
             {
               '@context': 'https://schema.org',
               '@type': 'Article',
@@ -1528,6 +1568,31 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     )}
                   </Button>
                 </div>
+              )}
+
+              {/* Interview guides — blog posts tagged with this company. Between
+                  the notes and the FAQ, as the server's guidesSection
+                  (api/_render/company.ts). <Link> renders a real <a href>. */}
+              {guides.length > 0 && (
+                <section className="mt-10">
+                  <h2 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">{company.name} interview guides</h2>
+                  {guides.map((g) => {
+                    const label = companyGuideLabel(g.title);
+                    return (
+                      <Link
+                        key={g.slug}
+                        to={`/blog/${g.slug}`}
+                        className="group flex items-center gap-6 bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4 p-6 transition-colors hover:border-[hsl(221,91%,60%)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          {label && <p className="text-xs font-medium text-[hsl(221,91%,60%)]">{label}</p>}
+                          <h3 className={`${label ? 'mt-2 ' : ''}text-base font-semibold text-[hsl(222,22%,15%)]`}>{g.title}</h3>
+                        </div>
+                        <ArrowRight className="w-5 h-5 shrink-0 text-[hsl(222,12%,55%)] transition-colors group-hover:text-[hsl(221,91%,60%)]" strokeWidth={1.5} />
+                      </Link>
+                    );
+                  })}
+                </section>
               )}
 
               {/* FAQ — company page of the public surface only, after the note
