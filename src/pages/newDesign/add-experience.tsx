@@ -8,7 +8,6 @@ import { Textarea } from '../../components/newDesign/ui/textarea';
 import { Label } from '../../components/newDesign/ui/label';
 import logoImg from '../../assets/Navbar.png';
 import { createPost, getPostOptions } from '../../services/CommunityService';
-import { ROLE_TO_ENUM, ROUND_TO_ENUM, CATEGORY_TO_ENUM, toRoleEnum, toRoundEnum, toCategoryEnum } from '../../utils/communityEnums';
 import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 
 // ─── Step definitions ──────────────────────────────────
@@ -927,17 +926,6 @@ export function AddExperiencePage() {
         }
         if (roundGroups.length) setRoundOptions(roundGroups.flatMap(g => g.options ?? []));
         if (categoryGroups.length) setTagGroups(categoryGroups.map(g => ({ label: g.category, tags: g.options ?? [] })));
-
-        // Flag any server option lacking an enum mapping — these fall back to
-        // an auto-derived UPPER_SNAKE value in to*Enum(), which may not match
-        // the backend. Surfaces frontend/backend drift during development.
-        if (import.meta.env?.DEV) {
-          const missing: string[] = [];
-          roleGroups.flatMap(g => g.options ?? []).forEach(r => { if (!ROLE_TO_ENUM[r]) missing.push(`role: ${r}`); });
-          roundGroups.flatMap(g => g.options ?? []).forEach(r => { if (!ROUND_TO_ENUM[r]) missing.push(`round: ${r}`); });
-          categoryGroups.flatMap(g => g.options ?? []).forEach(c => { if (!CATEGORY_TO_ENUM[c]) missing.push(`category: ${c}`); });
-          if (missing.length) console.warn('[add-experience] Server options with no enum mapping (using auto fallback):', missing);
-        }
       })
       .catch(() => { /* keep hardcoded fallbacks */ });
     return () => { cancelled = true; };
@@ -1058,14 +1046,14 @@ export function AddExperiencePage() {
         .filter(q => q.title.trim().length > 0)
         .map(q => ({
           title: q.title.trim(),
-          categories: q.tags.map(toCategoryEnum),
+          categories: q.tags.map(t => t.trim()).filter(Boolean),
           notes: q.notes.trim(),
         }));
       await createPost({
         company,
-        role: toRoleEnum(role),
+        role: role.trim(),
         level,
-        round: toRoundEnum(round),
+        round: round.trim(),
         date: monthYearToISO(date) ?? new Date().toISOString(),
         outcome,
         location,

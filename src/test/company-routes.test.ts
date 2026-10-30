@@ -6,6 +6,8 @@ import {
   flattenCompanyStats,
   minWordsFor,
   MIN_POSTS_FOR_PAGE,
+  sortCompanyGuides,
+  guideLabel,
 } from '../../scripts/routes.mjs';
 
 // These helpers decide which company pages are indexed, what URL each gets, and
@@ -170,5 +172,51 @@ describe('eligibleCompanies', () => {
   it('drops rows whose company name slugifies to nothing', () => {
     const junk = { categories: [{ category: 'A', companies: [{ company: '???', postCount: 99 }] }] };
     expect(eligibleCompanies(junk)).toEqual([]);
+  });
+});
+
+describe('sortCompanyGuides', () => {
+  const g = (title: string, publishedAt: string) => ({ title, slug: title, publishedAt });
+
+  it('puts OA / Online Assessment posts first, the rest newest first', () => {
+    const sorted = sortCompanyGuides([
+      g('Older guide', '2026-01-01'),
+      g('Newest guide', '2026-10-01'),
+      g('Google OA questions', '2025-06-01'),
+      g('Acing the online assessment', '2025-01-01'),
+    ]);
+    expect(sorted.map((x: { title: string }) => x.title)).toEqual([
+      'Google OA questions',
+      'Acing the online assessment',
+      'Newest guide',
+      'Older guide',
+    ]);
+  });
+
+  it('matches OA as a whole word only', () => {
+    const sorted = sortCompanyGuides([g('OAuth deep dive', '2026-01-01'), g('Newer', '2026-02-01')]);
+    expect(sorted.map((x: { title: string }) => x.title)).toEqual(['Newer', 'OAuth deep dive']);
+  });
+
+  it('drops rows without a slug or title', () => {
+    expect(sortCompanyGuides([{ title: 'x' }, { slug: 'y' }, null])).toEqual([]);
+  });
+});
+
+describe('guideLabel', () => {
+  it.each([
+    ['21 Google Online Assessment Reports 2026, Including AI Tasks', 'Online Assessment'],
+    // OA wins over a role in the same title.
+    ['6 Roblox OA Reports 2026: SWE vs DS Questions & Format', 'Online Assessment'],
+    ['Google Software Engineer Interview 2026: A Real Onsite Coding Question', 'Software Engineer'],
+    ['Amazon SDE Interview in 2026: What to Expect', 'Software Engineer'],
+    ['How Uber Tests Senior Product Managers: A Ride Cancellation Case', 'Product Manager'],
+    ['Google Data Scientist Interview 2026: Unicode, Streaming Constraints', 'Data Scientist'],
+    ['Senior OpenAI AI Engineer Interview: Adversarial Algorithms', 'AI Engineer'],
+    ['OpenAI Mobile Engineer Interview 2026: Jetpack Compose', 'Mobile Engineer'],
+    // No known role: no eyebrow rather than a guess. "OAuth" is not OA.
+    ['OAuth deep dive', null],
+  ])('%s -> %s', (title, label) => {
+    expect(guideLabel(title)).toBe(label);
   });
 });

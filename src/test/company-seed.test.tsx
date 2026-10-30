@@ -53,6 +53,9 @@ vi.hoisted(() => {
     posts: Array.from({ length: 10 }, (_, i) => card(i + 1)),
     total: 40,
     page: null,
+    // The server's call (here: a body under the word floor). 40 notes clears
+    // MIN_POSTS_FOR_PAGE, so only the seed can make this page noindex.
+    noindex: true,
   };
   const tag = document.createElement('script');
   tag.type = 'application/json';
@@ -160,6 +163,16 @@ describe('F2 — embedded first page and filters', () => {
     await waitFor(() =>
       expect(companyMocks.community.getPosts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'HOT' })),
     );
+  });
+});
+
+describe('embedded copy — indexing', () => {
+  it("keeps the server's noindex and writes no JSON-LD", async () => {
+    renderCompany();
+    await screen.findByText('Seeded summary 1.');
+    await waitFor(() => expect(document.documentElement.getAttribute('data-seo-ready')).toBe('1'));
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow');
+    expect(document.head.querySelector('script[data-seo]')).toBeNull();
   });
 });
 
