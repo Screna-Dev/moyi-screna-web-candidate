@@ -37,7 +37,7 @@ const LOGO_MAX_BYTES = 5 * 1024 * 1024;
 const selectCls =
   'w-full bg-white border border-[#e1e4ea] rounded-lg px-3 py-2 text-[14px] text-[#1e232f] outline-none focus:border-[#3c77f6] focus:ring-2 focus:ring-[rgba(60,119,246,0.15)]';
 
-export function CompanyProfileView({ returnJobId }: { returnJobId?: string }) {
+export function CompanyProfileView({ returnJobId, returnToWizard }: { returnJobId?: string; returnToWizard?: boolean }) {
   const { org, status, setOrg, reload } = useOrg();
   const { go } = useEmployerStore();
 
@@ -71,8 +71,8 @@ export function CompanyProfileView({ returnJobId }: { returnJobId?: string }) {
       org={org}
       onSaved={setOrg}
       onReload={reload}
-      onDone={() => go(returnJobId ? { name: 'wizard', jobId: returnJobId } : { name: 'dashboard' })}
-      returnToJob={!!returnJobId}
+      onDone={() => go(returnJobId || returnToWizard ? { name: 'wizard', jobId: returnJobId } : { name: 'dashboard' })}
+      returnToJob={!!returnJobId || !!returnToWizard}
     />
   );
 }

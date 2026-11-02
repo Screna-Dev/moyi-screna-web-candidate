@@ -53,6 +53,7 @@ import {
   todayIn,
 } from './jobMapping';
 import { FIELD_LABELS } from './orgOptions';
+import { useOrg } from './orgContext';
 import { ApplicationWindowSection, SponsorshipCard } from './wizardSections';
 import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
@@ -347,6 +348,21 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkout, api?.id]);
 
+  // ── Company profile gate ──
+  // Publishing needs a complete company profile, so say so up front: once per
+  // wizard visit, as soon as the org is known and the job is a draft. Not on
+  // the way back from Stripe (the employer was mid-publish already).
+  const { org, status: orgStatus } = useOrg();
+  const profileMissing = orgStatus === 'ready' && !!org && !org.completion.profileComplete ? org.completion.missingFields.map((f) => FIELD_LABELS[f]) : null;
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profilePrompted = useRef(false);
+  const jobLoaded = !jobId || !!api;
+  useEffect(() => {
+    if (profilePrompted.current || checkout || !profileMissing || !jobLoaded || !draft) return;
+    profilePrompted.current = true;
+    setProfileOpen(true);
+  }, [profileMissing, jobLoaded, draft, checkout]);
+
   // ── Render guards ──
   if (loadError || (!job && jobId)) {
     return (
@@ -570,6 +586,14 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
 
   const onLeave = () => (dirty ? setLeaveOpen(true) : go({ name: 'jobs' }));
 
+  // Keep the draft before leaving for the profile; a job that was never saved
+  // (still blank) comes back to a fresh wizard instead.
+  const toProfile = async () => {
+    if (dirty && !(await saveDraft(false))) return;
+    setProfileOpen(false);
+    go(api ? { name: 'profile', returnJobId: api.id } : { name: 'profile', returnToWizard: true });
+  };
+
   const publish = async () => {
     if (!api || busy) return;
     setBusy('Publishing…');
@@ -584,9 +608,10 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
         const missing = errorData<{ missing?: string[] }>(err)?.missing ?? [];
         setCheck((c) => (c ? { ...c, ready: false, missing } : c));
         toast.error(`Before publishing, fix: ${missing.map((m) => MISSING[m]?.label ?? m).join(', ')}`);
+      } else if (code === 'ORGANIZATION_PROFILE_INCOMPLETE') {
+        setProfileOpen(true);
       } else {
-        if (code === 'ORGANIZATION_PROFILE_INCOMPLETE') toast.error('Complete your company profile before publishing.');
-        else toast.error(errorText(err, 'Could not publish the job.'));
+        toast.error(errorText(err, 'Could not publish the job.'));
       }
       void refreshCheck(api.id);
     } finally {
@@ -708,7 +733,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
             <>
               <StepPreview {...stepProps} />
               {draft && (
-                <PublishBlockers check={check} loading={checkLoading} onFix={(s) => void goStep(s)} onProfile={() => go({ name: 'profile', returnJobId: api?.id })} onBuy={() => setCreditsOpen(true)} />
+                <PublishBlockers check={check} loading={checkLoading} onFix={(s) => void goStep(s)} onProfile={() => void toProfile()} onBuy={() => setCreditsOpen(true)} />
               )}
             </>
           )}
@@ -804,6 +829,34 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
           <input type="checkbox" checked={publishAck} onChange={(e) => setPublishAck(e.target.checked)} className="w-4 h-4 accent-[#3c77f6]" />
           I confirm this job and interview are ready to go live.
         </label>
+      </Dialog>
+
+      {/* Company profile incomplete */}
+      <Dialog
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        title="Complete your company profile"
+        icon={<AlertTriangle size={20} className="text-[#d97706] shrink-0 mt-0.5" />}
+        width={480}
+        actions={
+          <>
+            <Button disabled={!!busy} onClick={() => setProfileOpen(false)}>
+              Later
+            </Button>
+            <Button variant="primary" disabled={!!busy} onClick={() => void toProfile()}>
+              {busy === 'Saving…' ? 'Saving…' : 'Complete company profile'} <ArrowRight size={15} />
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[14px] text-[#5a6172]">
+          Candidates see your company profile with every job, so it must be complete before you can publish. You can keep drafting this job and finish the profile later.
+        </p>
+        {!!profileMissing?.length && (
+          <div className="bg-[#f9fafb] rounded-xl p-4 text-[13px] text-[#1e232f]">
+            <span className="font-medium">Still needed:</span> {profileMissing.join(', ')}.
+          </div>
+        )}
       </Dialog>
 
       {api && <BuyCreditsDialog open={creditsOpen} onClose={() => setCreditsOpen(false)} jobId={api.id} check={check} beforeCheckout={() => saveDraft(false)} />}

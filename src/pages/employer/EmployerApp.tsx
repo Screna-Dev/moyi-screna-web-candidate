@@ -110,7 +110,7 @@ function ViewBody() {
     case 'plan':
       return <PlanUsageView />;
     case 'profile':
-      return <CompanyProfileView returnJobId={view.returnJobId} />;
+      return <CompanyProfileView returnJobId={view.returnJobId} returnToWizard={view.returnToWizard} />;
   }
 }
 

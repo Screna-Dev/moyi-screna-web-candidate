@@ -190,5 +190,6 @@ export type EmployerView =
   // checkout: back from Stripe after buying Interview Credits (employer app).
   | { name: 'wizard'; jobId?: string; checkout?: 'success' | 'cancelled' }
   | { name: 'plan' }
-  // Employer-only. returnJobId: came from the wizard's publish gate.
-  | { name: 'profile'; returnJobId?: string };
+  // Employer-only. returnJobId / returnToWizard: came from the wizard's
+  // profile gate (a saved draft, or a new job not saved yet).
+  | { name: 'profile'; returnJobId?: string; returnToWizard?: boolean };
