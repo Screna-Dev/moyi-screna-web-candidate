@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Loader2, Mic, UploadCloud, Video, X } from "lucide-react";
+import { FileText, Loader2, Mic, ShieldCheck, UploadCloud, Video, X } from "lucide-react";
 import { useUserPlan } from "@/hooks/useUserPlan";
 import { uploadResumeAndWait } from "@/services/ProfileServices";
 import { emitResumeUploaded } from "@/hooks/useResumeUploaded";
@@ -60,10 +60,10 @@ export function SecondaryButton({ children, onClick, disabled }: { children: Rea
   );
 }
 
-function Modal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+function Modal({ children, onClose, width = 520 }: { children: ReactNode; onClose: () => void; width?: number }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.35)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="relative bg-white rounded-2xl w-[520px] max-w-full shadow-[0px_24px_48px_rgba(0,0,0,0.12)] flex flex-col gap-4 p-7">
+      <div style={{ width }} className="relative bg-white rounded-2xl max-w-full max-h-[90vh] overflow-y-auto shadow-[0px_24px_48px_rgba(0,0,0,0.12)] flex flex-col gap-4 p-7">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 p-1 text-[#9ba1b0] hover:text-[#5a6172]" aria-label="Close">
           <X size={16} />
         </button>
@@ -103,6 +103,8 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   // RESUME_REQUIRED on start: the interview service has no parsed resume yet
   // (upload failed to parse or is still parsing). Nothing was charged.
   const [needResume, setNeedResume] = useState(false);
+  // Authorization step: shown before every start or rejoin, never remembered.
+  const [consent, setConsent] = useState(false);
   const rejoin = app.interviewStatus === "IN_PROGRESS";
   const candidatePays = app.interviewPayer === "CANDIDATE";
   const cost = interviewCost(app.interviewDurationMinutes, video);
@@ -153,6 +155,22 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     return <QuickInterviewModal onClose={onClose} minutes={app.interviewDurationMinutes} balance={creditBalance} required={cost} onBuy={() => void buy()} buying={busy} />;
   }
 
+  if (consent) {
+    return (
+      <InterviewConsent
+        companyName={app.companyName}
+        busy={busy}
+        error={error}
+        onBack={() => {
+          setConsent(false);
+          setError("");
+        }}
+        onClose={onClose}
+        onAgree={() => void start()}
+      />
+    );
+  }
+
   return (
     <Modal onClose={onClose}>
       <h2 className="text-[#1e232f] text-[20px] font-semibold leading-7 pr-6" style={{ fontFamily: font.semibold }}>
@@ -194,9 +212,91 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
       {error && <p className="text-[#dc2626] text-[13px]" style={{ fontFamily: font.regular }}>{error}</p>}
       <div className="flex justify-end gap-3">
         <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
-        <PrimaryButton onClick={() => void start()} disabled={busy}>
-          {busy && <Loader2 size={14} className="animate-spin" />}
+        <PrimaryButton onClick={() => setConsent(true)} disabled={busy}>
           {rejoin ? "Rejoin interview" : "Start AI interview"}
+        </PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+// PLACEHOLDER copy: legal will supply the final authorization text. Replace
+// these sections (and the checkbox label) as a whole when it arrives.
+const CONSENT_SECTIONS = (companyName: string) => [
+  {
+    title: "Recording",
+    body: "Your interview is recorded, including your voice and, for a video interview, your camera. A transcript is created from the recording.",
+  },
+  {
+    title: "AI assessment",
+    body: "Screna uses AI to assess your answers against the criteria set for this role. The assessment supports the recruiter's decision; it does not make it.",
+  },
+  {
+    title: "Sharing with the employer",
+    body: `${companyName} receives your assessment, transcript, recording and the resume on your profile for this application.`,
+  },
+  {
+    title: "Your choice",
+    body: "You can close this window now and nothing will be recorded or charged.",
+  },
+];
+
+// Shown before every career interview. Agreeing calls the start endpoint.
+function InterviewConsent({
+  companyName,
+  busy,
+  error,
+  onAgree,
+  onBack,
+  onClose,
+}: {
+  companyName: string;
+  busy: boolean;
+  error: string;
+  onAgree: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  return (
+    <Modal onClose={onClose} width={600}>
+      <div className="flex items-start gap-3 pr-6">
+        <span className="w-10 h-10 rounded-full bg-[#eef4ff] text-[#3c77f6] flex items-center justify-center shrink-0">
+          <ShieldCheck size={20} />
+        </span>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-[#1e232f] text-[20px] font-semibold leading-7" style={{ fontFamily: font.semibold }}>
+            Before your interview
+          </h2>
+          <p className="text-[#5a6172] text-[14px] leading-5" style={{ fontFamily: font.regular }}>
+            Please read how your interview is recorded and used, then confirm to continue.
+          </p>
+        </div>
+      </div>
+      <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-3 max-h-[320px] overflow-y-auto">
+        {CONSENT_SECTIONS(companyName).map((s) => (
+          <div key={s.title} className="flex flex-col gap-0.5">
+            <p className="text-[#1e232f] text-[13px] font-semibold" style={{ fontFamily: font.semibold }}>
+              {s.title}
+            </p>
+            <p className="text-[#5a6172] text-[13px] leading-5" style={{ fontFamily: font.regular }}>
+              {s.body}
+            </p>
+          </div>
+        ))}
+      </div>
+      <label className="flex items-start gap-2 text-[13px] text-[#1e232f] cursor-pointer" style={{ fontFamily: font.regular }}>
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="w-4 h-4 mt-0.5 accent-[#3c77f6]" />
+        I have read the above and agree to the recording, AI assessment and sharing of my interview.
+      </label>
+      {error && <p className="text-[#dc2626] text-[13px]" style={{ fontFamily: font.regular }}>{error}</p>}
+      <div className="flex justify-end gap-3">
+        <SecondaryButton onClick={onBack} disabled={busy}>
+          Back
+        </SecondaryButton>
+        <PrimaryButton onClick={onAgree} disabled={!agreed || busy}>
+          {busy && <Loader2 size={14} className="animate-spin" />}
+          Agree and continue
         </PrimaryButton>
       </div>
     </Modal>

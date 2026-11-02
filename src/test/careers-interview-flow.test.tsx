@@ -75,6 +75,42 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// Start → authorization step → agree.
+function agreeAndStart() {
+  fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+}
+
+// ─── Authorization before every interview ─────────────────────────────────────
+
+describe('start interview: authorization', () => {
+  it('asks for consent before starting, and starts only after agreeing', async () => {
+    api.startCareerInterview.mockResolvedValueOnce(session);
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+    expect(screen.getByText('Before your interview')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agree and continue' })).toBeDisabled();
+    expect(api.startCareerInterview).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+    await waitFor(() => expect(api.startCareerInterview).toHaveBeenCalledTimes(1));
+  });
+
+  it('asks again on every new dialog', () => {
+    const { unmount } = render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    unmount();
+
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+});
+
 // ─── RESUME_REQUIRED when starting ────────────────────────────────────────────
 
 describe('start interview: RESUME_REQUIRED', () => {
@@ -82,7 +118,7 @@ describe('start interview: RESUME_REQUIRED', () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('RESUME_REQUIRED')).mockResolvedValueOnce(session);
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+    agreeAndStart();
     expect(await screen.findByText('Upload your resume again')).toBeInTheDocument();
     expect(screen.getByText(/Nothing was charged/)).toBeInTheDocument();
 
