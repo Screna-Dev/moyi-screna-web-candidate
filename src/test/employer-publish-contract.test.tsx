@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { toast } from 'sonner';
@@ -9,6 +10,8 @@ import { windowLabel } from '@/components/admin/console/pages/employer/views/wiz
 import { mockCompanies } from '@/components/admin/console/pages/employer/mockData';
 import { HiringGuide } from '@/components/admin/console/pages/employer/views/HiringGuide';
 import { EmployerJobWizard } from '@/pages/employer/EmployerJobWizard';
+import { OrgContext } from '@/pages/employer/orgContext';
+import type { Organization } from '@/pages/employer/employerApi';
 
 // Publish contract of 2026-10-20: publishing is free, publish-check gates on
 // `ready` only, and sponsorshipUnfunded is a warning, not a blocker.
@@ -201,5 +204,51 @@ describe('HiringGuide credits copy', () => {
     expect(screen.getByText('Publishing is free.')).toBeInTheDocument();
     expect(screen.getByText('No credits are used to publish a job.')).toBeInTheDocument();
     expect(screen.queryByText(/Publishing uses 1 Interview Credit/)).not.toBeInTheDocument();
+  });
+});
+
+// ─── Company profile gate ─────────────────────────────────────────────────────
+
+describe('EmployerJobWizard company profile gate', () => {
+  const withOrg = (profileComplete: boolean, ui: ReactElement) => {
+    const org = {
+      id: 'org-1',
+      completion: { percent: profileComplete ? 100 : 60, profileComplete, missingFields: profileComplete ? [] : ['logo', 'description'] },
+    } as unknown as Organization;
+    return <OrgContext.Provider value={{ org, status: 'ready', setOrg: () => {}, reload: () => {} }}>{ui}</OrgContext.Provider>;
+  };
+
+  beforeEach(() => {
+    go.mockReset();
+    api.getJob.mockResolvedValue(apiJob());
+    api.getPublishCheck.mockResolvedValue(check());
+  });
+
+  it('prompts on entering a draft with an incomplete profile, and links to it', async () => {
+    render(withOrg(false, <EmployerJobWizard jobId="job-1" />));
+    expect(await screen.findByText('Complete your company profile')).toBeInTheDocument();
+    expect(screen.getByText(/Company logo, Company description/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Complete company profile/ }));
+    await waitFor(() => expect(go).toHaveBeenCalledWith({ name: 'profile', returnJobId: 'job-1' }));
+  });
+
+  it('"Later" closes it and keeps the wizard', async () => {
+    render(withOrg(false, <EmployerJobWizard jobId="job-1" />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Later' }));
+    expect(screen.queryByText('Complete your company profile')).not.toBeInTheDocument();
+    expect(go).not.toHaveBeenCalled();
+  });
+
+  it('a new job returns to a fresh wizard', async () => {
+    render(withOrg(false, <EmployerJobWizard />));
+    fireEvent.click(await screen.findByRole('button', { name: /Complete company profile/ }));
+    expect(go).toHaveBeenCalledWith({ name: 'profile', returnToWizard: true });
+  });
+
+  it('does not prompt when the profile is complete', async () => {
+    render(withOrg(true, <EmployerJobWizard jobId="job-1" />));
+    await waitFor(() => expect(api.getJob).toHaveBeenCalled());
+    expect(screen.queryByText('Complete your company profile')).not.toBeInTheDocument();
   });
 });

@@ -53,7 +53,7 @@ import {
   todayIn,
 } from './jobMapping';
 import { FIELD_LABELS } from './orgOptions';
-import { useOrg } from './orgContext';
+import { useOrgIfAny } from './orgContext';
 import { ApplicationWindowSection, SponsorshipCard } from './wizardSections';
 import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
@@ -352,8 +352,9 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   // Publishing needs a complete company profile, so say so up front: once per
   // wizard visit, as soon as the org is known and the job is a draft. Not on
   // the way back from Stripe (the employer was mid-publish already).
-  const { org, status: orgStatus } = useOrg();
-  const profileMissing = orgStatus === 'ready' && !!org && !org.completion.profileComplete ? org.completion.missingFields.map((f) => FIELD_LABELS[f]) : null;
+  const orgState = useOrgIfAny();
+  const org = orgState?.status === 'ready' ? orgState.org : null;
+  const profileMissing = org && !org.completion.profileComplete ? org.completion.missingFields.map((f) => FIELD_LABELS[f]) : null;
   const [profileOpen, setProfileOpen] = useState(false);
   const profilePrompted = useRef(false);
   const jobLoaded = !jobId || !!api;

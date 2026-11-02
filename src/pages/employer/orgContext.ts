@@ -17,3 +17,8 @@ export function useOrg() {
   if (!ctx) throw new Error('useOrg must be used within EmployerApp');
   return ctx;
 }
+
+// Same, but null outside EmployerApp (the wizard renders without it in tests).
+export function useOrgIfAny() {
+  return useContext(OrgContext);
+}
