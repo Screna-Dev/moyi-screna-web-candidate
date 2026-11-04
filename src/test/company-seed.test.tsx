@@ -13,7 +13,7 @@
  * vi.hoisted — before the page module loads.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import {
   companyMocks,
@@ -42,7 +42,7 @@ vi.hoisted(() => {
     questions: [{ id: `sq-${i}`, title: 'Design a rate limiter', categories: [], notes: `Seeded sentence ${i}.` }],
   });
   const seed = {
-    profile: { displayName: 'Meta', category: 'FAANG / Big Tech', postCount: 40 },
+    profile: { displayName: 'Meta', slug: 'meta', category: 'FAANG / Big Tech', postCount: 40 },
     breakdown: {
       company: 'Meta',
       totalPosts: 40,
@@ -53,6 +53,12 @@ vi.hoisted(() => {
     posts: Array.from({ length: 10 }, (_, i) => card(i + 1)),
     total: 40,
     page: null,
+    // The server always embeds the role links; with them there is no client
+    // count to run.
+    roleLinks: [
+      { slug: 'software-engineer', label: 'Software Engineer', count: 30 },
+      { slug: 'data-scientist', label: 'Data Scientist', count: 10 },
+    ],
     // The server's call (here: a body under the word floor). 40 notes clears
     // MIN_POSTS_FOR_PAGE, so only the seed can make this page noindex.
     noindex: true,
@@ -67,10 +73,6 @@ vi.hoisted(() => {
 vi.mock('posthog-js/react', () => ({ usePostHog: () => stablePosthog }));
 vi.mock('@/services/CommunityService', async (orig) => ({ ...(await orig<object>()), ...companyMocks.community }));
 vi.mock('@/services/api', async (orig) => ({ ...(await orig<object>()), hasStoredSession: () => companyMocks.session.signedIn }));
-vi.mock('@/utils/companySlug', async (orig) => ({
-  ...(await orig<object>()),
-  resolveCompanyName: () => Promise.resolve({ name: 'Meta', exact: true }),
-}));
 vi.mock('@/components/newDesign/interview-insights/filter-popovers', () => filterPopoversMock);
 vi.mock('@/components/newDesign/interview-insights/quick-mock', () => ({ CompanyMockLauncher: () => null }));
 vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ children }: any) => <div>{children}</div> }));
@@ -120,39 +122,36 @@ describe('F2 — embedded first page and filters', () => {
     expect(feedCalls()).toEqual([]);
   });
 
-  it('fetches with the role when one is applied, and again without it when cleared', async () => {
+  // The public page has no Role filter: the role links are the way to a role,
+  // and each is a URL of its own.
+  it('replaces the Role filter with the embedded role links', async () => {
     setSignedIn(true);
     setPlan('Advanced');
-    companyMocks.community.getPosts.mockResolvedValue({ data: { data: [] } });
     renderCompany();
     await screen.findByText('Seeded summary 1.');
-
-    fireEvent.click(screen.getByRole('button', { name: 'apply role' }));
-    await waitFor(() =>
-      expect(companyMocks.community.getPosts).toHaveBeenLastCalledWith(
-        expect.objectContaining({ company: 'Meta', role: 'Software Engineer', page: 0 }),
-      ),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'clear role' }));
-    await waitFor(() => expect(companyMocks.community.getPosts).toHaveBeenCalledTimes(2));
-    expect(companyMocks.community.getPosts.mock.calls[1][0]).not.toHaveProperty('role');
-    // Cleared, but not back to the embedded ten: the feed answered empty.
-    await waitFor(() => expect(screen.queryByText('Seeded summary 1.')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'apply role' })).toBeNull();
+    const bar = screen.getByRole('navigation', { name: 'Interview questions by role' });
+    const links = [...bar.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links).toEqual([
+      ['All', '/interview-questions/meta'],
+      ['Software Engineer30', '/interview-questions/meta/software-engineer'],
+      ['Data Scientist10', '/interview-questions/meta/data-scientist'],
+    ]);
+    expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('All');
+    // The closing section repeats the same links.
+    expect(screen.getByRole('heading', { name: 'Meta interview guides by role' })).toBeInTheDocument();
   });
 
-  it('fetches with filters restored from the session on a refresh', async () => {
+  // A role restored from the session would filter the feed with no control
+  // left on the page to clear it.
+  it('ignores a role restored from the session, and keeps the embedded ten', async () => {
     setSignedIn(true);
     setPlan('Advanced');
     saveFilters('meta', { role: 'Software Engineer' });
     renderCompany();
-    await waitFor(() =>
-      expect(companyMocks.community.getPosts).toHaveBeenCalledWith(
-        expect.objectContaining({ role: 'Software Engineer', page: 0 }),
-      ),
-    );
+    expect(await screen.findByText('Seeded summary 1.')).toBeInTheDocument();
     await settle();
-    expect(screen.queryByText('Seeded summary 1.')).toBeNull();
+    expect(feedCalls()).toEqual([]);
   });
 
   it('fetches with a restored sort', async () => {

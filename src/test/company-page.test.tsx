@@ -5,6 +5,7 @@
  * Covers:
  *   • the Free/Basic preview on note cards (trimmed cards get an upgrade line)
  *   • the intro paragraph + FAQ built from companies/breakdown (public page only)
+ *   • the company × role page (/interview-questions/:company/:role)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
@@ -20,6 +21,7 @@ import {
   FAQ_Q1,
   FAQ_Q2,
   INTRO,
+  PROFILE,
   SUMMARY,
   stablePosthog,
   passesMock,
@@ -31,10 +33,6 @@ const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (orig) => ({ ...(await orig<object>()), useNavigate: () => mockNavigate }));
 vi.mock('@/services/CommunityService', async (orig) => ({ ...(await orig<object>()), ...companyMocks.community }));
 vi.mock('@/services/api', async (orig) => ({ ...(await orig<object>()), hasStoredSession: () => companyMocks.session.signedIn }));
-vi.mock('@/utils/companySlug', async (orig) => ({
-  ...(await orig<object>()),
-  resolveCompanyName: () => Promise.resolve({ name: 'Meta', exact: true }),
-}));
 vi.mock('@/components/newDesign/interview-insights/filter-popovers', () => filterPopoversMock);
 vi.mock('@/components/newDesign/interview-insights/quick-mock', () => ({ CompanyMockLauncher: () => null }));
 vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ children }: any) => <div>{children}</div> }));
@@ -42,6 +40,10 @@ vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ ch
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => companyMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => companyMocks.plan() }));
 vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => passesMock() }));
+// The role links' client-side count is one search per role; stubbed so the
+// feed assertions below count feed requests only.
+const roleLinksMock = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/companyRole', async (orig) => ({ ...(await orig<object>()), getCompanyRoleLinks: roleLinksMock }));
 
 import { CompanyDetailPage } from '@/pages/newDesign/company-detail';
 
@@ -51,6 +53,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/interview-questions/:companyId" element={<CompanyDetailPage isPublic />} />
         <Route path="/interview-questions/:companyId/page/:n" element={<CompanyDetailPage isPublic />} />
+        <Route path="/interview-questions/:companyId/:role" element={<CompanyDetailPage isPublic />} />
         <Route path="/interview-insights/:companyId" element={<CompanyDetailPage />} />
       </Routes>
     </MemoryRouter>,
@@ -70,6 +73,35 @@ beforeEach(() => {
   setPlan('Free');
   setPass(null);
   defaultAnswers();
+  roleLinksMock.mockResolvedValue([]);
+});
+
+describe('company page — identity from the slug', () => {
+  // The URL segment is the backend's slug; the profile is looked up by it and
+  // every other endpoint is queried with the profile's displayName.
+  it('looks the profile up by slug and the feed by its displayName', async () => {
+    companyMocks.community.getPublicCompanyProfile.mockResolvedValue({
+      data: { data: { ...PROFILE, displayName: 'AT&T', slug: 'at-t' } },
+    });
+    renderAt('/interview-questions/at-t');
+    await waitFor(() => expect(companyMocks.community.getPublicPosts).toHaveBeenCalled());
+    expect(companyMocks.community.getPublicCompanyProfile).toHaveBeenCalledWith({ slug: 'at-t' });
+    expect(companyMocks.community.getPublicPosts.mock.calls[0][0]).toMatchObject({ company: 'AT&T' });
+    expect(companyMocks.community.getPublicCompanyBreakdown).toHaveBeenCalledWith('AT&T');
+  });
+
+  // Without a company, the public search answers with site-wide notes — which
+  // would render every company's notes under this heading.
+  it('asks for no notes when the profile is NOT_FOUND', async () => {
+    companyMocks.community.getPublicCompanyProfile.mockRejectedValue({
+      response: { status: 400, data: { status: 'ERROR', errorCode: 'NOT_FOUND' } },
+    });
+    renderAt('/interview-questions/no-such-company');
+    await waitFor(() => expect(companyMocks.community.getPublicCompanyProfile).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(companyMocks.community.getPublicPosts).not.toHaveBeenCalled();
+    expect(companyMocks.community.getPublicCompanyBreakdown).not.toHaveBeenCalled();
+  });
 });
 
 describe('company page — Free/Basic preview on cards', () => {
@@ -310,5 +342,150 @@ describe('company page — Load more, FAQ and pager', () => {
     renderAt('/interview-insights/meta');
     expect(await screen.findByRole('button', { name: 'Load more experiences' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'All notes, oldest first' })).toBeNull();
+  });
+});
+
+describe('company × role page', () => {
+  const roleFeed = (n: number, total: number) => ({
+    data: { data: { posts: Array.from({ length: n }, (_, i) => feedPost(`swe-${i}`)), total, size: 10, page: 0 } },
+  });
+
+  it('locks the feed to the role label and shows its count, breadcrumb and head tags', async () => {
+    companyMocks.community.getPublicPosts.mockResolvedValue(roleFeed(10, 15));
+    renderAt('/interview-questions/meta/software-engineer');
+    await waitFor(() => expect(document.title).toBe('Meta Software Engineer Interview Questions | Screna AI'));
+    expect(companyMocks.community.getPublicPosts.mock.calls[0][0]).toMatchObject({
+      company: 'Meta',
+      role: 'Software Engineer',
+    });
+    // No breakdown: the opening paragraph is the role's own count.
+    expect(companyMocks.community.getPublicCompanyBreakdown).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/15 Software Engineers have shared notes from their Meta interviews/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Meta›Software Engineer');
+    expect(screen.queryByText(FAQ_Q1)).not.toBeInTheDocument();
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(
+      'https://www.screna.ai/interview-questions/meta/software-engineer',
+    );
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('index, follow');
+    expect(jsonLd().some((d) => d['@type'] === 'BreadcrumbList')).toBe(true);
+  });
+
+  it('ignores a role filter restored for the company page', async () => {
+    sessionStorage.setItem(
+      'interviewInsights:companyFilters:meta',
+      JSON.stringify({ role: 'Data Scientist', round: '', level: '', time: '', sort: '', search: '' }),
+    );
+    companyMocks.community.getPublicPosts.mockResolvedValue(roleFeed(10, 15));
+    renderAt('/interview-questions/meta/software-engineer');
+    await waitFor(() => expect(companyMocks.community.getPublicPosts).toHaveBeenCalled());
+    expect(companyMocks.community.getPublicPosts.mock.calls[0][0]).toMatchObject({ role: 'Software Engineer' });
+  });
+
+  it('is noindex below the threshold', async () => {
+    companyMocks.community.getPublicPosts.mockResolvedValue(roleFeed(4, 4));
+    renderAt('/interview-questions/meta/software-engineer');
+    await waitFor(() =>
+      expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow'),
+    );
+  });
+
+  it('gets the count from the public endpoint for a signed-in reader', async () => {
+    setSignedIn(true);
+    setPlan('Advanced');
+    companyMocks.community.getPosts.mockResolvedValue({ data: { data: [feedPost('swe-0')] } });
+    companyMocks.community.getPublicPosts.mockResolvedValue(roleFeed(10, 15));
+    renderAt('/interview-questions/meta/software-engineer');
+    await waitFor(() => expect(screen.getByText(/15 Software Engineers have shared notes/)).toBeInTheDocument());
+    expect(companyMocks.community.getPosts.mock.calls[0][0]).toMatchObject({ role: 'Software Engineer' });
+  });
+
+  it.each(['not-a-role', 'page'])('renders not-found for /meta/%s and fetches no notes', async (slug) => {
+    renderAt(`/interview-questions/meta/${slug}`);
+    expect(await screen.findByText('There is no such role for this company.')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(companyMocks.community.getPublicPosts).not.toHaveBeenCalled();
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow');
+  });
+});
+
+describe('role links', () => {
+  const LINKS = [
+    { slug: 'software-engineer', label: 'Software Engineer', count: 1188 },
+    { slug: 'data-scientist', label: 'Data Scientist', count: 489 },
+  ];
+
+  it('counts them client-side when there is no seed, and links each role page', async () => {
+    roleLinksMock.mockResolvedValue(LINKS);
+    renderAt('/interview-questions/meta');
+    const bar = await screen.findByRole('navigation', { name: 'Interview questions by role' });
+    expect(roleLinksMock).toHaveBeenCalledWith('Meta');
+    expect(bar.querySelector('a[href="/interview-questions/meta/software-engineer"]')).toHaveTextContent(
+      'Software Engineer1,188',
+    );
+    // Locked Round / Level / Time stay; the locked Role chip is gone.
+    expect(screen.queryByRole('button', { name: 'Role' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Round' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/Unlock all/);
+  });
+
+  it('highlights the current role on a role page', async () => {
+    roleLinksMock.mockResolvedValue(LINKS);
+    companyMocks.community.getPublicPosts.mockResolvedValue({
+      data: { data: { posts: [feedPost('swe-0')], total: 15, size: 10, page: 0 } },
+    });
+    renderAt('/interview-questions/meta/software-engineer');
+    const bar = await screen.findByRole('navigation', { name: 'Interview questions by role' });
+    expect(bar.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe(
+      '/interview-questions/meta/software-engineer',
+    );
+    expect(screen.queryByRole('heading', { name: 'Meta interview guides by role' })).toBeNull();
+  });
+
+  it('shows nothing when no role qualifies', async () => {
+    renderAt('/interview-questions/meta');
+    await waitFor(() => expect(roleLinksMock).toHaveBeenCalled());
+    expect(screen.queryByRole('navigation', { name: 'Interview questions by role' })).toBeNull();
+  });
+
+  // The three public routes render the same component, so its state survives
+  // a link between them — the previous role's count must not.
+  it("shows each role's own count after moving between role pages, signed in", async () => {
+    setSignedIn(true);
+    setPlan('Advanced');
+    roleLinksMock.mockResolvedValue(LINKS);
+    companyMocks.community.getPosts.mockResolvedValue({ data: { data: [feedPost('p-0')] } });
+    companyMocks.community.getPublicPosts.mockImplementation(({ role }: { role?: string }) =>
+      Promise.resolve({
+        data: { data: { posts: [], total: role === 'Data Scientist' ? 12 : 15, size: 10, page: 0 } },
+      }),
+    );
+    renderAt('/interview-questions/meta/software-engineer');
+    expect(await screen.findByText(/^15 Software Engineers have shared notes/)).toBeInTheDocument();
+    const bar = screen.getByRole('navigation', { name: 'Interview questions by role' });
+    fireEvent.click(bar.querySelector('a[href="/interview-questions/meta/data-scientist"]')!);
+    expect(await screen.findByText(/^12 Data Scientists have shared notes/)).toBeInTheDocument();
+  });
+
+  it('stops loading on a role page of an unknown company', async () => {
+    companyMocks.community.getPublicCompanyProfile.mockRejectedValue({
+      response: { status: 400, data: { status: 'ERROR', errorCode: 'NOT_FOUND' } },
+    });
+    renderAt('/interview-questions/no-such-company/software-engineer');
+    await waitFor(() =>
+      expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow'),
+    );
+    expect(screen.queryByLabelText('Loading stats')).toBeNull();
+    expect(companyMocks.community.getPublicPosts).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Role filter on the personal-centre page', async () => {
+    setSignedIn(true);
+    setPlan('Advanced');
+    renderAt('/interview-insights/meta');
+    expect(await screen.findByRole('button', { name: 'apply role' })).toBeInTheDocument();
+    expect(roleLinksMock).not.toHaveBeenCalled();
   });
 });

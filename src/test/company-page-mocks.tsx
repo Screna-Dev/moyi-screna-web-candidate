@@ -79,7 +79,7 @@ export const INTRO = 'Most of these Meta write-ups come from Software Engineers 
 export const FAQ_Q1 = 'What rounds are in the Meta interview?';
 export const FAQ_Q2 = 'What does the Meta technical phone screen cover?';
 
-export const PROFILE = { displayName: 'Meta', category: 'FAANG / Big Tech', summary: SUMMARY, postCount: 40 };
+export const PROFILE = { displayName: 'Meta', slug: 'meta', category: 'FAANG / Big Tech', summary: SUMMARY, postCount: 40 };
 
 /** A note card in the feed's payload shape. */
 export function feedPost(id: string, over: { user?: unknown; isAnonymous?: boolean; notes?: string } = {}) {

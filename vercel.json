@@ -205,6 +205,10 @@
       "source": "/interview-questions/:companyId/page/:n",
       "destination": "/api/interview-questions/:companyId/page/:n"
     },
+    {
+      "source": "/interview-questions/:companyId/:role",
+      "destination": "/api/interview-questions/:companyId/:role"
+    },
     { "source": "/interview-questions/:companyId", "destination": "/api/interview-questions/:companyId" },
 
     { "source": "/blog", "destination": "/app.html" },

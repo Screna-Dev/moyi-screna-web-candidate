@@ -20,6 +20,10 @@ const SCRIPT = path.resolve('scripts/sitemap.mjs');
  *   Snap      21 notes  → page 2 only; page 3 holds ONE note and is skipped
  *   Tiny       3 notes  → below the page threshold, no archive at all
  *   Broken    15 notes  → its scan fails, so it lists nothing
+ *
+ * Roles (company × role pages): Meta's 25 are 15 Software Engineer (newest
+ * first), 9 Data Scientist and 1 Research Scientist (not in ROLE_SLUGS); every
+ * other company's notes are Software Engineer.
  */
 const FAKE_BACKEND = `
 const COUNTS = { Meta: 25, Snap: 21, Tiny: 3, Broken: 15 };
@@ -33,7 +37,7 @@ globalThis.fetch = async (input) => {
   }
   if (url.pathname.endsWith('/companies/stats')) {
     return json({ categories: [{ category: 'Tech', companies: Object.entries(COUNTS).map(
-      ([company, postCount]) => ({ company, postCount, latestUpdatedAt: day(0) })) }] });
+      ([company, postCount]) => ({ company, slug: company.toLowerCase(), postCount, latestUpdatedAt: day(0) })) }] });
   }
   if (url.pathname.endsWith('/posts/search')) {
     const company = url.searchParams.get('company');
@@ -43,6 +47,7 @@ globalThis.fetch = async (input) => {
     const posts = Array.from({ length: total }, (_, i) => ({
       id: company + '-' + (total - i),
       company,
+      role: company !== 'Meta' || i < 15 ? 'Software Engineer' : i < 24 ? 'Data Scientist' : 'Research Scientist',
       updatedAt: day(i),
       // Meta-25 got its seoTitle after its last edit; Meta-24 before it.
       seoTitleUpdatedAt:
@@ -155,5 +160,33 @@ describe('sitemap — note lastmod and seoTitleUpdatedAt', () => {
     const xml = read('sitemap-notes-2026-09.xml');
     expect(lastmodOf(xml, 'Meta-24')).toBe(day(1));
     expect(lastmodOf(xml, 'Meta-23')).toBe(day(2));
+  });
+});
+
+describe('sitemap — company × role pages', () => {
+  const roleUrls = () => locs(read('sitemap-company-roles.xml'));
+
+  it('lists the role file in the sitemap index', () => {
+    expect(locs(read('sitemap.xml'))).toContain('https://www.screna.ai/sitemap-company-roles.xml');
+  });
+
+  it('lists only combinations at the threshold, for companies that have a page', () => {
+    // Meta: SWE 15 of 25 (in), Data Scientist 9 (under 10, out), Research
+    // Scientist (no role page). Snap: SWE is 21 of 21 — the company page again,
+    // so out. Tiny is under the company threshold and Broken's scan failed.
+    expect(roleUrls()).toEqual(['https://www.screna.ai/interview-questions/meta/software-engineer']);
+  });
+
+  it("stamps each with the role's newest note", () => {
+    const xml = read('sitemap-company-roles.xml');
+    const day = (i: number) => new Date(Date.UTC(2026, 8, 30) - i * 864e5).toISOString();
+    const lastmod = xml.match(
+      /<loc>https:\/\/www\.screna\.ai\/interview-questions\/meta\/software-engineer<\/loc>\s*<lastmod>([^<]+)<\/lastmod>/,
+    )?.[1];
+    expect(lastmod).toBe(day(0));
+  });
+
+  it('logs the role URL count', () => {
+    expect(log).toMatch(/1 company role pages/);
   });
 });

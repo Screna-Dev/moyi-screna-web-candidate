@@ -20,12 +20,15 @@ export const getPublicCompaniesStats = (params = {}) => {
   return API.get('/community/public/companies/stats', { params });
 };
 
-// One company's { displayName, category, summary, postCount, recentPostCount,
-// latestUpdatedAt, passEligible }. Matches on display name, case-insensitively.
-// A company that does not exist comes back as HTTP 400 with
-// errorCode NOT_FOUND — not a 404. Branch on errorCode, never on the status.
-export const getPublicCompanyProfile = (company) => {
-  return API.get('/community/public/companies/profile', { params: { company } });
+// One company's { displayName, slug, category, summary, postCount,
+// recentPostCount, latestUpdatedAt, passEligible }, looked up by exactly one of
+// { slug } (the company page's URL segment) or { company } (display name).
+// Sending both, or neither, is 400 BAD_REQUEST. A company that does not exist
+// comes back as HTTP 400 with errorCode NOT_FOUND — not a 404. Branch on
+// errorCode, never on the status.
+/** @param {{ slug?: string, company?: string }} query */
+export const getPublicCompanyProfile = ({ slug, company }) => {
+  return API.get('/community/public/companies/profile', { params: slug ? { slug } : { company } });
 };
 
 // Per-company counts: top roles, top rounds, top topic categories per round.
@@ -61,14 +64,16 @@ export const normalizePublicPosts = (res) => {
 
 // Per-company published-post stats + across-all roll-up totals.
 // Returns { totalCompanyCount, totalPostCount, totalRecentPostCount,
-//           categories: [{ category, postCount, companies: [{ company, category, postCount, recentPostCount, latestUpdatedAt }] }] }
+//           categories: [{ category, postCount, companies: [{ company, slug, category, postCount, recentPostCount, latestUpdatedAt }] }] }
+// `slug` is the company page URL segment, or null (no page) — see flattenCompanyStats.
 export const getCompaniesStats = (params = {}) => {
   return API.get('/community/companies/stats', { params });
 };
 
-// Returns a single company's { displayName, category, summary }, looked up by display name.
-export const getCompanyProfile = (company) => {
-  return API.get('/community/companies/profile', { params: { company } });
+// Authenticated twin of getPublicCompanyProfile: same lookup, same response.
+/** @param {{ slug?: string, company?: string }} query */
+export const getCompanyProfile = ({ slug, company }) => {
+  return API.get('/community/companies/profile', { params: slug ? { slug } : { company } });
 };
 
 // Grouped option lists for the "Share Your Experience" posting form and the

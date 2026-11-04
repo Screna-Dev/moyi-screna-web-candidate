@@ -111,28 +111,15 @@ export function minWordsFor(route) {
 export const MIN_POSTS_FOR_PAGE = 10;
 
 /**
- * Company display name -> URL slug. THE slug rule: the directory's links, the
- * sitemap's <loc> entries and the prerenderer's route list must all agree, or
- * we publish URLs that resolve to a page querying the wrong company.
- *
- * ⚠️ This is deliberately one-way. It is NOT invertible: 'Scale.ai',
- * 'Booking.com' and 'AT&T' all collapse punctuation, and no amount of
- * title-casing turns 'at-t' back into 'AT&T'. Anything that needs the display
- * name for a slug must look it up in the company list — never re-derive it.
- * See resolveCompanyName in src/utils/companySlug.ts.
- */
-export function companySlug(name) {
-  return String(name ?? '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-/**
  * Flatten GET /community/public/companies/stats into a single company list.
  * The payload nests companies under categories[]; each carries its own
  * category, so the group's is only a fallback.
+ *
+ * `slug` is the backend's, and it is THE company page URL: the directory's
+ * links, the sitemap's <loc> entries and the page's own lookup
+ * (companies/profile?slug=) all use it as given. Never derive one from a name —
+ * the backend owns the rule and may change it. It is null for a company whose
+ * name has no ASCII letter or digit; such a company has no page.
  *
  * Shared by the sitemap function and the prerenderer so "which companies get a
  * page" is computed identically in both.
@@ -142,6 +129,7 @@ export function flattenCompanyStats(data) {
   return groups.flatMap((g) =>
     (Array.isArray(g.companies) ? g.companies : []).map((c) => ({
       company: c.company,
+      slug: c.slug ?? null,
       category: c.category ?? g.category ?? '',
       postCount: c.postCount ?? 0,
       recentPostCount: c.recentPostCount ?? 0,
@@ -162,7 +150,7 @@ export function flattenCompanyStats(data) {
 export function eligibleCompanies(data, minPosts = MIN_POSTS_FOR_PAGE) {
   const bySlug = new Map();
   for (const c of flattenCompanyStats(data)) {
-    const slug = companySlug(c.company);
+    const slug = c.slug;
     if (!slug) continue;
     const prev = bySlug.get(slug);
     if (!prev) {
@@ -381,6 +369,165 @@ export function companySeoDescription(name, noteCount, page, pageCount) {
     ? `${name} interview notes, page ${page} of ${pageCount}: verbatim questions from real interviews, oldest first.`
     : `${noteCount} real ${name} interview write-ups: verbatim questions by role, round and level.`;
   return core.slice(0, 155);
+}
+
+// ─── Company × role pages (/interview-questions/:company/:role) ─────────────
+//
+// One page per company and role, e.g. /interview-questions/meta/software-engineer.
+// The slug is ours, not the backend's: the role set is a fixed enum (PostRole on
+// the server) and these labels are exactly its labels, which is what
+// posts/search?role= matches on — the public search does not normalise, so the
+// enum code (SOFTWARE_ENGINEER) or any other spelling returns nothing.
+//
+// Shared by the renderer (api/_render/company.ts), the sitemap and the page, so
+// "which role a slug names" and "which combinations are indexed" are decided
+// once.
+
+/** Role URL segment -> the exact label posts carry. */
+export const ROLE_SLUGS = {
+  'software-engineer': 'Software Engineer',
+  'frontend-engineer': 'Frontend Engineer',
+  'backend-engineer': 'Backend Engineer',
+  'full-stack-engineer': 'Full Stack Engineer',
+  'mobile-engineer': 'Mobile Engineer',
+  'devops-engineer': 'DevOps Engineer',
+  'qa-test-engineer': 'QA / Test Engineer',
+  'machine-learning-engineer': 'Machine Learning Engineer',
+  'ai-engineer': 'AI Engineer',
+  'data-scientist': 'Data Scientist',
+  'data-analyst': 'Data Analyst',
+  'product-manager': 'Product Manager',
+  'associate-product-manager': 'Associate Product Manager',
+  'growth-product-manager': 'Growth Product Manager',
+  // Enum value TECHNICAL_PRODUCT_MANAGER; the label was renamed to Program.
+  'technical-program-manager': 'Technical Program Manager',
+  'product-designer': 'Product Designer',
+  'ux-designer': 'UX Designer',
+  'ux-researcher': 'UX Researcher',
+  'business-analyst': 'Business Analyst',
+  'consultant': 'Consultant',
+};
+
+/**
+ * Segments that can never be a role. `page` is the archive
+ * (/:company/page/:n is three segments, so it never reaches this route, but
+ * /:company/page is two); `q` is held for the question pages.
+ */
+export const RESERVED_ROLE_SLUGS = ['page', 'q'];
+
+/** The role label a URL segment names, or null for an unknown or reserved one. */
+export function roleLabelForSlug(slug) {
+  const s = String(slug ?? '');
+  if (RESERVED_ROLE_SLUGS.includes(s)) return null;
+  return Object.prototype.hasOwnProperty.call(ROLE_SLUGS, s) ? ROLE_SLUGS[s] : null;
+}
+
+/** The URL segment for a role label, or null when the label is not in the set. */
+export function roleSlugForLabel(label) {
+  const hit = Object.entries(ROLE_SLUGS).find(([, l]) => l === label);
+  return hit ? hit[0] : null;
+}
+
+/**
+ * Notes a company × role combination needs to be indexed. Below it the page
+ * still renders (`noindex, follow`) and stays out of the sitemap — the same
+ * split, and the same doorway-page argument, as MIN_POSTS_FOR_PAGE.
+ */
+export const MIN_POSTS_FOR_ROLE_PAGE = 10;
+
+/**
+ * A role holding this share of a company's notes or more gets no indexed page:
+ * it would be the company page again under a second URL (Snap is ~all SWE).
+ */
+export const MAX_ROLE_SHARE = 0.9;
+
+/**
+ * Does this company × role combination earn an indexed page? One rule for the
+ * role page's robots tag, the sitemap, the role links on the company page and
+ * the note page's breadcrumb — so nothing links to or advertises a noindex URL.
+ * Both counts must come from the same source (the search index's totals).
+ */
+export function isIndexableRole(count, companyTotal) {
+  const n = Number(count) || 0;
+  const total = Number(companyTotal) || 0;
+  if (n < MIN_POSTS_FOR_ROLE_PAGE) return false;
+  return !(total > 0 && n / total >= MAX_ROLE_SHARE);
+}
+
+/**
+ * The role links a company shows: every role in ROLE_SLUGS that clears
+ * isIndexableRole, most notes first. `counts` is { [role label]: notes }.
+ */
+export function companyRoleLinks(counts, companyTotal) {
+  return Object.entries(ROLE_SLUGS)
+    .map(([slug, label]) => ({ slug, label, count: Number(counts?.[label]) || 0 }))
+    .filter((r) => isIndexableRole(r.count, companyTotal))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/** Heading of the company page's closing role section. */
+export function companyRoleGuidesHeading(name) {
+  return `${name} interview guides by role`;
+}
+
+export function companyRoleSeoTitle(name, role) {
+  return `${name} ${role} Interview Questions${SEO_BRAND}`;
+}
+
+export function companyRoleSeoDescription(name, role, noteCount) {
+  return `${noteCount} real ${name} ${role} interview write-ups: verbatim questions by round and level.`.slice(
+    0,
+    155,
+  );
+}
+
+/**
+ * The opening paragraph. Counts only: this role's notes, and their share of the
+ * company's total when the profile has one.
+ */
+export function companyRoleIntro(name, role, roleCount, companyCount) {
+  const n = Number(roleCount) || 0;
+  if (n <= 0) return '';
+  const lead =
+    n === 1
+      ? `1 ${role} has shared notes from their ${name} interview, with the questions they were asked.`
+      : `${fmt(n)} ${plural(role)} have shared notes from their ${name} interviews, with the questions they were asked in each round.`;
+  const total = Number(companyCount) || 0;
+  if (total <= n) return lead;
+  const share = Math.round((n / total) * 100);
+  return `${lead} That is ${share < 1 ? 'under 1' : share}% of the ${fmt(total)} ${name} interview notes on Screna AI.`;
+}
+
+/**
+ * JSON-LD for an indexed company × role page: the paywall declaration the
+ * company page carries, plus the breadcrumb (Interview Questions > company >
+ * role). `siteUrl` is passed in because BreadcrumbList items must be absolute.
+ */
+export function companyRoleJsonLd(siteUrl, { name, companySlug, role, roleSlug, intro }) {
+  const companyUrl = `${siteUrl}/interview-questions/${companySlug}`;
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: `${name} ${role} Interview Questions`,
+      ...(intro ? { description: intro } : {}),
+      isAccessibleForFree: false,
+      hasPart: {
+        '@type': 'WebPageElement',
+        isAccessibleForFree: false,
+        cssSelector: '.paywalled-note',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Interview Questions', item: `${siteUrl}/interview-questions` },
+        { '@type': 'ListItem', position: 2, name, item: companyUrl },
+        { '@type': 'ListItem', position: 3, name: role, item: `${companyUrl}/${roleSlug}` },
+      ],
+    },
+  ];
 }
 
 // ─── Company page intro + FAQ ───────────────────────────────────────────────

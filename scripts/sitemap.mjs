@@ -31,10 +31,11 @@ import {
   PRERENDER_STATIC,
   companyPageCount,
   companyPageWindow,
-  companySlug,
   eligibleCompanies,
   flattenCompanyStats,
   isIndexablePost,
+  isIndexableRole,
+  roleSlugForLabel,
 } from './routes.mjs';
 
 const DIST = path.resolve('dist');
@@ -232,7 +233,7 @@ async function main() {
     'sitemap-companies.xml',
     urlset(
       companies.map((c) =>
-        urlEntry(`${SITE_URL}/interview-questions/${companySlug(c.company)}`, isoDate(c.latestUpdatedAt)),
+        urlEntry(`${SITE_URL}/interview-questions/${c.slug}`, isoDate(c.latestUpdatedAt)),
       ),
     ),
   ]);
@@ -269,6 +270,32 @@ async function main() {
     const suffix = i === 0 ? '' : `-${i / MAX_URLS_PER_FILE + 1}`;
     files.push([`sitemap-company-pages${suffix}.xml`, urlset(archiveEntries.slice(i, i + MAX_URLS_PER_FILE))]);
   }
+
+  // Company × role pages (/:company/:role), counted off the same scan — no
+  // extra requests. A combination is listed only when isIndexableRole says so
+  // (10+ notes, under 90% of the company's) — the page's own robots rule. Roles
+  // outside ROLE_SLUGS have no page and are skipped. lastmod is the newest
+  // note of that role.
+  const roleEntries = [];
+  for (const c of companies) {
+    const feed = feedByName.get(c.company);
+    if (!feed) continue;
+    const byRole = new Map();
+    for (const row of feed.rows) {
+      const roleSlug = roleSlugForLabel(row?.role);
+      if (!roleSlug) continue;
+      const stamp = isoDate(row.updatedAt ?? row.createdAt ?? row.date);
+      const prev = byRole.get(roleSlug) ?? { count: 0, lastmod: null };
+      prev.count += 1;
+      if (stamp && (!prev.lastmod || stamp > prev.lastmod)) prev.lastmod = stamp;
+      byRole.set(roleSlug, prev);
+    }
+    for (const [roleSlug, { count, lastmod }] of byRole) {
+      if (!isIndexableRole(count, feed.total)) continue;
+      roleEntries.push(urlEntry(`${SITE_URL}/interview-questions/${c.slug}/${roleSlug}`, lastmod));
+    }
+  }
+  files.push(['sitemap-company-roles.xml', urlset(roleEntries)]);
 
   // Notes split by the month they were last touched. Month, rather than a flat
   // numbered split, so a file's name says what changed: a rebuild rewrites the
@@ -309,6 +336,7 @@ async function main() {
     `[sitemap] scanned ${names.length} companies -> ${allNotes.length} notes ` +
       `(${noteUrls} clear the content gate); ` +
       `${companies.length} company pages; ${archiveEntries.length} company archive pages; ` +
+      `${roleEntries.length} company role pages; ` +
       `${posts.length} blog posts; ` +
       `${files.length} child sitemaps + index`,
   );
