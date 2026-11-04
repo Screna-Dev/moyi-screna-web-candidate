@@ -22,7 +22,7 @@ import {
 
 vi.hoisted(() => {
   const seed = {
-    profile: { displayName: 'Meta', postCount: 25 },
+    profile: { displayName: 'Meta', slug: 'meta', postCount: 25 },
     breakdown: null,
     posts: Array.from({ length: 10 }, (_, i) => ({
       id: `arch-${i + 11}`,
@@ -48,10 +48,6 @@ vi.hoisted(() => {
 vi.mock('posthog-js/react', () => ({ usePostHog: () => stablePosthog }));
 vi.mock('@/services/CommunityService', async (orig) => ({ ...(await orig<object>()), ...companyMocks.community }));
 vi.mock('@/services/api', async (orig) => ({ ...(await orig<object>()), hasStoredSession: () => companyMocks.session.signedIn }));
-vi.mock('@/utils/companySlug', async (orig) => ({
-  ...(await orig<object>()),
-  resolveCompanyName: () => Promise.resolve({ name: 'Meta', exact: true }),
-}));
 vi.mock('@/components/newDesign/interview-insights/filter-popovers', () => filterPopoversMock);
 vi.mock('@/components/newDesign/interview-insights/quick-mock', () => ({ CompanyMockLauncher: () => null }));
 vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ children }: any) => <div>{children}</div> }));

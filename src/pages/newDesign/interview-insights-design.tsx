@@ -10,7 +10,7 @@ import { type CompanyData } from "@/components/newDesign/interview/company-card"
 import { getCompanyLogoUrl } from "@/components/newDesign/ui/company-logo";
 import { getCompaniesStats, getPublicCompaniesStats } from "@/services/CommunityService";
 import { hasStoredSession } from "@/services/api";
-import { companySlug, MIN_POSTS_FOR_PAGE } from "@/utils/companySlug";
+import { MIN_POSTS_FOR_PAGE } from "@/utils/companyDirectory";
 import { readPrerenderSeed } from "@/utils/prerenderSeed";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePostHog } from "posthog-js/react";
@@ -67,6 +67,9 @@ let PRERENDER_SEED = readPrerenderSeed<{ stats?: unknown }>('__prerender_directo
 // (companies are nested under data.categories[].companies[]; each carries its own category).
 type CompanyStat = {
   company: string;
+  // Company page URL segment, from the backend. null = the name has no ASCII
+  // letter or digit, and the company gets no page (and so no card or link).
+  slug?: string | null;
   category?: string;
   postCount: number;
   recentPostCount: number;
@@ -104,9 +107,9 @@ function parseCompanyStats(data: any): { list: CompanyStat[]; rollup: StatsRollu
   };
 }
 
-// Curated metadata only (category / description / slug). Counts + "updated"
-// come live from the API; companies not listed here still render from the API
-// with a derived slug and no category/description.
+// Curated metadata only (category / description). Counts + "updated" come
+// live from the API, and so does the slug; companies not listed here still
+// render from the API with no category/description.
 type CompanyMeta = { id: string; name: string; category: string; description: string };
 
 const COMPANY_META: CompanyMeta[] = [
@@ -326,7 +329,8 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
       const name = s.company?.trim();
       if (!name) continue;
       const meta = META_BY_NAME.get(name.toLowerCase());
-      const id = meta?.id ?? companySlug(name);
+      // The backend's slug is the card's id and link. No slug, no page.
+      const id = s.slug;
       if (!id) continue;
 
       const postCount = s.postCount ?? 0;
@@ -424,14 +428,18 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
           },
   );
 
-  // Every company the library knows about, by the id the links use.
+  // Every company the library knows about: display name -> the backend's slug.
   //
   // The chips on the category tiles are hardcoded names, so some of them
   // (Oracle, Notion, Cursor…) may not be in the library at all. Their links are
   // ordinary crawlable anchors, and one pointing at a company with no notes is
-  // a 404 advertised from an indexed page. Filtering them through this set is
-  // cheaper than curating the chip list by hand against live data.
-  const knownCompanyIds = useMemo(() => new Set(companies.map((c) => c.id)), [companies]);
+  // a 404 advertised from an indexed page. Looking them up here is cheaper
+  // than curating the chip list by hand against live data — and the slug has
+  // to come from somewhere other than the name anyway.
+  const slugByName = useMemo(
+    () => new Map(companies.map((c) => [c.name.trim().toLowerCase(), c.id])),
+    [companies],
+  );
 
   // The featured grid is a shortlist, and on the public surface it is the
   // companies that earn an indexed page of their own — the same threshold the
@@ -600,16 +608,16 @@ export function InterviewInsightsPage({ isPublic = false }: { isPublic?: boolean
                       {/* Hardcoded example chips, filtered to companies the
                           library actually has notes for: these are crawlable
                           links, and one pointing at a company with no page is a
-                          404 advertised from an indexed page. Unfiltered until
-                          the stats land, so the tiles are not empty on first
-                          paint. */}
+                          404 advertised from an indexed page. The link is the
+                          stats' slug, so chips appear once the stats do (the
+                          prerendered directory seeds them). */}
                       <div className="flex flex-wrap gap-2">
                         {cat.examples
-                          .filter((ex) => knownCompanyIds.size === 0 || knownCompanyIds.has(companySlug(ex)))
+                          .filter((ex) => slugByName.has(ex.toLowerCase()))
                           .map((ex) => (
                           <Link
                             key={ex}
-                            to={`${basePath}/${companySlug(ex)}`}
+                            to={`${basePath}/${slugByName.get(ex.toLowerCase())}`}
                             onClick={(e) => e.stopPropagation()}
                             className="rounded-full bg-white/40 px-[10px] py-1 text-[11px] font-semibold leading-[15.4px] text-foreground transition-colors hover:bg-white/60"
                             style={{ fontFamily: "var(--font-sans)" }}

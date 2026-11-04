@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 // Plain .mjs manifest, shared with scripts/, api/ and src/.
 import {
-  companySlug,
   eligibleCompanies,
   flattenCompanyStats,
   minWordsFor,
   MIN_POSTS_FOR_PAGE,
+  sortCompanyGuides,
+  guideLabel,
 } from '../../scripts/routes.mjs';
 
 // These helpers decide which company pages are indexed, what URL each gets, and
@@ -13,49 +14,6 @@ import {
 // places that cannot import each other's language (the React app, the
 // request-time renderers under api/_render, the build scripts), so a regression
 // here shows up as published-but-broken URLs rather than a failing import.
-
-describe('companySlug', () => {
-  it.each([
-    ['Google', 'google'],
-    ['Meta', 'meta'],
-    ['DoorDash', 'doordash'],
-    ['Early-stage Startup', 'early-stage-startup'],
-  ])('%s -> %s', (name, slug) => {
-    expect(companySlug(name)).toBe(slug);
-  });
-
-  // The whole reason resolveCompanyName exists. These names collapse to slugs
-  // that cannot be turned back into them, so anything needing the display name
-  // must look it up rather than re-derive it. All three clear
-  // MIN_POSTS_FOR_PAGE in the live library, i.e. all three get indexed pages.
-  it.each([
-    ['Scale.ai', 'scale-ai'],
-    ['AT&T', 'at-t'],
-    ['Booking.com', 'booking-com'],
-    ['Verkada Inc.', 'verkada-inc'],
-    ['Qube Research & Technologies', 'qube-research-technologies'],
-  ])('is lossy for %s (-> %s)', (name, slug) => {
-    expect(companySlug(name)).toBe(slug);
-  });
-
-  it('is idempotent, so a slug fed back in is unchanged', () => {
-    for (const n of ['Scale.ai', 'AT&T', 'Google', 'Verkada Inc.']) {
-      expect(companySlug(companySlug(n))).toBe(companySlug(n));
-    }
-  });
-
-  it('never produces leading, trailing or doubled separators', () => {
-    for (const n of ['  Spaced  ', '.leading', 'trailing.', 'a...b', '&&&']) {
-      const s = companySlug(n);
-      expect(s).not.toMatch(/^-|-$|--/);
-    }
-  });
-
-  it('survives null and undefined rather than throwing', () => {
-    expect(companySlug(null)).toBe('');
-    expect(companySlug(undefined)).toBe('');
-  });
-});
 
 describe('minWordsFor', () => {
   it('prefers an exact match over a prefix rule', () => {
@@ -83,11 +41,12 @@ describe('minWordsFor', () => {
 describe('flattenCompanyStats', () => {
   it('falls back to the group category when a row has none', () => {
     const rows = flattenCompanyStats({
-      categories: [{ category: 'Big Tech', companies: [{ company: 'Google', postCount: 5 }] }],
+      categories: [{ category: 'Big Tech', companies: [{ company: 'Google', slug: 'google', postCount: 5 }] }],
     });
     expect(rows).toEqual([
       {
         company: 'Google',
+        slug: 'google',
         category: 'Big Tech',
         postCount: 5,
         recentPostCount: 0,
@@ -109,8 +68,8 @@ describe('eligibleCompanies', () => {
       {
         category: 'Mid-sized',
         companies: [
-          { company: 'Scale.ai', postCount: 30, recentPostCount: 1, latestUpdatedAt: '2026-01-01T00:00:00Z' },
-          { company: 'Tiny', postCount: 3 },
+          { company: 'Scale.ai', slug: 'scale-ai', postCount: 30, recentPostCount: 1, latestUpdatedAt: '2026-01-01T00:00:00Z' },
+          { company: 'Tiny', slug: 'tiny', postCount: 3 },
         ],
       },
       {
@@ -118,8 +77,8 @@ describe('eligibleCompanies', () => {
         companies: [
           // Same company, second category group — the stats API really does
           // this when a company's posts carry inconsistent categories.
-          { company: 'Scale.ai', postCount: 20, recentPostCount: 2, latestUpdatedAt: '2026-06-01T00:00:00Z' },
-          { company: 'Meta', postCount: 490 },
+          { company: 'Scale.ai', slug: 'scale-ai', postCount: 20, recentPostCount: 2, latestUpdatedAt: '2026-06-01T00:00:00Z' },
+          { company: 'Meta', slug: 'meta', postCount: 490 },
         ],
       },
     ],
@@ -141,8 +100,8 @@ describe('eligibleCompanies', () => {
   it('gates on the merged total, not on either half', () => {
     const split = {
       categories: [
-        { category: 'A', companies: [{ company: 'Split Co', postCount: 6 }] },
-        { category: 'B', companies: [{ company: 'Split Co', postCount: 6 }] },
+        { category: 'A', companies: [{ company: 'Split Co', slug: 'split-co', postCount: 6 }] },
+        { category: 'B', companies: [{ company: 'Split Co', slug: 'split-co', postCount: 6 }] },
       ],
     };
     expect(eligibleCompanies(split).map((c: { slug: string }) => c.slug)).toEqual(['split-co']);
@@ -167,8 +126,56 @@ describe('eligibleCompanies', () => {
     expect(eligibleCompanies(stats).map((c: { slug: string }) => c.slug)).toEqual(['meta', 'scale-ai']);
   });
 
-  it('drops rows whose company name slugifies to nothing', () => {
-    const junk = { categories: [{ category: 'A', companies: [{ company: '???', postCount: 99 }] }] };
+  // The backend sends slug: null for a name with no ASCII letter or digit.
+  // Such a company has no page, so it must not get a sitemap entry either.
+  it('drops rows the backend gave no slug', () => {
+    const junk = { categories: [{ category: 'A', companies: [{ company: '字节跳动', slug: null, postCount: 99 }] }] };
     expect(eligibleCompanies(junk)).toEqual([]);
+  });
+});
+
+describe('sortCompanyGuides', () => {
+  const g = (title: string, publishedAt: string) => ({ title, slug: title, publishedAt });
+
+  it('puts OA / Online Assessment posts first, the rest newest first', () => {
+    const sorted = sortCompanyGuides([
+      g('Older guide', '2026-01-01'),
+      g('Newest guide', '2026-10-01'),
+      g('Google OA questions', '2025-06-01'),
+      g('Acing the online assessment', '2025-01-01'),
+    ]);
+    expect(sorted.map((x: { title: string }) => x.title)).toEqual([
+      'Google OA questions',
+      'Acing the online assessment',
+      'Newest guide',
+      'Older guide',
+    ]);
+  });
+
+  it('matches OA as a whole word only', () => {
+    const sorted = sortCompanyGuides([g('OAuth deep dive', '2026-01-01'), g('Newer', '2026-02-01')]);
+    expect(sorted.map((x: { title: string }) => x.title)).toEqual(['Newer', 'OAuth deep dive']);
+  });
+
+  it('drops rows without a slug or title', () => {
+    expect(sortCompanyGuides([{ title: 'x' }, { slug: 'y' }, null])).toEqual([]);
+  });
+});
+
+describe('guideLabel', () => {
+  it.each([
+    ['21 Google Online Assessment Reports 2026, Including AI Tasks', 'Online Assessment'],
+    // OA wins over a role in the same title.
+    ['6 Roblox OA Reports 2026: SWE vs DS Questions & Format', 'Online Assessment'],
+    ['Google Software Engineer Interview 2026: A Real Onsite Coding Question', 'Software Engineer'],
+    ['Amazon SDE Interview in 2026: What to Expect', 'Software Engineer'],
+    ['How Uber Tests Senior Product Managers: A Ride Cancellation Case', 'Product Manager'],
+    ['Google Data Scientist Interview 2026: Unicode, Streaming Constraints', 'Data Scientist'],
+    ['Senior OpenAI AI Engineer Interview: Adversarial Algorithms', 'AI Engineer'],
+    ['OpenAI Mobile Engineer Interview 2026: Jetpack Compose', 'Mobile Engineer'],
+    // No known role: no eyebrow rather than a guess. "OAuth" is not OA.
+    ['OAuth deep dive', null],
+  ])('%s -> %s', (title, label) => {
+    expect(guideLabel(title)).toBe(label);
   });
 });

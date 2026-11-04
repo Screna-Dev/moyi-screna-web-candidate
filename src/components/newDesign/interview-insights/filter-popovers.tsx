@@ -139,7 +139,7 @@ function CheckboxRow({
 // Default (fallback) grouping when no live groups are supplied — mirrors the
 // GET /community/posts/options `roles` shape.
 const ROLE_GROUPS_FALLBACK = [
-  { category: 'Product', options: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager'] },
+  { category: 'Product', options: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Program Manager'] },
   { category: 'Engineering', options: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer', 'Mobile Engineer', 'DevOps Engineer', 'QA / Test Engineer'] },
   { category: 'Data & AI', options: ['Data Scientist', 'Data Analyst', 'Machine Learning Engineer', 'AI Engineer'] },
   { category: 'Design & Research', options: ['Product Designer', 'UX Designer', 'UX Researcher'] },

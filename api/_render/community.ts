@@ -68,6 +68,8 @@ export interface AiHints {
 
 export interface CompanyProfile {
   displayName?: string;
+  /** Company page URL segment; null when the name has no ASCII letter or digit. */
+  slug?: string | null;
   category?: string;
   summary?: string;
   postCount?: number;
@@ -171,12 +173,14 @@ export async function fetchHints(
   return out;
 }
 
-/** One company's profile row, or null when the company has none (it answers 400/NOT_FOUND). */
-export async function fetchCompanyProfile(name: string): Promise<CompanyProfile | null> {
-  return getJson<CompanyProfile>(
-    `${COMMUNITY}/companies/profile?${new URLSearchParams({ company: name })}`,
-    8000,
-  );
+/**
+ * One company's profile row, by exactly one of its slug or display name; null
+ * when there is no such company (it answers 400/NOT_FOUND).
+ */
+export async function fetchCompanyProfile(
+  query: { slug: string } | { company: string },
+): Promise<CompanyProfile | null> {
+  return getJson<CompanyProfile>(`${COMMUNITY}/companies/profile?${new URLSearchParams(query)}`, 8000);
 }
 
 /**
@@ -207,15 +211,19 @@ export async function fetchCompanyBreakdown(name: string): Promise<CompanyBreakd
  * Sorting is fixed to NEWEST server-side and no sort parameter is read, which
  * is why the paginated company URLs compute their own offsets from `total`
  * rather than asking for an order (see api/_render/company.ts).
+ *
+ * `role` narrows to one role and must be the exact label ('Software Engineer'):
+ * the public search does not normalise, so the enum code matches nothing.
  */
 export async function fetchCompanyPosts(
   name: string,
   page: number,
+  role?: string,
+  timeoutMs = 8000,
 ): Promise<{ posts: PublicPost[]; total: number; size: number; page: number }> {
-  const data = await getJson<SearchResult>(
-    `${COMMUNITY}/posts/search?${new URLSearchParams({ company: name, page: String(page) })}`,
-    8000,
-  );
+  const params = new URLSearchParams({ company: name, page: String(page) });
+  if (role) params.set('role', role);
+  const data = await getJson<SearchResult>(`${COMMUNITY}/posts/search?${params}`, timeoutMs);
   const posts = Array.isArray(data?.posts) ? data!.posts! : [];
   return {
     posts,
@@ -228,4 +236,40 @@ export async function fetchCompanyPosts(
 /** The whole company directory, as the stats endpoint returns it (nested by category). */
 export async function fetchCompanyStats(): Promise<unknown | null> {
   return getJson<unknown>(`${COMMUNITY}/companies/stats`, 8000);
+}
+
+/**
+ * Notes per role for one company, { [role label]: total }, read as the search
+ * total of posts/search?company=&role= for each role in `roles`.
+ *
+ * A stand-in: there is no company × role count endpoint yet, and breakdown's
+ * topRoles stops at three. When the stats endpoint lands this is the one
+ * function that changes. Best-effort per role — a role whose count failed is
+ * absent (no link), never a 503 for the page.
+ *
+ * Bounded for the 30s function limit: two waves of ten, four seconds each, so
+ * a slow search costs the page at most ~8s here rather than a 504.
+ */
+export async function fetchCompanyRoleCounts(
+  name: string,
+  roles: string[],
+  concurrency = 10,
+  timeoutMs = 4000,
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, roles.length) }, async () => {
+      while (next < roles.length) {
+        const role = roles[next++];
+        try {
+          const { total } = await fetchCompanyPosts(name, 0, role, timeoutMs);
+          if (total > 0) out[role] = total;
+        } catch {
+          // No count, no link.
+        }
+      }
+    }),
+  );
+  return out;
 }

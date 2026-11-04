@@ -9,6 +9,8 @@ import {
 import { esc, join, seedTag, shouldNoindexOnLength } from './html.js';
 import {
   UpstreamError,
+  fetchCompanyPosts,
+  fetchCompanyProfile,
   fetchHints,
   fetchPost,
   type AiHints,
@@ -16,7 +18,13 @@ import {
   type PublicPost,
 } from './community.js';
 // Plain .mjs manifest, shared with scripts/ and src/ — see scripts/routes.mjs.
-import { companySlug, isIndexablePost, noteSeoTitle, noteSeoTitleCore } from '../../scripts/routes.mjs';
+import {
+  isIndexablePost,
+  isIndexableRole,
+  noteSeoTitle,
+  noteSeoTitleCore,
+  roleSlugForLabel,
+} from '../../scripts/routes.mjs';
 
 // /experience/:id, rendered per request.
 //
@@ -204,9 +212,13 @@ function questionBlock(post: PublicPost, q: PostQuestion, index: number, hints?:
   );
 }
 
-function renderBody(post: PublicPost, hints: Record<string, AiHints>): string {
+function renderBody(
+  post: PublicPost,
+  hints: Record<string, AiHints>,
+  slug: string | null,
+  roleSlug: string | null,
+): string {
   const questions = Array.isArray(post.questions) ? post.questions : [];
-  const slug = companySlug(post.company);
   const heading = join(
     '<h1 class="flex items-center gap-1.5 flex-wrap text-base font-normal tracking-normal">',
     `<span class="text-lg font-semibold text-[hsl(222,22%,15%)]">${esc(post.company ?? '')}</span>`,
@@ -229,10 +241,15 @@ function renderBody(post: PublicPost, hints: Record<string, AiHints>): string {
     '<div class="pt-6 pb-20 bg-[#f9fafb]"><div class="max-w-7xl mx-auto px-6">',
     // The crawl path back up. /experience/:id is otherwise a leaf: without
     // this, a note reached from a shared link links nowhere on the site.
+    // Company, then role when the role has an indexed page of its own.
     slug
-      ? `<p class="mb-6"><a class="inline-flex items-center text-sm text-[hsl(222,12%,50%)]" href="/interview-questions/${esc(
+      ? `<p class="mb-6 flex flex-wrap items-center gap-2 text-sm text-[hsl(222,12%,50%)]"><a class="inline-flex items-center" href="/interview-questions/${esc(
           slug,
-        )}">&larr; ${esc(post.company)} Interview Insights</a></p>`
+        )}">&larr; ${esc(post.company)} Interview Insights</a>${
+          roleSlug
+            ? `<span aria-hidden="true">&rsaquo;</span><a href="/interview-questions/${esc(slug)}/${esc(roleSlug)}">${esc(post.role)}</a>`
+            : ''
+        }</p>`
       : '<p class="mb-6"><a class="inline-flex items-center text-sm text-[hsl(222,12%,50%)]" href="/interview-questions">&larr; Interview Insights</a></p>',
     '<div class="bg-white rounded-2xl border border-[hsl(220,16%,90%)] p-6 md:p-8 mb-5">',
     heading,
@@ -255,6 +272,40 @@ function renderBody(post: PublicPost, hints: Record<string, AiHints>): string {
       ),
     '</div></div>',
   );
+}
+
+/**
+ * The company page slug for a note's company. Posts carry only the display
+ * name and the slug rule is the backend's, so it is asked for rather than
+ * derived. Best-effort: null on NOT_FOUND, a null slug, or an upstream fault.
+ */
+async function companySlugOf(company: string | undefined): Promise<string | null> {
+  if (!company) return null;
+  try {
+    return (await fetchCompanyProfile({ company }))?.slug ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The role page slug for the note's breadcrumb, or null when the role has no
+ * indexed page at this company (isIndexableRole — the same rule the role page
+ * and the company page's role links apply), is not in ROLE_SLUGS, or a count
+ * failed. Best-effort, never throws.
+ */
+async function roleSlugOf(company: string | undefined, role: string | undefined): Promise<string | null> {
+  const roleSlug = roleSlugForLabel(role);
+  if (!company || !roleSlug) return null;
+  try {
+    const [forRole, forCompany] = await Promise.all([
+      fetchCompanyPosts(company, 0, role),
+      fetchCompanyPosts(company, 0),
+    ]);
+    return isIndexableRole(forRole.total, forCompany.total) ? roleSlug : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -281,10 +332,18 @@ export async function renderNotePage(req: IncomingMessage, id: string): Promise<
   if (!post) return notFoundPage('This interview note does not exist, or is not published.');
 
   const questions = Array.isArray(post.questions) ? post.questions : [];
-  // Never throws — a question without hints renders without them.
-  const hints = await fetchHints(questions);
+  // Neither throws. A question without hints renders without them; a company
+  // whose slug cannot be had (no profile, null slug, upstream down) gets the
+  // breadcrumb to the directory instead of a guessed company URL.
+  const [hints, companySlug, roleSlugFound] = await Promise.all([
+    fetchHints(questions),
+    companySlugOf(post.company),
+    roleSlugOf(post.company, post.role),
+  ]);
+  // No company page, no role crumb under it.
+  const roleSlug = companySlug ? roleSlugFound : null;
 
-  const body = renderBody(post, hints);
+  const body = renderBody(post, hints, companySlug, roleSlug);
 
   // Two gates, and they read different data on purpose (see the shared
   // conventions). isIndexablePost is the one the sitemap also applies, so the
@@ -345,7 +404,11 @@ export async function renderNotePage(req: IncomingMessage, id: string): Promise<
   // itself — which is right: the discussion is not in this HTML, and a seed
   // claiming an empty thread would suppress the fetch and show a note with
   // comments as having none.
-  const seeds = [seedTag('__prerender_experience__', { post, hints })];
+  //
+  // `noindex` travels in the seed because the client can only re-run the
+  // content gate, not the word floor — recomputing it there flipped thin notes
+  // back to index after hydration.
+  const seeds = [seedTag('__prerender_experience__', { post, hints, companySlug, roleSlug, noindex: gated || thin })];
 
   try {
     return { status: 200, html: await composeDocument(req, { head, body, seeds }) };

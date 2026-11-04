@@ -90,6 +90,7 @@ const happyPath: Handler = (url) => {
   if (url.endsWith('/app.html')) return new Response(SHELL, { status: 200 });
   if (url.includes('/posts/search')) return json({ data: { posts: [post()], total: 1 } });
   if (url.includes('/ai-hints')) return json({ data: HINTS });
+  if (url.includes('/companies/profile')) return json({ data: { displayName: 'AT&T', slug: 'at-t' } });
   return new Response('not found', { status: 404 });
 };
 
@@ -120,6 +121,75 @@ describe('renderNotePage — backend seoTitle', () => {
       .map((m) => JSON.parse(m[1]))
       .find((d) => d['@type'] === 'Article');
     expect(ld?.headline).toBe(seoTitle);
+  });
+});
+
+describe('renderNotePage — the company breadcrumb', () => {
+  // A post carries only the display name; the slug is the backend's, so it is
+  // asked for (companies/profile?company=), never derived from the name.
+  it('links the slug the profile returns and hands it to the client', async () => {
+    mockFetch(happyPath);
+    const page = await renderNotePage(req, ID);
+    expect(page.html).toContain('href="/interview-questions/at-t"');
+    expect(seedOf(page.html).companySlug).toBe('at-t');
+  });
+
+  it('links the directory when the company has no slug, and still renders', async () => {
+    mockFetch((url) =>
+      url.includes('/companies/profile') ? json({ errorCode: 'NOT_FOUND' }, 400) : happyPath(url),
+    );
+    const page = await renderNotePage(req, ID);
+    expect(page.status).toBe(200);
+    expect(page.html).not.toContain('href="/interview-questions/at-t"');
+    expect(page.html).toContain('href="/interview-questions"');
+    expect(seedOf(page.html).companySlug).toBeNull();
+  });
+
+  it('links the directory when the profile is down, rather than 503ing the note', async () => {
+    mockFetch((url) =>
+      url.includes('/companies/profile') ? new Response('down', { status: 502 }) : happyPath(url),
+    );
+    const page = await renderNotePage(req, ID);
+    expect(page.status).toBe(200);
+    expect(page.html).toContain('href="/interview-questions"');
+  });
+});
+
+describe('renderNotePage — the role crumb', () => {
+  /** posts/search answering `role` and `company` totals separately (no postId). */
+  const totals = (forRole: number, forCompany: number): Handler => (url) => {
+    const q = new URL(url).searchParams;
+    if (url.includes('/posts/search') && !q.get('postId')) {
+      return json({ data: { posts: [], total: q.get('role') ? forRole : forCompany } });
+    }
+    return happyPath(url);
+  };
+
+  it('links company > role when the role has an indexed page', async () => {
+    mockFetch(totals(40, 100));
+    const page = await renderNotePage(req, ID);
+    expect(page.html).toContain('href="/interview-questions/at-t/software-engineer">Software Engineer</a>');
+    expect(seedOf(page.html).roleSlug).toBe('software-engineer');
+  });
+
+  it.each([
+    ['under 10 notes', 9, 100],
+    ['90% of the company or more', 95, 100],
+  ])('stops at the company when the role has %s', async (_why, forRole, forCompany) => {
+    mockFetch(totals(forRole, forCompany));
+    const page = await renderNotePage(req, ID);
+    expect(page.html).toContain('href="/interview-questions/at-t"');
+    expect(page.html).not.toContain('/interview-questions/at-t/software-engineer');
+    expect(seedOf(page.html).roleSlug).toBeNull();
+  });
+
+  it('never links a role crumb without a company page', async () => {
+    mockFetch((url) =>
+      url.includes('/companies/profile') ? json({ errorCode: 'NOT_FOUND' }, 400) : totals(40, 100)(url),
+    );
+    const page = await renderNotePage(req, ID);
+    expect(page.html).not.toContain('/software-engineer');
+    expect(seedOf(page.html).roleSlug).toBeNull();
   });
 });
 
@@ -170,6 +240,7 @@ describe('renderNotePage — the happy path', () => {
     expect(seedJson.post.id).toBe(ID);
     expect(seedJson.hints.q1.pro_tip).toBeTruthy();
     expect('comments' in seedJson).toBe(false);
+    expect(seedJson.noindex).toBe(false);
   });
 
   it('indexes a single-question note and declares the wall', async () => {
@@ -284,6 +355,11 @@ describe('renderNotePage — the three outcomes', () => {
   });
 });
 
+function seedOf(html: string): any {
+  const raw = html.match(/id="__prerender_experience__"[^>]*>([\s\S]*?)<\/script>/)![1];
+  return JSON.parse(raw.replace(/\\u003c/g, '<'));
+}
+
 describe('renderNotePage — degradation', () => {
   it('renders the note when its hints fail, and marks the thin result noindex', async () => {
     mockFetch((url) => {
@@ -300,13 +376,16 @@ describe('renderNotePage — degradation', () => {
     // the only check that can, which is why it runs after rendering.
     expect(page.html).toContain('content="noindex, follow"');
     expect(page.html).not.toContain('"@type":"Article"');
+    // The client can re-run the gate but not the floor, so the decision rides
+    // in the seed — without it this note flipped back to `index` on hydration.
+    expect(seedOf(page.html).noindex).toBe(true);
   });
 
   it('noindexes a note with no questions but still serves it in full', async () => {
     mockFetch((url) =>
-      url.endsWith('/app.html')
-        ? new Response(SHELL)
-        : json({ data: { posts: [post({ questions: [] })], total: 1 } }),
+      url.includes('/posts/search')
+        ? json({ data: { posts: [post({ questions: [] })], total: 1 } })
+        : happyPath(url),
     );
     const page = await renderNotePage(req, ID);
     expect(page.status).toBe(200);

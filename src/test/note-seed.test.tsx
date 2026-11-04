@@ -10,7 +10,7 @@
  * vi.hoisted — before the page module loads.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { noteMocks, notePost, setPlan, setSignedIn } from './note-page-mocks';
 
@@ -32,6 +32,9 @@ vi.hoisted(() => {
       questions: [{ id: 'q-1', seq: 1, title: 'Design a rate limiter', categories: [], notes: 'They asked me to design a rate limiter.' }],
     },
     comments: [],
+    // The server's call (here: a body under the word floor). The post itself
+    // passes isIndexablePost, so only the seed can make this page noindex.
+    noindex: true,
   };
   const tag = document.createElement('script');
   tag.type = 'application/json';
@@ -65,6 +68,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+/** robots once useSeo has written the head (data-seo-ready marks that). */
+const robotsWhenReady = async () => {
+  await waitFor(() => expect(document.documentElement.getAttribute('data-seo-ready')).toBe('1'));
+  return document.head.querySelector('meta[name="robots"]')?.getAttribute('content');
+};
+
 describe('note page — embedded copy', () => {
   it('boots a guest from it without a request', async () => {
     setSignedIn(false);
@@ -72,6 +81,25 @@ describe('note page — embedded copy', () => {
     expect(await screen.findByText(TRIMMED_NOTE)).toBeInTheDocument();
     expect(noteMocks.community.getPublicPost).not.toHaveBeenCalled();
     expect(noteMocks.community.getPost).not.toHaveBeenCalled();
+  });
+
+  it("keeps the server's noindex rather than recomputing it", async () => {
+    setSignedIn(false);
+    renderNote();
+    await screen.findByText(TRIMMED_NOTE);
+    expect(await robotsWhenReady()).toBe('noindex, follow');
+    expect(document.head.querySelector('script[data-seo]')).toBeNull();
+  });
+
+  it('falls back to the content gate when there is no seed to read', async () => {
+    setSignedIn(true);
+    setPlan('Advanced');
+    noteMocks.community.getPost.mockResolvedValue({
+      data: { data: notePost({ user: { id: 'u9', name: 'Author' }, notes: FULL_NOTE }) },
+    });
+    renderNote();
+    await screen.findByText(FULL_NOTE);
+    expect(await robotsWhenReady()).toBe('index, follow');
   });
 
   it('is ignored for an Advanced reader, who fetches and sees the full note', async () => {

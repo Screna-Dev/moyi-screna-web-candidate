@@ -16,6 +16,7 @@ import {
   FileText,
   X,
   CheckCircle2,
+  ArrowRight,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
@@ -24,7 +25,7 @@ import { getPosts, getPublicPosts, normalizePublicPosts, likePost, unlikePost, s
          getCompanyProfile, getPublicCompanyProfile, getPublicCompanyBreakdown, getPostOptions } from '../../services/CommunityService';
 import { hasStoredSession } from '../../services/api';
 import { buildAuthPath } from '@/utils/returnTo';
-import { companySlug, resolveCompanyName } from '@/utils/companySlug';
+import { MIN_POSTS_FOR_PAGE } from '@/utils/companyDirectory';
 import {
   COMPANY_PAGE_SIZE,
   companyPageCount,
@@ -33,6 +34,7 @@ import {
   companySeoTitle,
 } from '@/utils/companyPaging';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
+import { companyGuideLabel, type CompanyGuide } from '@/services/sanity';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
@@ -47,7 +49,7 @@ import { readCompanyPostFilters, writeCompanyPostFilters } from '@/utils/company
 import { CompanyMockLauncher } from '@/components/newDesign/interview-insights/quick-mock';
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { mostCommonRole } from '@/utils/quickMockDefaults';
-import { useSeo } from '@/hooks/useSeo';
+import { useSeo, SITE_URL } from '@/hooks/useSeo';
 import { useCompanyPasses } from '@/hooks/useCompanyPass';
 import {
   companyFaq,
@@ -55,6 +57,17 @@ import {
   companyIntro,
   type CompanyBreakdown,
 } from '@/utils/companyBreakdown';
+import {
+  companyRoleGuidesHeading,
+  companyRoleIntro,
+  companyRoleJsonLd,
+  companyRoleSeoDescription,
+  companyRoleSeoTitle,
+  getCompanyRoleLinks,
+  isIndexableRole,
+  roleLabelForSlug,
+  type RoleLink,
+} from '@/utils/companyRole';
 
 // ─── Build-time seed ───────────────────────────────────────────────────────
 // scripts/prerender.mjs fetches this company's profile and first page of notes
@@ -68,6 +81,7 @@ import {
 type CompanySeed = {
   profile?: {
     displayName?: string;
+    slug?: string | null;
     category?: string;
     summary?: string;
     postCount?: number;
@@ -90,6 +104,24 @@ type CompanySeed = {
    * under the same URL would differ.
    */
   page?: number | null;
+  /** Blog posts tagged with this company, already sorted. Company page only. */
+  guides?: CompanyGuide[];
+  /**
+   * The role label of a /:company/:role page; absent on the company page and
+   * its archive. Part of the match for the same reason `page` is: the role
+   * page and the company page share the seed id and the slug.
+   */
+  role?: string | null;
+  /** The role links (companyRoleLinks), company and role pages. */
+  roleLinks?: RoleLink[];
+  /** Role page only: the company's search total its share rule used. */
+  companyTotal?: number;
+  /**
+   * The server's indexing decision (below MIN_POSTS_FOR_PAGE, or a body under
+   * the word floor). Applied as-is: the client cannot see the rendered body,
+   * so recomputing would flip thin pages back to index after hydration.
+   */
+  noindex?: boolean;
 };
 const PRERENDER_SEED = readPrerenderSeed<CompanySeed>('__prerender_company__');
 
@@ -186,9 +218,10 @@ const OUTCOME_COLORS: Record<string, string> = {
 // auth-only. Those numbers were invented and are gone: every count on this page
 // now comes from /community/public/companies/profile. Do not reintroduce them.
 //
-// Only `name` is still read, and only for the first paint while the real
-// display name is being resolved from the company directory (see companySlug —
-// the slug itself cannot be inverted). `category` and `description` are
+// Only `name` is still read, and only for the first paint while the profile
+// (looked up by the URL's slug) is in flight. It is never sent to the API: the
+// slug cannot be turned back into a display name, so every request waits for
+// profile.displayName. `category` and `description` are
 // deliberately NOT used as fallbacks: this page is submitted to a search index,
 // and editorial copy about a company we have no profile row for would be
 // invention of a different kind.
@@ -331,7 +364,13 @@ function UpgradeModal({
 }
 
 export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } = {}) {
-  const { companyId, n } = useParams();
+  const { companyId, n, role: roleSlug } = useParams();
+  // /interview-questions/:companyId/:role — one role's notes. `roleLabel` is
+  // null for an unknown or reserved slug (`page`, `q`), which renders the
+  // not-found state rather than the company page under a URL nothing links to.
+  const roleView = roleSlug !== undefined;
+  const roleLabel = roleView ? roleLabelForSlug(roleSlug) : null;
+  const roleNotFound = roleView && !roleLabel;
   // /interview-questions/:companyId/page/:n — the crawlable archive view.
   //
   // null on the company page itself. Anything that is not a positive integer is
@@ -390,54 +429,36 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // Google's notes under Meta's heading.
   const seed =
     PRERENDER_SEED &&
-    companySlug(PRERENDER_SEED.profile?.displayName) === companySlug(companyId) &&
-    (PRERENDER_SEED.page ?? null) === archivePage
+    !!companyId &&
+    PRERENDER_SEED.profile?.slug === companyId.toLowerCase() &&
+    (PRERENDER_SEED.page ?? null) === archivePage &&
+    (PRERENDER_SEED.role ?? null) === roleLabel
       ? PRERENDER_SEED
       : null;
 
   // ── Company identity ──
-  // The slug cannot be turned back into a display name (see companySlug): 18 of
-  // the library's companies collapse punctuation, so 'AT&T' -> 'at-t' -> 'AT T'
-  // and the API then reports the company as missing. The title-cased guess is
-  // only for the first paint; every API call waits for `apiName`, which is
-  // either the seed's exact name or one matched against the real company list.
+  // The URL segment is the backend's slug, so the profile is looked up by it
+  // (companies/profile?slug=) and everything else — breakdown, feed — uses the
+  // profile's displayName, because those endpoints only take a display name.
+  // The slug cannot be turned back into a name locally ('at-t' is 'AT&T'), so
+  // the curated/title-cased name is for the first paint only and never queried.
   const guessedName = useMemo(() => resolveCompany(companyId).name, [companyId]);
-  const [resolvedName, setResolvedName] = useState<string | null>(
-    seed?.profile?.displayName ?? null,
-  );
-  const [nameResolved, setNameResolved] = useState<boolean>(!!seed);
-
-  useEffect(() => {
-    if (seed) return;
-    let cancelled = false;
-    setResolvedName(null);
-    setNameResolved(false);
-    resolveCompanyName(companyId ?? '').then(({ name }) => {
-      if (cancelled) return;
-      setResolvedName(name);
-      setNameResolved(true);
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
-
-  const apiName = resolvedName;
   const fallbackCompany = useMemo(() => {
     const base = resolveCompany(companyId);
-    return { ...base, name: resolvedName ?? guessedName };
-  }, [companyId, resolvedName, guessedName]);
+    return { ...base, name: guessedName };
+  }, [companyId, guessedName]);
 
-  // Real category + summary from GET /community/companies/profile (looked up by
-  // display name); falls back to the resolved/curated values until it loads.
+  // Real category + summary + counts from GET /community/companies/profile.
   const [profile, setProfile] = useState<{
     displayName?: string;
+    slug?: string | null;
     category?: string;
     summary?: string;
     postCount?: number;
     recentPostCount?: number;
     latestUpdatedAt?: string | null;
-  } | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
+  } | null>(seed?.profile ?? null);
+  const [profileLoading, setProfileLoading] = useState(!seed?.profile);
   useEffect(() => {
     // Prerendered pages already have the profile; refetching would only make
     // the snapshot flash on hydration.
@@ -446,28 +467,35 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       setProfileLoading(false);
       return;
     }
-    // Waiting on the exact display name — a lookup with the title-cased guess
-    // would 400 NOT_FOUND for any company whose name carries punctuation.
-    if (!apiName) return;
+    if (!companyId) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
 
     let cancelled = false;
     setProfileLoading(true);
     setProfile(null);
-    // Same service method behind both URLs; the public one just skips auth.
+    // Same response behind both URLs; the public one just skips auth.
     const fetchProfile = signedOut ? getPublicCompanyProfile : getCompanyProfile;
-    fetchProfile(apiName)
+    fetchProfile({ slug: companyId })
       .then((res) => {
         const data = res.data?.data ?? res.data;
         if (!cancelled && data) setProfile(data);
       })
       .catch(() => {
-        // A company with no profile row answers 400/NOT_FOUND. That is a real
-        // state, not a failure: the header falls back to the curated blurb.
+        // 400/NOT_FOUND: no such company (or it was renamed and its slug
+        // moved). The page renders its empty state; nothing is guessed.
       })
       .finally(() => { if (!cancelled) setProfileLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiName, signedOut]);
+  }, [companyId, signedOut]);
+
+  // The exact display name the other endpoints index, or null once the
+  // profile has settled without one — in which case nothing is fetched.
+  const apiName = profile?.displayName ?? null;
+  const nameResolved = !profileLoading;
 
   // ── Breakdown (public surface only) ──
   // Counts behind the opening paragraph and the FAQ. Same rule as the profile:
@@ -475,15 +503,23 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // already asked about), otherwise one request. The personal-centre twin keeps
   // profile.summary and never asks.
   const [breakdown, setBreakdown] = useState<CompanyBreakdown | null>(null);
-  const [breakdownLoading, setBreakdownLoading] = useState(isPublic);
+  // Not on a role page either: its opening paragraph is the role's own count.
+  const wantsBreakdown = isPublic && !roleView;
+  const [breakdownLoading, setBreakdownLoading] = useState(wantsBreakdown);
   useEffect(() => {
-    if (!isPublic) return;
+    if (!wantsBreakdown) return;
     if (seed && 'breakdown' in seed) {
       setBreakdown(seed.breakdown ?? null);
       setBreakdownLoading(false);
       return;
     }
-    if (!apiName) return;
+    if (!apiName) {
+      // Still waiting on the profile — or it settled without a company, in
+      // which case there is nothing to break down.
+      setBreakdown(null);
+      setBreakdownLoading(!nameResolved);
+      return;
+    }
 
     let cancelled = false;
     setBreakdownLoading(true);
@@ -499,7 +535,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       .finally(() => { if (!cancelled) setBreakdownLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiName, isPublic]);
+  }, [apiName, nameResolved, wantsBreakdown]);
 
   // `name` is the real, route-derived company identity (also used for API
   // lookups), so it always resolves. For signed-in users `category` and
@@ -517,19 +553,107 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // (scripts/routes.mjs, the same function the server renders with), so the
   // paragraph answers what the interview covers rather than what the company
   // does. The personal centre keeps the profile summary.
+  // Total notes for this company as the FEED reports it — the Elasticsearch
+  // count the pages are cut from, not profile.postCount, which is a database
+  // aggregate that lags it by tens of notes. It drives the pager's page count,
+  // so where the two disagree at a page boundary the wrong one would have the
+  // pager linking to a 404. See fetchArchivePage.
+  // `seed`, not PRERENDER_SEED: the raw seed may belong to another company or
+  // another page of the archive, and its total would then be the wrong number.
+  const [archiveTotal, setArchiveTotal] = useState<number | null>(
+    typeof seed?.total === 'number' ? seed.total : null,
+  );
+  // The company page, its archive and its role pages are one component, so a
+  // link between them keeps this state: reset it, or a role page would show
+  // the previous page's total (the company's, or another role's).
+  const routeKey = `${companyId}|${archivePage ?? ''}|${roleSlug ?? ''}`;
+  const lastRouteKey = useRef(routeKey);
+  useEffect(() => {
+    if (lastRouteKey.current === routeKey) return;
+    lastRouteKey.current = routeKey;
+    setArchiveTotal(typeof seed?.total === 'number' ? seed.total : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey]);
+  // On a role page, also the number shown: there is no per-role profile count,
+  // and this is the one the server rendered and gated on.
+  const roleTotal = roleView ? archiveTotal : null;
+
   const company = useMemo(() => {
     const name = profile?.displayName || fallbackCompany.name;
     return {
       name,
       category: profile?.category || null,
-      description: isPublic ? companyIntro(name, breakdown) || null : profile?.summary || null,
+      description: roleLabel
+        ? companyRoleIntro(name, roleLabel, roleTotal, profile?.postCount) || null
+        : isPublic
+          ? companyIntro(name, breakdown) || null
+          : profile?.summary || null,
     };
-  }, [fallbackCompany, profile, isPublic, breakdown]);
+  }, [fallbackCompany, profile, isPublic, breakdown, roleLabel, roleTotal]);
   const faq = useMemo(
-    () => (isPublic && archivePage === null ? companyFaq(company.name, breakdown) : []),
-    [isPublic, archivePage, company.name, breakdown],
+    () => (isPublic && archivePage === null && !roleView ? companyFaq(company.name, breakdown) : []),
+    [isPublic, archivePage, roleView, company.name, breakdown],
   );
-  const descriptionLoading = isPublic ? breakdownLoading : profileLoading;
+  // A role page waits for its count only while there is a company to count.
+  const roleTotalPending = roleView && !roleNotFound && !!profile?.displayName && roleTotal === null;
+  const descriptionLoading = roleView
+    ? profileLoading || roleTotalPending
+    : isPublic
+      ? breakdownLoading
+      : profileLoading;
+
+  // ── Blog guides (public company page only) ──
+  // Posts an editor tagged with this company in the Studio. The server renders
+  // them into the HTML; the seed carries the same list so the client does not
+  // refetch. Without a seed (client-side navigation) one Sanity read. Any
+  // failure is no section, same as the server.
+  const [guides, setGuides] = useState<CompanyGuide[]>([]);
+  useEffect(() => {
+    if (!isPublic || archivePage !== null || roleView || !companyId) {
+      setGuides([]);
+      return;
+    }
+    if (seed && Array.isArray(seed.guides)) {
+      setGuides(seed.guides);
+      return;
+    }
+    let cancelled = false;
+    setGuides([]);
+    // Loaded on demand so the Sanity client stays out of this page's chunk.
+    import('@/services/sanity')
+      .then(({ getCompanyGuides }) => getCompanyGuides(companyId))
+      .then((rows) => { if (!cancelled) setGuides(rows); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, isPublic, archivePage, roleView]);
+
+  // ── Role links (public company and role pages) ──
+  // The roles that earn an indexed page, from the seed when the server rendered
+  // this page, otherwise counted client-side (getCompanyRoleLinks). Any failure
+  // is no bar, as on the server.
+  const wantsRoleLinks = isPublic && archivePage === null && !roleNotFound;
+  const [roleLinks, setRoleLinks] = useState<RoleLink[]>(
+    wantsRoleLinks && Array.isArray(seed?.roleLinks) ? seed!.roleLinks! : [],
+  );
+  useEffect(() => {
+    if (!wantsRoleLinks) {
+      setRoleLinks([]);
+      return;
+    }
+    if (seed && Array.isArray(seed.roleLinks)) {
+      setRoleLinks(seed.roleLinks);
+      return;
+    }
+    if (!apiName) return;
+    let cancelled = false;
+    getCompanyRoleLinks(apiName)
+      .then((links) => { if (!cancelled) setRoleLinks(links); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiName, wantsRoleLinks]);
+  const showRoleLinks = wantsRoleLinks && roleLinks.length > 0;
 
   // Header stats, sourced solely from GET /community/companies/profile
   // (published-post counts). We show a loading skeleton until it resolves and
@@ -544,8 +668,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // only one displayed. The feed's total is still what drives pagination (see
   // hasMorePublic), because there it MUST match the ES result set being paged;
   // it is consumed at fetch time and never rendered.
-  const noteTotal = profile?.postCount ?? null;
+  const noteTotal = roleView ? roleTotal : profile?.postCount ?? null;
   const notesCount = noteTotal ?? 0;
+  const statsLoading = profileLoading || roleTotalPending;
   const updatedLabel = formatRelativeTime(profile?.latestUpdatedAt); // null when the company has no posts
 
   // ── Toolbar state (filters + sort + search), persisted per company ──
@@ -652,16 +777,6 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // authenticated search allows, since it reports no total. Starts false so a
   // failed read never offers a page that may not exist.
   const [hasMorePublic, setHasMorePublic] = useState(false);
-  // Total notes for this company as the FEED reports it — the Elasticsearch
-  // count the pages are cut from, not profile.postCount, which is a database
-  // aggregate that lags it by tens of notes. It drives the pager's page count,
-  // so where the two disagree at a page boundary the wrong one would have the
-  // pager linking to a 404. See fetchArchivePage.
-  // `seed`, not PRERENDER_SEED: the raw seed may belong to another company or
-  // another page of the archive, and its total would then be the wrong number.
-  const [archiveTotal, setArchiveTotal] = useState<number | null>(
-    typeof seed?.total === 'number' ? seed.total : null,
-  );
   // True while a *reset* fetch is in flight (sort/filter/search change). We show
   // the loading state and hide the previous results instead of leaving stale
   // posts on screen. Append fetches ("load more") don't set this.
@@ -787,6 +902,12 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     }, 1000));
   }, [isAuthenticated, navigate, interactions, companyPath]);
 
+  // On the public surface the role is the URL's — the role links replace the
+  // Role filter, so a role restored from sessionStorage does not apply there
+  // (it would filter the feed with no control left to clear it). The personal
+  // centre keeps its Role filter.
+  const queryRole = roleView ? roleLabel ?? '' : isPublic ? '' : filterRole;
+
   const fetchPosts = useCallback(async (pageNum: number, reset: boolean) => {
     setLoading(true);
     if (reset) setIsReloading(true);
@@ -798,7 +919,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         company: apiName,
       };
       if (debouncedSearchQuery) params.search = debouncedSearchQuery;
-      if (filterRole) params.role = filterRole;
+      if (queryRole) params.role = queryRole;
       if (filterRound) params.round = filterRound;
       if (filterLevel) params.level = filterLevel;
       if (filterTime) params.time = TIME_TO_API[filterTime];
@@ -808,7 +929,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         // Public search takes company / role / page and nothing else: sorting
         // is locked to NEWEST server-side and the other facets are not read.
         const pub = normalizePublicPosts(
-          await getPublicPosts({ company: apiName, role: filterRole || undefined, page: pageNum }),
+          await getPublicPosts({ company: apiName, role: queryRole || undefined, page: pageNum }),
         );
         content = pub.posts as Post[];
         // Paginate off the real match count, not off "did this page come back
@@ -852,7 +973,19 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       setIsInitialLoading(false);
       setIsReloading(false);
     }
-  }, [activeSort, debouncedSearchQuery, filterRole, filterRound, filterLevel, filterTime, signedOut, apiName, initInteractions, posthog]);
+  }, [activeSort, debouncedSearchQuery, queryRole, filterRound, filterLevel, filterTime, signedOut, apiName, initInteractions, posthog]);
+
+  // A role page's count for signed-in readers. The authenticated search reports
+  // no total, so without a seed (client-side navigation) the public endpoint is
+  // asked once; signed-out readers get it from fetchPosts above.
+  useEffect(() => {
+    if (!roleLabel || signedOut || !apiName || archiveTotal !== null) return;
+    let cancelled = false;
+    getPublicPosts({ company: apiName, role: roleLabel, page: 0 })
+      .then((res) => { if (!cancelled) setArchiveTotal(normalizePublicPosts(res).total); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [roleLabel, signedOut, apiName, archiveTotal]);
 
   // ── The crawlable archive window (/page/:n) ──
   //
@@ -931,7 +1064,8 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     archivePage !== null ||
     (activeSort === 'Newest' &&
       !debouncedSearchQuery &&
-      !filterRole && !filterRound && !filterLevel && !filterTime);
+      // On a role page the role is the page itself, not a filter.
+      (isPublic || !filterRole) && !filterRound && !filterLevel && !filterTime);
   const seedUsable = useRef(isDefaultQuery);
 
   useEffect(() => {
@@ -959,6 +1093,11 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     // rendered with the newest ten.
     if (archivePage !== null) {
       if (!nameResolved) return;
+      if (!apiName) {
+        setPosts([]);
+        setIsInitialLoading(false);
+        return;
+      }
       fetchArchivePage(archivePage);
       return;
     }
@@ -968,15 +1107,21 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     // again. `isInitialLoading` keeps the spinner up meanwhile; once settled,
     // filter/sort changes refetch normally via fetchPosts's identity.
     //
-    // Deliberately NOT gated on profileLoading. The feed used to take its
-    // `company` parameter from the profile response, which forced the two
-    // requests to run in series; it now uses the resolved name, so gating on
-    // the profile would only add a round trip to a chain that is already
-    // stats -> name -> feed. They run in parallel instead.
+    // The feed takes `company` from the profile, so it runs after it — the
+    // only way from a slug to the display name posts/search wants.
     if (!nameResolved || isPlanLoading) return;
+    if (!apiName || roleNotFound) {
+      // No such company. Without this the query would go out with no
+      // `company` and the public endpoint would answer with site-wide notes.
+      setPosts([]);
+      setHasMore(false);
+      setHasMorePublic(false);
+      setIsInitialLoading(false);
+      return;
+    }
     fetchPosts(0, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPosts, fetchArchivePage, archivePage, nameResolved, isPlanLoading, isDefaultQuery]);
+  }, [fetchPosts, fetchArchivePage, archivePage, nameResolved, apiName, isPlanLoading, isDefaultQuery, roleNotFound]);
 
   const handleLoadMore = () => {
     if (loading) return;
@@ -1015,8 +1160,42 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // hide anything and must not be used to try to.
   const notesCountForSeo = noteTotal ?? posts.length;
   const archivePageCount = companyPageCount(archiveTotal ?? noteTotal ?? posts.length);
+  // Without a seed (client-side navigation) only the post-count half of the
+  // server's rule is available; the word floor is server-only.
+  const seoNoindex = seed?.noindex ?? ((profile?.postCount ?? 0) < MIN_POSTS_FOR_PAGE);
+  // Role page: the same split, on the role's own count. The server answers an
+  // unknown role or an empty one with a 404; here it is a noindex not-found.
+  const roleNoindex =
+    roleNotFound || (seed?.noindex ?? !isIndexableRole(roleTotal, seed?.companyTotal ?? profile?.postCount));
   useSeo(
-    !isPublic
+    roleView && isPublic
+      ? roleNotFound
+        ? {
+            title: 'Page not found | Screna AI',
+            description: 'There is no such role for this company.',
+            path: `/interview-questions/${companyId}/${roleSlug}`,
+            noindex: true,
+          }
+        : isInitialLoading || roleTotalPending
+          ? null
+          : {
+              // scripts/routes.mjs, as api/_render/company.ts renders them.
+              title: companyRoleSeoTitle(company.name, roleLabel!),
+              description: companyRoleSeoDescription(company.name, roleLabel!, roleTotal ?? 0),
+              path: `/interview-questions/${companyId}/${roleSlug}`,
+              type: 'article',
+              noindex: roleNoindex,
+              jsonLd: roleNoindex
+                ? undefined
+                : companyRoleJsonLd(SITE_URL, {
+                    name: company.name,
+                    companySlug: companyId!,
+                    role: roleLabel!,
+                    roleSlug: roleSlug!,
+                    intro: company.description ?? '',
+                  }),
+            }
+      : !isPublic
       ? {
           // Personal-centre twin: same notes, so it must not compete with the
           // indexed page. Still writes (rather than passing null) so
@@ -1050,7 +1229,8 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               ? `/interview-questions/${companyId}`
               : `/interview-questions/${companyId}/page/${archivePage}`,
           type: 'article',
-          jsonLd: [
+          noindex: seoNoindex,
+          jsonLd: seoNoindex ? undefined : [
             {
               '@context': 'https://schema.org',
               '@type': 'Article',
@@ -1099,18 +1279,55 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
     return null;
   };
 
+  if (roleNotFound) {
+    return (
+      <Layout fullBleed>
+        <div className="pb-20 bg-[#f9fafb]">
+          <div className="max-w-6xl mx-auto px-6 my-[24px]">
+            <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
+              <p className="text-[hsl(222,12%,45%)] mb-3">There is no such role for this company.</p>
+              <Link to={companyPath} className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline">
+                See all {company.name} interview notes
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout fullBleed>
       <div className="pb-20 bg-[#f9fafb]">
         <div className="max-w-6xl mx-auto px-6 my-[24px]">
-          {/* Back Link */}
-          <Link
-            to={listPath}
-            className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)] transition-colors hover:text-[hsl(222,22%,15%)] mb-6"
-          >
-            <ArrowLeft className="size-4" />
-            Back to Directory
-          </Link>
+          {roleLabel ? (
+            // Role page: company page > role, as the server renders it.
+            <nav aria-label="Breadcrumb" className="mb-6">
+              <ol className="flex flex-wrap items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)]">
+                <li>
+                  <Link to={listPath} className="transition-colors hover:text-[hsl(222,22%,15%)]">
+                    Interview Questions
+                  </Link>
+                </li>
+                <li aria-hidden="true">&rsaquo;</li>
+                <li>
+                  <Link to={companyPath} className="transition-colors hover:text-[hsl(222,22%,15%)]">
+                    {company.name}
+                  </Link>
+                </li>
+                <li aria-hidden="true">&rsaquo;</li>
+                <li aria-current="page" className="text-[hsl(222,22%,15%)]">{roleLabel}</li>
+              </ol>
+            </nav>
+          ) : (
+            <Link
+              to={listPath}
+              className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)] transition-colors hover:text-[hsl(222,22%,15%)] mb-6"
+            >
+              <ArrowLeft className="size-4" />
+              Back to Directory
+            </Link>
+          )}
 
           {/* ── Header ── */}
           <header className="mb-10 flex flex-col gap-6 min-[900px]:flex-row min-[900px]:items-start min-[900px]:justify-between">
@@ -1120,6 +1337,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-[34px] md:text-[40px] font-semibold tracking-tight leading-none text-[hsl(222,22%,15%)] font-[family-name:var(--font-serif)]">
                     {company.name}
+                    {roleLabel && (
+                      <span className="text-[20px] font-normal text-[hsl(222,12%,45%)]"> {roleLabel} interview questions</span>
+                    )}
                   </h1>
                   {profileLoading ? (
                     <span className="h-6 w-24 animate-pulse rounded-full bg-[hsl(222,12%,88%)]" aria-label="Loading category" aria-busy="true" />
@@ -1145,7 +1365,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                     the same real numbers, so there is nothing to hide here any
                     more (and nothing hardcoded — see noteTotal). */}
                 <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[hsl(222,12%,45%)]">
-                  {profileLoading ? (
+                  {statsLoading ? (
                     <span className="inline-flex items-center gap-2" aria-label="Loading stats" aria-busy="true">
                       <span className="h-4 w-28 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
                       <span className="h-4 w-24 animate-pulse rounded bg-[hsl(222,12%,88%)]" />
@@ -1155,9 +1375,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                       <span className="inline-flex items-center gap-1.5">
                         <FileText className="size-4 text-[hsl(222,12%,55%)]" />
                         <span className="font-semibold text-[hsl(222,22%,15%)]">{notesCount.toLocaleString()}</span>
-                        total notes
+                        {roleLabel ? `${roleLabel} notes` : 'total notes'}
                       </span>
-                      {updatedLabel && <span>Updated {updatedLabel}</span>}
+                      {!roleView && updatedLabel && <span>Updated {updatedLabel}</span>}
                     </>
                   )}
                 </div>
@@ -1176,7 +1396,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               <CompanyMockLauncher
                 company={company.name}
                 companyId={companyId}
-                fallbackRole={commonRole ?? undefined}
+                fallbackRole={roleLabel ?? commonRole ?? undefined}
                 locked={signedOut}
               />
               <Link
@@ -1190,6 +1410,35 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               </Link>
             </div>
           </header>
+
+          {/* Role links — the role filter on the public surface, for readers
+              and crawlers alike: plain <a href>s, as the server renders them
+              (roleLinksBar in api/_render/company.ts). */}
+          {showRoleLinks && (
+            <nav aria-label="Interview questions by role" className="mb-6">
+              <ul className="flex flex-wrap items-center gap-2">
+                {[{ slug: null as string | null, label: 'All', count: undefined as number | undefined }, ...roleLinks].map((r) => {
+                  const active = r.slug === (roleView ? roleSlug ?? null : null);
+                  return (
+                    <li key={r.slug ?? 'all'}>
+                      <Link
+                        to={r.slug ? `${companyPath}/${r.slug}` : companyPath}
+                        aria-current={active ? 'page' : undefined}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          active
+                            ? 'border-[hsl(222,22%,15%)] bg-[hsl(222,22%,15%)] text-white'
+                            : 'border-[hsl(220,16%,90%)] bg-white text-[hsl(222,12%,45%)] hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]'
+                        }`}
+                      >
+                        {r.label}
+                        {r.count !== undefined && <span className="opacity-70">{r.count.toLocaleString('en-US')}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          )}
 
           {/* ── Layout Grid ── */}
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -1207,7 +1456,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               {archivePage === null && (restrictedBrowsing ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    {['Role', 'Round', 'Level', 'Time'].map(label => (
+                    {(isPublic ? ['Round', 'Level', 'Time'] : ['Role', 'Round', 'Level', 'Time']).map(label => (
                       <button
                         key={label}
                         type="button"
@@ -1233,7 +1482,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    <RoleFilter key={`role-${filterEpoch}`} singleSelect groups={roleGroups} initialSelected={restored.role ? [restored.role] : undefined} onApply={sel => setFilterRole(sel[0] || '')} />
+                    {!isPublic && <RoleFilter key={`role-${filterEpoch}`} singleSelect groups={roleGroups} initialSelected={restored.role ? [restored.role] : undefined} onApply={sel => setFilterRole(sel[0] || '')} />}
                     <RoundFilter key={`round-${filterEpoch}`} singleSelect groups={roundGroups} initialSelected={restored.round ? [restored.round] : undefined} onApply={sel => setFilterRound(sel[0] || '')} />
                     <LevelFilter key={`level-${filterEpoch}`} singleSelect initialSelected={restored.level ? [restored.level] : undefined} onApply={sel => setFilterLevel(sel[0] || '')} />
                     <TimeFilter key={`time-${filterEpoch}`} singleSelect initialSelected={restored.time ? [restored.time] : undefined} onApply={sel => setFilterTime(sel[0] || '')} />
@@ -1325,7 +1574,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               {/* Empty — no posts at all for this company */}
               {!loading && !error && !isInitialLoading && posts.length === 0 && (
                 <div className="text-center py-16 bg-white rounded-2xl border border-[hsl(220,16%,90%)]">
-                  <p className="text-[hsl(222,12%,45%)] mb-3">No experiences yet for {company.name}.</p>
+                  <p className="text-[hsl(222,12%,45%)] mb-3">No {roleLabel ? `${roleLabel} ` : ''}experiences yet for {company.name}.</p>
                   <Link
                     to={isAuthenticated ? '/add-experience' : buildAuthPath(companyPath)}
                     className="text-[hsl(221,91%,60%)] text-sm font-medium hover:underline"
@@ -1530,6 +1779,31 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                 </div>
               )}
 
+              {/* Interview guides — blog posts tagged with this company. Between
+                  the notes and the FAQ, as the server's guidesSection
+                  (api/_render/company.ts). <Link> renders a real <a href>. */}
+              {guides.length > 0 && (
+                <section className="mt-10">
+                  <h2 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">{company.name} interview guides</h2>
+                  {guides.map((g) => {
+                    const label = companyGuideLabel(g.title);
+                    return (
+                      <Link
+                        key={g.slug}
+                        to={`/blog/${g.slug}`}
+                        className="group flex items-center gap-6 bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4 p-6 transition-colors hover:border-[hsl(221,91%,60%)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          {label && <p className="text-xs font-medium text-[hsl(221,91%,60%)]">{label}</p>}
+                          <h3 className={`${label ? 'mt-2 ' : ''}text-base font-semibold text-[hsl(222,22%,15%)]`}>{g.title}</h3>
+                        </div>
+                        <ArrowRight className="w-5 h-5 shrink-0 text-[hsl(222,12%,55%)] transition-colors group-hover:text-[hsl(221,91%,60%)]" strokeWidth={1.5} />
+                      </Link>
+                    );
+                  })}
+                </section>
+              )}
+
               {/* FAQ — company page of the public surface only, after the note
                   cards. Markup, copy and position match the server's faqSection
                   (api/_render/company.ts). */}
@@ -1543,6 +1817,31 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                         <p className="mt-3 text-sm text-[hsl(222,12%,45%)]">{answer}</p>
                       </div>
                     </article>
+                  ))}
+                </section>
+              )}
+
+              {/* Role guides — last on the company page, the same links as the
+                  role bar, as the server's roleGuidesSection. */}
+              {showRoleLinks && !roleView && (
+                <section className="mt-10">
+                  <h2 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">{companyRoleGuidesHeading(company.name)}</h2>
+                  {roleLinks.map((r) => (
+                    <Link
+                      key={r.slug}
+                      to={`${companyPath}/${r.slug}`}
+                      className="group flex items-center gap-6 bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4 p-6 transition-colors hover:border-[hsl(221,91%,60%)]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-[hsl(221,91%,60%)]">
+                          {r.count.toLocaleString('en-US')} {r.count === 1 ? 'note' : 'notes'}
+                        </p>
+                        <h3 className="mt-2 text-base font-semibold text-[hsl(222,22%,15%)]">
+                          {company.name} {r.label} interview questions
+                        </h3>
+                      </div>
+                      <ArrowRight className="w-5 h-5 shrink-0 text-[hsl(222,12%,55%)] transition-colors group-hover:text-[hsl(221,91%,60%)]" strokeWidth={1.5} />
+                    </Link>
                   ))}
                 </section>
               )}

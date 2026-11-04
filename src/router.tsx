@@ -301,6 +301,10 @@ export const router = createBrowserRouter([
       // oldest-first so their contents do not shift every time a note is
       // published. Same component: it reads :n and renders that window.
       { path: '/interview-questions/:companyId/page/:n', element: <CompanyDetailPage isPublic /> },
+      // One company's notes for one role (scripts/routes.mjs ROLE_SLUGS). Same
+      // component with the role locked from :role; an unknown or reserved slug
+      // (`page`, `q`) renders the not-found state.
+      { path: '/interview-questions/:companyId/:role', element: <CompanyDetailPage isPublic /> },
       // Single notes stay on one path regardless of surface. The page is
       // server-rendered by api/experience/[id].ts, which emits its head tags
       // and Open Graph set for every agent — so it previews correctly when
