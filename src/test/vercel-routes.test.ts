@@ -19,6 +19,7 @@ const SSR_DESTINATIONS = [
   '/api/experience/:id',
   '/api/interview-questions/:companyId',
   '/api/interview-questions/:companyId/page/:n',
+  '/api/interview-questions/:companyId/:role',
 ];
 
 const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
@@ -82,6 +83,7 @@ describe('vercel.json route coverage', () => {
       '/interview-questions/:companyId/page/:n',
       '/api/interview-questions/:companyId/page/:n',
     ],
+    ['/interview-questions/:companyId/:role', '/api/interview-questions/:companyId/:role'],
   ])('rewrites %s to its renderer, not the SPA shell', (source, destination) => {
     const rule = vercel.rewrites.find((r) => r.source === source);
     expect(rule, `${source} has no rewrite — it would 404 in production`).toBeDefined();
@@ -99,6 +101,18 @@ describe('vercel.json route coverage', () => {
     const company = rewriteSources.indexOf('/interview-questions/:companyId');
     expect(pager).toBeGreaterThanOrEqual(0);
     expect(pager).toBeLessThan(company);
+  });
+
+  // Same insurance for the role pages. /:company/page/:n is three segments and
+  // never matches /:company/:role; /:company/page is two and does — the
+  // renderer 404s it (RESERVED_ROLE_SLUGS).
+  it('matches the company pagination and role rewrites before the company rewrite', () => {
+    const pager = rewriteSources.indexOf('/interview-questions/:companyId/page/:n');
+    const role = rewriteSources.indexOf('/interview-questions/:companyId/:role');
+    const company = rewriteSources.indexOf('/interview-questions/:companyId');
+    expect(role).toBeGreaterThan(pager);
+    expect(role).toBeLessThan(company);
+    expect(toRegex('/interview-questions/:companyId/:role').test('/interview-questions/meta/page/2')).toBe(false);
   });
 
   it('gives every prerendered route an app.html fallback', () => {
@@ -264,6 +278,8 @@ describe('robots.txt', () => {
     // library behind ten notes per company however open /experience is.
     '/interview-questions/google/page/1',
     '/interview-questions/meta/page/238',
+    // Company × role pages.
+    '/interview-questions/meta/software-engineer',
   ])('leaves the company page %s crawlable', (p) => {
     expect(isCrawlable(p), `robots.txt blocks ${p} — the question text would not be indexed`).toBe(
       true,
@@ -291,6 +307,7 @@ describe('robots.txt', () => {
       '/sitemap.xml',
       '/sitemap-static.xml',
       '/sitemap-companies.xml',
+      '/sitemap-company-roles.xml',
       '/sitemap-notes-2026-09.xml',
       '/assets/index-abc123.js',
       '/assets/index-abc123.css',

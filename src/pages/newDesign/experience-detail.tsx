@@ -22,6 +22,8 @@ import { CompanyLogo } from '../../components/newDesign/ui/company-logo';
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { useSeo } from '@/hooks/useSeo';
 import { readPrerenderSeed } from '@/utils/prerenderSeed';
+import { companySlugFor } from '@/utils/companyDirectory';
+import { getRoleCrumb } from '@/utils/companyRole';
 import { isIndexablePost, noteSeoTitle, noteSeoTitleCore } from '@/utils/postIndexing';
 import {
   AlertDialog,
@@ -46,12 +48,6 @@ const OUTCOME_STYLES: Record<string, { bg: string; text: string; dot: string }> 
   'No response': { bg: 'bg-slate-50', text: 'text-slate-500', dot: 'bg-slate-400' },
   Pending: { bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500' },
 };
-
-// Company name → URL slug, matching the interview-insights directory links
-// (e.g. "Meta" → "meta") so the breadcrumb lands on the post's company page.
-function companySlug(name: string): string {
-  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-}
 
 // ─── Hint status types ─────────────────────────────────
 type HintStatus = 'ready' | 'generating' | 'failed' | 'none';
@@ -191,6 +187,10 @@ const PRERENDER_SEED = readPrerenderSeed<{
   post: ExperiencePost;
   comments?: Comment[];
   hints?: Record<string, AiHints>;
+  /** The company page slug the server linked, or null for none. */
+  companySlug?: string | null;
+  /** The role page slug under it, or null when the role has no indexed page. */
+  roleSlug?: string | null;
   /**
    * The server's decision: content gate OR body under the word floor. The
    * client can only re-run the gate, so it applies this when present.
@@ -225,8 +225,6 @@ export function ExperienceDetailPage() {
   const signedOut = !hasStoredSession();
   const Layout = signedOut ? InsightsLayout : DashboardLayout;
   const listPath = signedOut ? '/interview-questions' : '/interview-insights';
-  const companyPath = (name?: string) =>
-    name ? `${listPath}/${companySlug(name)}` : listPath;
 
   // note_read —— 打开某篇面经，离开时记录 duration_seconds
   useDwellTracking(EVENTS.NOTE_READ, () => ({ note_id: id }), { enabled: !!id });
@@ -318,6 +316,47 @@ export function ExperienceDetailPage() {
   // would otherwise read trimmed notes as if they were whole, and Free/Basic
   // would be shown the preview banner on their 2 newest notes.
   const seed = signedOut && PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED : null;
+
+  // ── Breadcrumb target ──
+  // Posts carry the company's display name only, and the slug rule is the
+  // backend's, so the slug is looked up, never derived: from the server render
+  // when this is the note it rendered (any reader — the slug does not depend
+  // on who is reading), otherwise from the company directory. No slug, no
+  // company link: the breadcrumb goes to the directory instead.
+  const seededSlug = PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED.companySlug : undefined;
+  const [companySlug, setCompanySlug] = useState<string | null>(seededSlug ?? null);
+  useEffect(() => {
+    if (seededSlug !== undefined) {
+      setCompanySlug(seededSlug);
+      return;
+    }
+    setCompanySlug(null);
+    if (!post?.company) return;
+    let cancelled = false;
+    companySlugFor(post.company).then((slug) => { if (!cancelled) setCompanySlug(slug); });
+    return () => { cancelled = true; };
+  }, [post?.company, seededSlug]);
+  const companyPath = companySlug ? `${listPath}/${companySlug}` : listPath;
+
+  // ── Role crumb (company > role) ──
+  // Shown to every reader when the role has an indexed page at this company
+  // (isIndexableRole); otherwise the breadcrumb stops at the company. Same rule
+  // and source as the server. Role pages exist only on the public surface — one
+  // URL per company × role — so a signed-in reader's role link goes there too,
+  // while their company link stays on the personal centre.
+  const seededRoleSlug = PRERENDER_SEED && PRERENDER_SEED.post?.id === id ? PRERENDER_SEED.roleSlug : undefined;
+  const [roleSlug, setRoleSlug] = useState<string | null>(seededRoleSlug ?? null);
+  useEffect(() => {
+    if (seededRoleSlug !== undefined) {
+      setRoleSlug(seededRoleSlug);
+      return;
+    }
+    setRoleSlug(null);
+    if (!post?.company || !post?.role) return;
+    let cancelled = false;
+    getRoleCrumb(post.company, post.role).then((slug) => { if (!cancelled) setRoleSlug(slug); });
+    return () => { cancelled = true; };
+  }, [post?.company, post?.role, seededRoleSlug]);
 
   const fetchPost = useCallback(async () => {
     if (!id) return;
@@ -898,14 +937,24 @@ export function ExperienceDetailPage() {
       <div className="pt-6 pb-20 bg-[#f9fafb]">
         <div className="max-w-7xl mx-auto px-6">
 
-          {/* ─── Breadcrumb — back to this post's company insights page ─── */}
-          <Link
-            to={companyPath(post.company)}
-            className="inline-flex items-center text-sm text-[hsl(222,12%,50%)] hover:text-[hsl(221,91%,60%)] mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 mr-1.5" />
-            {post.company ? `${post.company} Interview Insights` : 'Interview Insights'}
-          </Link>
+          {/* ─── Breadcrumb — back to this post's company page, then its role page ─── */}
+          <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-[hsl(222,12%,50%)]">
+            <Link
+              to={companyPath}
+              className="inline-flex items-center hover:text-[hsl(221,91%,60%)] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1.5" />
+              {post.company ? `${post.company} Interview Insights` : 'Interview Insights'}
+            </Link>
+            {companySlug && roleSlug && post.role && (
+              <>
+                <span aria-hidden="true">&rsaquo;</span>
+                <Link to={`/interview-questions/${companySlug}/${roleSlug}`} className="hover:text-[hsl(221,91%,60%)] transition-colors">
+                  {post.role}
+                </Link>
+              </>
+            )}
+          </div>
 
           <div className="flex flex-col lg:flex-row gap-8">
 

@@ -33,7 +33,7 @@ const FALLBACK_ROLE_CATEGORIES = [
     { id: 'pm',  label: 'Product Manager'           },
     { id: 'apm', label: 'Associate Product Manager' },
     { id: 'gpm', label: 'Growth Product Manager'    },
-    { id: 'tpm', label: 'Technical Product Manager' },
+    { id: 'tpm', label: 'Technical Program Manager' },
   ]},
   { id: 'engineering', label: 'Engineering', roles: [
     { id: 'swe', label: 'Software Engineer'    },

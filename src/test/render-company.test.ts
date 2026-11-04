@@ -24,19 +24,6 @@ const SHELL = `<!DOCTYPE html>
 
 const req = { headers: { host: 'www.screna.ai', 'x-forwarded-proto': 'https' } } as never;
 
-const STATS = {
-  categories: [
-    {
-      category: 'FAANG / Big Tech',
-      companies: [
-        { company: 'Meta', postCount: 2377, latestUpdatedAt: '2026-09-01T00:00:00Z' },
-        // Below MIN_POSTS_FOR_PAGE: a page, but not an index entry.
-        { company: 'Tiny Startup', postCount: 3, latestUpdatedAt: '2026-08-01T00:00:00Z' },
-      ],
-    },
-  ],
-};
-
 /** `total` notes for one company, newest first, ids counting down from total. */
 function library(total: number) {
   return Array.from({ length: total }, (_, i) => ({
@@ -93,17 +80,23 @@ function mockBackend(
   globalThis.fetch = vi.fn((input: unknown) => {
     const url = String(input);
     if (url.endsWith('/app.html')) return Promise.resolve(new Response(SHELL));
-    if (url.includes('/companies/stats')) return Promise.resolve(json({ data: STATS }));
     if (url.includes('.sanity.io/')) {
       const g = opts.guides ?? [];
       return Promise.resolve(typeof g === 'number' ? json({ error: 'boom' }, g) : json({ result: g }));
     }
     if (url.includes('/companies/profile')) {
-      return Promise.resolve(
+      // Looked up by slug, normalised the way the backend does it.
+      const slug = (new URL(url).searchParams.get('slug') ?? '').toLowerCase();
+      const row =
         opts.profile === false
-          ? json({ errorCode: 'NOT_FOUND' }, 400)
-          : json({ data: { displayName: 'Meta', category: 'FAANG / Big Tech', summary: SUMMARY, postCount: total } }),
-      );
+          ? null
+          : slug === 'meta'
+            ? { displayName: 'Meta', slug: 'meta', category: 'FAANG / Big Tech', summary: SUMMARY, postCount: total }
+            : // Below MIN_POSTS_FOR_PAGE: a page, but not an index entry.
+              slug === 'tiny-startup'
+              ? { displayName: 'Tiny Startup', slug: 'tiny-startup', postCount: 3 }
+              : null;
+      return Promise.resolve(row ? json({ data: row }) : json({ errorCode: 'NOT_FOUND' }, 400));
     }
     if (url.includes('/companies/breakdown')) {
       const b = opts.breakdown ?? breakdown(total);
@@ -154,13 +147,12 @@ describe('renderCompanyPage — the company page', () => {
     expect((page.html.match(/<h2[ >]/g) ?? []).length).toBeGreaterThan(1);
   });
 
-  it('renders a company with no profile row', async () => {
-    // A company with no profile answers 400/NOT_FOUND. That is a real state,
-    // not a failure — the notes are what the page is for.
+  // The profile is looked up by the URL's slug and is what decides whether the
+  // company exists.
+  it('404s when the profile is NOT_FOUND', async () => {
     mockBackend(25, { profile: false });
     const page = await renderCompanyPage(req, 'meta', null);
-    expect(page.status).toBe(200);
-    expect(linkedIds(page.html)).toHaveLength(10);
+    expect(page.status).toBe(404);
   });
 });
 
@@ -240,7 +232,7 @@ describe('renderCompanyPage — intro and FAQ', () => {
     const page = await renderCompanyPage(req, 'tiny-startup', null);
     expect(page.html).toContain('content="noindex, follow"');
     expect(page.html).toContain(
-      'Screna has 3 Meta interview write-ups. The most reported round is the technical phone screen (3).',
+      'Screna has 3 Tiny Startup interview write-ups. The most reported round is the technical phone screen (3).',
     );
     expect(page.html).not.toContain('interview FAQ');
     expect(page.html).not.toContain('application/ld+json');
@@ -342,27 +334,26 @@ describe('renderCompanyPage — indexing versus existence', () => {
     expect(page.status).toBe(404);
   });
 
-  // The slug is lossy and one-way: 'at-t' title-cased back is 'AT T', which the
-  // API reports as not found. The company list is the only thing that can
-  // invert it, and this asserts the renderer looks it up rather than guessing.
-  it('resolves a lossy slug through the company list', async () => {
-    // Fresh module: the company list is cached per instance for ten minutes,
-    // and the cases above have already populated it with a list that has no
-    // AT&T in it.
-    vi.resetModules();
-    const fresh = await import('../../api/_render/company');
+  // The backend normalises the slug it is given, so 'META' finds Meta. Only
+  // the canonical spelling renders, or every company would have many URLs.
+  it('404s a non-canonical spelling of a real slug', async () => {
+    mockBackend(25);
+    const page = await renderCompanyPage(req, 'META', null);
+    expect(page.status).toBe(404);
+  });
+
+  // The slug cannot be inverted locally: 'at-t' title-cased back is 'AT T',
+  // which the API reports as not found. The profile is looked up by slug, and
+  // everything else is queried with the displayName it returns.
+  it('queries the notes by the profile displayName, not by the slug', async () => {
     globalThis.fetch = vi.fn((input: unknown) => {
       const url = String(input);
       if (url.endsWith('/app.html')) return Promise.resolve(new Response(SHELL));
-      if (url.includes('/companies/stats')) {
+      if (url.includes('/companies/profile')) {
         return Promise.resolve(
-          json({
-            data: {
-              categories: [
-                { category: 'Large Enterprises', companies: [{ company: 'AT&T', postCount: 16 }] },
-              ],
-            },
-          }),
+          new URL(url).searchParams.get('slug') === 'at-t'
+            ? json({ data: { displayName: 'AT&T', slug: 'at-t', postCount: 16 } })
+            : json({ errorCode: 'NOT_FOUND' }, 400),
         );
       }
       // Answers only for the exact display name. A guessed 'AT T' gets nothing,
@@ -370,28 +361,23 @@ describe('renderCompanyPage — indexing versus existence', () => {
       if (!url.includes(encodeURIComponent('AT&T'))) {
         return Promise.resolve(json({ data: { posts: [], total: 0 } }));
       }
-      if (url.includes('/companies/profile')) {
-        return Promise.resolve(json({ data: { displayName: 'AT&T', postCount: 16 } }));
-      }
       return Promise.resolve(
         json({ data: { posts: library(16).slice(0, 10), total: 16, size: 10, page: 0 } }),
       );
     }) as never;
 
-    const page = await fresh.renderCompanyPage(req, 'at-t', null);
+    const page = await renderCompanyPage(req, 'at-t', null);
     expect(page.status).toBe(200);
     expect(linkedIds(page.html)).toHaveLength(10);
     expect(page.html).toContain('AT&amp;T');
   });
 
-  it('503s when the company list is unreachable, never 404', async () => {
-    vi.resetModules();
-    const fresh = await import('../../api/_render/company');
+  it('503s when the profile is unreachable, never 404', async () => {
     globalThis.fetch = vi.fn((input: unknown) => {
       if (String(input).endsWith('/app.html')) return Promise.resolve(new Response(SHELL));
       return Promise.reject(new Error('ECONNRESET'));
     }) as never;
-    expect((await fresh.renderCompanyPage(req, 'meta', null)).status).toBe(503);
+    expect((await renderCompanyPage(req, 'meta', null)).status).toBe(503);
   });
 });
 

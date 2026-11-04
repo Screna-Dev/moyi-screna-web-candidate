@@ -113,7 +113,7 @@ type RoleCategoryChip = typeof ROLE_CATEGORY_CHIPS[number];
 
 const ROLE_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
   Product: [
-    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager',
+    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Program Manager',
   ],
   Engineering: [
     'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',

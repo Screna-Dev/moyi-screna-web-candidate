@@ -20,10 +20,16 @@ function parse(req: IncomingMessage): URL {
 }
 
 /**
- * The path segment immediately after `marker`, url-decoded, or '' if there is
- * none. `query` names the query parameter to prefer when present.
+ * The path segment immediately after `marker` (or `offset` segments after it),
+ * url-decoded, or '' if there is none. `query` names the query parameter to
+ * prefer when present.
  */
-export function segmentAfter(req: IncomingMessage, marker: string, query = marker): string {
+export function segmentAfter(
+  req: IncomingMessage,
+  marker: string,
+  query = marker,
+  offset = 1,
+): string {
   const url = parse(req);
   const fromQuery = url.searchParams.get(query);
   if (fromQuery) return fromQuery;
@@ -31,7 +37,7 @@ export function segmentAfter(req: IncomingMessage, marker: string, query = marke
   const at = segments.indexOf(marker);
   if (at < 0) return '';
   try {
-    return decodeURIComponent(segments[at + 1] ?? '');
+    return decodeURIComponent(segments[at + offset] ?? '');
   } catch {
     // A malformed %-escape is a URL nothing produced; treat it as absent so the
     // caller answers 404 rather than throwing a 500.

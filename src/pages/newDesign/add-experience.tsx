@@ -53,7 +53,7 @@ const ROLE_ALIASES: Record<string, string> = {
 
 const ROLE_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
   Product: [
-    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager',
+    'Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Program Manager',
   ],
   Engineering: [
     'Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer',
@@ -71,7 +71,7 @@ const ROLE_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
 };
 
 const TOP_BY_CATEGORY: Record<RoleCategoryChip, string[]> = {
-  Product: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Product Manager'],
+  Product: ['Product Manager', 'Associate Product Manager', 'Growth Product Manager', 'Technical Program Manager'],
   Engineering: ['Software Engineer', 'Frontend Engineer', 'Backend Engineer', 'Full Stack Engineer', 'DevOps Engineer'],
   'Data & AI': ['Data Scientist', 'Machine Learning Engineer', 'Data Analyst', 'AI Engineer'],
   'Design & Research': ['Product Designer', 'UX Designer', 'UX Researcher'],

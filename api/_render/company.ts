@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import {
+  SITE_URL,
   composeDocument,
   notFoundPage,
   renderHead,
@@ -12,7 +13,7 @@ import {
   fetchCompanyBreakdown,
   fetchCompanyPosts,
   fetchCompanyProfile,
-  fetchCompanyStats,
+  fetchCompanyRoleCounts,
   type CompanyBreakdown,
   type CompanyProfile,
   type PublicPost,
@@ -22,16 +23,27 @@ import { fetchCompanyGuides, type CompanyGuide } from './blog.js';
 import {
   COMPANY_PAGE_SIZE,
   MIN_POSTS_FOR_PAGE,
+  ROLE_SLUGS,
   companyPageCount,
   companyPageWindow,
   companyFaq,
   companyFaqJsonLd,
   companyIntro,
+  companyRoleGuidesHeading,
+  companyRoleIntro,
+  companyRoleJsonLd,
+  companyRoleLinks,
+  companyRoleSeoDescription,
+  companyRoleSeoTitle,
   companySeoDescription,
   companySeoTitle,
-  eligibleCompanies,
   guideLabel,
+  isIndexableRole,
+  roleLabelForSlug,
 } from '../../scripts/routes.mjs';
+
+type RoleLink = { slug: string; label: string; count: number };
+const ROLE_LABELS = Object.values(ROLE_SLUGS) as string[];
 
 // /interview-questions/:company and /interview-questions/:company/page/:n,
 // rendered per request.
@@ -50,42 +62,6 @@ import {
 // on the site linked to them, so nothing could crawl to them. A rendered
 // `noindex, follow` page is a crawl path that is not an index entry, which is
 // precisely what those companies need.
-
-interface CompanyRow {
-  company: string;
-  slug: string;
-  postCount: number;
-  latestUpdatedAt?: string | null;
-}
-
-let directoryCache: { at: number; rows: CompanyRow[] } | null = null;
-const DIRECTORY_TTL_MS = 10 * 60 * 1000;
-
-/**
- * slug -> the exact display name the API indexes, from the company list.
- *
- * Looked up, never derived. companySlug is lossy and one-way: 'AT&T' and
- * 'Scale.ai' both collapse, and title-casing 'at-t' back produces a name the
- * API reports as not found — which is how 18 of the library's companies used
- * to render as empty pages. The list is the only thing that can invert it.
- *
- * Cached for ten minutes per instance. The payload is one aggregate of ~704
- * rows and the API guide recommends caching it; ten minutes is short enough
- * that a newly-posted-to company becomes renderable without a deploy.
- */
-async function directory(): Promise<CompanyRow[]> {
-  if (directoryCache && Date.now() - directoryCache.at < DIRECTORY_TTL_MS) {
-    return directoryCache.rows;
-  }
-  const stats = await fetchCompanyStats();
-  if (!stats) throw new UpstreamError('companies/stats: no payload');
-  // minPosts 0: every company, merged by slug and sorted by note count. The
-  // threshold is applied later, per page, because it decides indexing and not
-  // existence.
-  const rows = eligibleCompanies(stats, 0) as CompanyRow[];
-  directoryCache = { at: Date.now(), rows };
-  return rows;
-}
 
 function formatMonth(value?: string): string {
   if (!value) return '';
@@ -256,6 +232,51 @@ function guidesSection(name: string, guides: CompanyGuide[]): string {
   );
 }
 
+/**
+ * The role links: "All" back to the company page, then one plain <a> per role
+ * that earns an indexed page (companyRoleLinks), with its note count. It is
+ * the role filter for readers and crawlers alike — a filter button is not
+ * something a crawler follows. `current` is the role page being shown, null on
+ * the company page. Nothing at all when no role qualifies.
+ */
+function roleLinksBar(slug: string, links: RoleLink[], current: string | null): string {
+  if (!links.length) return '';
+  const chip = (href: string, label: string, active: boolean, count?: number) =>
+    `<li><a class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium ${
+      active
+        ? 'border-[hsl(222,22%,15%)] bg-[hsl(222,22%,15%)] text-white'
+        : 'border-[hsl(220,16%,90%)] bg-white text-[hsl(222,12%,45%)]'
+    }" href="${esc(href)}"${active ? ' aria-current="page"' : ''}>${esc(label)}${
+      count !== undefined ? ` <span class="opacity-70">${esc(count.toLocaleString('en-US'))}</span>` : ''
+    }</a></li>`;
+  return join(
+    '<nav class="mb-6" aria-label="Interview questions by role"><ul class="flex flex-wrap items-center gap-2">',
+    chip(`/interview-questions/${slug}`, 'All', current === null),
+    ...links.map((r) => chip(`/interview-questions/${slug}/${r.slug}`, r.label, r.slug === current, r.count)),
+    '</ul></nav>',
+  );
+}
+
+/** The company page's closing section: the same role links as cards. */
+function roleGuidesSection(name: string, slug: string, links: RoleLink[]): string {
+  return join(
+    '<section class="mt-10">',
+    `<h2 class="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">${esc(companyRoleGuidesHeading(name))}</h2>`,
+    ...links.map((r) =>
+      join(
+        `<a class="flex items-center gap-6 bg-white rounded-2xl border border-[hsl(220,16%,90%)] mb-4 p-6" href="/interview-questions/${esc(slug)}/${esc(r.slug)}">`,
+        '<div class="min-w-0 flex-1">',
+        `<p class="text-xs font-medium text-[hsl(221,91%,60%)]">${esc(r.count.toLocaleString('en-US'))} ${r.count === 1 ? 'note' : 'notes'}</p>`,
+        `<h3 class="mt-2 text-base font-semibold text-[hsl(222,22%,15%)]">${esc(name)} ${esc(r.label)} interview questions</h3>`,
+        '</div>',
+        ARROW_RIGHT,
+        '</a>',
+      ),
+    ),
+    '</section>',
+  );
+}
+
 function renderBody({
   name,
   slug,
@@ -267,9 +288,12 @@ function renderBody({
   noteTotal,
   pageCount,
   current,
+  roleLinks,
 }: {
   name: string;
   slug: string;
+  /** companyRoleLinks(); empty on /page/:n. */
+  roleLinks: RoleLink[];
   profile: CompanyProfile | null;
   /** companyIntro() — replaces profile.summary as the opening paragraph. */
   intro: string;
@@ -299,6 +323,7 @@ function renderBody({
       noteTotal === 1 ? 'note' : 'notes'
     }${profile?.latestUpdatedAt ? ` · updated ${esc(formatMonth(profile.latestUpdatedAt))}` : ''}</p>`,
     '</header>',
+    current === null && roleLinksBar(slug, roleLinks, null),
     posts.length
       ? join(...posts.map((p) => noteCard(p, name)))
       : '<p class="text-sm text-[hsl(222,12%,45%)]">No published notes for this company yet.</p>',
@@ -307,6 +332,8 @@ function renderBody({
     // Between the cards and the pager (spec F3); the client renders it in the
     // same place.
     faq.length && faqSection(name, faq),
+    // Last on the page, after the FAQ; same links as the bar above.
+    current === null && roleLinks.length && roleGuidesSection(name, slug, roleLinks),
     // Archive pages only — the company page has "Load more" instead (client),
     // and its archive is reached through the sitemap and these links.
     current !== null && pager(slug, pageCount, current),
@@ -362,30 +389,40 @@ export async function renderCompanyPage(
   slug: string,
   current: number | null,
 ): Promise<Rendered> {
-  let row: CompanyRow | undefined;
   let profile: CompanyProfile | null = null;
+  let name = '';
   let breakdown: CompanyBreakdown | null = null;
   let posts: PublicPost[] = [];
   let feedTotal = 0;
   let guides: CompanyGuide[] = [];
+  let roleCounts: Record<string, number> = {};
 
   try {
-    row = (await directory()).find((c) => c.slug === slug);
-    if (!row) return notFoundPage('We have no interview notes for this company.');
-    // The profile is optional: a company with no profile row answers
-    // 400/NOT_FOUND, which is a real state rather than a failure. The notes
-    // are not optional — without them there is no page. The breakdown follows
-    // the profile's rule: 400/NOT_FOUND is null (no intro, no FAQ), a 5xx or a
-    // timeout is a 503 for the whole page.
+    // The URL segment is the backend's slug, so the profile is looked up by it
+    // and is what decides whether the page exists. The breakdown and the feed
+    // only take a display name, so they wait for the profile's. Never derive
+    // the name from the slug: 'at-t' is 'AT&T'.
+    profile = await fetchCompanyProfile({ slug });
+    // The backend normalises the slug before matching ('AT-T' finds 'at-t'),
+    // so only the exact canonical spelling renders — one URL per company.
+    // A renamed company's old slug lands here too.
+    if (!profile?.displayName || profile.slug !== slug) {
+      return notFoundPage('We have no interview notes for this company.');
+    }
+    name = profile.displayName;
+    // The breakdown follows the profile's rule: 400/NOT_FOUND is null (no
+    // intro, no FAQ), a 5xx or a timeout is a 503 for the whole page. The notes
+    // are not optional — without them there is no page.
     // Guides are best-effort (never throw) and only on the company page itself.
-    const [profileResult, breakdownResult, pageResult, guidesResult] = await Promise.all([
-      fetchCompanyProfile(row.company),
-      fetchCompanyBreakdown(row.company),
-      collectPage(row.company, current),
+    // Role counts likewise: company page only, best-effort per role.
+    const [breakdownResult, pageResult, guidesResult, roleCountsResult] = await Promise.all([
+      fetchCompanyBreakdown(name),
+      collectPage(name, current),
       current === null ? fetchCompanyGuides(slug) : Promise.resolve([]),
+      current === null ? fetchCompanyRoleCounts(name, ROLE_LABELS) : Promise.resolve({}),
     ]);
+    roleCounts = roleCountsResult;
     guides = guidesResult;
-    profile = profileResult;
     breakdown = breakdownResult;
     posts = pageResult.posts;
     feedTotal = pageResult.total;
@@ -394,7 +431,6 @@ export async function renderCompanyPage(
     throw err;
   }
 
-  const name = profile?.displayName || row.company;
   const pageCount = companyPageCount(feedTotal);
 
   // A /page/:n beyond the end is a 404, not an empty page: those URLs are
@@ -409,10 +445,13 @@ export async function renderCompanyPage(
   const intro = companyIntro(name, breakdown);
   const faq = current === null ? companyFaq(name, breakdown) : [];
   const faqJsonLd = current === null ? companyFaqJsonLd(name, breakdown) : null;
+  // Gated on the feed's total: the role counts are search totals too.
+  const roleLinks: RoleLink[] = companyRoleLinks(roleCounts, feedTotal);
 
   const body = renderBody({
     name,
     slug,
+    roleLinks,
     profile,
     intro,
     faq,
@@ -428,7 +467,7 @@ export async function renderCompanyPage(
   // The threshold decides indexing only. Below it the page still renders in
   // full and still links to every one of its notes — it just does not become
   // an index entry of its own.
-  const belowThreshold = (row.postCount ?? 0) < MIN_POSTS_FOR_PAGE;
+  const belowThreshold = (profile?.postCount ?? 0) < MIN_POSTS_FOR_PAGE;
   const thin = shouldNoindexOnLength(body);
   const noindex = belowThreshold || thin;
 
@@ -475,6 +514,7 @@ export async function renderCompanyPage(
       total: feedTotal,
       page: current,
       guides,
+      roleLinks,
       // The client applies this as-is: it cannot see the rendered body, so it
       // would get the word-floor half of the decision wrong.
       noindex,
@@ -493,4 +533,146 @@ export function pathFor(slug: string, current: number | null): string {
   return current === null
     ? `/interview-questions/${slug}`
     : `/interview-questions/${slug}/page/${current}`;
+}
+
+// ─── /interview-questions/:company/:role ────────────────────────────────────
+
+function renderRoleBody({
+  name,
+  slug,
+  role,
+  roleSlug,
+  roleLinks,
+  intro,
+  posts,
+  noteTotal,
+}: {
+  name: string;
+  slug: string;
+  role: string;
+  roleSlug: string;
+  roleLinks: RoleLink[];
+  intro: string;
+  posts: PublicPost[];
+  noteTotal: number;
+}): string {
+  return join(
+    '<div class="pb-20 bg-[#f9fafb]"><div class="max-w-6xl mx-auto px-6 my-[24px]">',
+    '<nav class="mb-6" aria-label="Breadcrumb"><ol class="flex flex-wrap items-center gap-2 text-sm font-medium text-[hsl(222,12%,45%)]">',
+    '<li><a href="/interview-questions">Interview Questions</a></li>',
+    '<li aria-hidden="true">&rsaquo;</li>',
+    `<li><a href="/interview-questions/${esc(slug)}">${esc(name)}</a></li>`,
+    '<li aria-hidden="true">&rsaquo;</li>',
+    `<li aria-current="page" class="text-[hsl(222,22%,15%)]">${esc(role)}</li>`,
+    '</ol></nav>',
+    '<header class="mb-10">',
+    `<h1 class="text-[34px] md:text-[40px] font-semibold tracking-tight leading-none text-[hsl(222,22%,15%)] font-[family-name:var(--font-serif)]">${esc(
+      name,
+    )} <span class="text-[20px] font-normal text-[hsl(222,12%,45%)]">${esc(role)} interview questions</span></h1>`,
+    intro && `<p class="mt-3 max-w-2xl text-base text-[hsl(222,12%,45%)]">${esc(intro)}</p>`,
+    `<p class="mt-4 text-sm text-[hsl(222,12%,45%)]">${noteTotal} ${esc(role)} interview ${
+      noteTotal === 1 ? 'note' : 'notes'
+    }</p>`,
+    '</header>',
+    // The other roles at this company, this one highlighted.
+    roleLinksBar(slug, roleLinks, roleSlug),
+    join(...posts.map((p) => noteCard(p, name))),
+    '</div></div>',
+  );
+}
+
+/**
+ * Render one company's notes for one role, newest first.
+ *
+ * Exists only for a known role slug that this company has notes under: an
+ * unknown or reserved slug (`page`, `q`) and a role with zero notes are 404s —
+ * those URLs are guessable, and an empty page would be a thin page advertising
+ * itself as real. When isIndexableRole says no (under 10 notes, or 90%+ of
+ * the company's) it renders `noindex, follow`.
+ */
+export async function renderCompanyRolePage(
+  req: IncomingMessage,
+  slug: string,
+  roleSlug: string,
+): Promise<Rendered> {
+  const role = roleLabelForSlug(roleSlug);
+  if (!role) return notFoundPage('There is no such role for this company.');
+
+  let profile: CompanyProfile | null = null;
+  let name = '';
+  let posts: PublicPost[] = [];
+  let feedTotal = 0;
+  let companyTotal = 0;
+  let roleCounts: Record<string, number> = {};
+
+  try {
+    // Same identity rule as the company page: the profile by slug decides
+    // whether the company exists, and only the canonical slug renders.
+    profile = await fetchCompanyProfile({ slug });
+    if (!profile?.displayName || profile.slug !== slug) {
+      return notFoundPage('We have no interview notes for this company.');
+    }
+    name = profile.displayName;
+    // The company's own search total is what the role's share is taken of —
+    // the same number the company page and the sitemap use, not
+    // profile.postCount (a database count that lags the index).
+    const [feed, companyFeed, counts] = await Promise.all([
+      fetchCompanyPosts(name, 0, role),
+      fetchCompanyPosts(name, 0),
+      fetchCompanyRoleCounts(name, ROLE_LABELS),
+    ]);
+    posts = feed.posts;
+    feedTotal = feed.total;
+    companyTotal = companyFeed.total;
+    roleCounts = counts;
+  } catch (err) {
+    if (err instanceof UpstreamError) return unavailablePage();
+    throw err;
+  }
+
+  if (posts.length === 0) {
+    return notFoundPage(`We have no ${role} interview notes for this company.`);
+  }
+
+  // The count shown and gated on is the feed's: there is no per-role profile
+  // number, and it is the same Elasticsearch count the sitemap is built from.
+  const intro = companyRoleIntro(name, role, feedTotal, profile?.postCount);
+  const roleLinks: RoleLink[] = companyRoleLinks(roleCounts, companyTotal);
+  const body = renderRoleBody({ name, slug, role, roleSlug, roleLinks, intro, posts, noteTotal: feedTotal });
+
+  const noindex = !isIndexableRole(feedTotal, companyTotal) || shouldNoindexOnLength(body);
+  const path = `/interview-questions/${slug}/${roleSlug}`;
+
+  const head = renderHead({
+    title: companyRoleSeoTitle(name, role),
+    description: companyRoleSeoDescription(name, role, feedTotal),
+    canonicalPath: path,
+    type: 'article',
+    noindex,
+    jsonLd: noindex
+      ? undefined
+      : companyRoleJsonLd(SITE_URL, { name, companySlug: slug, role, roleSlug, intro }),
+  });
+
+  // `role` is what tells the client this seed is for a role page, not the
+  // company page: the two share the seed id and the slug.
+  const seeds = [
+    seedTag('__prerender_company__', {
+      profile: profile ? { ...profile, summary: undefined } : { displayName: name },
+      posts,
+      total: feedTotal,
+      page: null,
+      role,
+      roleLinks,
+      companyTotal,
+      noindex,
+    }),
+  ];
+
+  try {
+    return { status: 200, html: await composeDocument(req, { head, body, seeds }) };
+  } catch (err) {
+    console.error(`[render:company-role] ${slug}/${roleSlug}: shell unavailable — ${(err as Error)?.message}`);
+    return unavailablePage();
+  }
 }
