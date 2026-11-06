@@ -5,9 +5,9 @@ import { useEmployerStore } from '../store';
 import { BUSINESS_ANNUAL_PRICE, BUSINESS_PRICE, BUSINESS_UNLOCKS } from '../mockData';
 import { cx } from '../ui';
 
-// Plan & Usage (Figma 2451:1052). Employer billing has no API yet: usage and
-// the overage cap live in the in-memory store; plan changes, seats and invoice
-// downloads go through sales until checkout exists.
+// Plan & Usage (Figma 2451:1052), admin console mock: usage and the overage
+// cap live in the in-memory store. The employer app uses EmployerPlanView,
+// which renders the same design from GET /employer/plan.
 
 const SALES_EMAIL = 'operations@screna.ai';
 const mono = 'font-[family-name:var(--font-mono)]';
@@ -20,15 +20,15 @@ function notYet(action: string) {
   toast.info(`${action} isn't self-serve yet. Email ${SALES_EMAIL} and we'll set it up.`);
 }
 
-function PlanCard({ children, className }: { children: ReactNode; className?: string }) {
+export function PlanCard({ children, className }: { children: ReactNode; className?: string }) {
   return <section className={cx('bg-white border-2 border-[#e8e8ea] rounded-2xl p-6 shadow-[0px_1px_2px_rgba(0,0,0,0.04)]', className)}>{children}</section>;
 }
 
-function CardLabel({ children }: { children: ReactNode }) {
+export function CardLabel({ children }: { children: ReactNode }) {
   return <p className="text-[11px] leading-[16.5px] font-bold uppercase tracking-[0.6px] text-[#90a1b9]">{children}</p>;
 }
 
-function OutlineButton({ children, onClick, tone = 'blue' }: { children: ReactNode; onClick: () => void; tone?: 'blue' | 'gray' }) {
+export function OutlineButton({ children, onClick, tone = 'blue' }: { children: ReactNode; onClick: () => void; tone?: 'blue' | 'gray' }) {
   return (
     <button
       type="button"
@@ -43,7 +43,7 @@ function OutlineButton({ children, onClick, tone = 'blue' }: { children: ReactNo
   );
 }
 
-function UsageBar({ label, used, total, color }: { label: string; used: number; total: number; color: string }) {
+export function UsageBar({ label, used, total, color }: { label: string; used: number; total: number; color: string }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
     <div className="flex flex-col gap-2">

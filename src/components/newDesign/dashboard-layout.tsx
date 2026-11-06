@@ -370,8 +370,8 @@ function GlobalTopHeader({
         {/* Right: Global Nav Links */}
         <nav className="hidden md:flex items-center gap-7">
           <Link
-            to="/#pricing"
-            className={`text-sm font-medium transition-colors ${isLinkActive('/pricing') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            to="/plans"
+            className={`text-sm font-medium transition-colors ${isLinkActive('/plans') ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Pricing
           </Link>
@@ -531,8 +531,11 @@ export function DashboardLayout({ children, headerTitle, noSidebar = false, full
         ) : location.pathname === '/dashboard' ? (
           // Dashboard self-pads via the same WidePageContainer as every other
           // ported page, so its content gutters line up with them exactly.
+          // The route's page (pages/newDesign/dashboard-home: stats, cards and
+          // Featured Opportunities) is what renders; the built-in dashboard is
+          // only a fallback when a page passes nothing.
           <WidePageContainer maxWidth="none" paddingTop={32}>
-            <CareerCommandCenter userData={userData} />
+            {children ?? <CareerCommandCenter userData={userData} />}
           </WidePageContainer>
         ) : fullBleed ? (
           children

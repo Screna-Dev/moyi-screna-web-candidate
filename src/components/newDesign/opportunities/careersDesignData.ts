@@ -1,4 +1,4 @@
-import type { CareerApplication, CareerJob } from "@/services/careersApi";
+import { fundingOf, type CareerApplication, type CareerJob } from "@/services/careersApi";
 import { isBeingScored } from "./careersEnded";
 import { myJobs, opportunityJobs, type AssessmentStatus, type MyJob, type OpportunityJob } from "./mockJobs";
 
@@ -34,9 +34,10 @@ function dateLabel(iso: string | null, tz?: string | null) {
 export const seniorityLabel = (s: string | null) => (s ? SENIORITY[s] ?? s : "");
 export const workplaceLabel = (w: string | null) => (w ? WORKPLACE[w] ?? w : "");
 
-// Interview cost line in the design's wording.
+// Interview cost line in the design's wording. A candidate-paid interview uses
+// 1 interview from the candidate's quota (change C9), not credits.
 export function costLabel(payer: CareerJob["interviewPayer"], minutes: number) {
-  return payer === "EMPLOYER" ? `1 credit/min · Up to ${minutes} minutes` : `${minutes} credits · ~${minutes} minutes`;
+  return payer === "EMPLOYER" ? `Sponsored · Up to ${minutes} minutes` : `1 interview · ~${minutes} minutes`;
 }
 
 export type LiveOpportunityJob = OpportunityJob & { career: CareerJob };
@@ -67,7 +68,7 @@ export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunity
     closingDate: job.closesAt ?? sample.closingDate,
     closingDateLabel: job.closesAt ? `Closes ${dateLabel(job.closesAt, job.timezone)}` : sample.closingDateLabel,
     postedDate: job.publishedAt ?? sample.postedDate,
-    interviewCost: employerPays ? 0 : job.interviewDurationMinutes,
+    interviewCost: employerPays ? 0 : 1, // interviews; sorts sponsored first
     interviewCostLabel: costLabel(job.interviewPayer, job.interviewDurationMinutes),
     primaryAction: "Quick interview",
     scoreValue: undefined,
@@ -117,12 +118,14 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
     jobType: closed ? "Job closed" : "Partner Job",
     isClosed: closed,
     assessmentStatus,
-    applicationStatus: "Applied",
+    applicationStatus: app.hiringDecision === "REJECTED" ? "Not selected" : "Applied",
     bestScore: done ? sample.bestScore ?? 84 : null,
-    guidance: done && sampleResult === "Qualified" ? "" : closed ? "This role is closed." : "",
+    guidance: scoring
+      ? "We're scoring your interview. This updates by itself when your result is ready."
+      : done && sampleResult === "Qualified" ? "" : closed ? "This role is closed." : "",
     updatedLabel: updatedLabel(app.interviewCompletedAt ?? app.appliedAt),
     actions,
-    creditInfo: !done && !scoring && app.canStartInterview && app.interviewPayer === "CANDIDATE" ? `${app.interviewDurationMinutes} credits · up to ${app.interviewDurationMinutes} minutes` : done ? sample.creditInfo : undefined,
+    creditInfo: !done && !scoring && app.canStartInterview && fundingOf(app) === "CANDIDATE" ? `1 interview · up to ${app.interviewDurationMinutes} minutes` : done ? sample.creditInfo : undefined,
     career: app,
   };
 }

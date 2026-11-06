@@ -1,5 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { settleIfDone } from "@/components/newDesign/opportunities/careersEnded";
+import {
+  careersErrorCode,
+  getMyApplication,
+  getMyInterviewResult,
+  type CareerApplication,
+  type CareerInterviewResult,
+} from "@/services/careersApi";
 
 const assetPathPrefix = "/images/opportunities";
 const imgArrowRight = `${assetPathPrefix}/c68c4.svg`;
@@ -38,10 +46,117 @@ const questions = [
   { id: "Q5", text: "How would you investigate a mismatch between usage records and a customer's bill?", summary: "Good diagnostic structure; include validation after the fix." },
 ];
 
+// Design sample values. On /opportunities/applications/:applicationId/results
+// the page shows the candidate's real result (#303) where the API has it —
+// title, date, overall score, criterion scores, summary, strengths, areas to
+// strengthen, application status — and keeps these samples for the rest
+// (qualification, rank, per-criterion feedback, per-question feedback,
+// retake panel), per the design-first rule. Replace before launch.
+const SAMPLE_CRITERIA = [
+  { label: "Technical accuracy", score: 88, feedback: "Strong understanding of idempotency, database behavior, and backend reliability." },
+  { label: "Structured thinking", score: 80, feedback: "Your approach was clear, but some answers would benefit from stating assumptions earlier." },
+  { label: "Communication", score: 82, feedback: "You explained trade-offs clearly and responded constructively to follow-up questions." },
+  { label: "Completeness", score: 86, feedback: "Most answers covered the key considerations. Add measurable outcomes when discussing past projects." },
+];
+const SAMPLE_STRENGTHS = ["Backend reliability and data correctness", "Identifying technical trade-offs", "Responding to follow-up questions"];
+const SAMPLE_AREAS = [
+  "State assumptions before presenting a solution.",
+  "Explain monitoring and recovery, not just the initial design.",
+  "Describe your individual contribution and measurable project outcomes.",
+];
+
+const DECISION_LABEL: Record<string, { text: string; color: string }> = {
+  AWAITING: { text: "Awaiting recruiter decision", color: "text-[#5a6172]" },
+  MOVED_FORWARD: { text: "Moved forward", color: "text-[#34c759]" },
+  REJECTED: { text: "Not selected", color: "text-[#5a6172]" },
+};
+
+function completedLabel(iso: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+type LiveState =
+  | { status: "loading" }
+  // 409: still being scored. Checked again every few seconds while open.
+  | { status: "processing" }
+  | { status: "ready"; result: CareerInterviewResult; app: CareerApplication | null }
+  | { status: "error"; message: string };
+
+const RESULT_POLL_MS = 5000;
+
 export function InterviewResultPage() {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>();
+  const { applicationId = "" } = useParams<{ applicationId: string }>();
   const [expandedQ, setExpandedQ] = useState<string | null>("Q2");
+  const [live, setLive] = useState<LiveState>({ status: "loading" });
+
+  useEffect(() => {
+    if (!applicationId) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    setLive({ status: "loading" });
+    const load = () =>
+      Promise.all([getMyInterviewResult(applicationId), getMyApplication(applicationId).catch(() => null)])
+        .then(([result, app]) => {
+          if (cancelled) return;
+          // Opened from a link before the watcher saw it: settle it here.
+          if (app) settleIfDone(app);
+          setLive({ status: "ready", result, app });
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          const code = careersErrorCode(err);
+          if (code === "INVALID_STATE") {
+            setLive({ status: "processing" });
+            timer = window.setTimeout(load, RESULT_POLL_MS);
+            return;
+          }
+          setLive({
+            status: "error",
+            message: code === "NOT_FOUND" ? "We couldn't find this result." : "We couldn't load your result. Please try again.",
+          });
+        });
+    void load();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [applicationId]);
+
+  if (live.status !== "ready") {
+    return (
+      <div className="flex flex-col gap-6 pb-12">
+        <button
+          onClick={() => navigate("/opportunities/my-jobs")}
+          className="text-[#3c77f6] text-[14px] leading-5 text-left w-fit hover:underline"
+          style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
+        >
+          ← Back to My Jobs
+        </button>
+        <p className="text-[#5a6172] text-[14px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+          {live.status === "loading"
+            ? "Loading your result…"
+            : live.status === "processing"
+              ? "We're still scoring your interview. It usually takes about a minute — this page updates by itself, or you can leave and we'll let you know when it's ready."
+              : live.message}
+        </p>
+      </div>
+    );
+  }
+
+  const r = live.result;
+  const decision = live.app?.hiringDecision;
+  const score = `${r.overallScore}/100`;
+  const criteriaRows = r.criteria.length
+    ? r.criteria.map((c, i) => ({ label: c.name, score: c.score, feedback: SAMPLE_CRITERIA[i % SAMPLE_CRITERIA.length].feedback }))
+    : SAMPLE_CRITERIA;
+  const strengths = r.strengths.length ? r.strengths : SAMPLE_STRENGTHS;
+  const areas = r.areasToStrengthen.length ? r.areasToStrengthen : SAMPLE_AREAS;
+  const statusRow = decision ? DECISION_LABEL[decision] : undefined;
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -69,7 +184,7 @@ export function InterviewResultPage() {
             className="text-[#5a6172] text-[16px] font-medium leading-[normal]"
             style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
           >
-            Backend Engineer · Lumen Metrics
+            {`${r.jobTitle} · ${r.companyName}`}
           </p>
           <span
             className="inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold border bg-[rgba(60,119,246,0.1)] border-[rgba(60,119,246,0.2)] text-[#3c77f6]"
@@ -82,7 +197,7 @@ export function InterviewResultPage() {
           className="text-[#5a6172] text-[13px] leading-[normal]"
           style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
         >
-          Attempt 1 · Sep 16, 2026, 10:00 AM PT · 30 minutes · English
+          {`Attempt 1 · ${completedLabel(r.interviewCompletedAt)} · 20 minutes · English`}
         </p>
       </div>
 
@@ -114,7 +229,7 @@ export function InterviewResultPage() {
         <Divider />
         <div className="flex flex-col gap-3">
           <button
-            onClick={() => navigate(`/opportunities/job/${id}/contact`)}
+            onClick={() => navigate(`/opportunities/job/${encodeURIComponent(r.jobId)}/contact`)}
             className="inline-flex items-center gap-2.5 bg-[#3c77f6] text-white text-[14px] font-semibold leading-[normal] px-6 py-3 rounded-xl hover:bg-[#2d6ae0] transition-colors w-fit"
             style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif", boxShadow: "0px 4px 4px rgba(60,119,246,0.14)" }}
           >
@@ -137,8 +252,8 @@ export function InterviewResultPage() {
           {/* Score tiles */}
           <div className="flex gap-4">
             {[
-              { label: "THIS ATTEMPT", value: "84/100", valueColor: "text-[#34c759]", sub: "Score meets criteria" },
-              { label: "BEST SCORE", value: "84/100", valueColor: "text-[#1e232f]", sub: "Used in your shared report" },
+              { label: "THIS ATTEMPT", value: score, valueColor: "text-[#34c759]", sub: "Score meets criteria" },
+              { label: "BEST SCORE", value: score, valueColor: "text-[#1e232f]", sub: "Used in your shared report" },
               { label: "CURRENT RANK", value: "#2 of 31", valueColor: "text-[#1e232f]", sub: "Candidates with completed assessments" },
             ].map(({ label, value, valueColor, sub }) => (
               <div key={label} className="bg-white border border-[#e1e4ea] rounded-2xl p-5 flex-1 flex flex-col gap-2">
@@ -183,16 +298,11 @@ export function InterviewResultPage() {
                 className="text-[#5a6172] text-[14px] leading-[normal]"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
-                Feedback from this assessment
+                {r.summary || "Feedback from this assessment"}
               </p>
             </div>
             <div className="flex flex-col gap-5">
-              {[
-                { label: "Technical accuracy", score: 88, feedback: "Strong understanding of idempotency, database behavior, and backend reliability." },
-                { label: "Structured thinking", score: 80, feedback: "Your approach was clear, but some answers would benefit from stating assumptions earlier." },
-                { label: "Communication", score: 82, feedback: "You explained trade-offs clearly and responded constructively to follow-up questions." },
-                { label: "Completeness", score: 86, feedback: "Most answers covered the key considerations. Add measurable outcomes when discussing past projects." },
-              ].map(({ label, score, feedback }) => (
+              {criteriaRows.map(({ label, score, feedback }) => (
                 <div key={label} className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <p
@@ -365,7 +475,7 @@ export function InterviewResultPage() {
                   Your strengths
                 </p>
                 <div className="flex flex-col gap-2.5">
-                  {["Backend reliability and data correctness", "Identifying technical trade-offs", "Responding to follow-up questions"].map((s) => (
+                  {strengths.map((s) => (
                     <div key={s} className="flex gap-2 items-start">
                       <span className="text-[#34c759] text-[14px] shrink-0">•</span>
                       <p
@@ -386,11 +496,7 @@ export function InterviewResultPage() {
                   Areas to strengthen
                 </p>
                 <div className="flex flex-col gap-2.5">
-                  {[
-                    "State assumptions before presenting a solution.",
-                    "Explain monitoring and recovery, not just the initial design.",
-                    "Describe your individual contribution and measurable project outcomes.",
-                  ].map((s) => (
+                  {areas.map((s) => (
                     <div key={s} className="flex gap-2 items-start">
                       <span className="text-[#ff383c] text-[14px] shrink-0">•</span>
                       <p
@@ -452,7 +558,7 @@ export function InterviewResultPage() {
             <div className="flex flex-col gap-3">
               {[
                 { label: "Job type", value: "Partner Job", valueColor: "text-[#1e232f]" },
-                { label: "Application status", value: "Applied", valueColor: "text-[#34c759]" },
+                { label: "Application status", value: statusRow?.text ?? "Applied", valueColor: statusRow?.color ?? "text-[#34c759]" },
                 { label: "Contact eligibility", value: "Unlocked", valueColor: "text-[#3c77f6]" },
                 { label: "Email status", value: "Not sent", valueColor: "text-[#5a6172]" },
               ].map(({ label, value, valueColor }) => (

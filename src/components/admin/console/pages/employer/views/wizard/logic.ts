@@ -38,7 +38,10 @@ export function jobDetailsErrors(j: Job): Record<string, boolean> {
 }
 
 // Limits enforced by PUT /employer/jobs/{id}/assessment.
-export const MAX_CRITERIA = 8;
+// Every employer job has exactly 4 criteria (#307): names and descriptions
+// can change, the count can't. Descriptions are required to publish only
+// (publish-check: criteriaDescription), so they don't block a draft save.
+export const MAX_CRITERIA = 4;
 export const MAX_QUESTIONS = 15;
 
 // apiRules adds what the employer API rejects: too many criteria/questions,
@@ -49,7 +52,7 @@ export function interviewErrors(j: Job, apiRules = false): Record<string, boolea
     criteria:
       j.criteria.length === 0 ||
       j.criteria.some((c) => !filled(c.name)) ||
-      (apiRules && (j.criteria.length > MAX_CRITERIA || new Set(names).size !== names.length)),
+      (apiRules && (j.criteria.length !== MAX_CRITERIA || new Set(names).size !== names.length)),
     questions:
       j.questions.length === 0 ||
       j.questions.some((q) => !filled(q.text)) ||

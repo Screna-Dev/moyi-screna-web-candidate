@@ -4,19 +4,21 @@ import { toast } from 'sonner';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { Card, EmptyBox, cx } from '@/components/admin/console/pages/employer/ui';
 import { authErrorMessage } from './employerAuth';
+import { CloseJobDialog, EditSponsorshipDialog } from './JobLifecycleDialogs';
 import {
   createJob,
   getJob,
   listJobs,
   saveInterviewSettings,
   saveJobAssessment,
+  saveSponsorship,
   type ApiJob,
   type JobList,
   type JobListFilter,
   type JobListItem,
   type JobListSort,
 } from './employerApi';
-import { apiToJob, assessmentBody, defaultWindow, detailsBody, formatInZone, jobStatusOf, settingsBody, workplaceLabel, zoneAbbr } from './jobMapping';
+import { apiToJob, assessmentBody, defaultWindow, detailsBody, formatInZone, jobStatusOf, settingsBody, sponsorshipBody, workplaceLabel, zoneAbbr } from './jobMapping';
 
 // Employer Jobs page (Figma 2082:138 "Jobs-Management-Content"), backed by
 // GET /employer/jobs. Layout follows the design: summary cards, filter chips,
@@ -47,8 +49,8 @@ function windowText(job: JobListItem): string {
   return `${job.opensAt ? `${short(job.opensAt)} – ` : ''}${closes} · ${zoneAbbr(job.timezone)}`;
 }
 
-// Fields the list rows lack, read once per job.
-type Extras = { maxApplicants: number | null; payer: ApiJob['interviewSettings']['interviewPayer'] };
+// Fields the list rows lack, read once per job (dropped after the job changes).
+type Extras = { maxApplicants: number | null; payer: ApiJob['interviewSettings']['interviewPayer']; sponsorship: ApiJob['sponsorship'] };
 const extrasCache = new Map<string, Promise<Extras>>();
 function useExtras(jobId: string): Extras | null {
   const [extras, setExtras] = useState<Extras | null>(null);
@@ -56,7 +58,7 @@ function useExtras(jobId: string): Extras | null {
     let cancelled = false;
     let p = extrasCache.get(jobId);
     if (!p) {
-      p = getJob(jobId).then((j) => ({ maxApplicants: j.maxApplicants, payer: j.interviewSettings?.interviewPayer ?? null }));
+      p = getJob(jobId).then((j) => ({ maxApplicants: j.maxApplicants, payer: j.interviewSettings?.interviewPayer ?? null, sponsorship: j.sponsorship ?? null }));
       p.catch(() => extrasCache.delete(jobId));
       extrasCache.set(jobId, p);
     }
@@ -68,14 +70,16 @@ function useExtras(jobId: string): Extras | null {
   return extras;
 }
 
-// Repost: copy role, interview and settings into a new draft with a fresh window.
+// Repost: copy role, interview, settings and sponsorship into a new draft
+// with a fresh window. The sponsored count starts again at 0.
 async function repost(jobId: string): Promise<string> {
   const src = await getJob(jobId);
   const form = apiToJob(src, '');
   const copy = { ...form, ...defaultWindow(form.timeZone) };
   const created = await createJob(detailsBody(copy, src));
   await saveJobAssessment(created.id, assessmentBody(copy, new Set(), src.assessmentAreas ?? []));
-  if (src.interviewSettings?.interviewPayer) await saveInterviewSettings(created.id, settingsBody(copy, src));
+  await saveInterviewSettings(created.id, settingsBody(copy, src));
+  if (copy.sponsor) await saveSponsorship(created.id, sponsorshipBody(copy));
   return created.id;
 }
 
@@ -91,7 +95,17 @@ export function EmployerJobsView() {
   const [attempt, setAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState<string | null>(null);
   const [reposting, setReposting] = useState<string | null>(null);
+  const [editing, setEditing] = useState<JobListItem | null>(null);
+  const [closing, setClosing] = useState<JobListItem | null>(null);
   const loadId = useRef(0);
+
+  // After Edit sponsorship or Close: re-read the job and the list (status and actions may change).
+  const changed = (jobId: string) => {
+    extrasCache.delete(jobId);
+    setEditing(null);
+    setClosing(null);
+    setAttempt((a) => a + 1);
+  };
 
   // Debounce typing into the server-side title search.
   useEffect(() => {
@@ -258,6 +272,8 @@ export function EmployerJobsView() {
                         onViewJob={() => go({ name: 'wizard', jobId: job.jobId })}
                         onViewApplications={() => go({ name: 'board', jobId: job.jobId })}
                         onRepost={() => void onRepost(job)}
+                        onEditSponsorship={() => setEditing(job)}
+                        onCloseJob={() => setClosing(job)}
                       />
                     ),
                   )}
@@ -276,6 +292,16 @@ export function EmployerJobsView() {
             })}
           </div>
         </>
+      )}
+      {editing && <EditSponsorshipDialog jobId={editing.jobId} onClose={() => setEditing(null)} onSaved={() => changed(editing.jobId)} />}
+      {closing && (
+        <CloseJobDialog
+          jobId={closing.jobId}
+          title={closing.title}
+          sponsorshipExhausted={closing.closeReason === 'SPONSORSHIP_EXHAUSTED'}
+          onClose={() => setClosing(null)}
+          onClosed={() => changed(closing.jobId)}
+        />
       )}
     </div>
   );
@@ -353,22 +379,45 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
+const CLOSED_NOTE: Record<NonNullable<JobListItem['closeReason']>, string> = {
+  DEADLINE: 'Application deadline passed.',
+  MANUAL: 'Closed by your team.',
+  SPONSORSHIP_EXHAUSTED: 'Closed automatically when sponsored interviews ran out. Applicants can still start their interviews.',
+};
+
 function JobCard({
   job,
   reposting,
   onViewJob,
   onViewApplications,
   onRepost,
+  onEditSponsorship,
+  onCloseJob,
 }: {
   job: JobListItem;
   reposting: boolean;
   onViewJob: () => void;
   onViewApplications: () => void;
   onRepost: () => void;
+  onEditSponsorship: () => void;
+  onCloseJob: () => void;
 }) {
   const closed = job.status === 'CLOSED';
   const extras = useExtras(job.jobId);
-  const payer = extras?.payer === 'EMPLOYER' ? 'Recruiter-sponsored' : extras?.payer === 'CANDIDATE' ? 'Candidate-paid' : '—';
+  const sp = extras?.sponsorship;
+  const payer =
+    extras?.payer === 'EMPLOYER'
+      ? `Recruiter-sponsored${sp ? ` · ${sp.sponsoredCount.toLocaleString('en-US')} of ${sp.maxSponsoredCandidates.toLocaleString('en-US')} used` : ''}`
+      : extras?.payer === 'CANDIDATE'
+        ? 'Candidate-paid'
+        : '—';
+  // From the list's actions, never from the status.
+  const lifecycle = (
+    <>
+      {job.actions?.editSponsorship && <SecondaryButton onClick={onEditSponsorship}>Edit sponsorship</SecondaryButton>}
+      {job.actions?.close && <SecondaryButton onClick={onCloseJob}>Close job</SecondaryButton>}
+    </>
+  );
   return (
     <div className={cx('border border-[#e1e4ea] rounded-2xl p-6 flex flex-col gap-4', closed ? 'bg-[#f9fafb]' : 'bg-white')}>
       <CardHeader job={job} />
@@ -381,9 +430,10 @@ function JobCard({
       </div>
       {closed ? (
         <>
-          <p className="text-[13px] text-[#5a6172]">Application deadline passed.</p>
+          <p className="text-[13px] text-[#5a6172]">{CLOSED_NOTE[job.closeReason ?? 'DEADLINE']}</p>
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap justify-end gap-3">
+              {lifecycle}
               <SecondaryButton onClick={onViewApplications}>View applications</SecondaryButton>
               <PrimaryButton onClick={onRepost} disabled={reposting}>
                 {reposting ? <Loader2 size={14} className="animate-spin" /> : <Repeat size={14} />} Repost
@@ -394,6 +444,7 @@ function JobCard({
         </>
       ) : (
         <div className="flex flex-wrap justify-end gap-3">
+          {lifecycle}
           <SecondaryButton onClick={onViewJob}>View job</SecondaryButton>
           <PrimaryButton onClick={onViewApplications}>View applications</PrimaryButton>
         </div>

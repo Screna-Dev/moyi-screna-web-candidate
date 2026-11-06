@@ -24,7 +24,7 @@ export function windowSectionErrors(job: Job, today: string, opensLocked = false
   };
 }
 
-// Step 3. Maximum sponsored candidates and the after-limit choice are form-only.
+// Step 3 (PUT sponsorship): an employer-paid job needs maxSponsoredCandidates ≥ 1.
 export function sponsorshipErrors(job: Job): Record<string, boolean | string> {
   if (job.sponsor !== 'employer') return { sponsor: !job.sponsor };
   const max = job.sponsorship.maxCandidates.trim();

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { type MyJob, type AssessmentStatus, type ApplicationStatus } from "@/components/newDesign/opportunities/mockJobs";
 import { toMyJob, type LiveMyJob } from "@/components/newDesign/opportunities/careersDesignData";
 import { StartInterviewDialog } from "@/components/newDesign/opportunities/careersShared";
+import { onResultSettled, settleIfDone } from "@/components/newDesign/opportunities/careersEnded";
 import { listMyApplications, type CareerApplication } from "@/services/careersApi";
 
 // Design page (Downloads export) fed by GET /careers/applications. Rows are
@@ -254,7 +255,10 @@ export function MyJobsPage() {
       const all: LiveMyJob[] = [];
       for (let page = 0; page < PAGE_LIMIT; page++) {
         const res = await listMyApplications(page);
-        res.content.forEach((a) => all.push(toMyJob(a, all.length)));
+        res.content.forEach((a) => {
+          settleIfDone(a); // finished while the candidate was elsewhere
+          all.push(toMyJob(a, all.length));
+        });
         if (res.pageMeta.last || res.content.length === 0) break;
       }
       if (!cancelled) setRows(all);
@@ -264,11 +268,20 @@ export function MyJobsPage() {
     };
   }, []);
 
+  // A result landed in the background (CareerResultWatcher): update that card.
+  useEffect(
+    () =>
+      onResultSettled(({ app }) =>
+        setRows((prev) => prev?.map((row, i) => (row.career.applicationId === app.applicationId ? toMyJob(app, i) : row)) ?? prev),
+      ),
+    [],
+  );
+
   const act = (row: LiveMyJob, label: string) => {
     const jobPath = `/opportunities/job/${encodeURIComponent(row.career.jobId)}`;
     if (label === "View details") return row.career.jobStatus === "OPEN" ? navigate(jobPath) : undefined;
     if (label === "Start interview" || label === "Continue interview") return setStarting(row.career);
-    if (label === "View report") return navigate(`${jobPath}/results`);
+    if (label === "View report") return navigate(`/opportunities/applications/${encodeURIComponent(row.career.applicationId)}/results`);
   };
 
   const filtered = (rows ?? []).filter((job) => {

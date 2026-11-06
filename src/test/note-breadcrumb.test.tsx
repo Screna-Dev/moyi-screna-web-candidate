@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
-import { noteMocks, notePost, setPass, setPlan, setSignedIn } from './note-page-mocks';
+import { noteMocks, notePost, setPlan, setSignedIn } from './note-page-mocks';
 
 vi.mock('@/services/CommunityService', async (orig) => ({ ...(await orig<object>()), ...noteMocks.community }));
 vi.mock('@/services/api', async (orig) => ({ ...(await orig<object>()), hasStoredSession: () => noteMocks.session.signedIn }));
@@ -24,7 +24,6 @@ vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ 
 vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div> }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => noteMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => noteMocks.plan() }));
-vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => noteMocks.passes() }));
 const crumbs = vi.hoisted(() => ({ companySlugFor: vi.fn(), getRoleCrumb: vi.fn() }));
 vi.mock('@/utils/companyDirectory', async (orig) => ({ ...(await orig<object>()), companySlugFor: crumbs.companySlugFor }));
 vi.mock('@/utils/companyRole', async (orig) => ({ ...(await orig<object>()), getRoleCrumb: crumbs.getRoleCrumb }));
@@ -53,7 +52,6 @@ function serveNote() {
 beforeEach(() => {
   vi.clearAllMocks();
   setPlan('Advanced');
-  setPass(null);
   serveNote();
   crumbs.companySlugFor.mockResolvedValue('meta');
 });

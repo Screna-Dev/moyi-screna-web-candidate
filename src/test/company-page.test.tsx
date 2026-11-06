@@ -17,14 +17,12 @@ import {
   filterPopoversMock,
   setPlan,
   setSignedIn,
-  setPass,
   FAQ_Q1,
   FAQ_Q2,
   INTRO,
   PROFILE,
   SUMMARY,
   stablePosthog,
-  passesMock,
 } from './company-page-mocks';
 
 vi.mock('posthog-js/react', () => ({ usePostHog: () => stablePosthog }));
@@ -39,7 +37,6 @@ vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ 
 vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ children }: any) => <div>{children}</div> }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => companyMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => companyMocks.plan() }));
-vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => passesMock() }));
 // The role links' client-side count is one search per role; stubbed so the
 // feed assertions below count feed requests only.
 const roleLinksMock = vi.hoisted(() => vi.fn());
@@ -63,7 +60,7 @@ function renderAt(path: string) {
 const jsonLd = () =>
   [...document.head.querySelectorAll('script[type="application/ld+json"]')].map((s) => JSON.parse(s.textContent || '{}'));
 
-const UPGRADE_LINE = /Upgrade to Advanced to read the full write-up/;
+const UPGRADE_LINE = /Upgrade to Pro to read the full write-up/;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,7 +68,6 @@ beforeEach(() => {
   document.head.innerHTML = '';
   setSignedIn(false);
   setPlan('Free');
-  setPass(null);
   defaultAnswers();
   roleLinksMock.mockResolvedValue([]);
 });
@@ -149,14 +145,6 @@ describe('company page — Free/Basic preview on cards', () => {
     expect(screen.getAllByRole('button', { name: UPGRADE_LINE })).toHaveLength(9);
   });
 
-  it('shows no preview marks to a Company Pass holder on this company', async () => {
-    setSignedIn(true);
-    setPass('Meta');
-    companyMocks.community.getPosts.mockResolvedValue({ data: { data: feed } });
-    renderAt('/interview-insights/meta');
-    expect(await screen.findByText('Summary of trimmed-3.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: UPGRADE_LINE })).toBeNull();
-  });
 
   it('does not blur archive-page cards for a Free reader (public payload, user null on all)', async () => {
     setSignedIn(true);
@@ -180,7 +168,7 @@ describe('company page — Free/Basic preview on cards', () => {
     setSignedIn(true);
     companyMocks.community.getPosts.mockResolvedValue({ data: { data: feed } });
     renderAt('/interview-insights/meta');
-    expect(await screen.findByText('Read every note in full with Advanced')).toBeInTheDocument();
+    expect(await screen.findByText('Read every note in full with Pro')).toBeInTheDocument();
     expect(screen.getByText(/Your plan includes the 2 newest notes for Meta in full/)).toBeInTheDocument();
     expect(screen.queryByText(/is yours to read in full/)).toBeNull();
   });
@@ -192,7 +180,7 @@ describe('company page — Free/Basic preview on cards', () => {
     renderAt('/interview-insights/meta');
     expect(await screen.findByText('Summary of trimmed-3.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: UPGRADE_LINE })).toBeNull();
-    expect(screen.queryByText('Read every note in full with Advanced')).toBeNull();
+    expect(screen.queryByText('Read every note in full with Pro')).toBeNull();
   });
 
   it('keeps the sign-in prompt for guests', async () => {

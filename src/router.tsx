@@ -33,6 +33,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { CompanyDetailPage } from './pages/newDesign/company-detail';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { isChunkLoadError, reloadForChunkError } from './utils/chunkReload';
+import { CareerResultWatcher } from '@/components/newDesign/opportunities/CareerResultWatcher';
 
 // ─── Lazy routes ────────────────────────────────────────────────────────────
 // Everything behind the login wall, plus auth/onboarding. App.tsx already
@@ -67,9 +68,7 @@ const OpportunitiesLayout = lazy(() => import('./pages/newDesign/opportunities/o
 const OpportunitiesPage = lazy(() => import('./pages/newDesign/opportunities/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
 const MyJobsPage = lazy(() => import('./pages/newDesign/opportunities/MyJobsPage').then((m) => ({ default: m.MyJobsPage })));
 const JobDetailPage = lazy(() => import('./pages/newDesign/opportunities/JobDetailPage').then((m) => ({ default: m.JobDetailPage })));
-const BackendEngineerDetailPage = lazy(() => import('./pages/newDesign/opportunities/BackendEngineerDetailPage').then((m) => ({ default: m.BackendEngineerDetailPage })));
 const InterviewResultPage = lazy(() => import('./pages/newDesign/opportunities/InterviewResultPage').then((m) => ({ default: m.InterviewResultPage })));
-const NotQualifiedResultPage = lazy(() => import('./pages/newDesign/opportunities/NotQualifiedResultPage').then((m) => ({ default: m.NotQualifiedResultPage })));
 const ContactRecruiterPage = lazy(() => import('./pages/newDesign/opportunities/ContactRecruiterPage').then((m) => ({ default: m.ContactRecruiterPage })));
 const CareerInterviewPage = lazy(() => import('./pages/newDesign/opportunities/CareerInterviewPage').then((m) => ({ default: m.CareerInterviewPage })));
 const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
@@ -84,6 +83,7 @@ const DashboardHomePage = lazy(() => import('./pages/newDesign/dashboard-home').
 const MyContributionsPage = lazy(() => import('./pages/newDesign/my-contributions-design').then((m) => ({ default: m.MyContributionsPage })));
 const ReferEarnPage = lazy(() => import('./pages/newDesign/refer-earn-design').then((m) => ({ default: m.ReferEarnPage })));
 const HistoryPage = lazy(() => import('./pages/newDesign/training-history-design').then((m) => ({ default: m.TrainingHistoryPage })));
+const PlansRoute = lazy(() => import('./pages/newDesign/plans-page').then((m) => ({ default: m.PlansRoute })));
 const SettingsPage = lazy(() => import('./pages/newDesign/settings-design').then((m) => ({ default: m.SettingsPage })));
 
 // Interview insights (login-walled)
@@ -165,6 +165,8 @@ function RootLayout() {
           {/* Signed-in users who skipped onboarding step 3 get asked for their
               resume on every app page, not just the dashboard. */}
           <ResumePromptModal />
+          {/* Says when a career interview's result is ready, from any page. */}
+          <CareerResultWatcher />
           <CookieBanner />
         </RecommendedJobsProvider>
       </UserPlanProvider>
@@ -248,10 +250,8 @@ export const router = createBrowserRouter([
         children: [
           { path: '/opportunities', element: <OpportunitiesPage /> },
           { path: '/opportunities/my-jobs', element: <MyJobsPage /> },
-          { path: '/opportunities/job/1', element: <BackendEngineerDetailPage /> },
           { path: '/opportunities/job/:id', element: <JobDetailPage /> },
-          { path: '/opportunities/job/8/results', element: <NotQualifiedResultPage /> },
-          { path: '/opportunities/job/:id/results', element: <InterviewResultPage /> },
+          { path: '/opportunities/applications/:applicationId/results', element: <InterviewResultPage /> },
           { path: '/opportunities/job/:id/contact', element: <ContactRecruiterPage /> },
         ],
       },
@@ -271,6 +271,8 @@ export const router = createBrowserRouter([
       { path: '/refer', element: <RequireAuth><ReferEarnPage /></RequireAuth> },
       { path: '/history', element: <RequireAuth><HistoryPage /></RequireAuth> },
       { path: '/settings', element: <RequireAuth><SettingsPage /></RequireAuth> },
+      // In-app Pricing (signed in). Visitors get the landing page's pricing section.
+      { path: '/plans', element: <PlansRoute /> },
       // /billing is deprecated — billing now lives under Settings. Redirect old
       // links/bookmarks to the canonical location.
       { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },

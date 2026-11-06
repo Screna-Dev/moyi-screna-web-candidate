@@ -3,7 +3,7 @@ import { Check, Copy, GripVertical, Info, Pencil, Plus, RefreshCw, Sparkles, Tra
 import { toast } from 'sonner';
 import type { Criterion, InterviewQuestion, Job } from '../../types';
 import { backendQuestions, SUGGESTED_CRITERIA } from '../../mockData';
-import { Button, Card, Dialog, Divider, Field, Pill, Segmented, TextArea, TextInput, cx } from '../../ui';
+import { Button, Card, Dialog, Divider, Field, Pill, TextArea, TextInput, cx } from '../../ui';
 import { CardTitle, ErrorHint } from './shared';
 import { interviewErrors, MAX_CRITERIA, MAX_QUESTIONS, type InterviewAI, type StepProps } from './logic';
 
@@ -87,12 +87,18 @@ export function StepInterview({ job, update, showErrors, ai, showSettings = true
                 {editing ? (
                   <div className="flex-1 flex flex-col gap-2">
                     <TextInput autoFocus value={c.name} placeholder="Criterion name" onChange={(e) => setCriterion(c.id, { name: e.target.value })} />
-                    <TextInput value={c.description} placeholder="What does good look like?" onChange={(e) => setCriterion(c.id, { description: e.target.value })} />
+                    <TextInput
+                      value={c.description}
+                      placeholder={ai ? 'What does good look like? (required to publish)' : 'What does good look like?'}
+                      onChange={(e) => setCriterion(c.id, { description: e.target.value })}
+                    />
                   </div>
                 ) : (
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-semibold text-[#1e232f]">{c.name || <span className="text-[#9ba1b0]">Untitled criterion</span>}</p>
                     <p className="text-[13px] text-[#5a6172]">{c.description}</p>
+                    {/* Employer API: a description is required to publish (#307). */}
+                    {ai && !c.description.trim() && <p className="text-[12px] text-[#dc2626]">Add a description. It's required to publish.</p>}
                   </div>
                 )}
                 <div className="flex items-center gap-1 shrink-0">
@@ -117,17 +123,20 @@ export function StepInterview({ job, update, showErrors, ai, showSettings = true
             );
           })}
           {job.criteria.length === 0 && <p className="text-[13px] text-[#5a6172] py-2">No criteria yet. Add your own or generate suggestions.</p>}
-          <ErrorHint show={!!err.criteria}>{ai ? `Add 1–${MAX_CRITERIA} criteria with distinct names` : 'Add at least one named criterion'}</ErrorHint>
+          <ErrorHint show={!!err.criteria}>{ai ? `Keep exactly ${MAX_CRITERIA} criteria with distinct names` : 'Add at least one named criterion'}</ErrorHint>
         </div>
         <div className="flex items-center justify-between">
           <button
             type="button"
+            // Employer jobs have exactly 4 criteria (#307): rename instead of adding.
+            disabled={!!ai && job.criteria.length >= MAX_CRITERIA}
+            title={ai && job.criteria.length >= MAX_CRITERIA ? `Each job has ${MAX_CRITERIA} criteria. Edit one to rename it.` : undefined}
             onClick={() => {
               const id = uid('cr');
               patchInterview((j) => ({ criteria: [...j.criteria, { id, name: '', description: '' }] }));
               setEditingCriterion(id);
             }}
-            className="flex items-center gap-1 text-[13px] font-medium text-[#3c77f6] hover:underline"
+            className="flex items-center gap-1 text-[13px] font-medium text-[#3c77f6] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
           >
             <Plus size={14} /> Add criterion
           </button>
@@ -305,20 +314,14 @@ export function StepInterview({ job, update, showErrors, ai, showSettings = true
   );
 }
 
+// Length and language are fixed (#305: 20 minutes, English only), so they are
+// shown, not chosen.
 export function InterviewSettingsFields({ job, update }: Pick<StepProps, 'job' | 'update'>) {
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-[#1e232f]">Estimated interview length</span>
-        <Segmented<20 | 30 | 45>
-          value={job.interviewLength}
-          onChange={(v) => update({ interviewLength: v })}
-          options={[
-            { value: 20, label: '20 min' },
-            { value: 30, label: '30 min (Suggested)' },
-            { value: 45, label: '45 min' },
-          ]}
-        />
+        <span className="text-[13px] font-medium text-[#1e232f]">Interview length</span>
+        <span className="text-[14px] text-[#1e232f]">Up to 20 min · English</span>
       </div>
       <Field label="Candidate instructions">
         <TextArea rows={3} value={job.candidateInstructions} onChange={(e) => update({ candidateInstructions: e.target.value })} />

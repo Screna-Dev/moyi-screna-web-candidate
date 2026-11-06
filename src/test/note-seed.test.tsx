@@ -51,7 +51,6 @@ vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ 
 vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ children }: any) => <div>{children}</div> }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => noteMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => noteMocks.plan() }));
-vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => noteMocks.passes() }));
 
 import { ExperienceDetailPage } from '@/pages/newDesign/experience-detail';
 

@@ -1963,7 +1963,7 @@ function salaryLabel(job: LiveOpportunityJob): string {
 
 function assessmentLabel(job: LiveOpportunityJob): string {
   const minutes = job.career.interviewDurationMinutes;
-  return job.career.interviewPayer === 'EMPLOYER' ? `${minutes} min · Free` : `${minutes} min · ${minutes} credits`;
+  return job.career.interviewPayer === 'EMPLOYER' ? `${minutes} min · Free` : `${minutes} min · 1 interview`;
 }
 
 const FEATURED_LABEL: CSSProperties = { fontSize: 11, fontWeight: 500, lineHeight: '16.5px', letterSpacing: 0.4, textTransform: 'uppercase', color: T.textSecondary };

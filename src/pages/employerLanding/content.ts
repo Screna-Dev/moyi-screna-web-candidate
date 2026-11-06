@@ -97,7 +97,9 @@ export const FEATURES: IconCard[] = [
   },
 ];
 
-export type PlanCta = 'signup' | 'sales';
+// business: straight to the Business checkout for cta.cycle (via sign in /
+// sign up when signed out).
+export type PlanCta = 'signup' | 'sales' | 'business';
 
 export interface Plan {
   name: string;
@@ -107,10 +109,12 @@ export interface Plan {
   /** Small grey lines under the price. */
   notes: string[];
   features: { text: string; strong?: boolean }[];
-  cta: { label: string; action: PlanCta };
+  cta: { label: string; action: PlanCta; cycle?: 'MONTHLY' | 'ANNUAL' };
   featured?: { badge: string };
 }
 
+// Business is sold monthly or annually, one card each (like the candidate
+// side's Pro / Pro 90-Day), so the employer picks the billing on the page.
 export const PLANS: Plan[] = [
   {
     name: 'Free',
@@ -130,10 +134,7 @@ export const PLANS: Plan[] = [
     name: 'Business',
     price: '$399',
     per: '/ month',
-    notes: [
-      'Or $3,990 a year, two months free',
-      'Renews monthly until you cancel. Allowances reset each month.',
-    ],
+    notes: ['Renews monthly until you cancel. Allowances reset each month.'],
     features: [
       { text: '50 report unlocks a month, then $12 each', strong: true },
       { text: '50 sponsored interviews a month, then $3 each', strong: true },
@@ -142,8 +143,21 @@ export const PLANS: Plan[] = [
       { text: 'Monthly hiring outcome report' },
       { text: 'Email support' },
     ],
-    cta: { label: 'Start Business', action: 'signup' },
+    cta: { label: 'Start Business', action: 'business', cycle: 'MONTHLY' },
     featured: { badge: 'For recruiters and agencies' },
+  },
+  {
+    name: 'Business Annual',
+    price: '$3,990',
+    per: '/ year',
+    notes: ['Two months free. Renews yearly until you cancel. Allowances reset each month.'],
+    features: [
+      { text: 'Everything in Business, billed once a year', strong: true },
+      { text: '50 report unlocks a month, then $12 each' },
+      { text: '50 sponsored interviews a month, then $3 each' },
+      { text: 'Save $798 a year' },
+    ],
+    cta: { label: 'Start annual', action: 'business', cycle: 'ANNUAL' },
   },
   {
     name: 'Enterprise',

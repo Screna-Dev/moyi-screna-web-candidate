@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Menu, X, Loader2, LayoutDashboard, Settings, Coins, LogOut } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
-import { BuyCreditsModal } from '@/components/newDesign/BuyCreditsModal';
+import { AddInterviewsDialog } from '@/components/newDesign/AddInterviewsDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { safeCapture } from '@/utils/posthog';
@@ -12,11 +11,11 @@ import { getPersonalInfo } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
 import { PaymentService } from '@/services';
 import { markPendingCheckout } from '@/utils/pendingCheckout';
+import { ADD_ON_INTERVIEWS, ADD_ON_PRICE, ADD_ON_VALID_DAYS, fetchInterviewQuota, grantKeys, startQuotaCheckout } from '@/hooks/useInterviewQuota';
 import { buildAuthPath } from '@/utils/returnTo';
 import { useSeo } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
 import { ORGANIZATION_JSON_LD } from '@/constants/organization';
-import { SUPPORT_EMAIL } from '@/constants/site';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 // WebP, resized to ~2x display size (see scripts/optimize-images.mjs).
 // The .png originals are kept in the repo as the source for that script —
@@ -33,9 +32,10 @@ import iconCheckCircle from '@/assets/landing-candidate/check-circle.svg';
 // ─── Types ──────────────────────────────────────────────────────────────────
 type SystemTab = 'Partner Roles' | 'Interview Report' | 'Interview Reports Library';
 
-// Landing-page subscription tier. FREE is UI-only; the paid tiers map to the
-// backend enum (BASIC | ADVANCED | FLAGSHIP), billed MONTHLY for now.
-type PlanTier = 'FREE' | 'BASIC' | 'ADVANCED' | 'FLAGSHIP';
+// Landing-page plan. FREE is UI-only; PRO is the backend subscription tier
+// (the only one on sale since change C9, billed MONTHLY); PRO_90_DAY is the
+// one-time POST /payments/pro-90-day checkout, not a subscription tier.
+type PlanTier = 'FREE' | 'PRO' | 'PRO_90_DAY';
 
 interface Plan {
   name: string;
@@ -91,14 +91,13 @@ const FAQ_ITEMS = [
   },
 ];
 
-// Design: Free $0 / Pro $29 a month / Pro 90-Day $79 one time.
-// Pro checks out as the backend ADVANCED tier, so its price shows what that
-// tier actually charges ($29.99), not the design's rounded $29.
-// Pro 90-Day is a one-time 90-day pass. The backend has no one-time product —
-// FLAGSHIP is a monthly subscription — so the card has no tier and its CTA
-// does not start a checkout until that product exists.
-// No Basic card: the backend stopped selling BASIC on 2026-08-28 (checkout
-// returns 400). BASIC stays in PlanTier for existing subscribers.
+// Design: Free $0 / Pro $29 a month / Pro 90-Day $79 one time. Counts and
+// prices are configured on the backend; this page states them (C9).
+// Pro is $29 a month: what the backend's Stripe price for PRO charges
+// (checked on Stripe Checkout, 2026-11-06). The API has no price field, so
+// keep this in step with Stripe by hand.
+// Pro 90-Day is a one-time Stripe Checkout (never renews, not refundable).
+// No Basic / Advanced / Flagship cards: none can be bought any more (400).
 const PLANS: Plan[] = [
   {
     name: 'Free',
@@ -117,8 +116,8 @@ const PLANS: Plan[] = [
   },
   {
     name: 'Pro',
-    tier: 'ADVANCED',
-    price: '$29.99',
+    tier: 'PRO',
+    price: '$29',
     priceSuffix: '/ month',
     tagline: 'See exactly where you stand',
     features: [
@@ -136,7 +135,7 @@ const PLANS: Plan[] = [
   },
   {
     name: 'Pro 90-Day',
-    tier: null,
+    tier: 'PRO_90_DAY',
     price: '$79',
     priceSuffix: 'one time',
     tagline: 'One job season, one payment',
@@ -346,7 +345,7 @@ export function HomePage() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const avatarRef = useRef<HTMLDivElement>(null);
   const [loadingTier, setLoadingTier] = useState<PlanTier | null>(null);
-  const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showAddInterviews, setShowAddInterviews] = useState(false);
   // P4: how many times this visitor has tried to pay in this page session.
   // A retry after a failure is the same intent, not a second buyer — the
   // dashboard groups on this so one person retrying three times reads as one.
@@ -355,31 +354,12 @@ export function HomePage() {
   const goAuth = () => navigate('/auth');
   const goSignup = () => navigate('/auth?signup=true');
 
-  // Pay-as-you-go top-up. Signed-out visitors go to auth first (can't pay without
-  // an account); signed-in users open the Buy-credits modal and check out via Stripe.
-  const handleAddCredits = () => {
+  // ADD-ON row: the interview add-on (change C9), not credits. Signed-out
+  // visitors go to auth first (can't pay without an account); signed-in users
+  // get the add-on dialog, which offers Pro instead to Free users.
+  const handleAddInterviews = () => {
     if (!user) { goAuth(); return; }
-    setShowBuyCredits(true);
-  };
-
-  const handleBuyCredits = async (n: number) => {
-    // 04 — 变现: 点击购买 credits（发起 checkout 前上报）
-    safeCapture(posthog, EVENTS.BUY_CREDITS_CLICKED);
-    try {
-      const res = await PaymentService.purchaseCustomPack(n);
-      const url = res?.data?.data?.url ?? res?.data?.url;
-      if (url) { markPendingCheckout('credits', String(n)); window.location.href = url; return; }
-      toast({ title: 'Credits added', description: `${n} credits added to your balance.` });
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { message?: string } }; message?: string })
-          ?.response?.data?.message ||
-        (err as { message?: string })?.message ||
-        'Unable to start checkout. Please try again.';
-      toast({ title: 'Checkout failed', description: message, variant: 'destructive' });
-    } finally {
-      setShowBuyCredits(false);
-    }
+    setShowAddInterviews(true);
   };
 
   // Initials for the logged-in avatar
@@ -425,15 +405,7 @@ export function HomePage() {
   // Billing cycle is MONTHLY-only for now.
   const handleSelectPlan = async (plan: Plan) => {
     const tier = plan.tier;
-    // Pro 90-Day has no backend product yet (see PLANS) — don't start a
-    // recurring checkout for a card that promises a one-time charge.
-    if (!tier) {
-      toast({
-        title: 'Not available yet',
-        description: `${plan.name} isn't available to buy yet. Email ${SUPPORT_EMAIL} and we'll help you get set up.`,
-      });
-      return;
-    }
+    if (!tier) return;
     // 04 — 变现: 选择套餐（发起 checkout 前上报；billing 目前仅 MONTHLY）
     safeCapture(posthog, EVENTS.PLAN_SELECTED, {
       plan_tier: tier.toLowerCase(),
@@ -448,6 +420,28 @@ export function HomePage() {
     }
     if (tier === 'FREE') {
       navigate('/dashboard');
+      return;
+    }
+    // Pro 90-Day: one-time checkout, also open to current Pro / Pro 90-day
+    // holders (whether to block that is pending a PM decision). The button
+    // stays busy until the redirect — a second payment is a second charge.
+    if (tier === 'PRO_90_DAY') {
+      setLoadingTier(tier);
+      const paymentProps = { entry: 'landing_pricing', payment_type: 'pro_90_day', plan_tier: 'pro_90_day', attempt: (paymentAttemptRef.current += 1) };
+      safeCapture(posthog, EVENTS.PAYMENT_REQUEST_STARTED, paymentProps);
+      try {
+        const before = await fetchInterviewQuota().catch(() => null);
+        const url = await startQuotaCheckout('pro-90-day');
+        // Returns to Settings → Billing, which polls the quota for the grant.
+        markPendingCheckout('pro-90-day', undefined, undefined, before ? grantKeys(before, 'PRO_90_DAY') : undefined);
+        safeCapture(posthog, EVENTS.CHECKOUT_STARTED, { ...paymentProps, flow: 'pro_90_day' });
+        window.location.href = url;
+      } catch (err) {
+        const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Something went wrong. Please try again.';
+        safeCapture(posthog, EVENTS.PAYMENT_REQUEST_FAILED, { ...paymentProps, reason: 'request_error', message });
+        toast({ title: 'Unable to start checkout', description: message, variant: 'destructive' });
+        setLoadingTier(null);
+      }
       return;
     }
     // Clicking the plan you're already on → manage it in Settings → Billing.
@@ -617,12 +611,17 @@ export function HomePage() {
       className="min-h-screen bg-white"
       style={{ fontFamily: "'Inter', sans-serif", overflowX: 'clip' }}
     >
-      {/* ─── Buy credits modal (pay-as-you-go) ─── */}
-      <AnimatePresence>
-        {showBuyCredits && (
-          <BuyCreditsModal onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />
-        )}
-      </AnimatePresence>
+      {/* ─── Interview add-on (ADD-ON row) ─── */}
+      {showAddInterviews && (
+        <AddInterviewsDialog
+          onClose={() => setShowAddInterviews(false)}
+          onUpgrade={() => {
+            setShowAddInterviews(false);
+            const pro = PLANS.find((p) => p.tier === 'PRO');
+            if (pro) void handleSelectPlan(pro);
+          }}
+        />
+      )}
 
 
       {/* ─── Nav ─── */}
@@ -1109,7 +1108,7 @@ export function HomePage() {
             ))}
           </div>
           <div className="pt-6">
-            <AddOnRow onAdd={handleAddCredits} />
+            <AddOnRow onAdd={handleAddInterviews} />
           </div>
         </div>
       </section>
@@ -1879,14 +1878,14 @@ function AddOnRow({ onAdd }: { onAdd: () => void }) {
         </div>
       </div>
       <p className="flex-1 text-[14px] leading-[21px]" style={{ color: '#4A4D57' }}>
-        Add 5 partner-role interviews anytime. For Pro and Pro 90-day members, valid 90 days.
+        Add {ADD_ON_INTERVIEWS} partner-role interviews anytime. For Pro and Pro 90-day members, valid {ADD_ON_VALID_DAYS} days.
       </p>
       <div className="flex items-center gap-3 flex-shrink-0">
         <span
           className="inline-flex items-center h-10 px-5 rounded-full text-[14px] font-semibold"
           style={{ fontFamily: MONO, color: '#1231B8', background: '#F7F9FF', border: '1px solid #2E5BFF' }}
         >
-          $12
+          {ADD_ON_PRICE}
         </span>
         <button
           onClick={onAdd}

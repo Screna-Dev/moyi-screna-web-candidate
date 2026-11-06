@@ -221,12 +221,41 @@ export type JobDetailsBody = {
   maxApplicants: number | null;
 };
 
+// Step 2 body. Who pays moved to PUT sponsorship (2026-10-29, #297): an
+// interviewPayer sent here is ignored.
+// durationMinutes / language (#305, ADR-013 / ADR-022 D-15): only 20 and "en"
+// are accepted, and leaving them out means exactly that; anything else is 400.
+// The wizard leaves them out.
 export type InterviewSettings = {
-  durationMinutes: 20 | 30 | 45;
-  language: string;
+  durationMinutes?: 20;
+  language?: 'en';
   candidateInstructions: string | null;
   passScore: number | null;
-  interviewPayer: InterviewPayer | null; // null until chosen
+};
+
+// As read back: older jobs may still say 30 / 45 or another language, but every
+// interview runs 20 minutes in English. Never base UI on these, never send them back.
+export type ApiInterviewSettings = Omit<InterviewSettings, 'durationMinutes' | 'language'> & {
+  durationMinutes: number;
+  language: string;
+  interviewPayer: InterviewPayer | null; // null until step 3 is saved
+};
+
+export type WhenLimitReached = 'KEEP_ACCEPTING' | 'CLOSE_JOB';
+
+// Step 3 body. EMPLOYER needs maxSponsoredCandidates (≥ 1); whenLimitReached
+// defaults to KEEP_ACCEPTING. CANDIDATE deletes a saved sponsorship.
+export type SponsorshipBody = {
+  interviewPayer: InterviewPayer | null;
+  maxSponsoredCandidates?: number | null;
+  whenLimitReached?: WhenLimitReached;
+};
+
+// "Used up" = maxSponsoredCandidates reached, or no Interview Credit left.
+export type ApiSponsorship = {
+  maxSponsoredCandidates: number;
+  whenLimitReached: WhenLimitReached;
+  sponsoredCount: number; // in progress + completed
 };
 
 export type ApiCriterion = { id: string; name: string; description: string | null; source: ContentSource };
@@ -246,7 +275,8 @@ export type ApiJob = JobDetailsBody & {
   id: string;
   status: ApiJobStatus;
   wizardStep: 1 | 2 | 3 | 4; // furthest step reached; only grows
-  interviewSettings: InterviewSettings;
+  interviewSettings: ApiInterviewSettings;
+  sponsorship: ApiSponsorship | null; // EMPLOYER-paid jobs only
   criteria: ApiCriterion[];
   screeningCriteria: ApiScreeningCriterion[];
   questions: ApiQuestion[];
@@ -302,6 +332,16 @@ export async function saveInterviewSettings(jobId: string, body: InterviewSettin
   return data(await employerApi.put(`${jobPath(jobId)}/interview-settings`, body));
 }
 
+// Drafts: anything goes; sets wizardStep to 4. Published employer-paid jobs
+// (#299): interviewPayer must stay EMPLOYER, the maximum can only go up, and
+// whenLimitReached must be sent (omitted = KEEP_ACCEPTING); otherwise 409
+// INVALID_STATE. It never reopens a closed job. Saving CLOSE_JOB on an open job
+// whose sponsorship is already used up (limit reached or no Interview Credit)
+// closes it at once: the response has status CLOSED.
+export async function saveSponsorship(jobId: string, body: SponsorshipBody): Promise<ApiJob> {
+  return data(await employerApi.put(`${jobPath(jobId)}/sponsorship`, body));
+}
+
 // --- AI suggestions: async tasks, never saved by the backend ------------------
 // Criteria suggestions are currently canned on the backend (task id
 // fake-criteria-<jobId>, SUCCEEDED on the first poll); treat them like real AI.
@@ -344,6 +384,63 @@ export async function suggestQuestions(jobId: string, criteria: { name: string; 
   return pollAiTask(jobId, taskId);
 }
 
+// --- JD autofill: async task, nothing is saved by the backend -----------------
+// The employer pastes a whole job description on step 1; the AI reads the
+// step 1 fields out of it. No draft is needed. prefill already passes step 1
+// validation (lists cut to 30, long text truncated, an unacceptable salary or
+// experience range nulled as a group). It has no department. Location is
+// requested from the backend (today "never filled"): read it if it comes back.
+// 429 TOO_MANY_REQUESTS after 30 submissions per org per hour.
+
+export type JdPrefill = {
+  title: string | null;
+  location?: string | null;
+  employmentType: ApiEmploymentType | null;
+  workplaceType: ApiWorkplaceType | null;
+  seniority: string | null;
+  role: string | null;
+  yearsExperienceMin: number | null;
+  yearsExperienceMax: number | null;
+  skills: string[];
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+  salaryPeriod: ApiSalaryPeriod | null;
+  summary: string | null;
+  roleOverview: string | null;
+  responsibilities: string[];
+  requirements: string[];
+  preferredQualifications: string[];
+  benefits: string[];
+};
+
+type JdParseTask = {
+  taskId: string;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+  error: string | null; // FAILED: a fixed employer-facing message
+  prefill: JdPrefill | null; // SUCCEEDED only
+};
+
+export const JD_TEXT_MAX = 50_000;
+const JD_POLL_MS = 2000;
+const JD_POLL_LIMIT_MS = 60_000;
+
+// title / location: what the form already has, so the AI doesn't guess them.
+// Rejects on FAILED, timeout, 404 or 503 alike.
+export async function parseJobDescription(body: { jdText: string; title?: string; location?: string }, signal?: AbortSignal): Promise<JdPrefill> {
+  const { taskId } = data<{ taskId: string }>(await employerApi.post('/employer/jobs/jd-parse', body, { signal }));
+  const deadline = Date.now() + JD_POLL_LIMIT_MS;
+  // A repeat of an already parsed text may come back SUCCEEDED: GET it all the same.
+  for (;;) {
+    const task = data<JdParseTask>(await employerApi.get(`/employer/jobs/jd-parse/${encodeURIComponent(taskId)}`, { signal }));
+    if (task.status === 'SUCCEEDED' && task.prefill) return task.prefill;
+    if (task.status === 'FAILED') throw new Error(task.error || 'JD parse failed');
+    if (Date.now() > deadline) throw new Error('JD parse timed out');
+    await new Promise((r) => setTimeout(r, JD_POLL_MS));
+    if (signal?.aborted) throw new Error('JD parse cancelled');
+  }
+}
+
 // --- Preview / publish -------------------------------------------------------
 
 export type PublishCheck = {
@@ -354,6 +451,7 @@ export type PublishCheck = {
   interviewPayer: InterviewPayer | null;
   interviewCreditsAvailable: number;
   // EMPLOYER-sponsored with no Interview Credit: a warning, never a blocker.
+  // What it means depends on sponsorship.whenLimitReached.
   sponsorshipUnfunded: boolean;
 };
 
@@ -391,8 +489,9 @@ export type JobActions = {
   delete: boolean;
   editPosting: boolean;
   changeWindow: boolean;
-  close: boolean;
+  close: boolean; // also true for a job auto-closed when sponsorship ran out
   reopen: boolean;
+  editSponsorship: boolean; // published employer-paid jobs (#299)
 };
 
 export type JobListItem = {
@@ -405,7 +504,7 @@ export type JobListItem = {
   opensAt: string | null;
   closesAt: string | null;
   closedAt: string | null;
-  closeReason: 'DEADLINE' | 'MANUAL' | null;
+  closeReason: 'DEADLINE' | 'MANUAL' | 'SPONSORSHIP_EXHAUSTED' | null;
   timezone: string | null;
   publishedAt: string | null;
   applicationCount: number;
@@ -440,6 +539,9 @@ export async function updateJobWindow(jobId: string, body: { opensAt: string | n
   return data(await employerApi.put(`${jobPath(jobId)}/window`, body));
 }
 
+// OPEN / SCHEDULED, or CLOSED with closeReason SPONSORSHIP_EXHAUSTED (#299):
+// the reason becomes MANUAL and applicants who haven't started can no longer
+// start. Otherwise 409 INVALID_STATE.
 export async function closeJob(jobId: string): Promise<ApiJob> {
   return data(await employerApi.post(`${jobPath(jobId)}/close`));
 }
@@ -629,6 +731,83 @@ export async function saveOutreach(applicationId: string, body: { subject: strin
 
 export async function outreachAction(applicationId: string, action: 'reset' | 'mark-sent' | 'undo-sent'): Promise<Outreach> {
   return data(await employerApi.post(`${appPath(applicationId)}/outreach/${action}`));
+}
+
+// --- Business plan (/employer/plan, ADR-021 / ADR-023) -----------------------
+// Rules are backend defaults pending PM sign-off. Amounts are CENTS.
+// - Subscribing is async: after Stripe, poll GET until plan = BUSINESS (2s, ≤30s).
+// - GET /employer/credits is prepaid credits only. A Business org may show 0
+//   Interview / Report Credits and still unlock and sponsor from its allowance.
+// - Spending order, for unlocks and sponsored interviews alike: this month's
+//   allowance → prepaid credits → overage. At the cap (or while past_due) an
+//   unlock is 403 PLAN_LIMIT_REACHED {reason: CAP_REACHED | PAST_DUE, capCents,
+//   spentCents}; a new sponsored interview counts as "sponsorship used up".
+// - Annual can't go back to monthly (cancel, then subscribe monthly later).
+// No seats or invoice list yet.
+
+export type BusinessBillingCycle = 'MONTHLY' | 'ANNUAL';
+
+export type EmployerPlan = {
+  plan: 'FREE' | 'BUSINESS';
+  billingCycle: BusinessBillingCycle | null;
+  status: 'active' | 'trialing' | 'past_due' | null;
+  currentPeriodEnd: string | null; // a cancelled plan returns to Free here
+  cancelAtPeriodEnd: boolean | null;
+  // Current allowance month (annual plans are cut into months). Unused doesn't roll over.
+  allowance: {
+    periodStart: string;
+    periodEnd: string;
+    reports: { included: number; used: number };
+    interviews: { included: number; used: number; held: number }; // held = interviews in progress
+  } | null;
+  overage: {
+    spentCents: number; // this allowance month, incl. amounts held for interviews in progress
+    capCents: number | null; // null = no cap
+    capReached: boolean; // not even the cheapest overage fits under the cap
+    reportUnitCents: number;
+    interviewUnitCents: number;
+    allowed: boolean; // false while past_due
+  } | null;
+};
+
+export type PlanLimitReached = { reason: 'CAP_REACHED' | 'PAST_DUE'; capCents: number | null; spentCents: number };
+
+export async function getEmployerPlan(): Promise<EmployerPlan> {
+  return data(await employerApi.get('/employer/plan'));
+}
+
+// → Stripe URL. Returns to /employer/credits?checkout=… (shared with credits).
+// 409 INVALID_STATE: a Business subscription already exists (incl. past_due,
+// or a first payment still processing).
+export async function startPlanCheckout(billingCycle: BusinessBillingCycle): Promise<string> {
+  const res = data<{ url: string }>(await employerApi.post('/employer/plan/checkout', { billingCycle }));
+  return res.url;
+}
+
+// Back to Free at currentPeriodEnd. 409 when not Business / already cancelling.
+export async function cancelEmployerPlan(): Promise<EmployerPlan> {
+  return data(await employerApi.post('/employer/plan/cancel'));
+}
+
+// Undo a cancellation. 409 when not cancelling.
+export async function resumeEmployerPlan(): Promise<EmployerPlan> {
+  return data(await employerApi.post('/employer/plan/resume'));
+}
+
+// Immediate; Stripe charges the prorated difference. 400 PLAN_PAYMENT_FAILED
+// (plan unchanged), 409 when not monthly Business or past_due.
+export async function switchEmployerPlanToAnnual(): Promise<EmployerPlan> {
+  return data(await employerApi.post('/employer/plan/switch-to-annual'));
+}
+
+// 0 = no overage. Lowering below what's spent stops further overage, refunds nothing.
+// 409 CONFLICT while the subscription syncs: retry.
+export async function setOverageCap(capCents: number): Promise<EmployerPlan> {
+  return data(await employerApi.put('/employer/plan/overage-cap', { capCents }));
+}
+
+export async function clearOverageCap(): Promise<EmployerPlan> {
+  return data(await employerApi.delete('/employer/plan/overage-cap'));
 }
 
 // --- Errors ------------------------------------------------------------------

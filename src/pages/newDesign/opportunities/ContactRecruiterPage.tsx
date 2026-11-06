@@ -22,12 +22,15 @@ export function ContactRecruiterPage() {
   const jobId = id ?? "5";
   const { emailStatus, setEmailSent, setEmailUnsent } = useOpportunities();
   const isEmailSent = emailStatus[jobId] === "sent";
+  // Back to the result (or wherever the candidate came from); My Jobs when
+  // this page was opened directly.
+  const goBack = () => ((window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate("/opportunities/my-jobs"));
 
   return (
     <div className="flex flex-col gap-6 pb-12">
       {/* Back link */}
       <button
-        onClick={() => navigate(`/opportunities/job/${id}/results`)}
+        onClick={goBack}
         className="text-[#3c77f6] text-[14px] leading-5 text-left w-fit hover:underline"
         style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
       >
@@ -443,7 +446,7 @@ export function ContactRecruiterPage() {
               </button>
               <div className="flex items-center gap-3 text-[13px]">
                 <button
-                  onClick={() => navigate(`/opportunities/job/${jobId}/results`)}
+                  onClick={goBack}
                   className="text-[#3c77f6] hover:underline shrink-0"
                   style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
                 >

@@ -31,6 +31,7 @@ vi.mock('@/pages/employer/employerApi', async (orig) => ({
   saveJobDetails: vi.fn(),
   saveJobAssessment: vi.fn(),
   saveInterviewSettings: vi.fn(),
+  saveSponsorship: vi.fn(),
   saveJobPosting: vi.fn(),
   updateJobWindow: vi.fn(),
   createJob: vi.fn(),
@@ -158,27 +159,34 @@ describe('interview language', () => {
     expect(screen.queryByText('Interview language')).not.toBeInTheDocument();
   });
 
-  it('always saves English, even for a job saved earlier in another language', () => {
+  it('never sends length or language, even for an older job saved with 45 min in Spanish (#305)', () => {
     const saved = apiJob();
     saved.interviewSettings.language = 'es';
+    saved.interviewSettings.durationMinutes = 45;
     const job = apiToJob(saved, 'c');
     expect(job.language).toBe('English');
-    expect(settingsBody(job).language).toBe('en');
-    expect(settingsBody({ ...job, language: 'Spanish' }).language).toBe('en');
+    expect(settingsBody(job, saved)).toEqual({ candidateInstructions: null, passScore: null });
+  });
+
+  it('shows the fixed length instead of a 20 / 30 / 45 choice', async () => {
+    api.getJob.mockResolvedValue(apiJob({ wizardStep: 2 }));
+    render(<EmployerJobWizard jobId="job-1" />);
+    expect(await screen.findByText('Up to 20 min · English')).toBeInTheDocument();
+    expect(screen.queryByText('30 min (Suggested)')).not.toBeInTheDocument();
   });
 });
 
 // ─── Step 3 ───────────────────────────────────────────────────────────────────
 
-describe('step 3: sponsorship', () => {
-  it('shows only the design fields once sponsoring is chosen', async () => {
+describe('step 3: sponsorship (PUT sponsorship, #297)', () => {
+  it('shows only the design fields, prefilled with 50 candidates and keep accepting', async () => {
     api.getJob.mockResolvedValue(apiJob({ wizardStep: 3 }));
     render(<EmployerJobWizard jobId="job-1" />);
     fireEvent.click(await screen.findByRole('radio', { name: /Sponsor candidates' first interviews/ }));
 
-    expect(screen.getByLabelText('Maximum sponsored candidates')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Keep accepting candidates/ })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('radio', { name: /Close the job automatically/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Maximum sponsored candidates')).toHaveValue('50');
+    expect(screen.getByRole('radio', { name: /Keep accepting candidates/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Close the job automatically/ })).toHaveAttribute('aria-checked', 'false');
     expect(screen.queryByText('Total interview budget')).not.toBeInTheDocument();
     expect(screen.queryByText('Daily interview budget')).not.toBeInTheDocument();
     expect(screen.queryByText('Estimated sponsorship usage')).not.toBeInTheDocument();
@@ -186,50 +194,69 @@ describe('step 3: sponsorship', () => {
     expect(screen.queryByLabelText('Opening date')).not.toBeInTheDocument();
   });
 
-  it('requires both sponsorship fields, then saves and moves on', async () => {
+  it('requires the maximum, then saves who pays and the limits with PUT sponsorship', async () => {
     api.getJob.mockResolvedValue(apiJob({ wizardStep: 3 }));
-    api.saveInterviewSettings.mockResolvedValue(apiJob({}, 'EMPLOYER'));
+    api.saveSponsorship.mockImplementation(async (_id, body) =>
+      apiJob({ wizardStep: 4, sponsorship: { maxSponsoredCandidates: body.maxSponsoredCandidates!, whenLimitReached: body.whenLimitReached!, sponsoredCount: 0 } }, 'EMPLOYER'),
+    );
     render(<EmployerJobWizard jobId="job-1" />);
     fireEvent.click(await screen.findByRole('radio', { name: /Sponsor candidates' first interviews/ }));
+    fireEvent.change(screen.getByLabelText('Maximum sponsored candidates'), { target: { value: '' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Continue to preview/ }));
-    expect(await screen.findByText('Choose what happens after the limit is reached')).toBeInTheDocument();
-    expect(toast.error).toHaveBeenCalledWith('Complete the required fields to continue');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Complete the required fields to continue'));
+    expect(api.saveSponsorship).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Maximum sponsored candidates'), { target: { value: '1,200' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Close the job automatically/ }));
+    expect(screen.getByText('Your interview sponsorship cost: up to 1,200 credits')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue to preview/ }));
+    await waitFor(() => expect(api.saveSponsorship).toHaveBeenCalled());
+    expect(api.saveSponsorship.mock.calls[0][1]).toEqual({ interviewPayer: 'EMPLOYER', maxSponsoredCandidates: 1200, whenLimitReached: 'CLOSE_JOB' });
     expect(api.saveInterviewSettings).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText('Maximum sponsored candidates'), { target: { value: '50' } });
-    fireEvent.click(screen.getByRole('radio', { name: /Keep accepting candidates/ }));
-    expect(screen.getByText('Your interview sponsorship cost: up to 50 credits')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Continue to preview/ }));
-    await waitFor(() => expect(api.saveInterviewSettings).toHaveBeenCalled());
-    expect(api.saveInterviewSettings.mock.calls[0][1].interviewPayer).toBe('EMPLOYER');
     expect(await screen.findByText('Ready to publish.')).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem(FORM_KEY)!)).toEqual({ maxCandidates: '50', afterLimit: 'keep' });
+    expect(localStorage.getItem(FORM_KEY)).toBeNull();
   });
 
-  it('candidate-paid needs no limits and costs 0 credits', async () => {
+  it('candidate-paid needs no limits, costs 0 credits and sends only who pays', async () => {
     api.getJob.mockResolvedValue(apiJob({ wizardStep: 3 }));
+    api.saveSponsorship.mockResolvedValue(apiJob({ wizardStep: 4 }));
     render(<EmployerJobWizard jobId="job-1" />);
     expect(await screen.findByRole('radio', { name: /Candidates use their own credits/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Your interview sponsorship cost: 0 credits')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue to preview/ }));
+    await waitFor(() => expect(api.saveSponsorship).toHaveBeenCalled());
+    expect(api.saveSponsorship.mock.calls[0][1]).toEqual({ interviewPayer: 'CANDIDATE' });
+  });
+
+  it('interview settings no longer carry who pays', () => {
+    expect(settingsBody(apiToJob(apiJob({}, 'EMPLOYER'), 'c'))).not.toHaveProperty('interviewPayer');
   });
 });
 
 // ─── Reload ───────────────────────────────────────────────────────────────────
 
-describe('form-only sponsorship fields survive a reload', () => {
-  it('an employer-sponsored draft can still publish after a reload', async () => {
-    localStorage.setItem(FORM_KEY, JSON.stringify({ maxCandidates: '50', afterLimit: 'close' }));
-    api.getJob.mockResolvedValue(apiJob({}, 'EMPLOYER'));
+describe('saved sponsorship', () => {
+  it('loads from the job, so an employer-sponsored draft can publish after a reload', async () => {
+    api.getJob.mockResolvedValue(apiJob({ sponsorship: { maxSponsoredCandidates: 80, whenLimitReached: 'CLOSE_JOB', sponsoredCount: 0 } }, 'EMPLOYER'));
     render(<EmployerJobWizard jobId="job-1" />);
     await waitFor(() => expect(screen.getByRole('button', { name: /^Publish job/ })).toBeEnabled());
     expect(screen.getByText('Ready to publish.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Application & credits/ }));
+    expect(await screen.findByLabelText('Maximum sponsored candidates')).toHaveValue('80');
+    expect(screen.getByRole('radio', { name: /Close the job automatically/ })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('without them, the summary asks for the sponsorship step', async () => {
-    api.getJob.mockResolvedValue(apiJob({}, 'EMPLOYER'));
+  it('an employer-paid draft without one is saved on the way through step 3', async () => {
+    api.getJob.mockResolvedValue(apiJob({ wizardStep: 3, sponsorship: null }, 'EMPLOYER'));
+    api.saveSponsorship.mockResolvedValue(apiJob({ wizardStep: 4 }, 'EMPLOYER'));
     render(<EmployerJobWizard jobId="job-1" />);
-    expect(await screen.findByText('Before publishing, finish: Application & sponsorship.')).toBeInTheDocument();
+    await screen.findByLabelText('Maximum sponsored candidates');
+    fireEvent.click(screen.getByRole('button', { name: /Continue to preview/ }));
+    await waitFor(() => expect(api.saveSponsorship).toHaveBeenCalled());
+    expect(api.saveSponsorship.mock.calls[0][1]).toEqual({ interviewPayer: 'EMPLOYER', maxSponsoredCandidates: 50, whenLimitReached: 'KEEP_ACCEPTING' });
   });
 });

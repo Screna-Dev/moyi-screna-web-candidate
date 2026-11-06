@@ -86,7 +86,8 @@ export type Job = {
   preferred: string[];
   criteria: Criterion[];
   questions: InterviewQuestion[];
-  interviewLength: 20 | 30 | 45;
+  // AI interviews last at most 20 minutes (ADR-013, #305): always 20.
+  interviewLength: 20;
   candidateInstructions: string;
   language: string;
   interviewConfirmed: boolean;
@@ -189,7 +190,8 @@ export type EmployerView =
   | { name: 'contact'; jobId: string; candidateId: string }
   // checkout: back from Stripe after buying Interview Credits (employer app).
   | { name: 'wizard'; jobId?: string; checkout?: 'success' | 'cancelled' }
-  | { name: 'plan' }
+  // checkout: back from Stripe after subscribing to Business (employer app).
+  | { name: 'plan'; checkout?: 'success' | 'cancelled' }
   // Employer-only. returnJobId / returnToWizard: came from the wizard's
   // profile gate (a saved draft, or a new job not saved yet).
   | { name: 'profile'; returnJobId?: string; returnToWizard?: boolean };

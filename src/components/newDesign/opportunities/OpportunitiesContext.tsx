@@ -1,12 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
-type InterviewStatus = "not_started" | "completed";
 type EmailStatus = "not_send" | "sent";
 
 interface OpportunitiesContextValue {
-  interviewStatus: Record<string, InterviewStatus>;
   emailStatus: Record<string, EmailStatus>;
-  setInterviewCompleted: (jobId: string) => void;
   setEmailSent: (jobId: string) => void;
   setEmailUnsent: (jobId: string) => void;
 }
@@ -14,12 +11,7 @@ interface OpportunitiesContextValue {
 const OpportunitiesContext = createContext<OpportunitiesContextValue | null>(null);
 
 export function OpportunitiesProvider({ children }: { children: ReactNode }) {
-  const [interviewStatus, setInterviewStatus] = useState<Record<string, InterviewStatus>>({});
   const [emailStatus, setEmailStatus] = useState<Record<string, EmailStatus>>({});
-
-  function setInterviewCompleted(jobId: string) {
-    setInterviewStatus((prev) => ({ ...prev, [jobId]: "completed" }));
-  }
 
   function setEmailSent(jobId: string) {
     setEmailStatus((prev) => ({ ...prev, [jobId]: "sent" }));
@@ -30,7 +22,7 @@ export function OpportunitiesProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <OpportunitiesContext.Provider value={{ interviewStatus, emailStatus, setInterviewCompleted, setEmailSent, setEmailUnsent }}>
+    <OpportunitiesContext.Provider value={{ emailStatus, setEmailSent, setEmailUnsent }}>
       {children}
     </OpportunitiesContext.Provider>
   );

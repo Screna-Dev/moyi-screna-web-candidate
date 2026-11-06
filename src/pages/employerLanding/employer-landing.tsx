@@ -1,6 +1,9 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useSeo } from '@/hooks/useSeo';
+import { markBusinessIntent } from '@/pages/employer/creditsContext';
+import { getEmployerSession } from '@/pages/employer/employerAuth';
 import { SEO_COPY } from '@/constants/seo';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 import imgLock from '@/assets/landing-employer/lock.svg';
@@ -475,8 +478,35 @@ function Features() {
   );
 }
 
+// Business cards: a signed-in employer goes straight to the checkout for that
+// card's billing (monthly or annual). Signed out, checkout needs an account,
+// so the link goes to sign in / sign up and the app opens checkout right after.
+function useStartBusiness(cycle: 'MONTHLY' | 'ANNUAL' = 'MONTHLY') {
+  const navigate = useNavigate();
+  const [opening, setOpening] = useState(false);
+  const start = (e: MouseEvent) => {
+    if (!getEmployerSession()) return markBusinessIntent(cycle);
+    e.preventDefault();
+    if (opening) return; // a second checkout would be a second charge
+    setOpening(true);
+    import('@/pages/employer/businessCheckout').then(({ openBusinessCheckout, alreadyOnBusiness, businessCheckoutError }) =>
+      openBusinessCheckout(cycle).catch((err) => {
+        setOpening(false);
+        if (alreadyOnBusiness(err)) {
+          toast("You're already on Business.");
+          navigate('/employer');
+        } else toast.error(businessCheckoutError(err));
+      }),
+    );
+  };
+  return { opening, start };
+}
+
 function PlanCard({ plan }: { plan: Plan }) {
   const featured = !!plan.featured;
+  const business = useStartBusiness(plan.cta.cycle);
+  const onCta = plan.cta.action === 'business' ? business.start : undefined;
+  const label = plan.cta.action === 'business' && business.opening ? 'Opening checkout…' : plan.cta.label;
   const btn =
     'flex h-10 w-full items-center justify-center rounded-[7px] text-[13px] font-medium transition-colors';
   return (
@@ -533,12 +563,22 @@ function PlanCard({ plan }: { plan: Plan }) {
           {plan.cta.label}
         </a>
       ) : featured ? (
-        <Link to={SIGNUP} className={`${btn} bg-[#2e5bff] text-white hover:bg-[#1e3fcc]`}>
-          {plan.cta.label}
+        <Link
+          to={SIGNUP}
+          onClick={onCta}
+          aria-disabled={business.opening || undefined}
+          className={`${btn} bg-[#2e5bff] text-white hover:bg-[#1e3fcc]`}
+        >
+          {label}
         </Link>
       ) : (
-        <Link to={SIGNUP} className={`${btn} border border-[#2e5bff] bg-white text-[#1231b8] hover:bg-[#f0f3ff]`}>
-          {plan.cta.label}
+        <Link
+          to={SIGNUP}
+          onClick={onCta}
+          aria-disabled={business.opening || undefined}
+          className={`${btn} border border-[#2e5bff] bg-white text-[#1231b8] hover:bg-[#f0f3ff]`}
+        >
+          {label}
         </Link>
       )}
     </div>
@@ -557,7 +597,7 @@ function Pricing() {
           Applicants and rankings are always free to view.
         </p>
 
-        <div className="grid grid-cols-1 gap-5 pt-12 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 pt-12 md:grid-cols-2 xl:grid-cols-4">
           {PLANS.map((p) => (
             <PlanCard key={p.name} plan={p} />
           ))}

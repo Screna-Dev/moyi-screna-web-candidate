@@ -61,12 +61,12 @@ describe('job defaults', () => {
     expect(w.closesAt).toMatch(/11:59 PM$/);
   });
 
-  it('interview length falls back to 20 minutes, and keeps a saved length', () => {
+  it('interviews are always 20 minutes, whatever an older job says (#305)', () => {
     const noSettings = apiJob({ interviewSettings: null as unknown as ApiJob['interviewSettings'] });
     expect(apiToJob(noSettings, 'c').interviewLength).toBe(20);
     const saved = apiJob();
     saved.interviewSettings.durationMinutes = 45;
-    expect(apiToJob(saved, 'c').interviewLength).toBe(45);
+    expect(apiToJob(saved, 'c').interviewLength).toBe(20);
   });
 });
 
@@ -113,7 +113,7 @@ describe('EmployerJobWizard publish step', () => {
     render(<EmployerJobWizard jobId="job-1" />);
     await waitFor(() => expect(publishButton()).toBeEnabled());
     expect(screen.getByText('Ready to publish.')).toBeInTheDocument();
-    expect(screen.queryByText(/No Interview Credits/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/out of Interview Credits/)).not.toBeInTheDocument();
 
     fireEvent.click(publishButton());
     expect(screen.getByText('Publish Backend Engineer?')).toBeInTheDocument();
@@ -132,13 +132,27 @@ describe('EmployerJobWizard publish step', () => {
     api.getPublishCheck.mockResolvedValue(check({ interviewPayer: 'EMPLOYER', sponsorshipUnfunded: true }));
 
     render(<EmployerJobWizard jobId="job-1" />);
-    expect(await screen.findByText('No Interview Credits for sponsored interviews.')).toBeInTheDocument();
-    expect(screen.getByText(/You can still publish/)).toBeInTheDocument();
+    expect(await screen.findByText("You're out of Interview Credits.")).toBeInTheDocument();
+    expect(screen.getByText(/candidates will need to pay for their own interviews/)).toBeInTheDocument();
     expect(publishButton()).toBeEnabled();
     expect(screen.queryByText('Finish the job before publishing.')).not.toBeInTheDocument();
 
     fireEvent.click(publishButton());
     expect(screen.getByText('Publish Backend Engineer?')).toBeInTheDocument();
+  });
+
+  it('with CLOSE_JOB, warns that the first interview will close the job', async () => {
+    api.getJob.mockResolvedValue(apiJob({ sponsorship: { maxSponsoredCandidates: 50, whenLimitReached: 'CLOSE_JOB', sponsoredCount: 0 } }, 'EMPLOYER'));
+    api.getPublishCheck.mockResolvedValue(check({ interviewPayer: 'EMPLOYER', sponsorshipUnfunded: true }));
+    render(<EmployerJobWizard jobId="job-1" />);
+    expect(await screen.findByText(/the job will close automatically as soon as the first candidate starts an interview/)).toBeInTheDocument();
+  });
+
+  it('missing maxSponsoredCandidates points at the sponsorship step', async () => {
+    api.getJob.mockResolvedValue(apiJob({ sponsorship: null }, 'EMPLOYER'));
+    api.getPublishCheck.mockResolvedValue(check({ ready: false, missing: ['maxSponsoredCandidates'] }));
+    render(<EmployerJobWizard jobId="job-1" />);
+    expect(await screen.findByText('• Maximum sponsored candidates')).toBeInTheDocument();
   });
 
   it('not ready: shows what is missing and disables publishing', async () => {
@@ -148,7 +162,7 @@ describe('EmployerJobWizard publish step', () => {
     render(<EmployerJobWizard jobId="job-1" />);
     expect(await screen.findByText('Finish the job before publishing.')).toBeInTheDocument();
     await waitFor(() => expect(publishButton()).toBeDisabled());
-    expect(screen.queryByText(/No Interview Credits/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/out of Interview Credits/)).not.toBeInTheDocument();
   });
 
   it('buying credits stashes the current balance and starts checkout for 1 credit', async () => {

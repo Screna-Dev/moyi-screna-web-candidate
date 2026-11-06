@@ -652,7 +652,7 @@ export function SessionConfirmPage() {
                     </p>
                   </div>
                   <Link
-                    to="/#pricing"
+                    to="/plans"
                     className="shrink-0 text-xs font-medium text-red-600 hover:text-red-800 underline underline-offset-2 whitespace-nowrap"
                   >
                     Buy credits
@@ -729,7 +729,7 @@ export function SessionConfirmPage() {
                     </Link>
                   )
                 ) : (
-                  <Link to="/#pricing">
+                  <Link to="/plans">
                     <Button className="bg-red-500 hover:bg-red-600 text-white rounded-xl px-8 h-11 text-sm gap-2 shadow-sm shadow-red-200">
                       <Coins className="w-4 h-4" />
                       Get More Credits

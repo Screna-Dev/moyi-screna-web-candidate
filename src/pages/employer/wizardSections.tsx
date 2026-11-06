@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { Calendar, Check, Info } from 'lucide-react';
+import { Calendar, Check, Info, RefreshCw, Sparkles } from 'lucide-react';
 import type { AfterSponsorshipLimit, InterviewSponsor, Job, Sponsorship } from '@/components/admin/console/pages/employer/types';
-import { Card, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
+import { Button, Card, TextArea, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import { ErrorHint } from '@/components/admin/console/pages/employer/views/wizard/shared';
 import { numberOf, type StepProps } from '@/components/admin/console/pages/employer/views/wizard/logic';
+import { JD_TEXT_MAX } from './employerApi';
 import { addDays, closingRange, dateOf, withDate } from './jobMapping';
 
 // Employer-app sections of the create-job wizard that follow the 2026-10-28
@@ -66,6 +67,49 @@ function DateField({
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
       />
     </div>
+  );
+}
+
+// ─── Step 1: Paste job description (JD autofill) ────────────────────────────
+
+// No design yet: a plain card in the wizard's style. The wizard owns the text,
+// the request and the error, so the text survives switching steps.
+export function JdAutofillCard({
+  text,
+  onText,
+  onAutofill,
+  loading,
+  error,
+}: {
+  text: string;
+  onText: (text: string) => void;
+  onAutofill: () => void;
+  loading: boolean;
+  error: string;
+}) {
+  return (
+    <Card className="p-6 flex flex-col gap-3">
+      <div>
+        <Label>Paste job description</Label>
+        <p className="text-[13px] text-[#5a6172] mt-0.5">Paste the full job description and we'll fill in the fields below that are still empty. Review everything before you continue.</p>
+      </div>
+      <TextArea
+        rows={5}
+        aria-label="Paste job description"
+        maxLength={JD_TEXT_MAX}
+        value={text}
+        disabled={loading}
+        onChange={(e) => onText(e.target.value)}
+        placeholder="e.g. Staff Platform Engineer — Run the platform that…"
+      />
+      <div className="flex items-center gap-3">
+        <Button variant="primary" size="sm" disabled={loading || !text.trim()} onClick={onAutofill}>
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {loading ? 'Reading…' : 'Autofill'}
+        </Button>
+        {error && <span className="text-[13px] text-[#dc2626]">{error}</span>}
+      </div>
+    </Card>
   );
 }
 
@@ -180,8 +224,23 @@ const AFTER_LIMIT: { value: AfterSponsorshipLimit; title: string; body: string }
   { value: 'close', title: 'Close the job automatically', body: 'The job will stop accepting new candidates when all sponsored interview spots have been used.' },
 ];
 
-// Maximum sponsored candidates and the after-limit choice are not in the jobs
-// API yet: they live in the form only (see formOnlySponsorship in the wizard).
+// "After the sponsorship limit is reached": step 3 and the Edit sponsorship dialog.
+export function AfterLimitChoices({ value, onChange, error }: { value: AfterSponsorshipLimit | null; onChange: (v: AfterSponsorshipLimit) => void; error?: boolean }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Label required>After the sponsorship limit is reached</Label>
+      <p className="text-[13px] leading-[18px] text-[#5a6172]">Choose what happens after all sponsored interview spots have been used.</p>
+      <ErrorHint show={!!error}>Choose what happens after the limit is reached</ErrorHint>
+      <div role="radiogroup" aria-label="After the sponsorship limit is reached" className="flex flex-col gap-3">
+        {AFTER_LIMIT.map((o) => (
+          <ChoiceCard key={o.value} selected={value === o.value} onSelect={() => onChange(o.value)} title={o.title} body={o.body} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Saved with PUT sponsorship (#297). The limits apply only when the employer pays.
 export function SponsorshipCard({ job, update, err }: { job: Job; update: StepProps['update']; err: SectionErrors }) {
   const sp = job.sponsorship;
   const setSp = (patch: Partial<Sponsorship>) => update((j) => ({ sponsorship: { ...j.sponsorship, ...patch } }));
@@ -220,16 +279,7 @@ export function SponsorshipCard({ job, update, err }: { job: Job; update: StepPr
               )}
             </label>
 
-            <div className="flex flex-col gap-3">
-              <Label required>After the sponsorship limit is reached</Label>
-              <p className="text-[13px] leading-[18px] text-[#5a6172]">Choose what happens after all sponsored interview spots have been used.</p>
-              <ErrorHint show={!!err.afterLimit}>Choose what happens after the limit is reached</ErrorHint>
-              <div role="radiogroup" aria-label="After the sponsorship limit is reached" className="flex flex-col gap-3">
-                {AFTER_LIMIT.map((o) => (
-                  <ChoiceCard key={o.value} selected={sp.afterLimit === o.value} onSelect={() => setSp({ afterLimit: o.value })} title={o.title} body={o.body} />
-                ))}
-              </div>
-            </div>
+            <AfterLimitChoices value={sp.afterLimit ?? null} onChange={(afterLimit) => setSp({ afterLimit })} error={!!err.afterLimit} />
 
             <p className="text-[13px] leading-[18px] text-[#5a6172]">
               All three limits apply. Sponsorship stops for new interviews when any limit is reached or your available Interview Credits are insufficient.

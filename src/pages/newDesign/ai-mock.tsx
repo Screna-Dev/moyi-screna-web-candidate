@@ -228,10 +228,12 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
     const audioOnly = mode !== 'video';
 
     const setup = async () => {
-      // Voice-only sessions skip video capture to avoid unnecessary camera permission prompts
+      // Voice-only sessions skip video capture to avoid unnecessary camera permission prompts.
+      // Browser noise suppression off: the server already runs Krisp, and
+      // processing the voice twice hurts transcription and barge-in detection.
       const mediaConstraints: MediaStreamConstraints = audioOnly
-        ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
-        : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
+        ? { audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } }
+        : { audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true }, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
 
       // Run media capture and (if needed) session creation in parallel.
       // If a session was already created by personalized-practice, skip the API call.

@@ -42,6 +42,7 @@ export function apiJob(over: Partial<ApiJob> = {}, payer: 'EMPLOYER' | 'CANDIDAT
     timezone: 'America/Chicago',
     maxApplicants: null,
     interviewSettings: { durationMinutes: 20, language: 'en', candidateInstructions: null, passScore: null, interviewPayer: payer },
+    sponsorship: payer === 'EMPLOYER' ? { maxSponsoredCandidates: 50, whenLimitReached: 'KEEP_ACCEPTING', sponsoredCount: 0 } : null,
     criteria: CRITERIA.map((name, i) => ({ id: `c${i}`, name, description: null, source: 'AI' as const })),
     screeningCriteria: [],
     questions: [{ id: 'q1', seq: 1, text: 'Tell me about a system you built.', estimatedMinutes: 5, source: 'AI', edited: false, criterionIds: ['c0'], criterionNames: [CRITERIA[0]] }],

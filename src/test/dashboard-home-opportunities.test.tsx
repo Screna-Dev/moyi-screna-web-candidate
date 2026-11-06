@@ -124,7 +124,7 @@ describe('Featured Opportunities', () => {
     // Card 2: candidate-paid, hourly
     expect(s.getByText('New York, NY · Remote')).toBeInTheDocument();
     expect(s.getByText('$40 – $55/hr')).toBeInTheDocument();
-    expect(s.getByText('30 min · 30 credits')).toBeInTheDocument();
+    expect(s.getByText('30 min · 1 interview')).toBeInTheDocument();
     // Sample copy until the API has a recommendation reason
     expect(s.getAllByText('Why recommended')).toHaveLength(3);
     expect(s.getByText(/SQL proficiency/)).toBeInTheDocument();

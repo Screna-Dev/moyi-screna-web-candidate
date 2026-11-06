@@ -99,7 +99,7 @@ const backendBase: Omit<Job, 'id' | 'companyId' | 'status' | 'title' | 'location
   ],
   criteria: backendCriteria,
   questions: backendQuestions,
-  interviewLength: 30,
+  interviewLength: 20,
   candidateInstructions: DEFAULT_INSTRUCTIONS,
   language: 'English',
   interviewConfirmed: true,

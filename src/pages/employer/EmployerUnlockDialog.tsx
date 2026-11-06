@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button, Dialog, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import { authErrorCode, authErrorMessage } from './employerAuth';
-import { errorData, startCreditsCheckout, unlockApplication } from './employerApi';
+import { errorData, startCreditsCheckout, unlockApplication, type PlanLimitReached } from './employerApi';
 import { REPORT_CHECKOUT_KEY, useEmployerCredits } from './creditsContext';
 
 // Figma 2451:4352 ("Unlock report"), on Report Credits: 1 credit per
@@ -24,7 +24,10 @@ export function EmployerUnlockDialog({
   onClose: () => void;
   onUnlocked: (applicationId: string) => void;
 }) {
-  const { credits, refresh } = useEmployerCredits();
+  const { credits, plan, refresh } = useEmployerCredits();
+  // Business unlocks from the monthly allowance first, so 0 prepaid Report
+  // Credits doesn't block it (the server decides; see PLAN_LIMIT_REACHED).
+  const business = plan?.plan === 'BUSINESS';
   const [busy, setBusy] = useState(false);
   // Set when the server says there are no credits (the badge may be stale).
   const [shortOf, setShortOf] = useState<number | null>(null);
@@ -38,7 +41,7 @@ export function EmployerUnlockDialog({
   }, [target]);
 
   const available = shortOf ?? credits?.report ?? null;
-  const blocked = available !== null && available < 1;
+  const blocked = !business && available !== null && available < 1;
   const n = Math.round(Number(quantity));
   const validQty = Number.isFinite(n) && n >= 1 && n <= 100;
 
@@ -55,6 +58,14 @@ export function EmployerUnlockDialog({
       const code = authErrorCode(err);
       if (code === 'INSUFFICIENT_CREDITS') {
         setShortOf(errorData<{ available?: number }>(err)?.available ?? 0);
+        refresh();
+      } else if (code === 'PLAN_LIMIT_REACHED') {
+        const d = errorData<PlanLimitReached>(err);
+        toast.error(
+          d?.reason === 'PAST_DUE'
+            ? "Your last payment failed, so overage is paused. Your allowance is used up for this month. Update your payment method to keep unlocking."
+            : `You've reached your monthly overage cap${d?.capCents != null ? ` of $${(d.capCents / 100).toLocaleString('en-US')}` : ''}. Raise it in Plan & Usage to keep unlocking.`,
+        );
         refresh();
       } else if (code === 'INVALID_STATE') toast.error(authErrorMessage(err) || "This candidate hasn't finished the interview yet.");
       else toast.error(authErrorMessage(err) || 'Could not unlock this report.');

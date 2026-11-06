@@ -3,13 +3,12 @@ import { useNavigate, useParams } from "react-router";
 import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
 import { languageLabel, useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
 import { seniorityLabel, workplaceLabel } from "@/components/newDesign/opportunities/careersDesignData";
-import { getCareerJob, type CareerJobDetail, type CareerPosting } from "@/services/careersApi";
+import { getCareerJob, type CareerJobDetail, type CareerPosting, type InterviewPayer } from "@/services/careersApi";
 
-// Design page (Downloads export). Real jobs (non-numeric ids) are filled from
-// GET /careers/jobs/{id}; anything the API doesn't return yet keeps the
-// design's sample text. Numeric ids are the design's own sample jobs and
-// render the design unchanged. The score / report / retake / recruiter-email
-// panels are design sample content until the backend supports them.
+// Design page (Downloads export), filled from GET /careers/jobs/{id};
+// anything the API doesn't return yet keeps the design's sample text. The
+// score / retake / recruiter-email panels are design sample content until the
+// backend supports them.
 
 const SAMPLE = {
   title: "Software Engineer",
@@ -69,7 +68,8 @@ function deadlineLabel(iso: string, tz: string | null) {
 }
 
 // Real values where the posting has them, design sample text otherwise.
-function viewOf(p: CareerPosting | null) {
+// funding: who pays if an interview starts now (detail.interviewFunding).
+function viewOf(p: CareerPosting | null, funding?: InterviewPayer) {
   if (!p) return SAMPLE;
   const years =
     p.yearsExperienceMin != null || p.yearsExperienceMax != null
@@ -93,7 +93,7 @@ function viewOf(p: CareerPosting | null) {
     preferred: p.preferredQualifications.length ? p.preferredQualifications : SAMPLE.preferred,
     minutes,
     language: languageLabel(p.interview.language),
-    cost: p.interview.interviewPayer === "EMPLOYER" ? "Free · sponsored by recruiter" : `${minutes} credits`,
+    cost: (funding ?? p.interview.interviewPayer) === "EMPLOYER" ? "Free · sponsored by recruiter" : "1 interview",
     deadline: p.closesAt ? deadlineLabel(p.closesAt, p.timezone) : SAMPLE.deadline,
   };
 }
@@ -137,16 +137,13 @@ function BulletList({ items }: { items: string[] }) {
 export function JobDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const jobId = id ?? "5";
-  const { interviewStatus, emailStatus, setInterviewCompleted } = useOpportunities();
-  // Numeric ids are the design's sample jobs; real job ids are UUIDs.
-  const isSample = /^\d+$/.test(jobId);
+  const jobId = id ?? "";
+  const { emailStatus } = useOpportunities();
   const [detail, setDetail] = useState<CareerJobDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const starter = useCareerInterviewStarter((app) => setDetail((d) => (d ? { ...d, myApplication: app } : d)));
 
   useEffect(() => {
-    if (isSample) return;
     let cancelled = false;
     getCareerJob(jobId)
       .then((d) => !cancelled && setDetail(d))
@@ -154,13 +151,13 @@ export function JobDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [jobId, isSample]);
+  }, [jobId]);
 
-  const v = viewOf(detail?.posting ?? null);
-  const isCompleted = isSample ? interviewStatus[jobId] === "completed" : detail?.myApplication?.interviewStatus === "COMPLETED";
+  const v = viewOf(detail?.posting ?? null, detail?.interviewFunding);
+  const isCompleted = detail?.myApplication?.interviewStatus === "COMPLETED";
   const isEmailSent = emailStatus[jobId] === "sent";
 
-  if (!isSample && !detail) {
+  if (!detail) {
     return (
       <div className="bg-white border border-[#e1e4ea] rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
         <p className="text-[#1e232f] text-[18px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
@@ -407,7 +404,7 @@ export function JobDetailPage() {
             <div className="bg-[#f9fafb] rounded-lg p-3 flex gap-6 flex-wrap">
               {[
                 { icon: imgClock, label: `${v.minutes} minutes` },
-                { icon: imgMic, label: "Voice interview" },
+                { icon: imgMic, label: "Video interview" },
                 { icon: imgGlobe, label: v.language },
               ].map(({ icon, label }) => (
                 <div key={label} className="flex gap-1.5 items-center">
@@ -474,7 +471,7 @@ export function JobDetailPage() {
             <div className="flex flex-col gap-4">
               {[
                 { icon: imgClock, label: "DURATION", value: `${v.minutes} minutes` },
-                { icon: imgMic, label: "FORMAT", value: `Voice · ${v.language}` },
+                { icon: imgMic, label: "FORMAT", value: `Video · ${v.language}` },
                 { icon: imgAward, label: "ASSESSMENT COST", value: v.cost },
                 { icon: imgCalendar, label: "ASSESSMENT DEADLINE", value: v.deadline },
               ].map(({ icon, label, value }) => (
@@ -498,11 +495,7 @@ export function JobDetailPage() {
               ))}
             </div>
             <button
-              onClick={() => {
-                if (!isSample) return void starter.begin(jobId);
-                setInterviewCompleted(jobId);
-                navigate(`/opportunities/job/${jobId}/results`);
-              }}
+              onClick={() => void starter.begin(jobId)}
               disabled={starter.busyJob === jobId}
               className="bg-[#3c77f6] text-white text-[14px] font-semibold leading-[normal] px-4 py-3 rounded-xl flex items-center justify-center gap-2.5 hover:bg-[#2d6ae0] transition-colors w-full"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif", boxShadow: "0px 4px 3px rgba(60,119,246,0.2)" }}
@@ -622,7 +615,9 @@ export function JobDetailPage() {
               <button
                 className="flex-1 bg-white border border-[#d7dce5] text-[#1e232f] text-[14px] font-semibold py-3 rounded-xl flex items-center justify-center hover:bg-[#f9fafb] transition-colors"
                 style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-                onClick={() => navigate(`/opportunities/job/${jobId}/results`)}
+                onClick={() =>
+                  detail.myApplication && navigate(`/opportunities/applications/${encodeURIComponent(detail.myApplication.applicationId)}/results`)
+                }
               >
                 View report
               </button>

@@ -6,12 +6,21 @@ import { Card, Divider, Field, Segmented, Select, TextArea, TextInput } from '..
 import { BulletListEditor, CardTitle, ErrorHint } from './shared';
 import { CURRENCIES, EMPLOYMENT_TYPES, jobDetailsErrors, type StepProps } from './logic';
 
-const OVERVIEW_MAX = 2000;
+// Same limit as the employer jobs API (roleOverview ≤ 5000).
+const OVERVIEW_MAX = 5000;
 
 // showPhone: the employer jobs API has no HR contact number field.
 // windowSection: the employer app's application window, shown at the end of
 // the Role information card (design 2026-10-28).
-export function StepJobDetails({ job, update, showErrors, showPhone = true, windowSection }: StepProps & { showPhone?: boolean; windowSection?: ReactNode }) {
+// autofill: the employer app's "Paste job description" card, above the form.
+export function StepJobDetails({
+  job,
+  update,
+  showErrors,
+  showPhone = true,
+  windowSection,
+  autofill,
+}: StepProps & { showPhone?: boolean; windowSection?: ReactNode; autofill?: ReactNode }) {
   const err = showErrors ? jobDetailsErrors(job) : ({} as Record<string, boolean>);
 
   return (
@@ -20,6 +29,8 @@ export function StepJobDetails({ job, update, showErrors, showPhone = true, wind
         <h2 className="text-[#1e232f] text-[18px] font-semibold leading-7">Tell candidates about the role</h2>
         <p className="text-[#5a6172] text-[13px]">Add the core information candidates need before deciding to apply.</p>
       </div>
+
+      {autofill}
 
       <Card className="p-6 flex flex-col gap-5">
         <CardTitle>Role information</CardTitle>

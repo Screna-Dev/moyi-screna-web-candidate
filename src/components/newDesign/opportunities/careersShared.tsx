@@ -1,18 +1,23 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Loader2, Mic, ShieldCheck, UploadCloud, Video, X } from "lucide-react";
-import { useUserPlan } from "@/hooks/useUserPlan";
+import { FileText, Loader2, ShieldCheck, UploadCloud, X } from "lucide-react";
+import { useInterviewQuota } from "@/hooks/useInterviewQuota";
 import { uploadResumeAndWait } from "@/services/ProfileServices";
 import { emitResumeUploaded } from "@/hooks/useResumeUploaded";
 import {
   applyToJob,
   careersErrorCode,
+  careersErrorData,
   careersErrorMessage,
+  fundingOf,
   startCareerInterview,
   type CareerApplication,
   type CareerInterviewSession,
+  type QuotaShortage,
+  type SelfPayConfirmation,
 } from "@/services/careersApi";
-import { QuickInterviewModal } from "./QuickInterviewModal";
+import { OutOfInterviewsDialog } from "./OutOfInterviewsDialog";
+import { CONSENT_SECTIONS, CONSENT_VERSION } from "./interviewConsent";
 import { isBeingScored } from "./careersEnded";
 
 // The careers (apply → AI interview) flow used by the design's Opportunities
@@ -27,10 +32,6 @@ export const font = {
 
 const LANGUAGES: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", zh: "Mandarin Chinese" };
 export const languageLabel = (code: string) => LANGUAGES[code] ?? code;
-
-// Credits a candidate-paid interview pre-charges: 1/min audio, ×1.5 video.
-// The unused part is refunded after the interview.
-export const interviewCost = (minutes: number, video: boolean) => Math.ceil(minutes * (video ? 1.5 : 1));
 
 export function PrimaryButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
@@ -84,57 +85,67 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
 
 // Carried to the interview room in navigation state. The room calls the start
 // endpoint itself when it is missing (reload = rejoin).
-export type CareerRoomState = { session: CareerInterviewSession; video: boolean; title: string; minutes: number };
+// Career interviews are video only.
+export type CareerRoomState = { session: CareerInterviewSession; title: string; minutes: number };
 
 export const roomPath = (applicationId: string) => `/opportunities/applications/${encodeURIComponent(applicationId)}/interview`;
 
-// Confirms duration, cost and voice vs video, then starts (or rejoins) the
-// interview and opens the room. Not enough credits → the design's
-// QuickInterviewModal with the real numbers.
+// Confirms duration and cost, then starts (or rejoins) the
+// interview and opens the room. Candidate-paid interviews use 1 interview from
+// the candidate's quota, not credits (change C9, #298); none left → the
+// out-of-interviews dialog with the right way to get more.
 export function StartInterviewDialog({ app, onClose }: { app: CareerApplication; onClose: () => void }) {
   const navigate = useNavigate();
-  const { planData, buyCredits } = useUserPlan();
-  // Assumed: careers interviews draw on the same candidate credit pool.
-  const creditBalance = planData.creditBalance;
-  const [video, setVideo] = useState(false);
+  const { quota, refresh: refreshQuota } = useInterviewQuota();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [short, setShort] = useState(false);
+  // 403 INSUFFICIENT_INTERVIEW_QUOTA, or a self-pay prompt with 0 left.
+  const [shortage, setShortage] = useState<QuotaShortage | null>(null);
   // RESUME_REQUIRED on start: the interview service has no parsed resume yet
-  // (upload failed to parse or is still parsing). Nothing was charged.
+  // (upload failed to parse or is still parsing). Nothing was used.
   const [needResume, setNeedResume] = useState(false);
   // Authorization step: shown before every start or rejoin, never remembered.
   const [consent, setConsent] = useState(false);
+  // 409 SELF_PAY_CONFIRMATION_REQUIRED: the employer's sponsorship ran out
+  // after this dialog opened. Ask before starting again with acceptSelfPay.
+  const [selfPay, setSelfPay] = useState<SelfPayConfirmation | null>(null);
   const rejoin = app.interviewStatus === "IN_PROGRESS";
-  const candidatePays = app.interviewPayer === "CANDIDATE";
-  const cost = interviewCost(app.interviewDurationMinutes, video);
+  const candidatePays = fundingOf(app) === "CANDIDATE" || !!selfPay;
+  const left = selfPay?.interviewsAvailable ?? quota?.available;
 
-  // The balance is shown for context only; the server decides (403
-  // INSUFFICIENT_CREDITS), since the plan may still be loading.
-  const start = async () => {
+  // The quota is shown for context only; the server decides (403).
+  // Only reached after the consent step, so every call (including the retries
+  // after a resume upload or the self-pay prompt) carries the consent (#304).
+  const start = async (acceptSelfPay = false) => {
     setBusy(true);
     setError("");
     try {
-      const session = await startCareerInterview(app.applicationId, !video);
-      const state: CareerRoomState = { session, video, title: app.jobTitle, minutes: app.interviewDurationMinutes };
+      const session = await startCareerInterview(app.applicationId, { acceptSelfPay: acceptSelfPay || candidatePays, consentVersion: CONSENT_VERSION });
+      const state: CareerRoomState = { session, title: app.jobTitle, minutes: app.interviewDurationMinutes };
       navigate(roomPath(app.applicationId), { state });
     } catch (err) {
       const code = careersErrorCode(err);
-      if (code === "INSUFFICIENT_CREDITS") setShort(true);
-      else if (code === "RESUME_REQUIRED") setNeedResume(true);
-      else if (code === "INTERVIEW_UNAVAILABLE") setError("This company can't host interviews right now. Please try again later.");
-      else if (code === "HIRING_AI_UNAVAILABLE") setError("The interview service is unavailable right now. Nothing was charged. Please try again.");
+      if (code === "INSUFFICIENT_INTERVIEW_QUOTA") {
+        setShortage(careersErrorData<QuotaShortage>(err) ?? { plan: quota?.plan ?? "FREE", available: 0, resetsAt: quota?.resetsAt });
+      } else if (code === "RESUME_REQUIRED") setNeedResume(true);
+      // Consent became required, or this version is no longer accepted: ask again.
+      else if (code === "INTERVIEW_CONSENT_REQUIRED") {
+        setSelfPay(null);
+        setConsent(true);
+        setError("Please review and agree to the interview terms to continue.");
+      }
+      else if (code === "SELF_PAY_CONFIRMATION_REQUIRED") {
+        const d = careersErrorData<SelfPayConfirmation>(err) ?? { interviewsRequired: 1, interviewsAvailable: quota?.available ?? 1 };
+        // Nothing to confirm with none left: go straight to getting more.
+        if (d.interviewsAvailable <= 0) {
+          const q = await refreshQuota();
+          setShortage({ plan: q?.plan ?? quota?.plan ?? "FREE", available: 0, resetsAt: q?.resetsAt ?? quota?.resetsAt });
+        } else setSelfPay(d);
+      } else if (code === "HIRING_AI_UNAVAILABLE") setError("The interview service is unavailable right now. Nothing was used. Please try again.");
       else if (code === "INVALID_STATE") setError(careersErrorMessage(err) || "This interview can't be started right now. Refresh and try again.");
       else setError(careersErrorMessage(err) || "Couldn't start the interview. Please try again.");
       setBusy(false);
     }
-  };
-
-  const buy = async () => {
-    setBusy(true);
-    const url = await buyCredits(Math.max(1, cost - creditBalance));
-    if (url) window.location.href = url;
-    else setBusy(false);
   };
 
   if (needResume) {
@@ -151,8 +162,30 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     );
   }
 
-  if (short) {
-    return <QuickInterviewModal onClose={onClose} minutes={app.interviewDurationMinutes} balance={creditBalance} required={cost} onBuy={() => void buy()} buying={busy} />;
+  if (shortage) return <OutOfInterviewsDialog shortage={shortage} onClose={onClose} />;
+
+  if (selfPay && !rejoin) {
+    const n = selfPay.interviewsRequired;
+    return (
+      <Modal onClose={onClose}>
+        <h2 className="text-[#1e232f] text-[20px] font-semibold leading-7 pr-6" style={{ fontFamily: font.semibold }}>
+          Sponsored interviews have run out
+        </h2>
+        <p className="text-[#5a6172] text-[14px] leading-5" style={{ fontFamily: font.regular }}>
+          {app.companyName} is no longer sponsoring interviews for this role. You can still take it with one of your own interviews.
+        </p>
+        <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-1.5">
+          <Row k="Cost" v={`${n} interview${n === 1 ? "" : "s"} (${selfPay.interviewsAvailable} left)`} />
+        </div>
+        {error && <p className="text-[#dc2626] text-[13px]" style={{ fontFamily: font.regular }}>{error}</p>}
+        <div className="flex justify-end gap-3">
+          <SecondaryButton onClick={onClose}>Not now</SecondaryButton>
+          <PrimaryButton onClick={() => void start(true)} disabled={busy}>
+            Use 1 interview and start
+          </PrimaryButton>
+        </div>
+      </Modal>
+    );
   }
 
   if (consent) {
@@ -179,35 +212,19 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
       <p className="text-[#5a6172] text-[14px] leading-5" style={{ fontFamily: font.regular }}>
         {rejoin
           ? "Your interview is still in progress. You'll go back into the same session at no extra cost."
-          : `${app.jobTitle} at ${app.companyName}. Review the cost and check your microphone before you begin.`}
+          : `${app.jobTitle} at ${app.companyName}. It's a video interview: review the cost and check your camera and microphone before you begin.`}
       </p>
       <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-1.5">
         <Row k="Length" v={`Up to ${app.interviewDurationMinutes} minutes`} />
         <Row k="Questions" v={app.questionCount} />
         <Row k="Language" v={languageLabel(app.interviewLanguage)} />
-        <Row k="Cost" v={candidatePays ? (rejoin ? "Already paid" : `${cost} credits held · unused part refunded`) : "Free · sponsored by recruiter"} />
-        {candidatePays && !rejoin && <Row k="Your balance" v={`${creditBalance} credits`} />}
+        <Row k="Cost" v={candidatePays ? (rejoin ? "Already counted" : "1 interview") : "Free · sponsored by recruiter"} />
+        {candidatePays && !rejoin && left != null && <Row k="Interviews left" v={left} />}
       </div>
-      {!rejoin && (
-        <div className="flex gap-2">
-          {[
-            { v: false, icon: <Mic size={15} />, label: "Voice interview" },
-            { v: true, icon: <Video size={15} />, label: candidatePays ? "Video interview (×1.5 credits)" : "Video interview" },
-          ].map((o) => (
-            <button
-              key={o.label}
-              type="button"
-              onClick={() => setVideo(o.v)}
-              aria-pressed={video === o.v}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] transition-colors ${
-                video === o.v ? "border-[#3c77f6] bg-[#f8fbff] text-[#3c77f6] font-semibold" : "border-[#e1e4ea] text-[#5a6172] hover:bg-[#f9fafb]"
-              }`}
-              style={{ fontFamily: font.medium }}
-            >
-              {o.icon} {o.label}
-            </button>
-          ))}
-        </div>
+      {candidatePays && !rejoin && (
+        <p className="text-[#7d8699] text-[12px] leading-normal" style={{ fontFamily: font.regular }}>
+          It counts once you get a result. If the interview doesn't really happen, you get it back.
+        </p>
       )}
       {error && <p className="text-[#dc2626] text-[13px]" style={{ fontFamily: font.regular }}>{error}</p>}
       <div className="flex justify-end gap-3">
@@ -219,27 +236,6 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     </Modal>
   );
 }
-
-// PLACEHOLDER copy: legal will supply the final authorization text. Replace
-// these sections (and the checkbox label) as a whole when it arrives.
-const CONSENT_SECTIONS = (companyName: string) => [
-  {
-    title: "Recording",
-    body: "Your interview is recorded, including your voice and, for a video interview, your camera. A transcript is created from the recording.",
-  },
-  {
-    title: "AI assessment",
-    body: "Screna uses AI to assess your answers against the criteria set for this role. The assessment supports the recruiter's decision; it does not make it.",
-  },
-  {
-    title: "Sharing with the employer",
-    body: `${companyName} receives your assessment, transcript, recording and the resume on your profile for this application.`,
-  },
-  {
-    title: "Your choice",
-    body: "You can close this window now and nothing will be recorded or charged.",
-  },
-];
 
 // Shown before every career interview. Agreeing calls the start endpoint.
 function InterviewConsent({

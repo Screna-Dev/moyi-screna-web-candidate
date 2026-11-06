@@ -466,7 +466,6 @@ export function OpportunitiesPage() {
               key={job.id}
               job={job}
               onViewDetail={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
-              onViewReport={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/results`)}
               onQuickInterview={() => void starter.begin(job.id)}
               onContactRecruiter={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/contact`)}
             />

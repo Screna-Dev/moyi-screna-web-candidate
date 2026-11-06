@@ -12,7 +12,6 @@ import { toast } from 'sonner';
 import { getQuestionAiHints } from '../../services/QuestionBankService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserPlan } from '@/hooks/useUserPlan';
-import { useCompanyPasses } from '@/hooks/useCompanyPass';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
@@ -206,7 +205,6 @@ export function ExperienceDetailPage() {
   const navigate = useNavigate();
   const { user: currentUser, isAuthenticated } = useAuth();
   const { planData, isPremium, isLoading: isPlanLoading } = useUserPlan();
-  const { find: findCompanyPass } = useCompanyPasses();
   const posthog = usePostHog();
 
   // Two things decide the shell, and they are not the same thing:
@@ -520,22 +518,20 @@ export function ExperienceDetailPage() {
   const commentTotal = comments.length || (post?.commentCount ?? 0);
 
   // ── Free/Basic preview ──
-  // Free/Basic readers get the 2 newest notes per company in full (and every
-  // note of a company they hold a Company Pass for); every other note comes
-  // back 200 in the guest shape — notes cut to their first sentence, `user:
+  // Free/Basic readers get the 2 newest notes per company in full; every
+  // other note comes back 200 in the guest shape — notes cut to their first sentence, `user:
   // null`. The payload has no "trimmed" flag, and `user: null` alone cannot
   // say (an anonymous full note has it too), so the rule is the one the API
   // documents (frontend-community-api.md §1): look the note up among the
   // company's first 2 search rows, which for FREE/BASIC are its 2 newest — the
   // same query the server trims by. A note with an author shown is full and
-  // needs no lookup; so is everything for Advanced+ and pass holders.
+  // needs no lookup; so is everything for Advanced+.
   const needsRankCheck =
     !signedOut &&
     !isPlanLoading &&
     !isPremium &&
     !!post &&
-    post.user === null &&
-    !findCompanyPass(post.company);
+    post.user === null;
   const [rank, setRank] = useState<{ id: string; trimmed: boolean } | null>(null);
   useEffect(() => {
     if (!needsRankCheck || !post) return;
@@ -555,7 +551,7 @@ export function ExperienceDetailPage() {
   }, [needsRankCheck, post]);
   const isPlanPreview = needsRankCheck && rank?.id === post?.id && !!rank?.trimmed;
   const notesTrimmed = signedOut || isPlanPreview;
-  const upgradeGate = useCallback(() => navigate('/#pricing'), [navigate]);
+  const upgradeGate = useCallback(() => navigate('/plans'), [navigate]);
 
   // paywall_viewed —— 免费/Basic 用户打开删节版面经（每家公司最新 2 篇以外）时上报。
   useEffect(() => {
@@ -846,7 +842,7 @@ export function ExperienceDetailPage() {
           </div>
           <AlertDialogDescription className="text-[hsl(222,12%,40%)] leading-relaxed">
             Free and Basic plans can open the 2 most recent posts per company. Upgrade to
-            <span className="font-semibold text-[hsl(222,22%,15%)]"> Advanced</span> for unlimited access to every interview experience.
+            <span className="font-semibold text-[hsl(222,22%,15%)]"> Pro</span> for unlimited access to every interview experience.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -858,7 +854,7 @@ export function ExperienceDetailPage() {
             Cancel
           </Button>
           <Button
-            onClick={() => navigate('/#pricing')}
+            onClick={() => navigate('/plans')}
             className="bg-[hsl(221,91%,60%)] hover:bg-[hsl(221,91%,55%)] text-white rounded-xl"
           >
             Upgrade plan
@@ -917,7 +913,7 @@ export function ExperienceDetailPage() {
       <Layout fullBleed>
         <div className="pb-20 bg-[#f9fafb]">
           <div className="max-w-7xl mx-auto px-6 text-center py-32 text-[hsl(222,12%,45%)]">
-            {showUpgradePrompt ? 'Upgrade to Advanced to view this post.' : 'Post not found.'}
+            {showUpgradePrompt ? 'Upgrade to Pro to view this post.' : 'Post not found.'}
           </div>
         </div>
         {gateOverlays}
@@ -1099,7 +1095,7 @@ export function ExperienceDetailPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">You're reading a preview</p>
                         <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
-                          Free and Basic plans include the 2 newest notes per company in full. Upgrade to Advanced to read every note in full.
+                          Free and Basic plans include the 2 newest notes per company in full. Upgrade to Pro to read every note in full.
                         </p>
                       </div>
                     </div>
@@ -1218,7 +1214,7 @@ export function ExperienceDetailPage() {
                                         role={post.role}
                                         round={post.round}
                                         onUnlock={signedOut ? signInGate : upgradeGate}
-                                        label={signedOut ? undefined : 'Upgrade to Advanced to read the full note'}
+                                        label={signedOut ? undefined : 'Upgrade to Pro to read the full note'}
                                         // The selector this page's JSON-LD names
                                         // in hasPart.cssSelector — keep the two
                                         // in step (see the useSeo call above).

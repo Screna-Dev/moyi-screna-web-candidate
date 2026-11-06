@@ -249,6 +249,7 @@
     { "source": "/refer", "destination": "/app.html" },
     { "source": "/history", "destination": "/app.html" },
     { "source": "/settings", "destination": "/app.html" },
+    { "source": "/plans", "destination": "/app.html" },
     { "source": "/billing", "destination": "/app.html" },
 
     { "source": "/goal", "destination": "/app.html" },
@@ -274,9 +275,9 @@
     { "source": "/opportunities", "destination": "/app.html" },
     { "source": "/opportunities/my-jobs", "destination": "/app.html" },
     { "source": "/opportunities/job/:id", "destination": "/app.html" },
-    { "source": "/opportunities/job/:id/results", "destination": "/app.html" },
     { "source": "/opportunities/job/:id/contact", "destination": "/app.html" },
     { "source": "/opportunities/applications/:applicationId/interview", "destination": "/app.html" },
+    { "source": "/opportunities/applications/:applicationId/results", "destination": "/app.html" },
 
     { "source": "/admin", "destination": "/app.html" },
     { "source": "/redeem-code", "destination": "/app.html" },

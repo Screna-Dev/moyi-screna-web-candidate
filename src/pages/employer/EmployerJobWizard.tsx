@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import axios from 'axios';
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Job, Sponsorship } from '@/components/admin/console/pages/employer/types';
+import type { Job } from '@/components/admin/console/pages/employer/types';
 import { blankJob } from '@/components/admin/console/pages/employer/mockData';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { BackLink, Button, Card, Dialog, KV, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
@@ -26,11 +26,13 @@ import {
   errorData,
   getJob,
   getPublishCheck,
+  parseJobDescription,
   publishJob,
   saveInterviewSettings,
   saveJobAssessment,
   saveJobDetails,
   saveJobPosting,
+  saveSponsorship,
   startCreditsCheckout,
   suggestCriteria,
   suggestQuestions,
@@ -38,23 +40,30 @@ import {
   type ApiJob,
   type PublishCheck,
   type PublishResult,
+  type WhenLimitReached,
 } from './employerApi';
 import {
   apiToJob,
+  applyPrefill,
   assessmentBody,
   criteriaIdsByName,
   defaultTimeZoneLabel,
   defaultWindow,
+  sponsorshipOf,
   detailsBody,
   displayToIso,
   opensAtIso,
   serverIdsOf,
   settingsBody,
+  sponsorshipBody,
   todayIn,
+  withPrefill,
+  type HiddenDetails,
 } from './jobMapping';
 import { FIELD_LABELS } from './orgOptions';
 import { useOrgIfAny } from './orgContext';
-import { ApplicationWindowSection, SponsorshipCard } from './wizardSections';
+import { ApplicationWindowSection, JdAutofillCard, SponsorshipCard } from './wizardSections';
+import { EditSponsorshipDialog } from './JobLifecycleDialogs';
 import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
 // Employer-app create / edit job wizard, backed by /employer/jobs. It follows
@@ -66,16 +75,21 @@ import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 //   1 Job details, incl. the application window
 //                                      → details body (POST the first time)
 //   2 Interview (criteria, questions, length/instructions/language)
-//                                      → assessment body; interview settings too
-//                                        once who-pays is known
-//   3 Application & credits (who pays, sponsorship limits)
-//                                      → interview settings
+//                                      → assessment body + interview settings
+//   3 Application & credits (who pays, maximum sponsored candidates, what
+//     happens when sponsorship runs out)
+//                                      → sponsorship body (#297, 2026-10-29)
 //   4 Preview & publish
 // The window is dates only (design 2026-10-28): it opens today and closes 7
 // days later by default; an opening date of today is sent as "open on
-// publish" (opensAtIso). Maximum sponsored candidates and the after-limit
-// choice are in the design but not in the API yet: they live in the form,
-// kept per job in localStorage so a reload (e.g. back from Stripe) keeps them.
+// publish" (opensAtIso). Sponsorship starts at the design defaults: 50
+// candidates, keep accepting.
+//
+// Step 1 can be filled from a pasted job description (JD autofill, drafts
+// only). It fills only empty form fields; the fields the form has no input for
+// (seniority, role, experience, skills, summary, benefits, a MONTH/WEEK/DAY
+// pay period) wait in `prefill` and go out with the next details save, where
+// the saved draft's non-empty values win.
 //
 // Nothing saves while typing; a step saves when the employer leaves it or
 // presses Save draft. Published jobs open the same wizard as "Edit job": the
@@ -84,10 +98,12 @@ import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
 const CONTINUE_LABELS = ['Continue to interview', 'Continue to application settings', 'Continue to preview'];
 
-// Request bodies: 0 details, 1 assessment, 2 interview settings.
-type SavedBodies = [string, string, string];
-// Which bodies each design step edits.
-const STEP_BODIES: number[][] = [[0], [1, 2], [2]];
+// Request bodies: 0 details, 1 assessment, 2 interview settings, 3 sponsorship.
+type SavedBodies = [string, string, string, string];
+const BODIES = [0, 1, 2, 3];
+// Which bodies each design step edits, and the step that edits each body.
+const STEP_BODIES: number[][] = [[0], [1, 2], [3]];
+const BODY_STEP = [0, 1, 1, 2];
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -101,9 +117,11 @@ const MISSING: Record<string, { label: string; step: number }> = {
   timezone: { label: 'Time zone', step: 0 },
   closesAt: { label: 'A closing date in the future', step: 0 },
   criteria: { label: 'Evaluation criteria', step: 1 },
+  criteriaDescription: { label: 'A description for every evaluation criterion', step: 1 },
   questions: { label: 'Interview questions', step: 1 },
   questionCriteria: { label: 'A criterion on every question', step: 1 },
   interviewPayer: { label: 'Who pays for interviews', step: 2 },
+  maxSponsoredCandidates: { label: 'Maximum sponsored candidates', step: 2 },
 };
 
 const DRAFT_NOTE = 'Publishing is free. Interview Credits are used only for sponsored interview time. Report Credits are used only when you unlock reports.';
@@ -132,7 +150,6 @@ const none = (e: Record<string, unknown>) => !Object.values(e).some(Boolean);
 function stepErrors(job: Job, step: number, opensLocked = false): Record<string, boolean | string> {
   if (step === 0) return { ...jobDetailsErrors(job), ...windowErrors(job, opensLocked) };
   if (step === 1) return interviewErrors(job, true);
-  // Sponsorship limits are form-only (no API fields yet) but required by the design.
   if (step === 2) return sponsorshipErrors(job);
   return {};
 }
@@ -145,39 +162,25 @@ function bodyErrors(job: Job, body: number): Record<string, boolean | string> {
     return { ...jobDetailsErrors(job), closesAt: w.closesAt, timeZone: w.timeZone, maxApplicants: w.maxApplicants };
   }
   if (body === 1) return interviewErrors(job, true);
-  return { sponsor: !job.sponsor };
+  if (body === 2) return {};
+  return sponsorshipErrors(job);
 }
 
 // Every body, so "dirty" means "differs from what the server has".
-function snapshot(j: Job, a: ApiJob | null, areas: string[]): SavedBodies {
-  return [JSON.stringify(detailsBody(j, a)), JSON.stringify(assessmentBody(j, a ? serverIdsOf(a) : new Set(), areas)), JSON.stringify(settingsBody(j, a))];
-}
-
-// Form-only sponsorship fields (no API fields yet), kept per job so a reload
-// doesn't lose them. Best effort: storage may be blocked.
-const FORM_ONLY_KEY = (jobId: string) => `screna_employer_job_form_${jobId}`;
-
-function loadFormOnly(jobId: string): Partial<Sponsorship> | null {
-  try {
-    const raw = localStorage.getItem(FORM_ONLY_KEY(jobId));
-    return raw ? (JSON.parse(raw) as Partial<Sponsorship>) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveFormOnly(jobId: string, sp: Sponsorship) {
-  try {
-    localStorage.setItem(FORM_ONLY_KEY(jobId), JSON.stringify({ maxCandidates: sp.maxCandidates, afterLimit: sp.afterLimit ?? null }));
-  } catch {
-    /* storage blocked: the fields stay in this page only */
-  }
+// prefill: unsaved JD autofill values for the fields step 1 has no input for.
+function snapshot(j: Job, a: ApiJob | null, areas: string[], prefill: Partial<HiddenDetails> | null = null): SavedBodies {
+  return [
+    JSON.stringify(detailsBody(j, withPrefill(a, prefill))),
+    JSON.stringify(assessmentBody(j, a ? serverIdsOf(a) : new Set(), areas)),
+    JSON.stringify(settingsBody(j, a)),
+    JSON.stringify(sponsorshipBody(j)),
+  ];
 }
 
 function newJob(companyId: string): Job {
   const timeZone = defaultTimeZoneLabel();
   // Who pays starts unselected: the employer has to choose on step 3.
-  return { ...blankJob(companyId, ''), timeZone, ...defaultWindow(timeZone), interviewLength: 20, sponsor: null };
+  return { ...blankJob(companyId, ''), timeZone, ...defaultWindow(timeZone), interviewLength: 20, sponsor: null, sponsorship: sponsorshipOf(null) };
 }
 
 export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkout?: 'success' | 'cancelled' }) {
@@ -187,7 +190,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const [job, setJob] = useState<Job | null>(() => (jobId ? null : newJob(company.id)));
   const [initial, setInitial] = useState<Job | null>(null); // published jobs: the loaded form
   const [loadError, setLoadError] = useState('');
-  const [saved, setSaved] = useState<SavedBodies>(() => (job ? snapshot(job, null, []) : ['', '', '']));
+  const [saved, setSaved] = useState<SavedBodies>(() => (job ? snapshot(job, null, []) : ['', '', '', '']));
   const [areas, setAreas] = useState<string[]>([]);
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
@@ -202,6 +205,18 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const [publishAck, setPublishAck] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [live, setLive] = useState<PublishResult | null>(null);
+  const [sponsorshipOpen, setSponsorshipOpen] = useState(false);
+
+  // ── JD autofill ──
+  const [jdText, setJdText] = useState('');
+  const [jdLoading, setJdLoading] = useState(false);
+  const [jdError, setJdError] = useState('');
+  const [prefill, setPrefill] = useState<Partial<HiddenDetails> | null>(null);
+  const jdAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => jdAbort.current?.abort(), []);
+  // The form when the result arrives, not when the request went out.
+  const jobRef = useRef(job);
+  jobRef.current = job;
 
   // ── Load an existing job ──
   useEffect(() => {
@@ -210,9 +225,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     getJob(jobId)
       .then((res) => {
         if (cancelled) return;
-        const stored = loadFormOnly(res.id);
-        const loaded = apiToJob(res, company.id);
-        const form = stored ? { ...loaded, sponsorship: { ...loaded.sponsorship, ...stored } } : loaded;
+        const form = apiToJob(res, company.id);
         setApi(res);
         setJob(form);
         setInitial(form);
@@ -294,12 +307,6 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       }
     })();
   }, [step, ai, job, api?.id]);
-
-  const formOnlyJobId = api?.id;
-  const formOnlySponsorship = job?.sponsorship;
-  useEffect(() => {
-    if (formOnlyJobId && formOnlySponsorship) saveFormOnly(formOnlyJobId, formOnlySponsorship);
-  }, [formOnlyJobId, formOnlySponsorship]);
 
   // ── Preview: what still blocks publishing ──
   const refreshCheck = async (id: string) => {
@@ -395,7 +402,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   }
 
   // ── Dirty tracking ──
-  const bodies = snapshot(job, api, areas);
+  const bodies = snapshot(job, api, areas, prefill);
   const dirtyBody = (b: number) => bodies[b] !== saved[b];
   // Published jobs: only the posting and window can change (dates compared through the same conversion).
   const iso = (j: Job, f: 'opensAt' | 'closesAt') => displayToIso(j[f], j.timeZone);
@@ -403,7 +410,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const windowChanged =
     !!initial && (iso(job, 'closesAt') !== iso(initial, 'closesAt') || job.timeZone !== initial.timeZone || (!opensLocked && opensAtIso(job) !== opensAtIso(initial)));
   const postingChanged = !!initial && postingOf(job) !== postingOf(initial);
-  const dirty = draft ? (!api ? bodies[0] !== saved[0] : [0, 1, 2].some(dirtyBody)) : postingChanged || windowChanged;
+  const dirty = draft ? (!api ? bodies[0] !== saved[0] : BODIES.some(dirtyBody)) : postingChanged || windowChanged;
   const valid = (s: number) => none(stepErrors(job, s, opensLocked));
 
   const update = (patch: JobPatch) => {
@@ -412,15 +419,25 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   };
 
   const bodyOf = (b: number, form: Job, current: ApiJob | null) =>
-    JSON.stringify(b === 0 ? detailsBody(form, current) : b === 1 ? assessmentBody(form, current ? serverIdsOf(current) : new Set(), areas) : settingsBody(form, current));
+    JSON.stringify(
+      b === 0
+        ? detailsBody(form, withPrefill(current, prefill))
+        : b === 1
+          ? assessmentBody(form, current ? serverIdsOf(current) : new Set(), areas)
+          : b === 2
+            ? settingsBody(form, current)
+            : sponsorshipBody(form),
+    );
 
   // A body needs a PUT when it differs from the server, and the first time its
   // step is passed: wizardStep only moves (and the questions only count as
-  // reviewed, and interviewPayer only gets stored) once that PUT has happened.
-  const needsSave = (b: number, uiStep: number, form: Job, current: ApiJob | null, base: SavedBodies) =>
+  // reviewed) once that PUT has happened. Who pays is stored only by PUT
+  // sponsorship, and an employer-paid job without one fails publish-check
+  // with maxSponsoredCandidates.
+  const needsSave = (b: number, form: Job, current: ApiJob | null, base: SavedBodies) =>
     !current ||
     (b === 1 && current.wizardStep < 3) ||
-    (b === 2 && uiStep === 2 && current.wizardStep < 4) ||
+    (b === 3 && (current.wizardStep < 4 || (form.sponsor === 'employer' && !current.sponsorship))) ||
     bodyOf(b, form, current) !== base[b];
 
   // Saves one body and folds the response back into the form. Returns the new
@@ -430,22 +447,26 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       let res: ApiJob;
       let next = form;
       if (b === 0) {
-        const body = detailsBody(form, current);
+        const body = detailsBody(form, withPrefill(current, prefill));
         res = current ? await saveJobDetails(current.id, body) : await createJob(body);
         next = { ...form, id: res.id };
+        // The server copy now holds the autofilled hidden fields.
+        setPrefill(null);
       } else if (b === 1) {
         res = await saveJobAssessment(current!.id, assessmentBody(form, serverIdsOf(current!), areas));
         // Created rows now have server ids; take the server's criteria/questions.
         const fresh = apiToJob(res, company.id);
         next = { ...form, criteria: fresh.criteria, questions: fresh.questions, interviewConfirmed: true };
-      } else {
+      } else if (b === 2) {
         res = await saveInterviewSettings(current!.id, settingsBody(form, current));
+      } else {
+        res = await saveSponsorship(current!.id, sponsorshipBody(form));
       }
       const snap = snapshot(next, res, areas);
       const out = [...base] as SavedBodies;
       out[b] = snap[b];
       // Creating the draft also stores default interview settings: rebase the rest.
-      if (!current) [out[1], out[2]] = [snap[1], snap[2]];
+      if (!current) [out[1], out[2], out[3]] = [snap[1], snap[2], snap[3]];
       setApi(res);
       setJob(next);
       setSaved(out);
@@ -461,8 +482,6 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   };
 
   // Moving forward: every step in range must be valid; then save what changed.
-  // Interview settings saved from step 2 only once who-pays is chosen (the API
-  // requires it); otherwise they wait for step 3.
   const advanceThrough = async (steps: number[]): Promise<boolean> => {
     let form = job;
     let current = api;
@@ -475,8 +494,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
         return false;
       }
       for (const b of STEP_BODIES[s]) {
-        if (b === 2 && !form.sponsor) continue;
-        if (!needsSave(b, s, form, current, base)) continue;
+        if (!needsSave(b, form, current, base)) continue;
         const r = await saveBody(b, form, current, base, s);
         if (!r) return false;
         ({ api: current, job: form, base } = r);
@@ -491,18 +509,18 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     let form = job;
     let current = api;
     let base = saved;
-    for (const b of [0, 1, 2]) {
+    for (const b of BODIES) {
       const changed = (b === 0 && !current) || bodyOf(b, form, current) !== base[b];
-      if (!changed || (b === 2 && !form.sponsor)) continue;
+      if (!changed || (b === 3 && !form.sponsor)) continue;
       if (!none(bodyErrors(form, b))) {
         if (!stopOnInvalid) continue;
-        const at = b === 1 ? 1 : b === 0 && !none(jobDetailsErrors(form)) ? 0 : 2;
+        const at = BODY_STEP[b];
         setStep(at);
         setErrorsStep(at);
         toast.error(!current ? 'Fill in the job details to save a draft' : 'Complete the required fields to save');
         return false;
       }
-      const r = await saveBody(b, form, current, base, b === 1 ? 1 : 0);
+      const r = await saveBody(b, form, current, base, BODY_STEP[b]);
       if (!r) return false;
       ({ api: current, job: form, base } = r);
     }
@@ -620,7 +638,37 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     }
   };
 
+  // FAILED, timeout, 429, 503 and a backend without the endpoint all read the same.
+  const autofill = async () => {
+    const text = jdText.trim();
+    if (!text || jdLoading) return;
+    jdAbort.current?.abort();
+    const ctrl = new AbortController();
+    jdAbort.current = ctrl;
+    setJdLoading(true);
+    setJdError('');
+    try {
+      const sent = jobRef.current ?? job;
+      const result = await parseJobDescription({ jdText: text, title: sent.title.trim() || undefined, location: sent.location.trim() || undefined }, ctrl.signal);
+      const form = jobRef.current;
+      if (ctrl.signal.aborted || !form) return;
+      const { patch, hidden, filled } = applyPrefill(form, result, newJob(company.id));
+      update(patch);
+      setPrefill((p) => ({ ...p, ...hidden }));
+      toast(filled ? 'Filled in from the job description. Review every field before you continue.' : 'The form already has these details. Nothing was changed.');
+    } catch {
+      if (!ctrl.signal.aborted) setJdError("Couldn't read this job description. Please fill the form manually.");
+    } finally {
+      if (jdAbort.current === ctrl) {
+        jdAbort.current = null;
+        setJdLoading(false);
+      }
+    }
+  };
+
   const stepProps = { job, update, showErrors: errorsStep === step, company, ai };
+  // Published employer-paid jobs: PUT sponsorship can still raise the limit (#299).
+  const liveSponsored = !draft && api?.interviewSettings?.interviewPayer === 'EMPLOYER';
   const allValid = [0, 1, 2].every(valid);
   // Employer app gates on publish-check; the design shows it in the summary card.
   const gated = !!check && (!check.profileComplete || check.missing.length > 0);
@@ -695,6 +743,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
             <StepJobDetails
               {...stepProps}
               showPhone={false}
+              autofill={draft && <JdAutofillCard text={jdText} onText={setJdText} onAutofill={() => void autofill()} loading={jdLoading} error={jdError} />}
               windowSection={
                 <ApplicationWindowSection
                   job={job}
@@ -725,6 +774,17 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
                 <h2 className="text-[#1e232f] text-[18px] font-semibold leading-7">Set the application window and interview sponsorship</h2>
                 <p className="text-[#5a6172] text-[13px]">Publishing is free. Choose whether to sponsor candidates' first interviews and set your spending limits.</p>
               </div>
+              {liveSponsored && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-[#e1e4ea] bg-[#f9fafb] px-4 py-3 text-[13px] text-[#5a6172]">
+                  <span className="flex items-start gap-2">
+                    <Lock size={15} className="shrink-0 mt-0.5" />
+                    Who pays can't change after publishing. You can still raise the limit or change what happens when it's reached.
+                  </span>
+                  <Button size="sm" onClick={() => setSponsorshipOpen(true)}>
+                    Edit sponsorship
+                  </Button>
+                </div>
+              )}
               <fieldset disabled={!draft} className={cx('min-w-0', !draft && 'opacity-60')}>
                 <SponsorshipCard job={job} update={update} err={errorsStep === 2 ? stepErrors(job, 2) : {}} />
               </fieldset>
@@ -734,7 +794,11 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
             <>
               <StepPreview {...stepProps} />
               {draft && (
-                <PublishBlockers check={check} loading={checkLoading} onFix={(s) => void goStep(s)} onProfile={() => void toProfile()} onBuy={() => setCreditsOpen(true)} />
+                <PublishBlockers
+                  check={check}
+                  loading={checkLoading}
+                  whenLimitReached={api?.sponsorship?.whenLimitReached ?? 'KEEP_ACCEPTING'}
+                  onFix={(s) => void goStep(s)} onProfile={() => void toProfile()} onBuy={() => setCreditsOpen(true)} />
               )}
             </>
           )}
@@ -749,6 +813,20 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
           )}
         </aside>
       </div>
+
+      {sponsorshipOpen && api && (
+        <EditSponsorshipDialog
+          jobId={api.id}
+          onClose={() => setSponsorshipOpen(false)}
+          onSaved={(res) => {
+            setSponsorshipOpen(false);
+            setApi(res);
+            // Only the sponsorship changed; keep any unsaved posting edits.
+            setJob((j) => (j ? { ...j, sponsorship: sponsorshipOf(res) } : j));
+            setInitial((j) => (j ? { ...j, sponsorship: sponsorshipOf(res) } : j));
+          }}
+        />
+      )}
 
       {/* Footer */}
       <div className="sticky bottom-0 -mx-8 px-8 py-3 bg-white border-t border-[#e5e7eb] flex items-center gap-2 z-[20]">
@@ -885,8 +963,9 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
                 variant="link"
                 className="mx-auto"
                 onClick={() => {
+                  // The public page 404s until a scheduled job opens (#301), so say when the link starts working.
                   navigator.clipboard?.writeText(`${window.location.origin}/opportunities/job/${live.jobId}`).then(
-                    () => toast.success('Job link copied'),
+                    () => toast.success(live.status === 'SCHEDULED' ? `Job link copied. It works once the job opens on ${job.opensAt}.` : 'Job link copied'),
                     () => toast.error('Could not copy the link'),
                   );
                 }}
@@ -909,12 +988,14 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
 function PublishBlockers({
   check,
   loading,
+  whenLimitReached,
   onFix,
   onProfile,
   onBuy,
 }: {
   check: PublishCheck | null;
   loading: boolean;
+  whenLimitReached: WhenLimitReached;
   onFix: (step: number) => void;
   onProfile: () => void;
   onBuy: () => void;
@@ -953,10 +1034,13 @@ function PublishBlockers({
           </Button>
         </Blocker>
       )}
+      {/* A warning only: publishing stays enabled. Running out of credits counts as the limit being reached. */}
       {check.sponsorshipUnfunded && (
-        <Blocker title="No Interview Credits for sponsored interviews.">
+        <Blocker title="You're out of Interview Credits.">
           <span>
-            You can still publish, but candidates can't start an interview until you add Interview Credits. You have {check.interviewCreditsAvailable}.
+            {whenLimitReached === 'CLOSE_JOB'
+              ? 'You can still publish, but the job will close automatically as soon as the first candidate starts an interview.'
+              : 'You can still publish, but candidates will need to pay for their own interviews until you add Interview Credits.'}
           </span>
           <Button variant="link" className="w-fit" onClick={onBuy}>
             Buy Interview Credits <ArrowRight size={14} />

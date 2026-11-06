@@ -5,7 +5,7 @@ import { createUserPlanMock, mockPlanData } from '@/test/utils';
 
 type Plan = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
 
-const state = { signedIn: false, plan: 'Free' as Plan, passCompany: null as string | null };
+const state = { signedIn: false, plan: 'Free' as Plan };
 
 export const companyMocks = {
   session: state,
@@ -36,15 +36,6 @@ export const companyMocks = {
  */
 export const stablePosthog = { capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
 
-/** useCompanyPasses stand-in: an active pass for state.passCompany, if any. */
-export const passesMock = () => ({
-  passes: [],
-  isLoading: false,
-  find: (company?: string) => (company && company === state.passCompany ? { company, status: 'ACTIVE' } : null),
-});
-export const setPass = (company: string | null) => {
-  state.passCompany = company;
-};
 
 export const setSignedIn = (v: boolean) => {
   state.signedIn = v;

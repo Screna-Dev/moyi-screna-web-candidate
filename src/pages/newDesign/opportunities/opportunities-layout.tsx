@@ -2,7 +2,6 @@ import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { OpportunitiesProvider } from '@/components/newDesign/opportunities/OpportunitiesContext';
-import { opportunityJobs } from '@/components/newDesign/opportunities/mockJobs';
 import { getCareerJob } from '@/services/careersApi';
 
 // Shared shell for every /opportunities/* route. The provider sits above the
@@ -13,29 +12,27 @@ function headerFor(pathname: string, liveTitle: string | null): { title: string;
   if (pathname === '/opportunities/my-jobs') {
     return { title: 'My Jobs', breadcrumb: { label: 'Opportunities', path: '/opportunities' } };
   }
+  if (/^\/opportunities\/applications\/[^/]+\/results$/.test(pathname)) {
+    return { title: 'Interview results', breadcrumb: { label: 'My Jobs', path: '/opportunities/my-jobs' } };
+  }
 
-  const match = pathname.match(/^\/opportunities\/job\/([^/]+)(?:\/(results|contact))?$/);
+  const match = pathname.match(/^\/opportunities\/job\/([^/]+)(?:\/(contact))?$/);
   if (!match) return { title: 'Opportunities' };
 
   const [, jobId, sub] = match;
-  const job = opportunityJobs.find((j) => j.id === jobId);
-  const title = job?.title ?? liveTitle;
-  const detailLabel = title ? `${title} details` : 'Job details';
+  const detailLabel = liveTitle ? `${liveTitle} details` : 'Job details';
 
   if (!sub) return { title: detailLabel, breadcrumb: { label: 'Opportunities', path: '/opportunities' } };
-  return {
-    title: sub === 'results' ? 'Assessment results' : 'Contact recruiter',
-    breadcrumb: { label: detailLabel, path: `/opportunities/job/${jobId}` },
-  };
+  return { title: 'Contact recruiter', breadcrumb: { label: detailLabel, path: `/opportunities/job/${jobId}` } };
 }
 
 export function OpportunitiesLayout() {
   const { pathname } = useLocation();
-  // Real (non-numeric) job ids: look the title up for the header.
+  // Look the job's title up for the header.
   const liveId = pathname.match(/^\/opportunities\/job\/([^/]+)/)?.[1];
   const [liveTitle, setLiveTitle] = useState<{ id: string; title: string } | null>(null);
   useEffect(() => {
-    if (!liveId || /^\d+$/.test(liveId) || liveTitle?.id === liveId) return;
+    if (!liveId || liveTitle?.id === liveId) return;
     let cancelled = false;
     getCareerJob(decodeURIComponent(liveId))
       .then((d) => !cancelled && setLiveTitle({ id: liveId, title: d.posting.title }))

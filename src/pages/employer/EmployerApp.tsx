@@ -6,16 +6,18 @@ import { EmployerStoreProvider, useEmployerStore } from '@/components/admin/cons
 import { SECTION_VIEW, sectionOf, type EmployerSection } from '@/components/admin/console/pages/employer/sections';
 import { cx } from '@/components/admin/console/pages/employer/ui';
 import { HiringGuide } from '@/components/admin/console/pages/employer/views/HiringGuide';
-import { PlanUsageView } from '@/components/admin/console/pages/employer/views/PlanUsageView';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 import { authErrorCode, clearEmployerSession, getEmployerSession, type EmployerSession } from './employerAuth';
-import { ORGANIZATION_NOT_FOUND, getCredits, getNewApplicationsCount, getOrganization, type CreditBalances, type Organization } from './employerApi';
+import { ORGANIZATION_NOT_FOUND, getCredits, getEmployerPlan, getNewApplicationsCount, getOrganization, type CreditBalances, type EmployerPlan, type Organization } from './employerApi';
+import { EmployerPlanView } from './EmployerPlanView';
 import { CompanyProfileView } from './CompanyProfileView';
 import { EmployerDashboard } from './EmployerDashboard';
 import { EmployerJobsView } from './EmployerJobsView';
 import { EmployerJobWizard } from './EmployerJobWizard';
 import { OrgContext, useOrg, type OrgState } from './orgContext';
-import { CreditsContext, REPORT_CHECKOUT_KEY } from './creditsContext';
+import { toast } from 'sonner';
+import { CreditsContext, PLAN_CHECKOUT_KEY, REPORT_CHECKOUT_KEY, hasBusinessIntent, takeBusinessIntent } from './creditsContext';
+import { alreadyOnBusiness, businessCheckoutError, openBusinessCheckout } from './businessCheckout';
 import { EmployerApplicationsView } from './EmployerApplicationsView';
 import { EmployerBoardView } from './EmployerBoardView';
 import { EmployerReportView } from './EmployerReportView';
@@ -108,7 +110,7 @@ function ViewBody() {
     case 'contact':
       return <EmployerContactView key={view.candidateId} jobId={view.jobId} applicationId={view.candidateId} />;
     case 'plan':
-      return <PlanUsageView />;
+      return <EmployerPlanView key={view.checkout ?? 'plan'} checkout={view.checkout} />;
     case 'profile':
       return <CompanyProfileView returnJobId={view.returnJobId} returnToWizard={view.returnToWizard} />;
   }
@@ -242,9 +244,10 @@ function Shell({ session }: { session: EmployerSession }) {
   useBindCompany(session);
   const navigate = useNavigate();
   const { view, go } = useEmployerStore();
-  // First sign-in after verifying the email: walk them through hiring.
+  // First sign-in after verifying the email: walk them through hiring, unless
+  // they came from "Start Business", which goes straight to Stripe instead.
   const firstLogin = (useLocation().state as { firstLogin?: boolean } | null)?.firstLogin === true;
-  const [guideOpen, setGuideOpen] = useState(firstLogin);
+  const [guideOpen, setGuideOpen] = useState(() => firstLogin && !hasBusinessIntent());
   const active: NavKey = view.name === 'plan' ? 'plan' : view.name === 'profile' ? 'profile' : sectionOf(view);
   const goNav = (key: NavKey) => go(key === 'plan' ? { name: 'plan' } : key === 'profile' ? { name: 'profile' } : SECTION_VIEW[key]);
   const title = view.name === 'board' ? 'Candidates' : TITLES[active];
@@ -252,6 +255,7 @@ function Shell({ session }: { session: EmployerSession }) {
   const creditsState = useCredits(view.name);
   const { credits } = creditsState;
   useCheckoutReturn();
+  useBusinessIntent();
 
   const signOut = () => {
     clearEmployerSession();
@@ -367,29 +371,60 @@ function useCheckoutReturn() {
     } catch {
       /* storage blocked: treat as the wizard's purchase */
     }
-    if (jobId && reportJob === jobId) go({ name: 'board', jobId });
+    let planCheckout = false;
+    try {
+      planCheckout = !!sessionStorage.getItem(PLAN_CHECKOUT_KEY);
+      sessionStorage.removeItem(PLAN_CHECKOUT_KEY);
+    } catch {
+      /* storage blocked */
+    }
+    if (planCheckout && (result === 'success' || result === 'cancelled')) go({ name: 'plan', checkout: result });
+    else if (jobId && reportJob === jobId) go({ name: 'board', jobId });
     else if (jobId && (result === 'success' || result === 'cancelled')) go({ name: 'wizard', jobId, checkout: result });
     else go({ name: 'plan' });
     navigate('/employer', { replace: true });
   }, [location.pathname, location.search, go, navigate]);
 }
 
+// "Start Business" on the landing page while signed out: right after signing
+// in, straight to the Business checkout for the card they picked (monthly or
+// annual). If it can't start (e.g.
+// already on Business), Plan & Usage says why.
+function useBusinessIntent() {
+  const { go } = useEmployerStore();
+  useEffect(() => {
+    const cycle = takeBusinessIntent();
+    if (!cycle) return;
+    toast('Opening checkout…', { id: 'employer-plan-checkout' });
+    openBusinessCheckout(cycle).catch((err) => {
+      go({ name: 'plan' });
+      if (alreadyOnBusiness(err)) toast("You're already on Business.", { id: 'employer-plan-checkout' });
+      else toast.error(businessCheckoutError(err), { id: 'employer-plan-checkout' });
+    });
+  }, [go]);
+}
+
 // GET /employer/credits, re-read on every screen change (a Stripe return lands
 // on a new view) and on refresh() (unlocking a report). Failures show dashes.
 function useCredits(viewName: string) {
   const [credits, setCredits] = useState<CreditBalances | null>(null);
+  const [plan, setPlan] = useState<EmployerPlan | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     getCredits()
       .then((c) => !cancelled && setCredits(c))
       .catch(() => !cancelled && setCredits(null));
+    // Business allowance (null on a backend without /employer/plan).
+    getEmployerPlan()
+      .then((p) => !cancelled && setPlan(p))
+      .catch(() => !cancelled && setPlan(null));
     return () => {
       cancelled = true;
     };
   }, [viewName, tick]);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
-  return useMemo(() => ({ credits, refresh }), [credits, refresh]);
+  return useMemo(() => ({ credits, plan, refresh }), [credits, plan, refresh]);
 }
 
 // GET /employer/applications/new-count, re-read whenever the employer moves

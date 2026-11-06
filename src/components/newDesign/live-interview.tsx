@@ -180,8 +180,10 @@ export function LiveInterview({
     let isCancelled = false;
     (async () => {
       try {
+        // Browser noise suppression off: the server already runs Krisp, and
+        // processing the voice twice hurts transcription and barge-in detection.
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true },
         });
         if (isCancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         audioStreamRef.current = stream;

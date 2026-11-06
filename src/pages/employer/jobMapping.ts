@@ -8,6 +8,8 @@ import type {
   ApiWorkplaceType,
   AssessmentBody,
   InterviewSettings,
+  JdPrefill,
+  SponsorshipBody,
   JobDetailsBody,
 } from './employerApi';
 
@@ -17,7 +19,8 @@ import type {
 // time zone; the API uses enums, IANA zones and UTC ISO instants.
 // API fields the wizard doesn't edit (seniority, role, skills, summary,
 // benefits, passScore, screening criteria…) are carried over from the last
-// saved ApiJob so a full-replace PUT doesn't wipe them.
+// saved ApiJob so a full-replace PUT doesn't wipe them. Before the first save
+// after a JD autofill, the step 1 ones come from the autofill (withPrefill).
 
 const STATUS: Record<ApiJobStatus, JobStatus> = { DRAFT: 'Draft', SCHEDULED: 'Scheduled', OPEN: 'Open', CLOSED: 'Closed' };
 
@@ -40,8 +43,9 @@ const ZONES: Record<string, string> = {
   UTC: 'UTC',
 };
 
-// Interviews are English only (product decision 2026-10-28): the wizard has
-// no language field, and every save sends 'en'.
+// Interviews are English only and at most 20 minutes (2026-10-28; enforced by
+// the API since #305). The wizard has no field for either and never sends them
+// (left out = 20 / en; anything else, even a copied 30, is 400).
 const INTERVIEW_LANGUAGE = { label: 'English', code: 'en' };
 
 function invert<K extends string, V extends string>(m: Record<K, V>): Record<V, K> {
@@ -198,6 +202,18 @@ const orBlank = (items: string[]) => (items.length ? items : ['']);
 const money = (n: number | null) => (n == null ? '' : n.toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const payPeriodOf = (p: ApiSalaryPeriod | null): PayPeriod => (p === 'HOUR' ? 'Hourly' : 'Annual');
 
+// Unsaved (or candidate-paid) jobs show the design defaults: 50 candidates, keep accepting.
+export const DEFAULT_MAX_SPONSORED = '50';
+export function sponsorshipOf(api: Pick<ApiJob, 'sponsorship'> | null): Job['sponsorship'] {
+  const sp = api?.sponsorship;
+  return {
+    totalBudget: '',
+    dailyBudget: '',
+    maxCandidates: sp ? String(sp.maxSponsoredCandidates) : DEFAULT_MAX_SPONSORED,
+    afterLimit: sp?.whenLimitReached === 'CLOSE_JOB' ? 'close' : 'keep',
+  };
+}
+
 export function apiToJob(api: ApiJob, companyId: string): Job {
   const tz = api.timezone || timeZoneIana(defaultTimeZoneLabel());
   const s = api.interviewSettings;
@@ -233,7 +249,8 @@ export function apiToJob(api: ApiJob, companyId: string): Job {
     preferred: api.preferredQualifications ?? [],
     criteria,
     questions,
-    interviewLength: s?.durationMinutes ?? 20,
+    // Every interview runs 20 minutes in English (#305), whatever an older job says.
+    interviewLength: 20,
     candidateInstructions: s?.candidateInstructions ?? '',
     language: INTERVIEW_LANGUAGE.label,
     interviewConfirmed: !!api.questionsReviewedAt,
@@ -243,8 +260,8 @@ export function apiToJob(api: ApiJob, companyId: string): Job {
     timeZone: timeZoneLabel(api.timezone),
     maxApplicants: api.maxApplicants == null ? '' : String(api.maxApplicants),
     // null until the employer picks one on step 3; nothing is preselected.
-    sponsor: s?.interviewPayer === 'CANDIDATE' ? 'candidate' : s?.interviewPayer === 'EMPLOYER' ? 'employer' : null,
-    sponsorship: { totalBudget: '', dailyBudget: '', maxCandidates: '', afterLimit: null },
+    sponsor: s?.interviewPayer === 'CANDIDATE' ? 'candidate' : s?.interviewPayer === 'EMPLOYER' || api.sponsorship ? 'employer' : null,
+    sponsorship: sponsorshipOf(api),
     applicants: 0,
     interviewsCompleted: 0,
     updatedAt: api.updatedAt,
@@ -261,7 +278,79 @@ function amount(s: string): number | null {
   return s.trim() && Number.isFinite(n) ? n : null;
 }
 
-export function detailsBody(job: Job, base?: ApiJob | null): JobDetailsBody {
+// ─── JD autofill ──────────────────────────────────────────────────────────────
+
+// Step 1 fields with no input on the form. They come from the last saved
+// ApiJob, or from a JD autofill that hasn't been saved yet.
+export type HiddenDetails = Pick<
+  JobDetailsBody,
+  'seniority' | 'role' | 'yearsExperienceMin' | 'yearsExperienceMax' | 'skills' | 'summary' | 'benefits' | 'salaryPeriod'
+>;
+
+const hasText = (s: string | null | undefined) => !!s?.trim();
+
+// Saved non-empty values win over the autofill; the experience range moves as
+// a pair. salaryPeriod is only in `extra` when the autofill also filled the
+// salary, so there the autofill's period wins.
+export function withPrefill(base: HiddenDetails | null | undefined, extra: Partial<HiddenDetails> | null): HiddenDetails | null {
+  if (!extra) return base ?? null;
+  const baseYears = base?.yearsExperienceMin != null || base?.yearsExperienceMax != null;
+  return {
+    seniority: hasText(base?.seniority) ? base!.seniority : extra.seniority ?? null,
+    role: hasText(base?.role) ? base!.role : extra.role ?? null,
+    yearsExperienceMin: baseYears ? base!.yearsExperienceMin : extra.yearsExperienceMin ?? null,
+    yearsExperienceMax: baseYears ? base!.yearsExperienceMax : extra.yearsExperienceMax ?? null,
+    skills: base?.skills?.length ? base.skills : extra.skills ?? [],
+    summary: hasText(base?.summary) ? base!.summary : extra.summary ?? null,
+    benefits: base?.benefits?.length ? base.benefits : extra.benefits ?? [],
+    salaryPeriod: extra.salaryPeriod ?? base?.salaryPeriod ?? null,
+  };
+}
+
+// Fills only what the form still has empty. Employment and workplace type
+// always hold a value, so the new-job default counts as empty. The salary is
+// filled as a group (amounts, currency, period) only when both amounts are blank.
+// Returns the form patch, the hidden fields, and how many form fields changed.
+export function applyPrefill(job: Job, p: JdPrefill, blank: Pick<Job, 'employmentType' | 'workplace'>) {
+  const patch: Partial<Job> = {};
+  const hidden: Partial<HiddenDetails> = {
+    seniority: p.seniority,
+    role: p.role,
+    yearsExperienceMin: p.yearsExperienceMin,
+    yearsExperienceMax: p.yearsExperienceMax,
+    skills: p.skills ?? [],
+    summary: p.summary,
+    benefits: p.benefits ?? [],
+  };
+  const noItems = (list: string[]) => !list.some((s) => s.trim());
+  const listOf = (list: string[] | null | undefined) => (list ?? []).map((s) => s.trim()).filter(Boolean);
+
+  if (!job.title.trim() && hasText(p.title)) patch.title = p.title!.trim();
+  if (!job.location.trim() && hasText(p.location)) patch.location = p.location!.trim().slice(0, 255);
+  if (job.employmentType === blank.employmentType && p.employmentType) patch.employmentType = EMPLOYMENT[p.employmentType];
+  if (job.workplace === blank.workplace && p.workplaceType) patch.workplace = WORKPLACE[p.workplaceType];
+  if (!job.salaryMin.trim() && !job.salaryMax.trim() && (p.salaryMin != null || p.salaryMax != null)) {
+    patch.salaryMin = money(p.salaryMin);
+    patch.salaryMax = money(p.salaryMax);
+    if (p.salaryCurrency) patch.currency = CURRENCIES.find((c) => c.split(' ')[0] === p.salaryCurrency) ?? p.salaryCurrency;
+    if (p.salaryPeriod) {
+      patch.payPeriod = payPeriodOf(p.salaryPeriod);
+      hidden.salaryPeriod = p.salaryPeriod;
+    }
+  }
+  if (!job.overview.trim() && hasText(p.roleOverview)) patch.overview = p.roleOverview!.trim();
+  if (noItems(job.responsibilities) && listOf(p.responsibilities).length) patch.responsibilities = listOf(p.responsibilities);
+  if (noItems(job.requirements) && listOf(p.requirements).length) patch.requirements = listOf(p.requirements);
+  if (noItems(job.preferred) && listOf(p.preferredQualifications).length) patch.preferred = listOf(p.preferredQualifications);
+
+  // Changed values only: a type the AI read the same as the default isn't news.
+  const changed = Object.entries(patch).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(job[k as keyof Job]));
+  return { patch: Object.fromEntries(changed) as Partial<Job>, hidden, filled: changed.length };
+}
+
+// ─── Job → request bodies (cont.) ─────────────────────────────────────────────
+
+export function detailsBody(job: Job, base?: HiddenDetails | null): JobDetailsBody {
   // Keep a MONTH/WEEK/DAY period the wizard can't show unless the pay period was changed.
   const period: ApiSalaryPeriod =
     base?.salaryPeriod && payPeriodOf(base.salaryPeriod) === job.payPeriod ? base.salaryPeriod : job.payPeriod === 'Hourly' ? 'HOUR' : 'YEAR';
@@ -320,13 +409,24 @@ export function assessmentBody(job: Job, serverIds: Set<string>, assessmentAreas
   };
 }
 
+// No durationMinutes / language (#305) — including on Repost, which would
+// otherwise copy an old job's 30 / 45.
 export function settingsBody(job: Job, base?: ApiJob | null): InterviewSettings {
   return {
-    durationMinutes: job.interviewLength,
-    language: INTERVIEW_LANGUAGE.code,
     candidateInstructions: text(job.candidateInstructions),
     passScore: base?.interviewSettings?.passScore ?? null,
-    interviewPayer: job.sponsor === 'candidate' ? 'CANDIDATE' : job.sponsor === 'employer' ? 'EMPLOYER' : null,
+  };
+}
+
+// The limits only go out for an employer-paid job; CANDIDATE clears them on the server.
+export function sponsorshipBody(job: Job): SponsorshipBody {
+  if (job.sponsor === 'candidate') return { interviewPayer: 'CANDIDATE' };
+  if (job.sponsor !== 'employer') return { interviewPayer: null };
+  const max = amount(job.sponsorship.maxCandidates);
+  return {
+    interviewPayer: 'EMPLOYER',
+    maxSponsoredCandidates: max == null ? null : Math.round(max),
+    whenLimitReached: job.sponsorship.afterLimit === 'close' ? 'CLOSE_JOB' : 'KEEP_ACCEPTING',
   };
 }
 
