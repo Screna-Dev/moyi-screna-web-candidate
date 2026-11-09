@@ -1,6 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Loader2, ShieldCheck, UploadCloud, X } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Mic, ShieldCheck, UploadCloud, Video, Volume2, X } from "lucide-react";
 import { useInterviewQuota } from "@/hooks/useInterviewQuota";
 import { uploadResumeAndWait } from "@/services/ProfileServices";
 import { emitResumeUploaded } from "@/hooks/useResumeUploaded";
@@ -19,6 +19,7 @@ import {
 import { OutOfInterviewsDialog } from "./OutOfInterviewsDialog";
 import { CONSENT_SECTIONS, CONSENT_VERSION } from "./interviewConsent";
 import { isBeingScored } from "./careersEnded";
+import { DEVICE_ERROR_TEXT, playTestSound, useDeviceCheck } from "./deviceCheck";
 
 // The careers (apply → AI interview) flow used by the design's Opportunities
 // pages, plus the few dialogs the design has no frame for yet: the start
@@ -106,6 +107,9 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   const [needResume, setNeedResume] = useState(false);
   // Authorization step: shown before every start or rejoin, never remembered.
   const [consent, setConsent] = useState(false);
+  // Camera / mic / speaker check, after the authorization step and before the
+  // start call: a broken device never opens a session or uses an interview.
+  const [deviceCheck, setDeviceCheck] = useState(false);
   // 409 SELF_PAY_CONFIRMATION_REQUIRED: the employer's sponsorship ran out
   // after this dialog opened. Ask before starting again with acceptSelfPay.
   const [selfPay, setSelfPay] = useState<SelfPayConfirmation | null>(null);
@@ -114,7 +118,7 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   const left = selfPay?.interviewsAvailable ?? quota?.available;
 
   // The quota is shown for context only; the server decides (403).
-  // Only reached after the consent step, so every call (including the retries
+  // Only reached after the consent and device steps, so every call (including the retries
   // after a resume upload or the self-pay prompt) carries the consent (#304).
   const start = async (acceptSelfPay = false) => {
     setBusy(true);
@@ -131,6 +135,7 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
       // Consent became required, or this version is no longer accepted: ask again.
       else if (code === "INTERVIEW_CONSENT_REQUIRED") {
         setSelfPay(null);
+        setDeviceCheck(false);
         setConsent(true);
         setError("Please review and agree to the interview terms to continue.");
       }
@@ -188,6 +193,22 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
     );
   }
 
+  if (deviceCheck) {
+    return (
+      <DeviceCheckStep
+        rejoin={rejoin}
+        busy={busy}
+        error={error}
+        onBack={() => {
+          setDeviceCheck(false);
+          setError("");
+        }}
+        onClose={onClose}
+        onStart={() => void start()}
+      />
+    );
+  }
+
   if (consent) {
     return (
       <InterviewConsent
@@ -199,7 +220,10 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
           setError("");
         }}
         onClose={onClose}
-        onAgree={() => void start()}
+        onAgree={() => {
+          setError("");
+          setDeviceCheck(true);
+        }}
       />
     );
   }
@@ -237,7 +261,7 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   );
 }
 
-// Shown before every career interview. Agreeing calls the start endpoint.
+// Shown before every career interview. Agreeing moves on to the device check.
 function InterviewConsent({
   companyName,
   busy,
@@ -297,6 +321,152 @@ function InterviewConsent({
       </div>
     </Modal>
   );
+}
+
+// Camera preview, microphone level and a speaker chime. Starting needs a working
+// camera and microphone (the interview is video only); hearing a voice on the
+// meter is encouraged but not required, since a quiet room is fine.
+function DeviceCheckStep({
+  rejoin,
+  busy,
+  error,
+  onStart,
+  onBack,
+  onClose,
+}: {
+  rejoin: boolean;
+  busy: boolean;
+  error: string;
+  onStart: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const { status, stream, level, heardVoice, retry } = useDeviceCheck();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [soundPlayed, setSoundPlayed] = useState(false);
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream;
+  }, [stream]);
+  const ready = status === "ready";
+  const failed = status !== "ready" && status !== "checking";
+  const bars = 12;
+  const lit = Math.round(level * bars);
+
+  return (
+    <Modal onClose={onClose} width={600}>
+      <div className="flex items-start gap-3 pr-6">
+        <span className="w-10 h-10 rounded-full bg-[#eef4ff] text-[#3c77f6] flex items-center justify-center shrink-0">
+          <Video size={20} />
+        </span>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-[#1e232f] text-[20px] font-semibold leading-7" style={{ fontFamily: font.semibold }}>
+            Check your camera and microphone
+          </h2>
+          <p className="text-[#5a6172] text-[14px] leading-5" style={{ fontFamily: font.regular }}>
+            Make sure you can see yourself, the microphone bar moves when you speak, and you can hear the test sound.
+          </p>
+        </div>
+      </div>
+
+      <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-[#1e232f]">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          aria-label="Camera preview"
+          className={`w-full h-full object-cover ${ready ? "" : "invisible"}`}
+          style={{ transform: "scaleX(-1)" }}
+        />
+        {!ready && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
+            {status === "checking" ? (
+              <>
+                <Loader2 size={24} className="animate-spin text-white/80" />
+                <p className="text-white/80 text-[13px]" style={{ fontFamily: font.regular }}>
+                  Waiting for camera and microphone access…
+                </p>
+              </>
+            ) : (
+              <>
+                <p role="alert" className="text-white text-[14px] leading-5" style={{ fontFamily: font.regular }}>
+                  {DEVICE_ERROR_TEXT[status as keyof typeof DEVICE_ERROR_TEXT]}
+                </p>
+                {status !== "unsupported" && <SecondaryButton onClick={retry}>Try again</SecondaryButton>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 text-[13px]" style={{ fontFamily: font.regular }}>
+          <span className="flex items-center gap-2 text-[#5a6172]">
+            <Video size={14} /> Camera
+          </span>
+          <DeviceState ok={ready} failed={failed} />
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[13px]" style={{ fontFamily: font.regular }}>
+          <span className="flex items-center gap-2 text-[#5a6172] shrink-0">
+            <Mic size={14} /> Microphone
+          </span>
+          {ready ? (
+            <span className="flex items-center gap-3">
+              <span className="text-[#7d8699] text-[12px] hidden sm:inline">{heardVoice ? "We can hear you" : "Say something"}</span>
+              <span className="flex items-end gap-[3px] h-4" aria-label="Microphone level">
+                {Array.from({ length: bars }, (_, i) => (
+                  <span
+                    key={i}
+                    className={`w-[4px] rounded-sm transition-colors ${i < lit ? "bg-[#15a560]" : "bg-[#dfe2e8]"}`}
+                    style={{ height: `${40 + (i / bars) * 60}%` }}
+                  />
+                ))}
+              </span>
+            </span>
+          ) : (
+            <DeviceState ok={false} failed={failed} />
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[13px]" style={{ fontFamily: font.regular }}>
+          <span className="flex items-center gap-2 text-[#5a6172]">
+            <Volume2 size={14} /> Speakers
+          </span>
+          <button
+            type="button"
+            onClick={() => setSoundPlayed(playTestSound() || soundPlayed)}
+            className="text-[#3c77f6] font-medium hover:underline"
+            style={{ fontFamily: font.medium }}
+          >
+            {soundPlayed ? "Play again" : "Play test sound"}
+          </button>
+        </div>
+      </div>
+      <p className="text-[#7d8699] text-[12px] leading-normal" style={{ fontFamily: font.regular }}>
+        The interview uses your browser's default camera, microphone and speakers. To use different ones, change them in your browser or system settings, then press Try again.
+      </p>
+
+      {error && <p className="text-[#dc2626] text-[13px]" style={{ fontFamily: font.regular }}>{error}</p>}
+      <div className="flex justify-end gap-3">
+        <SecondaryButton onClick={onBack} disabled={busy}>
+          Back
+        </SecondaryButton>
+        <PrimaryButton onClick={onStart} disabled={!ready || busy}>
+          {busy && <Loader2 size={14} className="animate-spin" />}
+          {rejoin ? "Rejoin interview" : "Start interview"}
+        </PrimaryButton>
+      </div>
+    </Modal>
+  );
+}
+
+function DeviceState({ ok, failed }: { ok: boolean; failed: boolean }) {
+  if (ok)
+    return (
+      <span className="flex items-center gap-1.5 text-[#15a560] font-semibold">
+        <CheckCircle2 size={14} /> Working
+      </span>
+    );
+  return <span className={failed ? "text-[#dc2626] font-semibold" : "text-[#7d8699]"}>{failed ? "Not available" : "Checking…"}</span>;
 }
 
 const RESUME_EXTS = [".pdf", ".doc", ".docx"];

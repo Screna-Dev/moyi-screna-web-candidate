@@ -172,6 +172,18 @@ export async function resendEmployerCode(email: string) {
   await authApi.post('/auth/resend-confirmation-code', { email });
 }
 
+// Forgot password: the same endpoints as candidates (an email belongs to one
+// account only, and a reset issues no token). Step 1 emails a 6-digit code;
+// step 2 sets the new password with it, then the employer signs in as usual
+// via /auth/signin/employer.
+export async function requestEmployerPasswordReset(email: string) {
+  await authApi.post('/auth/forgot-password', { email });
+}
+
+export async function confirmEmployerPasswordReset(email: string, code: string, password: string) {
+  await authApi.post('/auth/confirm-reset-password', { email, confirmationCode: code, password });
+}
+
 export type EmployerSignIn = { accessToken: string; refreshToken: string; isFirstLogin: boolean };
 
 export async function signInEmployer(email: string, password: string): Promise<EmployerSignIn> {

@@ -75,21 +75,39 @@ function apiError(errorCode: string, status = 400, data?: unknown) {
   return err;
 }
 
+// A camera + microphone stream for the device-check step (jsdom has none).
+const getUserMedia = vi.fn();
+function fakeStream() {
+  const track = (kind: string) => ({ kind, stop: vi.fn() });
+  const video = [track('video')];
+  const audio = [track('audio')];
+  return { getVideoTracks: () => video, getAudioTracks: () => audio, getTracks: () => [...video, ...audio] };
+}
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   Object.values(api).forEach((f) => f.mockReset());
+  getUserMedia.mockReset().mockImplementation(async () => fakeStream());
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
 });
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-// Start → authorization step → agree.
-function agreeAndStart() {
+// Start → authorization step → agree → device check → start.
+async function agreeAndStart() {
   fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+  await passDeviceCheck();
+}
+
+async function passDeviceCheck() {
+  const start = await screen.findByRole('button', { name: 'Start interview' });
+  await waitFor(() => expect(start).toBeEnabled());
+  fireEvent.click(start);
 }
 
 // ─── Authorization before every interview ─────────────────────────────────────
@@ -106,6 +124,8 @@ describe('start interview: authorization', () => {
 
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+    expect(api.startCareerInterview).not.toHaveBeenCalled();
+    await passDeviceCheck();
     await waitFor(() => expect(api.startCareerInterview).toHaveBeenCalledTimes(1));
   });
 
@@ -121,11 +141,63 @@ describe('start interview: authorization', () => {
   });
 });
 
+// ─── Camera / microphone check ────────────────────────────────────────────────
+
+describe('start interview: device check', () => {
+  function toDeviceStep() {
+    fireEvent.click(screen.getByRole('button', { name: 'Start AI interview' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree and continue' }));
+  }
+
+  it('comes after the authorization, captures camera + mic, and starts only from here', async () => {
+    api.startCareerInterview.mockResolvedValueOnce(session);
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    toDeviceStep();
+    expect(screen.getByText('Check your camera and microphone')).toBeInTheDocument();
+    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.anything(), video: expect.anything() }));
+    expect(await screen.findAllByText('Working')).toHaveLength(1);
+    expect(api.startCareerInterview).not.toHaveBeenCalled();
+    await passDeviceCheck();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/opportunities/applications/app-1/interview', expect.anything()));
+  });
+
+  it('blocked permission: explains, keeps start disabled, and Try again asks again', async () => {
+    getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }));
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    toDeviceStep();
+    expect(await screen.findByText(/Camera or microphone access is blocked/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start interview' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start interview' })).toBeEnabled());
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(api.startCareerInterview).not.toHaveBeenCalled();
+  });
+
+  it('no camera found: says so', async () => {
+    getUserMedia.mockRejectedValueOnce(Object.assign(new Error('none'), { name: 'NotFoundError' }));
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    toDeviceStep();
+    expect(await screen.findByText(/couldn't find a camera or microphone/)).toBeInTheDocument();
+  });
+
+  it('stops the test stream when leaving, and Back returns to the authorization', async () => {
+    const stream = fakeStream();
+    getUserMedia.mockResolvedValueOnce(stream);
+    render(<StartInterviewDialog app={app()} onClose={() => {}} />);
+    toDeviceStep();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start interview' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('Before your interview')).toBeInTheDocument();
+    stream.getTracks().forEach((t) => expect(t.stop).toHaveBeenCalled());
+  });
+});
+
 describe('start interview: consent fields (#304)', () => {
   it('sends consentAccepted and the version with the start, and with the retry after a resume upload', async () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('RESUME_REQUIRED')).mockResolvedValueOnce(session);
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
-    agreeAndStart();
+    await agreeAndStart();
     await waitFor(() => expect(api.startCareerInterview).toHaveBeenCalledWith('app-1', { acceptSelfPay: false, consentVersion: CONSENT_VERSION }));
     const input = await waitFor(() => document.querySelector('input[type=file]') as HTMLInputElement);
     fireEvent.change(input, { target: { files: [new File(['x'], 'cv.pdf', { type: 'application/pdf' })] } });
@@ -136,7 +208,7 @@ describe('start interview: consent fields (#304)', () => {
   it('INTERVIEW_CONSENT_REQUIRED goes back to the consent step', async () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('INTERVIEW_CONSENT_REQUIRED'));
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText('Please review and agree to the interview terms to continue.')).toBeInTheDocument();
     expect(screen.getByText('Before your interview')).toBeInTheDocument();
   });
@@ -154,7 +226,7 @@ describe('start interview: RESUME_REQUIRED', () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('RESUME_REQUIRED')).mockResolvedValueOnce(session);
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
 
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText('Upload your resume again')).toBeInTheDocument();
     expect(screen.getByText(/Nothing was charged/)).toBeInTheDocument();
 
@@ -175,7 +247,7 @@ describe('start interview: sponsorship ran out', () => {
       .mockResolvedValueOnce(session);
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
 
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText('Sponsored interviews have run out')).toBeInTheDocument();
     expect(screen.getByText('1 interview (4 left)')).toBeInTheDocument();
     expect(api.startCareerInterview).toHaveBeenLastCalledWith('app-1', { acceptSelfPay: false, consentVersion: CONSENT_VERSION });
@@ -189,7 +261,7 @@ describe('start interview: sponsorship ran out', () => {
   it('with none left, skips the confirmation and shows how to get more', async () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('SELF_PAY_CONFIRMATION_REQUIRED', 409, { interviewsRequired: 1, interviewsAvailable: 0 }));
     render(<StartInterviewDialog app={app()} onClose={() => {}} />);
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText("You've used this month's interviews")).toBeInTheDocument();
     expect(screen.queryByText('Sponsored interviews have run out')).not.toBeInTheDocument();
   });
@@ -208,7 +280,7 @@ describe('start interview: no interviews left', () => {
   it('Free: says when new interviews arrive and points at the Pro plans', async () => {
     api.startCareerInterview.mockRejectedValueOnce(apiError('INSUFFICIENT_INTERVIEW_QUOTA', 403, { plan: 'FREE', available: 0, resetsAt: '2026-12-01T00:00:00Z' }));
     render(<StartInterviewDialog app={app({ interviewPayer: 'CANDIDATE' })} onClose={() => {}} />);
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText("You've used this month's interviews")).toBeInTheDocument();
     expect(screen.getByText('Dec 1, 2026')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'See Pro plans' }));
@@ -219,7 +291,7 @@ describe('start interview: no interviews left', () => {
     quota.startQuotaCheckout.mockReturnValue(new Promise(() => {}));
     api.startCareerInterview.mockRejectedValueOnce(apiError('INSUFFICIENT_INTERVIEW_QUOTA', 403, { plan: 'PRO', available: 0 }));
     render(<StartInterviewDialog app={app({ interviewPayer: 'CANDIDATE' })} onClose={() => {}} />);
-    agreeAndStart();
+    await agreeAndStart();
     expect(await screen.findByText("You're out of interviews")).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Buy more interviews' }));
     await waitFor(() => expect(quota.startQuotaCheckout).toHaveBeenCalledWith('interview-add-on'));
@@ -232,7 +304,7 @@ describe('start interview: no interviews left', () => {
     expect(screen.queryByText('Voice interview')).not.toBeInTheDocument();
     expect(screen.queryByText('Video interview')).not.toBeInTheDocument();
     expect(screen.getByText(/It's a video interview/)).toBeInTheDocument();
-    agreeAndStart();
+    await agreeAndStart();
     await waitFor(() => expect(api.startCareerInterview).toHaveBeenCalledWith('app-1', { acceptSelfPay: true, consentVersion: CONSENT_VERSION }));
   });
 });

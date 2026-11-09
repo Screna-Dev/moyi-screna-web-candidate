@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Calendar, Check, Info, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowRight, Calendar, Check, Info, PencilLine, RefreshCw, Sparkles } from 'lucide-react';
 import type { AfterSponsorshipLimit, InterviewSponsor, Job, Sponsorship } from '@/components/admin/console/pages/employer/types';
 import { Button, Card, TextArea, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import { ErrorHint } from '@/components/admin/console/pages/employer/views/wizard/shared';
@@ -108,6 +108,111 @@ export function JdAutofillCard({
           {loading ? 'Reading…' : 'Autofill'}
         </Button>
         {error && <span className="text-[13px] text-[#dc2626]">{error}</span>}
+      </div>
+    </Card>
+  );
+}
+
+// ─── Before step 1 (new jobs): how to fill the job ──────────────────────────
+
+// No design yet: two choice cards in the wizard's style. AI goes to the job
+// description intake (one paste fills step 1, then the interview is drafted);
+// step by step goes to the empty step 1 form.
+export function CreateJobStart({ onAi, onManual }: { onAi: () => void; onManual: () => void }) {
+  const option = (props: { title: string; body: string; badge?: string; icon: ReactNode; onClick: () => void }) => (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className="group flex-1 min-w-[260px] text-left rounded-2xl border border-[#e1e4ea] bg-white p-6 flex flex-col gap-3 hover:border-[#3c77f6] hover:shadow-[0px_8px_24px_rgba(60,119,246,0.08)] transition-all"
+    >
+      <span className="flex items-center justify-between">
+        <span className="w-10 h-10 rounded-full bg-[#eef4ff] text-[#3c77f6] flex items-center justify-center">{props.icon}</span>
+        {props.badge && <span className="rounded-full bg-[#eef4ff] text-[#3c77f6] text-[12px] font-semibold px-2.5 py-0.5">{props.badge}</span>}
+      </span>
+      <span className="text-[16px] font-semibold text-[#1e232f]">{props.title}</span>
+      <span className="text-[13px] leading-5 text-[#5a6172]">{props.body}</span>
+      <span className="mt-auto pt-1 flex items-center gap-1 text-[13px] font-semibold text-[#3c77f6]">
+        Continue <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </button>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-[#1e232f] text-[18px] font-semibold leading-7">How do you want to create this job?</h2>
+        <p className="text-[#5a6172] text-[13px]">You review everything before publishing either way.</p>
+      </div>
+      <div className="flex flex-wrap gap-4">
+        {option({
+          title: 'Fill everything with AI',
+          body: 'Paste your job description. AI fills in the job details and drafts the interview questions for you to review.',
+          badge: 'Fastest',
+          icon: <Sparkles size={18} />,
+          onClick: onAi,
+        })}
+        {option({
+          title: 'Fill it in step by step',
+          body: 'Enter the job details yourself, then build the interview. AI suggestions are still available on the interview step.',
+          icon: <PencilLine size={18} />,
+          onClick: onManual,
+        })}
+      </div>
+    </div>
+  );
+}
+
+// The AI path's first screen: one paste fills step 1.
+export function AiJobIntake({
+  text,
+  onText,
+  onFill,
+  onBack,
+  onManual,
+  loading,
+  error,
+}: {
+  text: string;
+  onText: (text: string) => void;
+  onFill: () => void;
+  onBack: () => void;
+  onManual: () => void;
+  loading: boolean;
+  error: string;
+}) {
+  return (
+    <Card className="p-6 flex flex-col gap-4">
+      <div>
+        <h2 className="text-[#1e232f] text-[18px] font-semibold leading-7">Paste your job description</h2>
+        <p className="text-[13px] text-[#5a6172] mt-0.5">
+          Include the title, location, responsibilities and requirements. AI fills in the job details, then drafts the interview from them.
+        </p>
+      </div>
+      <TextArea
+        rows={12}
+        aria-label="Paste job description"
+        maxLength={JD_TEXT_MAX}
+        value={text}
+        disabled={loading}
+        onChange={(e) => onText(e.target.value)}
+        placeholder="e.g. Staff Platform Engineer — Run the platform that…"
+      />
+      {loading && <p className="text-[13px] text-[#5a6172]">Reading the job description. This can take up to a minute.</p>}
+      {error && (
+        <p className="text-[13px] text-[#dc2626]">
+          {error}{' '}
+          <button type="button" className="font-semibold text-[#3c77f6] hover:underline" onClick={onManual}>
+            Fill it in step by step instead
+          </button>
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="ghost" disabled={loading} onClick={onBack}>
+          Back
+        </Button>
+        <Button variant="primary" disabled={loading || !text.trim()} onClick={onFill}>
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {loading ? 'Filling in…' : 'Fill with AI'}
+        </Button>
       </div>
     </Card>
   );

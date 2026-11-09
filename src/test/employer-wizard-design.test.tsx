@@ -54,6 +54,7 @@ beforeEach(() => {
 describe('step 1: application window', () => {
   it('a new job shows the window in Role information, opening today and closing 7 days later', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     // Section heading + the summary card's row.
     expect(screen.getAllByText('Application window')).toHaveLength(2);
     expect(screen.getByText('Choose when candidates can apply. The closing date defaults to 7 days after the opening date.')).toBeInTheDocument();
@@ -65,6 +66,7 @@ describe('step 1: application window', () => {
 
   it('drops the fields the design removed', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     expect(screen.queryByText('HR contact number')).not.toBeInTheDocument();
     expect(screen.queryByText('Time zone')).not.toBeInTheDocument();
     expect(screen.queryByText('Maximum applicants')).not.toBeInTheDocument();
@@ -72,6 +74,7 @@ describe('step 1: application window', () => {
 
   it('moving the opening date carries the default closing date along', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     const opens = addDays(dateInput('Opening date').value, 2);
     fireEvent.change(dateInput('Opening date'), { target: { value: opens } });
     expect(dateInput('Closing date').value).toBe(addDays(opens, 7));
@@ -79,6 +82,7 @@ describe('step 1: application window', () => {
 
   it('keeps a closing date the employer picked', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     const start = dateInput('Opening date').value;
     fireEvent.change(dateInput('Closing date'), { target: { value: addDays(start, 20) } });
     fireEvent.change(dateInput('Opening date'), { target: { value: addDays(start, 1) } });
@@ -108,6 +112,7 @@ describe('step 1: application window', () => {
 
   it('the closing picker only offers 3 days to 1 month after opening', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     const opens = dateInput('Opening date').value;
     expect(dateInput('Closing date').min).toBe(addDays(opens, 3));
     expect(dateInput('Closing date').max).toBe(addMonths(opens, 1));
@@ -115,6 +120,7 @@ describe('step 1: application window', () => {
 
   it('moving the opening date past a picked closing date resets it to +7 days', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     const start = dateInput('Opening date').value;
     fireEvent.change(dateInput('Closing date'), { target: { value: addDays(start, 20) } });
     fireEvent.change(dateInput('Opening date'), { target: { value: addDays(start, 19) } });

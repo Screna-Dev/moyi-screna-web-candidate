@@ -7,9 +7,12 @@ import { mockCompanies } from '@/components/admin/console/pages/employer/mockDat
 import { EmployerJobWizard } from '@/pages/employer/EmployerJobWizard';
 import { apiJob, check } from './employer-fixtures';
 
-// JD autofill on step 1 (backend #307, AI checklist F1–F3): paste a job
-// description, fill only the empty fields, and carry the fields the form has
-// no input for into the next details save.
+// JD autofill (backend #307, AI checklist F1–F3): paste a job description,
+// fill only the empty fields, and carry the fields the form has no input for
+// into the next details save. A new job starts with a choice: "Fill everything
+// with AI" opens the intake (one paste fills step 1, then on to the interview
+// when step 1 is complete); "step by step" opens step 1 without the JD card.
+// Existing drafts keep the card on step 1.
 
 vi.mock('@/components/admin/console/pages/employer/store', async (orig) => ({
   ...(await orig<object>()),
@@ -27,6 +30,8 @@ vi.mock('@/pages/employer/employerApi', async (orig) => ({
   saveJobDetails: vi.fn(),
   createJob: vi.fn(),
   parseJobDescription: vi.fn(),
+  suggestCriteria: vi.fn(),
+  suggestQuestions: vi.fn(),
 }));
 
 const api = vi.mocked(employerApi);
@@ -55,10 +60,20 @@ const PREFILL: JdPrefill = {
 const FAIL = "Couldn't read this job description. Please fill the form manually.";
 const box = () => screen.getByLabelText('Paste job description');
 
+// Step 1's card (existing drafts, or after the AI intake).
 function paste(text = 'Staff Platform Engineer\nRun the platform that…') {
   fireEvent.change(box(), { target: { value: text } });
   fireEvent.click(screen.getByRole('button', { name: /Autofill/ }));
 }
+
+// New job → "Fill everything with AI" → paste on the intake.
+function aiIntake(text = 'Staff Platform Engineer\nRun the platform that…') {
+  fireEvent.click(screen.getByRole('button', { name: /Fill everything with AI/ }));
+  fireEvent.change(box(), { target: { value: text } });
+  fireEvent.click(screen.getByRole('button', { name: /Fill with AI/ }));
+}
+
+const draftJob = () => apiJob({ wizardStep: 1, location: '', roleOverview: '', title: 'Platform Lead', responsibilities: [], requirements: [], salaryMin: null, salaryMax: null });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -66,57 +81,41 @@ beforeEach(() => {
   api.getPublishCheck.mockResolvedValue(check());
 });
 
-describe('JD autofill', () => {
-  it('sends the title and location already on the form', async () => {
-    api.parseJobDescription.mockResolvedValue(PREFILL);
+describe('create job: choose how to fill it', () => {
+  it('a new job opens on the choice, not the form', () => {
     render(<EmployerJobWizard />);
-    fireEvent.change(screen.getByPlaceholderText('e.g. Backend Engineer'), { target: { value: 'Platform Lead' } });
-    fireEvent.change(screen.getByPlaceholderText('e.g. Chicago, Illinois'), { target: { value: 'Remote (US)' } });
-    paste('  JD text  ');
-    await waitFor(() => expect(api.parseJobDescription).toHaveBeenCalled());
-    expect(api.parseJobDescription.mock.calls[0][0]).toEqual({ jdText: 'JD text', title: 'Platform Lead', location: 'Remote (US)' });
+    expect(screen.getByText('How do you want to create this job?')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('e.g. Backend Engineer')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument();
   });
 
-  it('fills only empty fields and keeps what the employer typed', async () => {
-    api.parseJobDescription.mockResolvedValue(PREFILL);
+  it('step by step opens step 1 without the JD card, and Back returns to the choice', () => {
     render(<EmployerJobWizard />);
-    fireEvent.change(screen.getByPlaceholderText('e.g. Backend Engineer'), { target: { value: 'Platform Lead' } });
-    paste();
-    await waitFor(() => expect(screen.getByDisplayValue('Own the platform that every team ships on.')).toBeInTheDocument());
-    expect(screen.getByDisplayValue('Platform Lead')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('Staff Platform Engineer')).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('12,000')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Run the clusters')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
+    expect(screen.getByPlaceholderText('e.g. Backend Engineer')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Paste job description')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('How do you want to create this job?')).toBeInTheDocument();
   });
 
-  it('fills the location when the response has one and the field is empty', async () => {
-    api.parseJobDescription.mockResolvedValue({ ...PREFILL, location: 'Austin, TX' });
-    render(<EmployerJobWizard />);
-    paste();
-    await waitFor(() => expect(screen.getByDisplayValue('Austin, TX')).toBeInTheDocument());
+  it('an existing draft skips the choice', async () => {
+    api.getJob.mockResolvedValue(apiJob({ wizardStep: 1 }));
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
+    expect(screen.queryByText('How do you want to create this job?')).not.toBeInTheDocument();
   });
+});
 
-  it('keeps a location the employer typed', async () => {
-    api.parseJobDescription.mockResolvedValue({ ...PREFILL, location: 'Austin, TX' });
-    render(<EmployerJobWizard />);
-    fireEvent.change(screen.getByPlaceholderText('e.g. Chicago, Illinois'), { target: { value: 'Remote (US)' } });
-    paste();
-    await waitFor(() => expect(screen.getByDisplayValue('Own the platform that every team ships on.')).toBeInTheDocument());
-    expect(screen.getByDisplayValue('Remote (US)')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('Austin, TX')).not.toBeInTheDocument();
-  });
-
-  it('creates the draft with the fields the form has no input for', async () => {
-    api.parseJobDescription.mockResolvedValue(PREFILL);
+describe('AI intake (new job)', () => {
+  it('complete details: creates the draft with every autofilled field and moves on to the interview', async () => {
+    api.parseJobDescription.mockResolvedValue({ ...PREFILL, location: 'Remote (US)' });
     api.createJob.mockImplementation(async (body) => apiJob({ ...body, wizardStep: 1 }));
+    api.suggestCriteria.mockReturnValue(new Promise(() => {}));
     render(<EmployerJobWizard />);
-    fireEvent.change(screen.getByPlaceholderText('e.g. Chicago, Illinois'), { target: { value: 'Remote (US)' } });
-    paste();
-    await waitFor(() => expect(screen.getByDisplayValue('Staff Platform Engineer')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    aiIntake('  JD text  ');
     await waitFor(() => expect(api.createJob).toHaveBeenCalled());
-    const body = api.createJob.mock.calls[0][0];
-    expect(body).toMatchObject({
+    expect(api.parseJobDescription.mock.calls[0][0]).toEqual({ jdText: 'JD text', title: undefined, location: undefined });
+    expect(api.createJob.mock.calls[0][0]).toMatchObject({
       title: 'Staff Platform Engineer',
       employmentType: 'CONTRACT',
       workplaceType: 'REMOTE',
@@ -133,6 +132,85 @@ describe('JD autofill', () => {
       summary: 'Run the platform.',
       benefits: ['Equity'],
     });
+    expect(await screen.findByText('Generating the interview from the job details…')).toBeInTheDocument();
+    expect(api.suggestCriteria).toHaveBeenCalledWith('job-1');
+  });
+
+  it('missing details: opens step 1 with what was found and marks what is missing, saving nothing', async () => {
+    api.parseJobDescription.mockResolvedValue(PREFILL);
+    render(<EmployerJobWizard />);
+    aiIntake();
+    expect(await screen.findByText(/AI filled in what it found/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Staff Platform Engineer')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Own the platform that every team ships on.')).toBeInTheDocument();
+    expect(api.createJob).not.toHaveBeenCalled();
+    // Back from step 1 returns to the intake with the text kept.
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(box()).toHaveValue('Staff Platform Engineer\nRun the platform that…');
+  });
+
+  it('failure: one message, stays on the intake, and offers step by step', async () => {
+    api.parseJobDescription.mockRejectedValue(new Error('TOO_MANY_REQUESTS'));
+    render(<EmployerJobWizard />);
+    aiIntake();
+    expect(await screen.findByText(FAIL)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step instead/ }));
+    expect(screen.getByPlaceholderText('e.g. Backend Engineer')).toHaveValue('');
+  });
+
+  it('nothing found: says so and stays on the intake', async () => {
+    api.parseJobDescription.mockResolvedValue({ ...PREFILL, title: '', employmentType: null, workplaceType: null, seniority: null, role: '', yearsExperienceMin: null, skills: [], salaryMin: null, salaryMax: null, summary: '', roleOverview: '', responsibilities: [], requirements: [], benefits: [] } as unknown as JdPrefill);
+    render(<EmployerJobWizard />);
+    aiIntake();
+    expect(await screen.findByText(/couldn't find job details in this text/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fill with AI/ })).toBeInTheDocument();
+  });
+});
+
+describe('JD card on step 1 (existing drafts)', () => {
+  it('sends the title and location already on the form', async () => {
+    api.getJob.mockResolvedValue(draftJob());
+    api.parseJobDescription.mockResolvedValue(PREFILL);
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText('e.g. Chicago, Illinois'), { target: { value: 'Remote (US)' } });
+    paste('  JD text  ');
+    await waitFor(() => expect(api.parseJobDescription).toHaveBeenCalled());
+    expect(api.parseJobDescription.mock.calls[0][0]).toEqual({ jdText: 'JD text', title: 'Platform Lead', location: 'Remote (US)' });
+  });
+
+  it('fills only empty fields and keeps what the employer typed', async () => {
+    api.getJob.mockResolvedValue(draftJob());
+    api.parseJobDescription.mockResolvedValue(PREFILL);
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
+    paste();
+    await waitFor(() => expect(screen.getByDisplayValue('Own the platform that every team ships on.')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('Platform Lead')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Staff Platform Engineer')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('12,000')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Run the clusters')).toBeInTheDocument();
+  });
+
+  it('fills the location when the response has one and the field is empty', async () => {
+    api.getJob.mockResolvedValue(draftJob());
+    api.parseJobDescription.mockResolvedValue({ ...PREFILL, location: 'Austin, TX' });
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
+    paste();
+    await waitFor(() => expect(screen.getByDisplayValue('Austin, TX')).toBeInTheDocument());
+  });
+
+  it('keeps a location the employer typed', async () => {
+    api.getJob.mockResolvedValue(draftJob());
+    api.parseJobDescription.mockResolvedValue({ ...PREFILL, location: 'Austin, TX' });
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText('e.g. Chicago, Illinois'), { target: { value: 'Remote (US)' } });
+    paste();
+    await waitFor(() => expect(screen.getByDisplayValue('Own the platform that every team ships on.')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('Remote (US)')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Austin, TX')).not.toBeInTheDocument();
   });
 
   it("a saved draft's non-empty values win over the autofill", async () => {
@@ -150,8 +228,10 @@ describe('JD autofill', () => {
   });
 
   it('shows one message on failure and leaves the form alone', async () => {
+    api.getJob.mockResolvedValue(draftJob());
     api.parseJobDescription.mockRejectedValue(new Error('TOO_MANY_REQUESTS'));
-    render(<EmployerJobWizard />);
+    render(<EmployerJobWizard jobId="job-1" />);
+    await waitFor(() => expect(box()).toBeInTheDocument());
     paste();
     expect(await screen.findByText(FAIL)).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Staff Platform Engineer')).not.toBeInTheDocument();
@@ -166,6 +246,7 @@ describe('JD autofill', () => {
 
   it('role overview allows 5000 characters (F3)', () => {
     render(<EmployerJobWizard />);
+    fireEvent.click(screen.getByRole('button', { name: /Fill it in step by step/ }));
     expect(screen.getByText('0 / 5000 chars')).toBeInTheDocument();
   });
 });

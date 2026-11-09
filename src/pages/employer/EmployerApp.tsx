@@ -157,30 +157,42 @@ function OrgProvider({ children }: { children: ReactNode }) {
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
-// Design labels (Unlocks / Sponsored) with real balances from GET
-// /employer/credits: unlocks = Report Credits, sponsored = Interview Credits.
-// The plan tier is still mock. null = not loaded (or failed), shown as a dash.
-const countOf = (n: number | undefined) => (n === undefined ? '—' : n);
+// Design labels (Unlocks / Sponsored) = what the employer can still spend:
+// credits (GET /employer/credits: unlocks = Report Credits, sponsored =
+// Interview Credits) plus, on Business, what's left of this month's allowance
+// (GET /employer/plan; interviews in progress are held against it). Without
+// the allowance an upgrade wouldn't move these numbers, since subscribing
+// grants allowance, not credits. Credits not loaded (or failed) = a dash.
+function leftOf(credits: CreditBalances | null, plan: EmployerPlan | null | undefined, kind: 'interview' | 'report'): number | string {
+  if (!credits) return '—';
+  const a = plan?.plan === 'BUSINESS' ? plan.allowance : null;
+  const allowance = !a ? 0 : kind === 'report' ? a.reports.included - a.reports.used : a.interviews.included - a.interviews.used - a.interviews.held;
+  return credits[kind] + Math.max(0, allowance);
+}
 
-function CurrentPlanCard({ credits }: { credits: CreditBalances | null }) {
-  const { plan, go } = useEmployerStore();
+type Balances = { credits: CreditBalances | null; plan?: EmployerPlan | null };
+
+function CurrentPlanCard({ credits, plan }: Balances) {
+  const { plan: mockPlan, go } = useEmployerStore();
+  // The real tier once /employer/plan answered; the mock store's otherwise.
+  const business = plan ? plan.plan === 'BUSINESS' : mockPlan.tier === 'business';
   return (
     <div className="m-3 rounded-2xl bg-[rgba(60,119,246,0.08)] p-4 flex flex-col gap-2.5">
       <div className="flex items-center gap-1.5">
         <CreditCard size={14} className="text-[#3c77f6]" />
         <span className="text-[13px] leading-[19.5px] font-semibold text-[#1e232f]">Current Plan</span>
         <span className="px-1.5 py-0.5 rounded bg-[rgba(60,119,246,0.12)] text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">
-          {plan.tier === 'business' ? 'Business' : 'Free'}
+          {business ? 'Business' : 'Free'}
         </span>
       </div>
       <div className="flex flex-col gap-1 text-[12px] leading-[18px]">
         <div className="flex justify-between">
           <span className="text-[#5a6172]">Unlocks</span>
-          <span className="font-bold text-[#1e232f]">{countOf(credits?.report)} left</span>
+          <span className="font-bold text-[#1e232f]">{leftOf(credits, plan, 'report')} left</span>
         </div>
         <div className="flex justify-between">
           <span className="text-[#5a6172]">Sponsored</span>
-          <span className="font-bold text-[#1e232f]">{countOf(credits?.interview)} left</span>
+          <span className="font-bold text-[#1e232f]">{leftOf(credits, plan, 'interview')} left</span>
         </div>
       </div>
       <div className="h-px bg-[rgba(60,119,246,0.15)]" />
@@ -191,16 +203,16 @@ function CurrentPlanCard({ credits }: { credits: CreditBalances | null }) {
   );
 }
 
-function UsageBadges({ credits }: { credits: CreditBalances | null }) {
+function UsageBadges({ credits, plan }: Balances) {
   const { go } = useEmployerStore();
   const badge = 'px-2.5 py-[3px] rounded-full bg-[#eef2ff] text-[12px] leading-[18px] font-semibold text-[#2e5bff] whitespace-nowrap hover:bg-[#e0e7ff]';
   return (
     <div className="hidden sm:flex items-center gap-2">
       <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
-        Unlocks {countOf(credits?.report)} left
+        Unlocks {leftOf(credits, plan, 'report')} left
       </button>
       <button type="button" className={badge} onClick={() => go({ name: 'plan' })}>
-        Sponsored {countOf(credits?.interview)} left
+        Sponsored {leftOf(credits, plan, 'interview')} left
       </button>
     </div>
   );
@@ -253,7 +265,7 @@ function Shell({ session }: { session: EmployerSession }) {
   const title = view.name === 'board' ? 'Candidates' : TITLES[active];
   const newCount = useNewApplicationsCount(view.name);
   const creditsState = useCredits(view.name);
-  const { credits } = creditsState;
+  const { credits, plan } = creditsState;
   useCheckoutReturn();
   useBusinessIntent();
 
@@ -294,7 +306,7 @@ function Shell({ session }: { session: EmployerSession }) {
             <NavItem icon={<CircleHelp size={16} />} label="Help Center" active={false} onClick={() => setGuideOpen(true)} />
           </NavGroup>
         </nav>
-        <CurrentPlanCard credits={credits} />
+        <CurrentPlanCard credits={credits} plan={plan} />
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
@@ -321,7 +333,7 @@ function Shell({ session }: { session: EmployerSession }) {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-6">
-            <UsageBadges credits={credits} />
+            <UsageBadges credits={credits} plan={plan} />
             <button type="button" onClick={() => setGuideOpen(true)} className="hidden sm:block text-[14px] font-medium text-[#5a6172] hover:text-[#1e232f]">
               Help
             </button>

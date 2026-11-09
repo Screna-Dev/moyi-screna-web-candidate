@@ -62,7 +62,7 @@ import {
 } from './jobMapping';
 import { FIELD_LABELS } from './orgOptions';
 import { useOrgIfAny } from './orgContext';
-import { ApplicationWindowSection, JdAutofillCard, SponsorshipCard } from './wizardSections';
+import { AiJobIntake, ApplicationWindowSection, CreateJobStart, JdAutofillCard, SponsorshipCard } from './wizardSections';
 import { EditSponsorshipDialog } from './JobLifecycleDialogs';
 import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 
@@ -90,6 +90,13 @@ import { sponsorshipErrors, windowSectionErrors } from './wizardRules';
 // (seniority, role, experience, skills, summary, benefits, a MONTH/WEEK/DAY
 // pay period) wait in `prefill` and go out with the next details save, where
 // the saved draft's non-empty values win.
+//
+// A new job starts with a choice (CreateJobStart): "Fill everything with AI"
+// opens the job description intake, whose one paste fills step 1 and, when
+// step 1 is then complete, saves it and moves to step 2, where the interview
+// is drafted as on any first visit (otherwise step 1 opens with the missing
+// fields marked). "Step by step" opens the empty step 1 without the JD card.
+// Existing drafts skip the choice and keep the JD card on step 1.
 //
 // Nothing saves while typing; a step saves when the employer leaves it or
 // presses Save draft. Published jobs open the same wizard as "Edit job": the
@@ -212,6 +219,17 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   const [jdLoading, setJdLoading] = useState(false);
   const [jdError, setJdError] = useState('');
   const [prefill, setPrefill] = useState<Partial<HiddenDetails> | null>(null);
+  // New jobs: choose → (AI intake) → form. path: what was chosen.
+  const [entry, setEntry] = useState<'choose' | 'ai' | 'form'>(jobId ? 'form' : 'choose');
+  const [path, setPath] = useState<'ai' | 'manual' | null>(null);
+  // Runs once per AI intake fill, after the render that holds the filled form.
+  const [advanceAfterFill, setAdvanceAfterFill] = useState(false);
+  const afterFill = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!advanceAfterFill) return;
+    setAdvanceAfterFill(false);
+    afterFill.current?.();
+  }, [advanceAfterFill]);
   const jdAbort = useRef<AbortController | null>(null);
   useEffect(() => () => jdAbort.current?.abort(), []);
   // The form when the result arrives, not when the request went out.
@@ -639,7 +657,8 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
   };
 
   // FAILED, timeout, 429, 503 and a backend without the endpoint all read the same.
-  const autofill = async () => {
+  // fromIntake: the AI path's first screen; on success open step 1 and try to move on.
+  const autofill = async (fromIntake = false) => {
     const text = jdText.trim();
     if (!text || jdLoading) return;
     jdAbort.current?.abort();
@@ -653,9 +672,16 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       const form = jobRef.current;
       if (ctrl.signal.aborted || !form) return;
       const { patch, hidden, filled } = applyPrefill(form, result, newJob(company.id));
+      if (fromIntake && !filled) {
+        setJdError("We couldn't find job details in this text. Paste the full job description and try again.");
+        return;
+      }
       update(patch);
       setPrefill((p) => ({ ...p, ...hidden }));
-      toast(filled ? 'Filled in from the job description. Review every field before you continue.' : 'The form already has these details. Nothing was changed.');
+      if (fromIntake) {
+        setEntry('form');
+        setAdvanceAfterFill(true);
+      } else toast(filled ? 'Filled in from the job description. Review every field before you continue.' : 'The form already has these details. Nothing was changed.');
     } catch {
       if (!ctrl.signal.aborted) setJdError("Couldn't read this job description. Please fill the form manually.");
     } finally {
@@ -665,6 +691,56 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
       }
     }
   };
+
+  // After the AI intake filled the form: complete → save step 1 and go draft
+  // the interview; otherwise mark what's missing.
+  afterFill.current = () => {
+    if (valid(0)) {
+      toast('Job details filled in from your description. You can review them any time in step 1.');
+      void goStep(1);
+    } else setErrorsStep(0);
+  };
+
+  const chooseManual = () => {
+    setPath('manual');
+    setEntry('form');
+    setJdError('');
+  };
+
+  // New jobs: the choice and the AI intake replace the stepper until step 1 opens.
+  const chooser =
+    entry === 'form' ? null : entry === 'choose' ? (
+      <>
+        <CreateJobStart
+          onAi={() => {
+            setPath('ai');
+            setEntry('ai');
+          }}
+          onManual={chooseManual}
+        />
+        <div>
+          {/* Nothing is saved before step 1. */}
+          <Button variant="ghost" onClick={() => go({ name: 'jobs' })}>
+            Cancel
+          </Button>
+        </div>
+      </>
+    ) : (
+      <AiJobIntake
+        text={jdText}
+        onText={setJdText}
+        onFill={() => void autofill(true)}
+        onBack={() => {
+          jdAbort.current?.abort();
+          setJdLoading(false);
+          setJdError('');
+          setEntry('choose');
+        }}
+        onManual={chooseManual}
+        loading={jdLoading}
+        error={jdError}
+      />
+    );
 
   const stepProps = { job, update, showErrors: errorsStep === step, company, ai };
   // Published employer-paid jobs: PUT sponsorship can still raise the limit (#299).
@@ -688,6 +764,7 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
           <h1 className="text-[#1e232f] text-[26px] font-semibold leading-8 tracking-tight">{draft ? 'Create a new job' : 'Edit job'}</h1>
           <p className="text-[#5a6172] text-[14px]">Add the role, review the AI-generated interview, and publish when everything looks right.</p>
         </div>
+        {!chooser && (
         <div className="flex items-center gap-4 shrink-0 mt-1.5">
           {busy ? (
             <span className="text-[13px] text-[#9ba1b0]">{busy}</span>
@@ -704,7 +781,13 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
             Save and exit
           </Button>
         </div>
+        )}
       </div>
+
+      {chooser}
+
+      {!chooser && (
+      <>
 
       {/* Stepper */}
       <ol className="flex items-center gap-3">
@@ -743,7 +826,20 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
             <StepJobDetails
               {...stepProps}
               showPhone={false}
-              autofill={draft && <JdAutofillCard text={jdText} onText={setJdText} onAutofill={() => void autofill()} loading={jdLoading} error={jdError} />}
+              autofill={
+                draft &&
+                path !== 'manual' && (
+                  <>
+                    {path === 'ai' && errorsStep === 0 && (
+                      <div className="flex items-start gap-2 rounded-xl border border-[#bfd2f6] bg-[#f8fbff] px-4 py-3 text-[14px] text-[#3c77f6]">
+                        <Sparkles size={16} className="shrink-0 mt-0.5" />
+                        AI filled in what it found in your job description. Complete the highlighted fields, then continue: the interview is drafted next.
+                      </div>
+                    )}
+                    <JdAutofillCard text={jdText} onText={setJdText} onAutofill={() => void autofill()} loading={jdLoading} error={jdError} />
+                  </>
+                )
+              }
               windowSection={
                 <ApplicationWindowSection
                   job={job}
@@ -830,8 +926,18 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
 
       {/* Footer */}
       <div className="sticky bottom-0 -mx-8 px-8 py-3 bg-white border-t border-[#e5e7eb] flex items-center gap-2 z-[20]">
-        <Button variant="ghost" disabled={!!busy} onClick={() => (step === 0 ? onLeave() : void goStep(step - 1))}>
-          {step === 0 ? 'Cancel' : 'Back'}
+        {/* A new job not saved yet goes back to the choice (or the AI intake). */}
+        <Button
+          variant="ghost"
+          disabled={!!busy}
+          onClick={() => {
+            if (step > 0) return void goStep(step - 1);
+            if (api || !path) return onLeave();
+            setErrorsStep(null);
+            setEntry(path === 'ai' ? 'ai' : 'choose');
+          }}
+        >
+          {step > 0 || (!api && path) ? 'Back' : 'Cancel'}
         </Button>
         <div className="ml-auto flex items-center gap-2">
           <Button disabled={!!busy} onClick={() => void saveDraft(false)}>
@@ -858,6 +964,9 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
           )}
         </div>
       </div>
+
+      </>
+      )}
 
       {/* Leave without saving */}
       <Dialog

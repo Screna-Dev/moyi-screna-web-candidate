@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Eye, EyeOff, Loader2, Mail } from 'lucide-react';
+import { ArrowLeft, Building2, Eye, EyeOff, KeyRound, Loader2, Mail } from 'lucide-react';
 import { Button, Field, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import {
   AUTH_EMAIL_ALREADY_REGISTERED,
@@ -11,10 +11,12 @@ import {
   authErrorMessage,
   checkCompanyEmail,
   companyNameFromDomain,
+  confirmEmployerPasswordReset,
   getEmployerSession,
   getKnownProfile,
   passwordProblems,
   rememberProfile,
+  requestEmployerPasswordReset,
   resendEmployerCode,
   saveEmployerSession,
   signInEmployer,
@@ -26,8 +28,9 @@ import {
 // /employer/login — the employer side has its own sign-in, separate from the
 // candidate /auth page. No Google: employers use a company email + password,
 // and new accounts confirm the email with a 6-digit code before signing in.
+// Forgot password: email → 6-digit code + new password → signed in.
 
-type Step = 'signin' | 'signup' | 'verify';
+type Step = 'signin' | 'signup' | 'verify' | 'forgot' | 'reset';
 
 export function EmployerLoginPage() {
   const navigate = useNavigate();
@@ -198,6 +201,76 @@ export function EmployerLoginPage() {
     }
   };
 
+  // Forgot password, step 1: email a reset code.
+  const submitForgot = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setInfo('');
+    if (!normalizedEmail) {
+      setError('Enter your work email.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestEmployerPasswordReset(normalizedEmail);
+      setCode('');
+      setPassword('');
+      setStep('reset');
+      setCooldown(30);
+    } catch (err) {
+      setError(authErrorMessage(err) || 'We couldn’t send a reset code. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Step 2: the code and a new password, then sign straight in with it.
+  const submitReset = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setInfo('');
+    if (!/^\d{6}$/.test(code)) {
+      setError('Enter the 6-digit code from your email.');
+      return;
+    }
+    const problems = passwordProblems(password);
+    if (problems.length) {
+      setError(`Your new password needs ${problems.join(', ')}.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      await confirmEmployerPasswordReset(normalizedEmail, code, password);
+    } catch (err) {
+      setError(authErrorMessage(err) || 'That code is incorrect or has expired.');
+      setBusy(false);
+      return;
+    }
+    try {
+      await signIn();
+    } catch {
+      setPassword('');
+      setStep('signin');
+      setInfo('Password updated. Log in with your new password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendReset = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await requestEmployerPasswordReset(normalizedEmail);
+      setCooldown(30);
+      setInfo('We sent a new code.');
+    } catch (err) {
+      setError(authErrorMessage(err) || 'We couldn’t resend the code. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resend = async () => {
     setError('');
     setBusy(true);
@@ -291,6 +364,13 @@ export function EmployerLoginPage() {
                 <Field label="Password" required>
                   {passwordInput('current-password')}
                 </Field>
+                <button
+                  type="button"
+                  onClick={() => switchTo('forgot')}
+                  className="-mt-3 self-end text-[13px] text-[#3c77f6] font-medium hover:underline"
+                >
+                  Forgot password?
+                </button>
                 <ErrorText error={error} />
                 <SubmitButton busy={busy}>Log in</SubmitButton>
                 <p className="text-[13px] text-[#5a6172] text-center">
@@ -334,6 +414,64 @@ export function EmployerLoginPage() {
                     Already have an account? Log in
                   </button>
                 </p>
+              </form>
+            )}
+
+            {step === 'forgot' && (
+              <form onSubmit={submitForgot} className="flex flex-col gap-5" noValidate>
+                <Header icon={<KeyRound size={20} />} title="Reset your password" subtitle="Enter your work email and we’ll send you a 6-digit code." />
+                <Field label="Work email" required>
+                  {emailInput}
+                </Field>
+                <ErrorText error={error} />
+                <SubmitButton busy={busy}>Send code</SubmitButton>
+                <button type="button" className="text-[13px] text-[#5a6172] hover:text-[#1e232f]" onClick={() => switchTo('signin')}>
+                  Back to log in
+                </button>
+              </form>
+            )}
+
+            {step === 'reset' && (
+              <form onSubmit={submitReset} className="flex flex-col gap-5" noValidate>
+                <Header
+                  icon={<Mail size={20} />}
+                  title="Set a new password"
+                  subtitle={
+                    <>
+                      We sent a 6-digit code to <span className="font-medium text-[#1e232f]">{normalizedEmail}</span>.
+                    </>
+                  }
+                />
+                <InfoText info={info} />
+                <Field label="Reset code" required>
+                  <TextInput
+                    autoFocus
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setError('');
+                    }}
+                    placeholder="000000"
+                    className="tracking-[0.4em] text-center text-[18px]"
+                  />
+                </Field>
+                <Field label="New password" required>
+                  {passwordInput('new-password')}
+                </Field>
+                <p className="-mt-3 text-[12px] leading-[18px] text-[#5a6172]">8–16 characters with an uppercase letter, a lowercase letter, a number and a special character.</p>
+                <ErrorText error={error} />
+                <SubmitButton busy={busy}>Reset password</SubmitButton>
+                <div className="flex items-center justify-between text-[13px]">
+                  <button type="button" className="text-[#5a6172] hover:text-[#1e232f]" onClick={() => switchTo('signin')}>
+                    Back to log in
+                  </button>
+                  <button type="button" disabled={cooldown > 0 || busy} onClick={resendReset} className="text-[#3c77f6] font-medium disabled:text-[#9ba1b0]">
+                    {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                  </button>
+                </div>
               </form>
             )}
 
