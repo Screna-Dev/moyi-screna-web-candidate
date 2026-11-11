@@ -46,11 +46,11 @@ const PRO_QUOTA = ok({
   plan: 'PRO',
   available: 4,
   grants: [
-    { source: 'PRO_PERIOD', remaining: 1, expiresAt: '2026-12-03T00:00:00Z' },
-    { source: 'ADD_ON', remaining: 3, expiresAt: '2027-02-01T00:00:00Z' },
+    { source: 'PRO_PERIOD', sessions: 15, remaining: 1, expiresAt: '2026-12-03T00:00:00Z' },
+    { source: 'ADD_ON', sessions: 5, remaining: 3, expiresAt: '2027-02-01T00:00:00Z' },
   ],
 });
-const FREE_QUOTA = ok({ plan: 'FREE', available: 1, grants: [{ source: 'FREE_MONTHLY', remaining: 1, expiresAt: '2026-12-01T00:00:00Z' }], resetsAt: '2026-12-01T00:00:00Z' });
+const FREE_QUOTA = ok({ plan: 'FREE', available: 1, grants: [{ source: 'FREE_MONTHLY', sessions: 2, remaining: 1, expiresAt: '2026-12-01T00:00:00Z' }], resetsAt: '2026-12-01T00:00:00Z' });
 const notFound = { response: { status: 400, data: { message: 'Subscription not found' } } };
 
 function renderBilling(path = '/settings?tab=billing') {
@@ -91,6 +91,18 @@ describe('Billing — Pro', () => {
     expect(screen.getByRole('button', { name: 'Switch to 90-day' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update card' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View pricing' })).toBeInTheDocument();
+  });
+
+  it('"X of Y" comes from grants[].sessions, not a hard-coded allowance', async () => {
+    svc.getInterviewQuota.mockResolvedValue(ok({ plan: 'PRO', available: 12, grants: [{ source: 'PRO_PERIOD', sessions: 20, remaining: 12, expiresAt: '2026-12-03T00:00:00Z' }] }));
+    renderBilling();
+    expect(await screen.findByText('8 of 20 used')).toBeInTheDocument();
+  });
+
+  it('a used-up plan grant is not listed: all used', async () => {
+    svc.getInterviewQuota.mockResolvedValue(ok({ plan: 'PRO', available: 0, grants: [] }));
+    renderBilling();
+    expect(await screen.findByText('All used')).toBeInTheDocument();
   });
 
   it('usage tiles come from the interview quota and the credit ledger', async () => {

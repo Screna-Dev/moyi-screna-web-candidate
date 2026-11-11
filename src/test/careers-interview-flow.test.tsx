@@ -309,6 +309,15 @@ describe('start interview: no interviews left', () => {
   });
 });
 
+describe('retake', () => {
+  it('a retake on a sponsored job is candidate-paid: the start sends acceptSelfPay', async () => {
+    api.startCareerInterview.mockResolvedValueOnce(session);
+    render(<StartInterviewDialog app={app({ interviewStatus: 'COMPLETED', interviewFunding: 'EMPLOYER', retakeAvailability: 'AVAILABLE' })} onClose={() => {}} />);
+    await agreeAndStart();
+    await waitFor(() => expect(api.startCareerInterview).toHaveBeenCalledWith('app-1', { acceptSelfPay: true, consentVersion: CONSENT_VERSION }));
+  });
+});
+
 // ─── Scoring window ───────────────────────────────────────────────────────────
 
 describe('after ending, "Continue interview" is hidden while scoring', () => {

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { sortJobs, type SortOption, type OpportunityJob } from "@/components/newDesign/opportunities/mockJobs";
 import { toOpportunityJob, type LiveOpportunityJob } from "@/components/newDesign/opportunities/careersDesignData";
 import { useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
-import { listCareerJobs } from "@/services/careersApi";
+import { getCareerJob, listCareerJobs } from "@/services/careersApi";
 
 // Design page (Downloads export) fed by GET /careers/jobs. Cards are mapped
 // onto the design's OpportunityJob shape; fields the API doesn't have yet come
@@ -293,6 +293,12 @@ export function OpportunitiesPage() {
   const [failed, setFailed] = useState(false);
   const starter = useCareerInterviewStarter();
 
+  // The list has no applicationId: read it from the job detail.
+  const openReport = async (jobId: string) => {
+    const appId = await getCareerJob(jobId).then((d) => d.myApplication?.applicationId).catch(() => undefined);
+    navigate(appId ? `/opportunities/applications/${encodeURIComponent(appId)}/results` : `/opportunities/job/${encodeURIComponent(jobId)}`);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -467,6 +473,7 @@ export function OpportunitiesPage() {
               job={job}
               onViewDetail={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
               onQuickInterview={() => void starter.begin(job.id)}
+              onViewReport={() => void openReport(job.id)}
               onContactRecruiter={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/contact`)}
             />
         ))}

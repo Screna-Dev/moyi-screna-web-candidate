@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { settleIfDone } from "@/components/newDesign/opportunities/careersEnded";
+import { leftToStartLabel, standingTile } from "@/components/newDesign/opportunities/careersDesignData";
+import { useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
 import {
   careersErrorCode,
   getMyApplication,
@@ -13,7 +15,6 @@ const assetPathPrefix = "/images/opportunities";
 const imgArrowRight = `${assetPathPrefix}/c68c4.svg`;
 const imgChevronDown = `${assetPathPrefix}/e057d.svg`;
 const imgChevronUp = `${assetPathPrefix}/05bbc.svg`;
-const imgPlay = `${assetPathPrefix}/48bcb.svg`;
 
 function Divider() {
   return <div className="w-full h-px bg-[#e1e4ea]" />;
@@ -27,6 +28,17 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
+type QuestionView = {
+  id: string;
+  text: string;
+  summary?: string;
+  toImprove?: string;
+  transcript?: string; // the candidate's answer (Pro)
+  sample?: boolean; // design sample, only when the API sends no questions
+};
+
+// Design sample (only when the API sends no questions); its "went well",
+// tags and audio are not shown.
 const questions = [
   { id: "Q1", text: "Tell us about a backend project you contributed to.", summary: "Clear context and contribution; add measurable results." },
   {
@@ -50,8 +62,10 @@ const questions = [
 // the page shows the candidate's real result (#303) where the API has it —
 // title, date, overall score, criterion scores, summary, strengths, areas to
 // strengthen, application status — and keeps these samples for the rest
-// (qualification, rank, per-criterion feedback, per-question feedback,
-// retake panel), per the design-first rule. Replace before launch.
+// (qualification, per-criterion feedback, question tags, recording, PDF,
+// contact / email status), per the design-first rule. Replace before launch.
+// Rank, attempt, best score, per-question text (Pro: summary / gap / answer)
+// and the retake window are real.
 const SAMPLE_CRITERIA = [
   { label: "Technical accuracy", score: 88, feedback: "Strong understanding of idempotency, database behavior, and backend reliability." },
   { label: "Structured thinking", score: 80, feedback: "Your approach was clear, but some answers would benefit from stating assumptions earlier." },
@@ -70,6 +84,23 @@ const DECISION_LABEL: Record<string, { text: string; color: string }> = {
   MOVED_FORWARD: { text: "Moved forward", color: "text-[#34c759]" },
   REJECTED: { text: "Not selected", color: "text-[#5a6172]" },
 };
+
+function viewedLabel(iso: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function shortDateTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 function completedLabel(iso: string) {
   try {
@@ -93,6 +124,7 @@ export function InterviewResultPage() {
   const { applicationId = "" } = useParams<{ applicationId: string }>();
   const [expandedQ, setExpandedQ] = useState<string | null>("Q2");
   const [live, setLive] = useState<LiveState>({ status: "loading" });
+  const starter = useCareerInterviewStarter();
 
   useEffect(() => {
     if (!applicationId) return;
@@ -157,6 +189,23 @@ export function InterviewResultPage() {
   const strengths = r.strengths.length ? r.strengths : SAMPLE_STRENGTHS;
   const areas = r.areasToStrengthen.length ? r.areasToStrengthen : SAMPLE_AREAS;
   const statusRow = decision ? DECISION_LABEL[decision] : undefined;
+  const best = `${r.bestScore ?? r.overallScore}/100`;
+  const rank = standingTile(r.standing);
+  // Real questions when the API sends them; Pro adds summary / gap / answer.
+  // No "What went well", tags or audio in the data: hidden for everyone.
+  const questionRows: QuestionView[] = r.questions?.length
+    ? r.questions.map((q) => ({
+        id: `Q${q.seq}`,
+        text: q.text,
+        summary: q.summary ?? undefined,
+        toImprove: q.gapAnalysis ?? undefined,
+        transcript: q.answerText ?? undefined,
+      }))
+    : questions.map((q) => ({ id: q.id, text: q.text, summary: q.summary, toImprove: q.toImprove, sample: true }));
+  const app = live.app;
+  // Countdown and retake only while retakeAvailability is AVAILABLE.
+  const canRetake = app?.interviewStatus === "COMPLETED" && app.canStartInterview && (app.retakeAvailability ?? "AVAILABLE") === "AVAILABLE";
+  const timeLeft = leftToStartLabel(app?.retakeDeadline).replace(/ left to start$/, "");
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -190,14 +239,14 @@ export function InterviewResultPage() {
             className="inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold border bg-[rgba(60,119,246,0.1)] border-[rgba(60,119,246,0.2)] text-[#3c77f6]"
             style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
           >
-            Screna Sponsored
+            Partner Job
           </span>
         </div>
         <p
           className="text-[#5a6172] text-[13px] leading-[normal]"
           style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
         >
-          {`Attempt 1 · ${completedLabel(r.interviewCompletedAt)} · 20 minutes · English`}
+          {`Attempt ${r.attemptNo ?? 1} · ${completedLabel(r.interviewCompletedAt)} · ${r.durationMinutes ?? 20} minutes · English`}
         </p>
       </div>
 
@@ -253,8 +302,8 @@ export function InterviewResultPage() {
           <div className="flex gap-4">
             {[
               { label: "THIS ATTEMPT", value: score, valueColor: "text-[#34c759]", sub: "Score meets criteria" },
-              { label: "BEST SCORE", value: score, valueColor: "text-[#1e232f]", sub: "Used in your shared report" },
-              { label: "CURRENT RANK", value: "#2 of 31", valueColor: "text-[#1e232f]", sub: "Candidates with completed assessments" },
+              { label: "BEST SCORE", value: best, valueColor: "text-[#1e232f]", sub: "Used in your shared report" },
+              { label: rank.label, value: rank.value, valueColor: "text-[#1e232f]", sub: rank.sub },
             ].map(({ label, value, valueColor, sub }) => (
               <div key={label} className="bg-white border border-[#e1e4ea] rounded-2xl p-5 flex-1 flex flex-col gap-2">
                 <p
@@ -343,11 +392,13 @@ export function InterviewResultPage() {
                 className="text-[#5a6172] text-[14px] leading-[normal]"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
-                5 questions · Review your answers and recordings
+                {r.questions?.length
+                  ? `${r.questions.length} questions · Review your answers`
+                  : "5 questions · Review your answers and recordings"}
               </p>
             </div>
             <div className="flex flex-col gap-3">
-              {questions.map((q) => {
+              {questionRows.map((q) => {
                 const isOpen = expandedQ === q.id;
                 return (
                   <div
@@ -375,81 +426,55 @@ export function InterviewResultPage() {
                       <img src={isOpen ? imgChevronUp : imgChevronDown} alt="" className="w-4 h-4 shrink-0 ml-3" />
                     </button>
 
+                    {/* Collapsed: the one-line summary (Pro). */}
                     {!isOpen && q.summary && (
-                      <p
-                        className="text-[#5a6172] text-[13px] leading-[normal]"
-                        style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-                      >
+                      <p className="text-[#5a6172] text-[13px] leading-[normal]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
                         {q.summary}
                       </p>
                     )}
 
-                    {isOpen && q.wentWell && (
+                    {/* Expanded. Free: question text only. Pro: summary, What to
+                        improve (gapAnalysis), and the answer. No "What went
+                        well", tags or audio in the data: never shown. */}
+                    {isOpen && !q.summary && !q.toImprove && !q.transcript && (
+                      <p className="text-[#5a6172] text-[13px] leading-5" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+                        Question-by-question feedback is available on Pro.
+                      </p>
+                    )}
+
+                    {isOpen && (q.summary || q.toImprove || q.transcript) && (
                       <div className="flex flex-col gap-4">
-                        <div className="flex flex-col gap-1">
-                          <p
-                            className="text-[#34c759] text-[12px] font-bold tracking-[0.5px] uppercase leading-[normal]"
-                            style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}
-                          >
-                            What went well
+                        {q.summary && (
+                          <p className="text-[#5a6172] text-[13px] leading-5" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+                            {q.summary}
                           </p>
-                          <p
-                            className="text-[#5a6172] text-[13px] leading-5"
-                            style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-                          >
-                            {q.wentWell}
-                          </p>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <p
-                            className="text-[#ff383c] text-[12px] font-bold tracking-[0.5px] uppercase leading-[normal]"
-                            style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}
-                          >
-                            What to improve
-                          </p>
-                          <p
-                            className="text-[#5a6172] text-[13px] leading-5"
-                            style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-                          >
-                            {q.toImprove}
-                          </p>
-                        </div>
-                        {q.tags && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {q.tags.map(({ label, color }) => (
-                              <span
-                                key={label}
-                                className={`inline-flex items-center px-3 py-1 rounded text-[11px] font-semibold border ${
-                                  color === "blue"
-                                    ? "bg-[#eef4ff] border-[rgba(60,119,246,0.2)] text-[#3c77f6]"
-                                    : "bg-[#fff0f0] border-[rgba(255,56,60,0.2)] text-[#ff383c]"
-                                }`}
-                                style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-                              >
-                                {label}
-                              </span>
-                            ))}
+                        )}
+                        {q.toImprove && (
+                          <div className="flex flex-col gap-1">
+                            <p
+                              className="text-[#ff383c] text-[12px] font-bold tracking-[0.5px] uppercase leading-[normal]"
+                              style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}
+                            >
+                              What to improve
+                            </p>
+                            <p className="text-[#5a6172] text-[13px] leading-5" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+                              {q.toImprove}
+                            </p>
                           </div>
                         )}
-                        <p
-                          className="text-[#3c77f6] text-[13px] font-semibold leading-[normal]"
-                          style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-                        >
-                          View full transcript
-                        </p>
-                        {/* Audio player */}
-                        <div className="bg-white border border-[#e1e4ea] rounded-lg p-3 flex gap-3 items-center">
-                          <img src={imgPlay} alt="" className="w-4 h-4 shrink-0" />
-                          <div className="flex-1 min-w-0 h-1 bg-[#e5e5e5] rounded overflow-hidden">
-                            <div className="h-full bg-[#3c77f6] rounded" style={{ width: "5%" }} />
-                          </div>
-                          <span
-                            className="text-[#5a6172] text-[11px] leading-[normal] shrink-0"
-                            style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-                          >
-                            0:00 / 6:12
-                          </span>
-                        </div>
+                        {q.transcript && (
+                          <details>
+                            <summary
+                              className="text-[#3c77f6] text-[13px] font-semibold leading-[normal] cursor-pointer list-none"
+                              style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
+                            >
+                              View full transcript
+                            </summary>
+                            <p className="mt-2 text-[#5a6172] text-[13px] leading-5 whitespace-pre-wrap" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+                              {q.transcript}
+                            </p>
+                          </details>
+                        )}
                       </div>
                     )}
                   </div>
@@ -561,6 +586,12 @@ export function InterviewResultPage() {
                 { label: "Application status", value: statusRow?.text ?? "Applied", valueColor: statusRow?.color ?? "text-[#34c759]" },
                 { label: "Contact eligibility", value: "Unlocked", valueColor: "text-[#3c77f6]" },
                 { label: "Email status", value: "Not sent", valueColor: "text-[#5a6172]" },
+                // reportUnlockedAt: the employer unlocked (viewed) the report.
+                {
+                  label: "Report",
+                  value: r.reportUnlockedAt ? `Viewed on ${viewedLabel(r.reportUnlockedAt)}` : "Not viewed yet",
+                  valueColor: r.reportUnlockedAt ? "text-[#3c77f6]" : "text-[#5a6172]",
+                },
               ].map(({ label, value, valueColor }) => (
                 <div key={label} className="flex items-center justify-between">
                   <p
@@ -616,10 +647,10 @@ export function InterviewResultPage() {
             </p>
             <div className="bg-[#f9fafb] rounded-lg p-3 flex flex-col gap-2.5">
               {[
-                { label: "First submitted", value: "Sep 16, 2026 · 10:00 AM" },
-                { label: "Retake deadline", value: "Today · 4:00 PM PT" },
-                { label: "Time left to start", value: "5h 42m", highlight: true },
-                { label: "Cost per attempt", value: "30 credits" },
+                { label: "First submitted", value: shortDateTime(app?.firstInterviewCompletedAt ?? r.interviewCompletedAt) },
+                { label: "Retake deadline", value: app?.retakeDeadline ? shortDateTime(app.retakeDeadline) : "No time limit" },
+                { label: "Time left to start", value: canRetake ? timeLeft || (app?.retakeDeadline ? "—" : "No time limit") : "Closed", highlight: true },
+                { label: "Cost per attempt", value: "1 interview" },
               ].map(({ label, value, highlight }) => (
                 <div key={label} className="flex items-center justify-between">
                   <p
@@ -638,14 +669,16 @@ export function InterviewResultPage() {
               ))}
             </div>
             <button
-              className="bg-white border-[1.5px] border-[#3c77f6] text-[#3c77f6] text-[14px] font-semibold leading-[normal] px-4 py-3 rounded-xl flex items-center justify-center hover:bg-[#eef4ff] transition-colors w-full"
+              onClick={() => app && canRetake && starter.openDialog(app)}
+              disabled={!canRetake}
+              className="bg-white border-[1.5px] border-[#3c77f6] text-[#3c77f6] text-[14px] font-semibold leading-[normal] px-4 py-3 rounded-xl flex items-center justify-center hover:bg-[#eef4ff] transition-colors w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
             >
               Retake to improve your score
             </button>
             <div className="flex flex-col gap-2">
               {[
-                "Each retake costs credits.",
+                "Each retake uses 1 interview from your plan.",
                 "Additional attempts do not extend the original deadline.",
                 "Only a higher score updates your shared report.",
                 "Equal or lower scores leave your shared report unchanged.",
@@ -665,6 +698,7 @@ export function InterviewResultPage() {
           </div>
         </div>
       </div>
+      {starter.ui}
     </div>
   );
 }

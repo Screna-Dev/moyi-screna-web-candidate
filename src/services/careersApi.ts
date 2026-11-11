@@ -26,8 +26,13 @@ import API from './api';
 //   SPONSORSHIP_EXHAUSTED) takes no new applications, but existing applicants
 //   can still start (canStartInterview stays true).
 // - Results are async: after /end, poll the application until
-//   interviewStatus = COMPLETED. Candidates never see scores or reports (v1).
+//   interviewStatus = COMPLETED. The candidate sees their own score (bestScore,
+//   GET .../result), never whether they qualified.
 // - Show "start interview" from canStartInterview, never from the status.
+//   After a completed interview canStartInterview means a retake can start
+//   (retakeAvailability AVAILABLE): always candidate-paid, so start answers
+//   409 SELF_PAY_CONFIRMATION_REQUIRED until acceptSelfPay, until
+//   retakeDeadline (null = no time limit).
 
 export type WorkplaceType = 'ON_SITE' | 'HYBRID' | 'REMOTE';
 export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERNSHIP' | 'TEMPORARY';
@@ -49,6 +54,9 @@ export type CareerJob = {
   employmentType: EmploymentType | null;
   seniority: string | null;
   role: string | null;
+  yearsExperienceMin?: number | null;
+  yearsExperienceMax?: number | null;
+  skills?: string[];
   salaryMin: number | null; // all salary fields null when the employer hides pay
   salaryMax: number | null;
   salaryCurrency: string | null;
@@ -59,7 +67,10 @@ export type CareerJob = {
   publishedAt: string | null;
   interviewDurationMinutes: number;
   interviewPayer: InterviewPayer;
+  // Who would pay for a first interview started now (as on the job detail).
+  interviewFunding?: InterviewPayer;
   applied: boolean;
+  myBestScore?: number | null; // 0–100, null until the caller completed an interview
 };
 
 // Same shape as the employer's preview of the job. No question text.
@@ -117,22 +128,36 @@ export type CareerApplication = {
   jobTitle: string;
   companyName: string;
   companyLogoUrl: string | null;
+  location?: string | null;
+  workplaceType?: WorkplaceType | null;
   jobStatus: string; // the job may have closed since
   closesAt: string | null;
   timezone: string | null;
   appliedAt: string;
   interviewStatus: InterviewStatus;
   interviewCompletedAt: string | null;
+  bestScore?: number | null; // 0–100, null before the first completed interview
   interviewDurationMinutes: number;
   interviewLanguage: string;
   questionCount: number;
   hiringDecision?: HiringDecision; // AWAITING until the recruiter decides
+  decidedAt?: string | null;
   interviewPayer: InterviewPayer; // the employer's setting
   // Not started: who would pay if it started now. In progress / completed:
   // who paid. Optional only until backend #297 is live.
   interviewFunding?: InterviewPayer;
   canStartInterview: boolean;
+  completedAttempts?: number;
+  retakesLeft?: number | null;
+  firstInterviewCompletedAt?: string | null;
+  // When the time to start a retake ends (job deadline included); null before
+  // the first completed interview or when retakes have no time limit.
+  retakeDeadline?: string | null;
+  // Whether a retake can start now, or the first reason it can't.
+  retakeAvailability?: RetakeAvailability;
 };
+
+export type RetakeAvailability = 'NONE' | 'AVAILABLE' | 'UNAVAILABLE' | 'DECIDED' | 'WINDOW_CLOSED' | 'LIMIT_REACHED';
 
 export type CareerJobDetail = {
   posting: CareerPosting;
@@ -214,23 +239,50 @@ export function careersErrorData<T>(err: unknown): T | undefined {
   return ((err.response?.data as { data?: T } | undefined)?.data ?? undefined) as T | undefined;
 }
 
-// The candidate's own result (#303, ADR-022: score and analysis, no rank).
-// Only once interviewStatus is COMPLETED (else 409 INVALID_STATE); someone
-// else's or a missing application → 404. Still readable after the job closes.
-// No rank, qualification, per-question content, recording or resume. With
-// retakes it shows the highest-scoring attempt. The candidate also gets an
-// email when it's ready; nothing to do here for that.
+// The candidate's own result (#303), from their most recent completed
+// interview. Only once interviewStatus is COMPLETED (else 409 INVALID_STATE);
+// someone else's or a missing application → 404. Still readable after the job
+// closes. Never qualification, probe areas, criterion evidence, recording or
+// resume. The candidate also gets an email when it's ready.
+// - standing ranks bestScore among the job's completed candidates; null while
+//   too few have one, and after a new best until the ranking includes it.
+//   Pro / Pro 90-day: rank + rankedCandidates. Free: topPercent (null in the
+//   lower half) + pointsBehindTop5 (null within the top five).
+// - questions: in order, follow-ups included; summary / gapAnalysis /
+//   answerText only with Pro or Pro 90-day.
+export type CareerResultStanding = {
+  rank: number | null;
+  rankedCandidates: number | null;
+  topPercent: number | null;
+  pointsBehindTop5: number | null;
+};
+
+export type CareerResultQuestion = {
+  seq: number;
+  text: string;
+  summary: string | null;
+  gapAnalysis: string | null;
+  answerText: string | null;
+};
+
 export type CareerInterviewResult = {
   applicationId: string;
   jobId: string;
   jobTitle: string;
   companyName: string;
   interviewCompletedAt: string;
-  overallScore: number; // 0–100
+  durationMinutes?: number | null;
+  attemptNo?: number | null;
+  overallScore: number; // 0–100, this attempt
+  bestScore?: number | null; // the application's best
   criteria: { name: string; score: number }[]; // job order; unscored ones left out
+  weakestCriterion?: string | null;
   summary: string | null;
   strengths: string[];
   areasToStrengthen: string[];
+  reportUnlockedAt?: string | null; // when the employer unlocked the report
+  standing?: CareerResultStanding | null;
+  questions?: CareerResultQuestion[];
 };
 
 export async function getMyInterviewResult(applicationId: string): Promise<CareerInterviewResult> {

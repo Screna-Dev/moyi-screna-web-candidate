@@ -10,6 +10,7 @@ import {
   careersErrorData,
   careersErrorMessage,
   fundingOf,
+  getMyApplication,
   startCareerInterview,
   type CareerApplication,
   type CareerInterviewSession,
@@ -19,6 +20,7 @@ import {
 import { OutOfInterviewsDialog } from "./OutOfInterviewsDialog";
 import { CONSENT_SECTIONS, CONSENT_VERSION } from "./interviewConsent";
 import { isBeingScored } from "./careersEnded";
+import { applicationStateMessage, retakeBlockedMessage } from "./careersDesignData";
 import { DEVICE_ERROR_TEXT, playTestSound, useDeviceCheck } from "./deviceCheck";
 
 // The careers (apply → AI interview) flow used by the design's Opportunities
@@ -95,7 +97,8 @@ export const roomPath = (applicationId: string) => `/opportunities/applications/
 // interview and opens the room. Candidate-paid interviews use 1 interview from
 // the candidate's quota, not credits (change C9, #298); none left → the
 // out-of-interviews dialog with the right way to get more.
-export function StartInterviewDialog({ app, onClose }: { app: CareerApplication; onClose: () => void }) {
+// onChanged: the application was reloaded after 409 INVALID_STATE; show it.
+export function StartInterviewDialog({ app, onClose, onChanged }: { app: CareerApplication; onClose: () => void; onChanged?: (app: CareerApplication) => void }) {
   const navigate = useNavigate();
   const { quota, refresh: refreshQuota } = useInterviewQuota();
   const [busy, setBusy] = useState(false);
@@ -114,7 +117,9 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
   // after this dialog opened. Ask before starting again with acceptSelfPay.
   const [selfPay, setSelfPay] = useState<SelfPayConfirmation | null>(null);
   const rejoin = app.interviewStatus === "IN_PROGRESS";
-  const candidatePays = fundingOf(app) === "CANDIDATE" || !!selfPay;
+  // A retake (start after a completed interview) is always candidate-paid.
+  const retake = app.interviewStatus === "COMPLETED";
+  const candidatePays = retake || fundingOf(app) === "CANDIDATE" || !!selfPay;
   const left = selfPay?.interviewsAvailable ?? quota?.available;
 
   // The quota is shown for context only; the server decides (403).
@@ -147,7 +152,13 @@ export function StartInterviewDialog({ app, onClose }: { app: CareerApplication;
           setShortage({ plan: q?.plan ?? quota?.plan ?? "FREE", available: 0, resetsAt: q?.resetsAt ?? quota?.resetsAt });
         } else setSelfPay(d);
       } else if (code === "HIRING_AI_UNAVAILABLE") setError("The interview service is unavailable right now. Nothing was used. Please try again.");
-      else if (code === "INVALID_STATE") setError(careersErrorMessage(err) || "This interview can't be started right now. Refresh and try again.");
+      // The application changed under us (closed, decided, window ended, a
+      // start in flight): reload it and say why, never retry.
+      else if (code === "INVALID_STATE") {
+        const fresh = await getMyApplication(app.applicationId).catch(() => null);
+        if (fresh) onChanged?.(fresh);
+        setError(fresh ? applicationStateMessage(fresh) : careersErrorMessage(err) || "This interview can't be started right now.");
+      }
       else setError(careersErrorMessage(err) || "Couldn't start the interview. Please try again.");
       setBusy(false);
     }
@@ -558,8 +569,10 @@ export function useCareerInterviewStarter(onApplied?: (app: CareerApplication) =
     try {
       const a = await applyToJob(jobId);
       onApplied?.(a);
-      if (a.interviewStatus === "COMPLETED") setNotice("You've already completed the interview for this role. The recruiter will review it.");
-      else if (isBeingScored(a)) setNotice("We're processing your interview. Check My Jobs in a few minutes.");
+      if (isBeingScored(a)) setNotice("We're processing your interview. Check My Jobs in a few minutes.");
+      // Completed: canStartInterview means a retake is allowed now.
+      else if (a.interviewStatus === "COMPLETED" && !a.canStartInterview)
+        setNotice(retakeBlockedMessage(a));
       else if (!a.canStartInterview) setNotice("This role is no longer accepting interviews.");
       else setApp(a);
     } catch (err) {
@@ -575,7 +588,7 @@ export function useCareerInterviewStarter(onApplied?: (app: CareerApplication) =
 
   const ui = (
     <>
-      {app && <StartInterviewDialog app={app} onClose={() => setApp(null)} />}
+      {app && <StartInterviewDialog app={app} onClose={() => setApp(null)} onChanged={(a) => onApplied?.(a)} />}
       {resumeFor && (
         <ResumeModal
           onClose={() => setResumeFor(null)}

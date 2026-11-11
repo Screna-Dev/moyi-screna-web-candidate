@@ -16,7 +16,9 @@ import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 
 export type QuotaPlan = 'FREE' | 'PRO' | 'PRO_90_DAY';
 export type QuotaSource = 'FREE_MONTHLY' | 'PRO_PERIOD' | 'PRO_90_DAY' | 'ADD_ON';
-export type QuotaGrant = { source: QuotaSource; remaining: number; expiresAt: string | null };
+// sessions: how many the grant gave (used included; can change, so don't cache).
+// A used-up grant isn't listed.
+export type QuotaGrant = { source: QuotaSource; sessions?: number; remaining: number; expiresAt: string | null };
 export type InterviewQuota = {
   plan: QuotaPlan;
   available: number;
@@ -96,8 +98,8 @@ export function useInterviewQuota() {
 }
 
 // Interviews each plan includes (per month for Free / Pro, once for Pro
-// 90-Day), as the pricing page states them. The quota API returns what's
-// left, not the allowance; keep these in step with the backend config.
+// 90-Day), as the pricing page states them. Marketing copy only: usage
+// ("X of Y") comes from grants[].sessions.
 export const PLAN_INTERVIEWS: Record<QuotaPlan, number> = { FREE: 2, PRO: 15, PRO_90_DAY: 45 };
 
 // The add-on pack as the design states it. The API has neither the price nor

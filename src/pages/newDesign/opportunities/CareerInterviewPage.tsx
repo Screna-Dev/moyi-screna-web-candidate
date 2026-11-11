@@ -5,6 +5,7 @@ import { VideoInterview } from "@/components/newDesign/video-interview";
 import { CONSENT_VERSION } from "@/components/newDesign/opportunities/interviewConsent";
 import { endCareerInterview, careersErrorCode, careersErrorMessage, getMyApplication, startCareerInterview, type CareerInterviewSession } from "@/services/careersApi";
 import { PrimaryButton, SecondaryButton, font, type CareerRoomState } from "@/components/newDesign/opportunities/careersShared";
+import { applicationStateMessage } from "@/components/newDesign/opportunities/careersDesignData";
 import { checkCareerResult, isBeingScored, markInterviewEnded, settleIfDone } from "@/components/newDesign/opportunities/careersEnded";
 
 // Live AI interview for a job application, always on video. Reuses the
@@ -78,6 +79,14 @@ export function CareerInterviewPage() {
       } catch (err) {
         if (careersErrorCode(err) === "INTERVIEW_CONSENT_REQUIRED") {
           setMessage("Please start the interview again from My Jobs and review the interview terms.");
+          return setPhase("error");
+        }
+        // The application moved on (completed, closed, window ended): reload
+        // it and say why instead of retrying.
+        if (careersErrorCode(err) === "INVALID_STATE") {
+          const app = await getMyApplication(applicationId).catch(() => null);
+          if (app && settleIfDone(app) === "ready") return setPhase("done");
+          setMessage(app ? applicationStateMessage(app) : careersErrorMessage(err) || "We couldn't reconnect you to the interview.");
           return setPhase("error");
         }
         setMessage(careersErrorMessage(err) || "We couldn't reconnect you to the interview.");

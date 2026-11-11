@@ -7,8 +7,8 @@ import { onResultSettled, settleIfDone } from "@/components/newDesign/opportunit
 import { listMyApplications, type CareerApplication } from "@/services/careersApi";
 
 // Design page (Downloads export) fed by GET /careers/applications. Rows are
-// mapped onto the design's MyJob shape; scores, qualification and location
-// aren't returned yet and come from the design's sample data (see
+// mapped onto the design's MyJob shape; qualification and email status
+// aren't returned and come from the design's sample data (see
 // careersDesignData). Search and status filters run client-side.
 
 const PAGE_LIMIT = 5; // 50 applications
@@ -280,7 +280,7 @@ export function MyJobsPage() {
   const act = (row: LiveMyJob, label: string) => {
     const jobPath = `/opportunities/job/${encodeURIComponent(row.career.jobId)}`;
     if (label === "View details") return row.career.jobStatus === "OPEN" ? navigate(jobPath) : undefined;
-    if (label === "Start interview" || label === "Continue interview") return setStarting(row.career);
+    if (label === "Start interview" || label === "Continue interview" || label === "Retake interview") return setStarting(row.career);
     if (label === "View report") return navigate(`/opportunities/applications/${encodeURIComponent(row.career.applicationId)}/results`);
   };
 
@@ -413,7 +413,13 @@ export function MyJobsPage() {
           </div>
         )}
       </div>
-      {starting && <StartInterviewDialog app={starting} onClose={() => setStarting(null)} />}
+      {starting && (
+        <StartInterviewDialog
+          app={starting}
+          onClose={() => setStarting(null)}
+          onChanged={(app) => setRows((prev) => prev?.map((row, i) => (row.career.applicationId === app.applicationId ? toMyJob(app, i) : row)) ?? prev)}
+        />
+      )}
     </div>
   );
 }

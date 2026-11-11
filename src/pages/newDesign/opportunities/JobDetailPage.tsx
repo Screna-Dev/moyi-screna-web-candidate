@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
 import { languageLabel, useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
-import { seniorityLabel, workplaceLabel } from "@/components/newDesign/opportunities/careersDesignData";
+import { leftToStartLabel, retakeBlockedMessage, seniorityLabel, workplaceLabel, yearsLabel } from "@/components/newDesign/opportunities/careersDesignData";
 import { getCareerJob, type CareerJobDetail, type CareerPosting, type InterviewPayer } from "@/services/careersApi";
 
 // Design page (Downloads export), filled from GET /careers/jobs/{id};
@@ -71,10 +71,7 @@ function deadlineLabel(iso: string, tz: string | null) {
 // funding: who pays if an interview starts now (detail.interviewFunding).
 function viewOf(p: CareerPosting | null, funding?: InterviewPayer) {
   if (!p) return SAMPLE;
-  const years =
-    p.yearsExperienceMin != null || p.yearsExperienceMax != null
-      ? `${p.yearsExperienceMin ?? 0}${p.yearsExperienceMax != null ? `–${p.yearsExperienceMax}` : "+"} years`
-      : "";
+  const years = yearsLabel(p.yearsExperienceMin, p.yearsExperienceMax);
   const minutes = p.interview.durationMinutes;
   return {
     title: p.title,
@@ -153,8 +150,15 @@ export function JobDetailPage() {
     };
   }, [jobId]);
 
-  const v = viewOf(detail?.posting ?? null, detail?.interviewFunding);
-  const isCompleted = detail?.myApplication?.interviewStatus === "COMPLETED";
+  const myApp = detail?.myApplication ?? null;
+  const isCompleted = myApp?.interviewStatus === "COMPLETED";
+  // Applied: who pays the next interview is the application's funding; a
+  // retake is always the candidate's.
+  const v = viewOf(detail?.posting ?? null, isCompleted ? "CANDIDATE" : myApp?.interviewFunding ?? detail?.interviewFunding);
+  const bestScore = myApp?.bestScore != null ? `${myApp.bestScore}/100` : "—";
+  // Completed + canStartInterview = a retake can start now (always candidate-paid).
+  const canRetake = isCompleted && !!myApp?.canStartInterview && (myApp?.retakeAvailability ?? "AVAILABLE") === "AVAILABLE";
+  const retakeLeft = leftToStartLabel(myApp?.retakeDeadline);
   const isEmailSent = emailStatus[jobId] === "sent";
 
   if (!detail) {
@@ -544,7 +548,7 @@ export function JobDetailPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Best score</p>
-                    <p className="text-[#1e232f] text-[13px] font-bold" style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}>84/100</p>
+                    <p className="text-[#1e232f] text-[13px] font-bold" style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}>{bestScore}</p>
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Application status</p>
@@ -582,7 +586,7 @@ export function JobDetailPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Best score:</p>
-                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>84/100</p>
+                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>{bestScore}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Application status:</p>
@@ -622,14 +626,20 @@ export function JobDetailPage() {
                 View report
               </button>
               <button
-                className="flex-1 bg-[#3c77f6] text-white text-[14px] font-semibold py-3 rounded-xl flex items-center justify-center hover:bg-[#2d6ae0] transition-colors"
+                onClick={() => myApp && starter.openDialog(myApp)}
+                disabled={!canRetake}
+                className="flex-1 bg-[#3c77f6] text-white text-[14px] font-semibold py-3 rounded-xl flex items-center justify-center hover:bg-[#2d6ae0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#3c77f6]"
                 style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif", boxShadow: "0px 4px 3px rgba(60,119,246,0.2)" }}
               >
                 Retake interview
               </button>
             </div>
             <p className="text-[#5a6172] text-[11px] leading-4" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-              30 credits per retake · 4h 32m left to start
+              {canRetake
+                ? ["1 interview per retake", retakeLeft].filter(Boolean).join(" · ")
+                : myApp
+                  ? retakeBlockedMessage(myApp)
+                  : ""}
             </p>
             <p className="text-[#5a6172] text-[11px] leading-4" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
               {isEmailSent
@@ -655,7 +665,7 @@ export function JobDetailPage() {
             </p>
             <div className="flex flex-col gap-2.5">
               {[
-                "Each retake costs 30 credits.",
+                "Each retake uses 1 interview from your plan.",
                 "Retakes do not extend the original six-hour window.",
                 "Only a higher score updates your shared report.",
                 "Equal or lower scores leave your shared report unchanged.",

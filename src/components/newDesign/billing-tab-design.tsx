@@ -1022,7 +1022,9 @@ export function BillingTab() {
   const addOnGrants = (quota?.grants ?? []).filter(g => g.source === 'ADD_ON');
   const planLeft = planGrants.reduce((n, g) => n + g.remaining, 0);
   const addOnLeft = addOnGrants.reduce((n, g) => n + g.remaining, 0);
-  const included = quota ? PLAN_INTERVIEWS[quota.plan] : 0;
+  // "X of Y" from the plan grants' sessions (used included); never cached or
+  // hard-coded. A used-up grant isn't listed, so no plan grant = all used.
+  const included = planGrants.reduce((n, g) => n + (g.sessions ?? g.remaining), 0);
   const earliest = (dates: (string | null)[]) =>
     dates.filter((d): d is string => !!d).sort()[0] ?? null;
   const planResets = quota?.plan === 'FREE' ? quota.resetsAt : earliest(planGrants.map(g => g.expiresAt));
@@ -1232,7 +1234,7 @@ export function BillingTab() {
           <div className="bg-white border border-[#e1e4ea] rounded-2xl p-5">
             <p className={eyebrow}>Interviews</p>
             <p className="pt-3 text-[20px] leading-[30px] font-bold tracking-[-0.45px] text-[#1e232f]">
-              {quota ? `${Math.max(0, included - planLeft)} of ${included} used` : '—'}
+              {!quota ? '—' : planGrants.length ? `${Math.max(0, included - planLeft)} of ${included} used` : 'All used'}
             </p>
             <p className="pt-1 text-[12px] leading-[18px] text-[#8f99b5]">
               {quota

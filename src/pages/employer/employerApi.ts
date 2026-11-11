@@ -388,8 +388,8 @@ export async function suggestQuestions(jobId: string, criteria: { name: string; 
 // The employer pastes a whole job description on step 1; the AI reads the
 // step 1 fields out of it. No draft is needed. prefill already passes step 1
 // validation (lists cut to 30, long text truncated, an unacceptable salary or
-// experience range nulled as a group). It has no department. Location is
-// requested from the backend (today "never filled"): read it if it comes back.
+// experience range nulled as a group). It has no department. location joins
+// every parsed place with "; " (2026-11-10).
 // 429 TOO_MANY_REQUESTS after 30 submissions per org per hour.
 
 export type JdPrefill = {

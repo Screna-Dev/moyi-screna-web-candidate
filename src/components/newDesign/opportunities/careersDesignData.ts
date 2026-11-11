@@ -1,4 +1,4 @@
-import { fundingOf, type CareerApplication, type CareerJob } from "@/services/careersApi";
+import { fundingOf, type CareerApplication, type CareerJob, type CareerResultStanding } from "@/services/careersApi";
 import { isBeingScored } from "./careersEnded";
 import { myJobs, opportunityJobs, type AssessmentStatus, type MyJob, type OpportunityJob } from "./mockJobs";
 
@@ -32,7 +32,35 @@ function dateLabel(iso: string | null, tz?: string | null) {
 }
 
 export const seniorityLabel = (s: string | null) => (s ? SENIORITY[s] ?? s : "");
-export const workplaceLabel = (w: string | null) => (w ? WORKPLACE[w] ?? w : "");
+export const workplaceLabel = (w: string | null | undefined) => (w ? WORKPLACE[w] ?? w : "");
+
+// "5+ years", "3–5 years", "Up to 2 years"; "" when neither bound is set.
+export function yearsLabel(min?: number | null, max?: number | null) {
+  if (min != null && max != null) return min === max ? `${min} years` : `${min}–${max} years`;
+  if (min != null) return `${min}+ years`;
+  if (max != null) return `Up to ${max} years`;
+  return "";
+}
+
+// The design's "Senior (5+ years)".
+export function levelLabel(seniority: string | null, min?: number | null, max?: number | null) {
+  const level = seniorityLabel(seniority);
+  const years = yearsLabel(min, max);
+  return level && years ? `${level} (${years})` : level || years;
+}
+
+// "4h 32m left to start" until the retake window ends; "" when there's no
+// deadline or it has passed.
+export function leftToStartLabel(deadline: string | null | undefined, now = Date.now()) {
+  if (!deadline) return "";
+  const mins = Math.floor((new Date(deadline).getTime() - now) / 60000);
+  if (!(mins > 0)) return "";
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  const parts = d ? [`${d}d`, `${h}h`] : h ? [`${h}h`, `${m}m`] : [`${m}m`];
+  return `${parts.join(" ")} left to start`;
+}
 
 // Interview cost line in the design's wording. A candidate-paid interview uses
 // 1 interview from the candidate's quota (change C9), not credits.
@@ -44,7 +72,14 @@ export type LiveOpportunityJob = OpportunityJob & { career: CareerJob };
 
 export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunityJob {
   const sample = opportunityJobs[index % opportunityJobs.length];
-  const employerPays = job.interviewPayer === "EMPLOYER";
+  // Who pays now: an employer-sponsored job whose sponsorship ran out is
+  // candidate-paid (interviewFunding), even though interviewPayer says EMPLOYER.
+  // Once applied and interviewed, the next interview is a retake: always the
+  // candidate's (the list has no application funding for other applied rows,
+  // so those fall back to the job's).
+  const scored = job.myBestScore != null;
+  const funding = job.applied && scored ? "CANDIDATE" : fundingOf(job);
+  const employerPays = funding === "EMPLOYER";
   return {
     ...sample,
     id: job.jobId,
@@ -56,11 +91,12 @@ export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunity
     jobType: "Partner Job",
     location: job.location ?? sample.location,
     workType: workplaceLabel(job.workplaceType) || sample.workType,
-    level: seniorityLabel(job.seniority) || sample.level,
+    level: levelLabel(job.seniority, job.yearsExperienceMin, job.yearsExperienceMax) || sample.level,
     salaryMin: job.salaryMin ?? sample.salaryMin,
     salaryMax: job.salaryMax ?? sample.salaryMax,
     description: job.summary ?? sample.description,
-    // sample: tags, applicationCount, applicationMax
+    tags: job.skills?.length ? job.skills : sample.tags,
+    // sample: applicationCount, applicationMax (no applicant count / cap yet)
     sponsorInfo: employerPays ? "First interview sponsored by recruiter" : "Self-funded interview",
     spotsUsed: undefined,
     spotsTotal: undefined,
@@ -69,10 +105,12 @@ export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunity
     closingDateLabel: job.closesAt ? `Closes ${dateLabel(job.closesAt, job.timezone)}` : sample.closingDateLabel,
     postedDate: job.publishedAt ?? sample.postedDate,
     interviewCost: employerPays ? 0 : 1, // interviews; sorts sponsored first
-    interviewCostLabel: costLabel(job.interviewPayer, job.interviewDurationMinutes),
-    primaryAction: "Quick interview",
-    scoreValue: undefined,
-    scoreStatus: undefined,
+    interviewCostLabel: costLabel(funding, job.interviewDurationMinutes),
+    // Already interviewed: the design's retake state. Whether a retake is still
+    // allowed isn't on the list; starting one says so.
+    primaryAction: scored ? "Retake interview" : "Quick interview",
+    scoreValue: scored ? `${job.myBestScore}/100` : undefined,
+    scoreStatus: undefined, // qualification is never returned to candidates
     career: job,
   };
 }
@@ -92,13 +130,16 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
   const done = app.interviewStatus === "COMPLETED";
   // Ended in this browser and still being scored: nothing to continue.
   const scoring = isBeingScored(app);
-  // Scores and qualification aren't returned to candidates yet: sample values.
+  // Retake offered (and the countdown shown) only while one can start now.
+  const retake = done && app.canStartInterview && (app.retakeAvailability ?? "AVAILABLE") === "AVAILABLE";
+  const left = leftToStartLabel(app.retakeDeadline);
+  // Qualification is never returned to candidates: sample value.
   const sampleResult: AssessmentStatus = sample.assessmentStatus === "Not yet qualified" ? "Not yet qualified" : "Qualified";
   const assessmentStatus: AssessmentStatus = done ? sampleResult : app.interviewStatus === "IN_PROGRESS" ? "In progress" : "Not started";
   const actions: MyJob["actions"] = done
     ? [
         { label: "View report", variant: "secondary" },
-        { label: "Retake interview", variant: "primary" },
+        ...(retake ? [{ label: "Retake interview", variant: "primary" as const }] : []),
       ]
     : scoring
       ? [{ label: closed ? "Browse opportunities" : "View details", variant: closed ? ("primary" as const) : ("secondary" as const) }]
@@ -114,18 +155,73 @@ export function toMyJob(app: CareerApplication, index: number): LiveMyJob {
     initials: initialsOf(app.companyName),
     company: app.companyName,
     title: app.jobTitle,
-    location: sample.location, // sample: applications don't carry the job's location
+    location: [app.location, workplaceLabel(app.workplaceType)].filter(Boolean).join(" · ") || sample.location,
     jobType: closed ? "Job closed" : "Partner Job",
     isClosed: closed,
     assessmentStatus,
     applicationStatus: app.hiringDecision === "REJECTED" ? "Not selected" : "Applied",
-    bestScore: done ? sample.bestScore ?? 84 : null,
+    bestScore: app.bestScore ?? null,
     guidance: scoring
       ? "We're scoring your interview. This updates by itself when your result is ready."
       : done && sampleResult === "Qualified" ? "" : closed ? "This role is closed." : "",
     updatedLabel: updatedLabel(app.interviewCompletedAt ?? app.appliedAt),
     actions,
-    creditInfo: !done && !scoring && app.canStartInterview && fundingOf(app) === "CANDIDATE" ? `1 interview · up to ${app.interviewDurationMinutes} minutes` : done ? sample.creditInfo : undefined,
+    // Retakes are always candidate-paid.
+    creditInfo: retake
+      ? ["1 interview", left].filter(Boolean).join(" · ")
+      : !done && !scoring && app.canStartInterview && fundingOf(app) === "CANDIDATE"
+        ? `1 interview · up to ${app.interviewDurationMinutes} minutes`
+        : undefined,
     career: app,
   };
+}
+
+// What to tell the candidate after a start / rejoin answered 409 INVALID_STATE,
+// from the reloaded application (don't retry).
+export function applicationStateMessage(a: CareerApplication) {
+  if (a.interviewStatus === "COMPLETED") {
+    return a.retakeAvailability === "AVAILABLE" && a.canStartInterview
+      ? "Your interview is complete. You can start a retake from My Jobs."
+      : retakeBlockedMessage(a);
+  }
+  if (a.interviewStatus === "IN_PROGRESS") return "Your interview is already in progress. Reopen it from My Jobs.";
+  if (a.jobStatus !== "OPEN" || !a.canStartInterview) return "This role is no longer accepting interviews.";
+  return "This interview can't start right now. Please try again in a moment.";
+}
+
+// Why a completed application can't start a retake, from retakeAvailability.
+export function retakeBlockedMessage(a: CareerApplication) {
+  switch (a.retakeAvailability) {
+    case "DECIDED":
+      return "The recruiter has already made a decision on this application, so retakes are closed.";
+    case "WINDOW_CLOSED":
+      return "The time to retake this interview has ended.";
+    case "LIMIT_REACHED":
+      return "You've used all retakes for this role.";
+    default:
+      return "You've already completed the interview for this role. The recruiter will review it.";
+  }
+}
+
+// Third score tile (backend #312, rules decided 11-09).
+// - Pro / Pro 90-day: rank of rankedCandidates.
+// - Free: topPercent (10 / 25 / 50; null in the lower half) + pointsBehindTop5
+//   (null within the top 5). All four null = in the top 5 but not the top
+//   half (small jobs). pointsBehindTop5 0 = tied with #5, who first completed
+//   earlier: never "0 pts behind".
+// - standing null: too few finished, or a new best not ranked yet (seconds).
+//   The two can't be told apart, so don't claim "too few candidates".
+export function standingTile(st: CareerResultStanding | null | undefined) {
+  const sub = "Candidates with completed assessments";
+  if (!st) return { label: "CURRENT RANK", value: "—", sub: "Your ranking isn't available yet. Refresh in a moment." };
+  if (st.rank != null) return { label: "CURRENT RANK", value: `#${st.rank}${st.rankedCandidates != null ? ` of ${st.rankedCandidates}` : ""}`, sub };
+  const behind =
+    st.pointsBehindTop5 == null
+      ? "You're in the top 5"
+      : st.pointsBehindTop5 === 0
+        ? "Tied with #5 — they completed their first interview earlier"
+        : `${st.pointsBehindTop5} pts behind the top 5`;
+  if (st.topPercent != null) return { label: "CURRENT STANDING", value: `Top ${st.topPercent}%`, sub: behind };
+  if (st.pointsBehindTop5 == null) return { label: "CURRENT STANDING", value: "Top 5", sub: behind };
+  return { label: "CURRENT STANDING", value: st.pointsBehindTop5 === 0 ? "Tied #5" : `${st.pointsBehindTop5} pts`, sub: st.pointsBehindTop5 === 0 ? behind : "behind the top 5" };
 }
