@@ -13,14 +13,19 @@ import {
   companyRoleGuidesHeading as guidesHeadingImpl,
   companyRoleIntro as introImpl,
   companyRoleJsonLd as jsonLdImpl,
+  companyMoreRoles as moreImpl,
   companyRoleLinks as linksImpl,
   companyRoleSeoDescription as seoDescriptionImpl,
   companyRoleSeoTitle as seoTitleImpl,
   isIndexableRole as indexableImpl,
   roleLabelForSlug as labelImpl,
   roleSlugForLabel as slugImpl,
+  showRoleBar as showBarImpl,
 } from '../../scripts/routes.mjs';
-import { getPublicPosts, normalizePublicPosts } from '@/services/CommunityService';
+import { getPublicCompanyRoleStats, getPublicPosts, normalizePublicPosts } from '@/services/CommunityService';
+
+/** One row of companies/roles/stats. */
+export type RoleStatRow = { company?: string; role?: string; postCount?: number };
 
 /** One entry of the role links: URL segment, label, note count. */
 export type RoleLink = { slug: string; label: string; count: number };
@@ -35,6 +40,13 @@ export const isIndexableRole = (count: number | null | undefined, companyTotal: 
 /** Roles that clear isIndexableRole, most notes first. */
 export const companyRoleLinks = (counts: Record<string, number>, companyTotal: number | null | undefined): RoleLink[] =>
   linksImpl(counts, companyTotal);
+
+/** The "More roles" fold: the company's other slugged roles, most notes first. */
+export const companyMoreRoles = (rows: RoleStatRow[], company: string, shown: RoleLink[]): RoleLink[] =>
+  moreImpl(rows, company, shown);
+
+/** Whether the role bar renders: an indexed link, or a fold of 2+ roles. */
+export const showRoleBar = (links: RoleLink[], more: RoleLink[]): boolean => showBarImpl(links, more);
 
 export const companyRoleGuidesHeading = (name: string): string => guidesHeadingImpl(name);
 
@@ -95,4 +107,41 @@ export async function getRoleCrumb(company: string, role: string | null | undefi
   } catch {
     return null;
   }
+}
+
+let roleStatsPromise: Promise<RoleStatRow[]> | null = null;
+
+/**
+ * Every company × role with notes (one list for all companies), fetched once
+ * per page load. A failure is not cached, so the next caller retries.
+ */
+export function getRoleStats(): Promise<RoleStatRow[]> {
+  if (!roleStatsPromise) {
+    roleStatsPromise = getPublicCompanyRoleStats()
+      .then((res) => {
+        const data = res?.data?.data ?? res?.data;
+        return Array.isArray(data) ? (data as RoleStatRow[]) : [];
+      })
+      .catch((err) => {
+        roleStatsPromise = null;
+        throw err;
+      });
+  }
+  return roleStatsPromise;
+}
+
+/**
+ * Every role this company has notes under, labels as the search's `role=`
+ * takes them, most notes first — including roles with no URL segment, since
+ * the personal centre's Role filter filters the feed rather than linking.
+ */
+export async function getCompanyRoleLabels(company: string): Promise<string[]> {
+  const want = company.trim().toLowerCase();
+  const counts = new Map<string, number>();
+  for (const r of await getRoleStats()) {
+    if (String(r?.company ?? '').trim().toLowerCase() !== want || !r.role) continue;
+    const n = Number(r.postCount) || 0;
+    if (n > 0) counts.set(r.role, (counts.get(r.role) ?? 0) + n);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([role]) => role);
 }

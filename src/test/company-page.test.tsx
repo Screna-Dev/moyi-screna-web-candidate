@@ -43,7 +43,15 @@ vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => passesMock() 
 // The role links' client-side count is one search per role; stubbed so the
 // feed assertions below count feed requests only.
 const roleLinksMock = vi.hoisted(() => vi.fn());
-vi.mock('@/utils/companyRole', async (orig) => ({ ...(await orig<object>()), getCompanyRoleLinks: roleLinksMock }));
+// The company × role stats (one cached list in the real module), per test.
+const roleStatsMock = vi.hoisted(() => vi.fn());
+const roleLabelsMock = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/companyRole', async (orig) => ({
+  ...(await orig<object>()),
+  getCompanyRoleLinks: roleLinksMock,
+  getRoleStats: roleStatsMock,
+  getCompanyRoleLabels: roleLabelsMock,
+}));
 
 import { CompanyDetailPage } from '@/pages/newDesign/company-detail';
 
@@ -74,6 +82,8 @@ beforeEach(() => {
   setPass(null);
   defaultAnswers();
   roleLinksMock.mockResolvedValue([]);
+  roleStatsMock.mockResolvedValue([]);
+  roleLabelsMock.mockResolvedValue([]);
 });
 
 describe('company page — identity from the slug', () => {
@@ -487,5 +497,104 @@ describe('role links', () => {
     renderAt('/interview-insights/meta');
     expect(await screen.findByRole('button', { name: 'apply role' })).toBeInTheDocument();
     expect(roleLinksMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('More roles fold', () => {
+  const LINKS = [
+    { slug: 'software-engineer', label: 'Software Engineer', count: 1194 },
+    { slug: 'data-scientist', label: 'Data Scientist', count: 489 },
+  ];
+  const STATS = [
+    { company: 'Meta', role: 'Software Engineer', postCount: 1194 },
+    { company: 'Meta', role: 'Data Scientist', postCount: 489 },
+    { company: 'Meta', role: 'Product Designer', postCount: 5 },
+    { company: 'Meta', role: 'Backend Engineer', postCount: 4 },
+    { company: 'Meta', role: 'Data Analyst', postCount: 4 },
+    { company: 'Meta', role: 'Performance Engineer', postCount: 2 },
+    { company: 'Google', role: 'Business Analyst', postCount: 9 },
+  ];
+  const bar = () => screen.findByRole('navigation', { name: 'Interview questions by role' });
+
+  it('lists the other roles, most notes first, as nofollow links behind a closed fold', async () => {
+    roleLinksMock.mockResolvedValue(LINKS);
+    roleStatsMock.mockResolvedValue(STATS);
+    renderAt('/interview-questions/meta');
+    const nav = await bar();
+    const toggle = await screen.findByRole('button', { name: 'More roles' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(nav.querySelector('a[href="/interview-questions/meta/product-designer"]')).toBeNull();
+    fireEvent.click(toggle);
+    const fold = [...nav.querySelectorAll('#more-roles a')];
+    expect(fold.map((a) => a.textContent)).toEqual(['Product Designer5', 'Backend Engineer4', 'Data Analyst4']);
+    expect(fold.every((a) => a.getAttribute('rel') === 'nofollow')).toBe(true);
+    // The indexed links stay followed and out of the fold.
+    const followed = nav.querySelector('a[href="/interview-questions/meta/software-engineer"]')!;
+    expect(followed.getAttribute('rel')).toBeNull();
+    expect(nav.querySelector('#more-roles a[href$="/software-engineer"]')).toBeNull();
+    expect(nav.querySelector('a[href*="performance"]')).toBeNull();
+  });
+
+  it('shows All + More roles for a company with no indexed role', async () => {
+    roleStatsMock.mockResolvedValue(STATS.filter((r) => !LINKS.some((l) => l.label === r.role)));
+    renderAt('/interview-questions/meta');
+    const nav = await bar();
+    expect([...nav.querySelectorAll(':scope > ul a')].map((a) => a.textContent)).toEqual(['All']);
+    expect(await screen.findByRole('button', { name: 'More roles' })).toBeInTheDocument();
+  });
+
+  it('shows no bar when the company has a single role', async () => {
+    roleStatsMock.mockResolvedValue([{ company: 'Meta', role: 'Product Designer', postCount: 5 }]);
+    renderAt('/interview-questions/meta');
+    await waitFor(() => expect(roleStatsMock).toHaveBeenCalled());
+    await waitFor(() => expect(roleLinksMock).toHaveBeenCalled());
+    expect(screen.queryByRole('navigation', { name: 'Interview questions by role' })).toBeNull();
+  });
+
+  it('opens the fold on a fold role page, with that role current', async () => {
+    roleLinksMock.mockResolvedValue(LINKS);
+    roleStatsMock.mockResolvedValue(STATS);
+    companyMocks.community.getPublicPosts.mockResolvedValue({
+      data: { data: { posts: [feedPost('pd-0')], total: 5, size: 10, page: 0 } },
+    });
+    renderAt('/interview-questions/meta/product-designer');
+    expect(await screen.findByRole('button', { name: 'More roles' })).toHaveAttribute('aria-expanded', 'true');
+    const nav = await bar();
+    expect(nav.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe(
+      '/interview-questions/meta/product-designer',
+    );
+    expect(companyMocks.community.getPublicPosts).toHaveBeenCalledWith(
+      expect.objectContaining({ company: 'Meta', role: 'Product Designer' }),
+    );
+  });
+
+  it('is the same for an Advanced reader on the public page (no Role dropdown)', async () => {
+    setSignedIn(true);
+    setPlan('Advanced');
+    roleLinksMock.mockResolvedValue(LINKS);
+    roleStatsMock.mockResolvedValue(STATS);
+    renderAt('/interview-questions/meta');
+    expect(await screen.findByRole('button', { name: 'More roles' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'apply role' })).toBeNull();
+  });
+});
+
+describe('personal centre Role filter', () => {
+  it('is an unlocked filter for Free readers; Round stays locked', async () => {
+    setSignedIn(true);
+    setPlan('Free');
+    companyMocks.community.getPosts.mockResolvedValue({ data: { data: [feedPost('p-0')] } });
+    renderAt('/interview-insights/meta');
+    fireEvent.click(await screen.findByRole('button', { name: 'apply role' }));
+    await waitFor(() =>
+      expect(companyMocks.community.getPosts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ company: 'Meta', role: 'Software Engineer' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Role' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Interview questions by role' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Round' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/Unlock all/);
+    expect(roleLabelsMock).toHaveBeenCalledWith('Meta');
   });
 });

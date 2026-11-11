@@ -238,6 +238,34 @@ export async function fetchCompanyStats(): Promise<unknown | null> {
   return getJson<unknown>(`${COMMUNITY}/companies/stats`, 8000);
 }
 
+export interface RoleStatRow {
+  company?: string;
+  role?: string;
+  postCount?: number;
+}
+
+const ROLE_STATS_TTL_MS = 10 * 60 * 1000;
+let roleStatsCache: { at: number; rows: RoleStatRow[] } | null = null;
+
+/**
+ * Every company × role with notes (GET companies/roles/stats?minPosts=1), for
+ * the "More roles" fold. One ~70KB list for all companies — the endpoint
+ * ignores `company=` — so it is cached per instance for ten minutes. Never
+ * throws: a failure is an empty list (no fold), never a 503 for the page, and
+ * is not cached.
+ */
+export async function fetchRoleStats(timeoutMs = 5000): Promise<RoleStatRow[]> {
+  if (roleStatsCache && Date.now() - roleStatsCache.at < ROLE_STATS_TTL_MS) return roleStatsCache.rows;
+  try {
+    const data = await getJson<unknown>(`${COMMUNITY}/companies/roles/stats?minPosts=1`, timeoutMs);
+    if (!Array.isArray(data)) return [];
+    roleStatsCache = { at: Date.now(), rows: data as RoleStatRow[] };
+    return roleStatsCache.rows;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Notes per role for one company, { [role label]: total }, read as the search
  * total of posts/search?company=&role= for each role in `roles`.
