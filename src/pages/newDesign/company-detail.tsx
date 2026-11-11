@@ -17,6 +17,7 @@ import {
   X,
   CheckCircle2,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
 import { InsightsLayout } from '@/components/newDesign/insights-layout';
@@ -63,10 +64,15 @@ import {
   companyRoleJsonLd,
   companyRoleSeoDescription,
   companyRoleSeoTitle,
+  companyMoreRoles,
+  getCompanyRoleLabels,
   getCompanyRoleLinks,
+  getRoleStats,
   isIndexableRole,
   roleLabelForSlug,
+  showRoleBar,
   type RoleLink,
+  type RoleStatRow,
 } from '@/utils/companyRole';
 
 // ─── Build-time seed ───────────────────────────────────────────────────────
@@ -114,6 +120,8 @@ type CompanySeed = {
   role?: string | null;
   /** The role links (companyRoleLinks), company and role pages. */
   roleLinks?: RoleLink[];
+  /** The "More roles" fold (companyMoreRoles), company and role pages. */
+  moreRoles?: RoleLink[];
   /** Role page only: the company's search total its share rule used. */
   companyTotal?: number;
   /**
@@ -633,27 +641,64 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // this page, otherwise counted client-side (getCompanyRoleLinks). Any failure
   // is no bar, as on the server.
   const wantsRoleLinks = isPublic && archivePage === null && !roleNotFound;
-  const [roleLinks, setRoleLinks] = useState<RoleLink[]>(
-    wantsRoleLinks && Array.isArray(seed?.roleLinks) ? seed!.roleLinks! : [],
-  );
+  const seededRoleLinks = wantsRoleLinks && Array.isArray(seed?.roleLinks);
+  const [roleLinks, setRoleLinks] = useState<RoleLink[]>(seededRoleLinks ? seed!.roleLinks! : []);
+  // Settled (loaded or failed): the fold below is computed against the final
+  // links, so an indexed role never shows in it while the counts load.
+  const [roleLinksReady, setRoleLinksReady] = useState(seededRoleLinks);
   useEffect(() => {
     if (!wantsRoleLinks) {
       setRoleLinks([]);
+      setRoleLinksReady(false);
       return;
     }
     if (seed && Array.isArray(seed.roleLinks)) {
       setRoleLinks(seed.roleLinks);
+      setRoleLinksReady(true);
       return;
     }
     if (!apiName) return;
     let cancelled = false;
+    setRoleLinksReady(false);
     getCompanyRoleLinks(apiName)
       .then((links) => { if (!cancelled) setRoleLinks(links); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRoleLinksReady(true); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiName, wantsRoleLinks]);
-  const showRoleLinks = wantsRoleLinks && roleLinks.length > 0;
+
+  // The "More roles" fold: the company's other roles with notes, from the
+  // company × role stats (companyMoreRoles), minus the indexed links above.
+  // Seeded by the server; otherwise fetched once (one list for all companies).
+  // Same for every audience — guests, Free/Basic and Advanced alike.
+  const seedMoreRoles = wantsRoleLinks && Array.isArray(seed?.moreRoles) ? seed!.moreRoles! : null;
+  const [roleStats, setRoleStats] = useState<RoleStatRow[] | null>(null);
+  useEffect(() => {
+    if (!wantsRoleLinks || seedMoreRoles) return;
+    let cancelled = false;
+    getRoleStats()
+      .then((rows) => { if (!cancelled) setRoleStats(rows); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsRoleLinks, !!seedMoreRoles]);
+  const moreRoles = useMemo<RoleLink[]>(() => {
+    if (!wantsRoleLinks) return [];
+    if (seedMoreRoles) return seedMoreRoles;
+    if (!roleStats || !roleLinksReady || !apiName) return [];
+    return companyMoreRoles(roleStats, apiName, roleLinks);
+  }, [wantsRoleLinks, seedMoreRoles, roleStats, roleLinksReady, apiName, roleLinks]);
+  const showRoleLinks = wantsRoleLinks && showRoleBar(roleLinks, moreRoles);
+  // Open by default when the page is one of the fold's roles, so the current
+  // role is visible and highlighted.
+  const currentIsMoreRole = roleView && moreRoles.some((r) => r.slug === roleSlug);
+  // null = untouched; the reader's toggle wins until the route changes.
+  const [moreRolesToggled, setMoreRolesToggled] = useState<boolean | null>(null);
+  useEffect(() => {
+    setMoreRolesToggled(null);
+  }, [roleSlug, companyId]);
+  const moreRolesOpen = moreRolesToggled ?? currentIsMoreRole;
 
   // Header stats, sourced solely from GET /community/companies/profile
   // (published-post counts). We show a loading skeleton until it resolves and
@@ -764,6 +809,35 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
       .catch(() => { /* filters fall back to their hardcoded options */ });
     return () => { cancelled = true; };
   }, [isAuthenticated]);
+
+  // Personal centre: the Role filter's options must cover every role this
+  // company has notes under, including ones the options endpoint's list lacks
+  // (they are appended as their own group). Free/Basic get the same single-
+  // select Role filter as Advanced — the backend filters their search by role.
+  const [companyRoles, setCompanyRoles] = useState<string[]>([]);
+  useEffect(() => {
+    if (isPublic || !isAuthenticated || !apiName) return;
+    let cancelled = false;
+    getCompanyRoleLabels(apiName)
+      .then((labels) => { if (!cancelled) setCompanyRoles(labels); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isPublic, isAuthenticated, apiName]);
+  const roleFilterGroups = useMemo<OptionGroup[] | undefined>(() => {
+    if (!roleGroups) return companyRoles.length ? [{ category: `${apiName ?? 'This company'}`, options: companyRoles }] : undefined;
+    const known = new Set(roleGroups.flatMap((g) => g.options));
+    const missing = companyRoles.filter((r) => !known.has(r));
+    return missing.length ? [...roleGroups, { category: 'Other', options: missing }] : roleGroups;
+  }, [roleGroups, companyRoles, apiName]);
+  const roleFilterControl = (
+    <RoleFilter
+      key={`role-${filterEpoch}`}
+      singleSelect
+      groups={roleFilterGroups}
+      initialSelected={restored.role ? [restored.role] : undefined}
+      onApply={(sel) => setFilterRole(sel[0] || '')}
+    />
+  );
 
   // API state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -1268,8 +1342,30 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // about the reader's plan.
   const { find: findCompanyPass } = useCompanyPasses();
   const hasCompanyPass = !!findCompanyPass(company.name);
+  // Under a role filter the feed's first two rows are the ROLE's newest, not
+  // the company's, so rank says nothing; the company's 2 newest are looked up
+  // instead (page 0 of the unfiltered public search, same NEWEST order). Until
+  // they arrive nothing is marked.
+  const [companyNewestIds, setCompanyNewestIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    setCompanyNewestIds(null);
+    if (!isLowTier || !queryRole || !apiName) return;
+    let cancelled = false;
+    getPublicPosts({ company: apiName, page: 0 })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = normalizePublicPosts(res).posts as Post[];
+        setCompanyNewestIds(new Set(rows.slice(0, 2).map((p) => p.id)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isLowTier, queryRole, apiName]);
   const isPlanPreview = (post: Post, rank: number) =>
-    isLowTier && !hasCompanyPass && rank >= 2 && post.user === null && !publicIds.current.has(post.id);
+    isLowTier &&
+    !hasCompanyPass &&
+    (queryRole ? !!companyNewestIds && !companyNewestIds.has(post.id) : rank >= 2) &&
+    post.user === null &&
+    !publicIds.current.has(post.id);
 
   const firstNoteOf = (post: Post): string | null => {
     for (const q of getQuestions(post)) {
@@ -1413,32 +1509,59 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
 
           {/* Role links — the role filter on the public surface, for readers
               and crawlers alike: plain <a href>s, as the server renders them
-              (roleLinksBar in api/_render/company.ts). */}
-          {showRoleLinks && (
-            <nav aria-label="Interview questions by role" className="mb-6">
-              <ul className="flex flex-wrap items-center gap-2">
-                {[{ slug: null as string | null, label: 'All', count: undefined as number | undefined }, ...roleLinks].map((r) => {
-                  const active = r.slug === (roleView ? roleSlug ?? null : null);
-                  return (
-                    <li key={r.slug ?? 'all'}>
-                      <Link
-                        to={r.slug ? `${companyPath}/${r.slug}` : companyPath}
-                        aria-current={active ? 'page' : undefined}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          active
-                            ? 'border-[hsl(222,22%,15%)] bg-[hsl(222,22%,15%)] text-white'
-                            : 'border-[hsl(220,16%,90%)] bg-white text-[hsl(222,12%,45%)] hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]'
-                        }`}
+              (roleLinksBar in api/_render/company.ts). The indexed roles are
+              followed links; the "More roles" fold holds the company's other
+              roles, whose pages are noindex, so their links are nofollow. */}
+          {showRoleLinks && (() => {
+            const current = roleView ? roleSlug ?? null : null;
+            const chip = (r: { slug: string | null; label: string; count?: number }, nofollow = false) => {
+              const active = r.slug === current;
+              return (
+                <li key={r.slug ?? 'all'}>
+                  <Link
+                    to={r.slug ? `${companyPath}/${r.slug}` : companyPath}
+                    rel={nofollow ? 'nofollow' : undefined}
+                    aria-current={active ? 'page' : undefined}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? 'border-[hsl(222,22%,15%)] bg-[hsl(222,22%,15%)] text-white'
+                        : 'border-[hsl(220,16%,90%)] bg-white text-[hsl(222,12%,45%)] hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]'
+                    }`}
+                  >
+                    {r.label}
+                    {r.count !== undefined && <span className="opacity-70">{r.count.toLocaleString('en-US')}</span>}
+                  </Link>
+                </li>
+              );
+            };
+            return (
+              <nav aria-label="Interview questions by role" className="mb-6">
+                <ul className="flex flex-wrap items-center gap-2">
+                  {chip({ slug: null, label: 'All' })}
+                  {roleLinks.map((r) => chip(r))}
+                  {moreRoles.length > 0 && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => setMoreRolesToggled(!moreRolesOpen)}
+                        aria-expanded={moreRolesOpen}
+                        aria-controls="more-roles"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[hsl(220,16%,90%)] bg-white px-3 py-1.5 text-xs font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
                       >
-                        {r.label}
-                        {r.count !== undefined && <span className="opacity-70">{r.count.toLocaleString('en-US')}</span>}
-                      </Link>
+                        More roles
+                        <ChevronDown className={`size-3 transition-transform ${moreRolesOpen ? 'rotate-180' : ''}`} />
+                      </button>
                     </li>
-                  );
-                })}
-              </ul>
-            </nav>
-          )}
+                  )}
+                </ul>
+                {moreRoles.length > 0 && moreRolesOpen && (
+                  <ul id="more-roles" className="mt-2 flex flex-wrap items-center gap-2">
+                    {moreRoles.map((r) => chip(r, true))}
+                  </ul>
+                )}
+              </nav>
+            );
+          })()}
 
           {/* ── Layout Grid ── */}
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -1456,7 +1579,10 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               {archivePage === null && (restrictedBrowsing ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    {(isPublic ? ['Round', 'Level', 'Time'] : ['Role', 'Round', 'Level', 'Time']).map(label => (
+                    {/* Personal centre, signed in (Free/Basic): Role is a real
+                        filter; Round, Level, Time and Sort stay locked. */}
+                    {!isPublic && !signedOut && roleFilterControl}
+                    {(isPublic || !signedOut ? ['Round', 'Level', 'Time'] : ['Role', 'Round', 'Level', 'Time']).map(label => (
                       <button
                         key={label}
                         type="button"
@@ -1482,7 +1608,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[hsl(220,16%,90%)]">
                   <div className="flex flex-wrap items-center gap-2">
-                    {!isPublic && <RoleFilter key={`role-${filterEpoch}`} singleSelect groups={roleGroups} initialSelected={restored.role ? [restored.role] : undefined} onApply={sel => setFilterRole(sel[0] || '')} />}
+                    {!isPublic && roleFilterControl}
                     <RoundFilter key={`round-${filterEpoch}`} singleSelect groups={roundGroups} initialSelected={restored.round ? [restored.round] : undefined} onApply={sel => setFilterRound(sel[0] || '')} />
                     <LevelFilter key={`level-${filterEpoch}`} singleSelect initialSelected={restored.level ? [restored.level] : undefined} onApply={sel => setFilterLevel(sel[0] || '')} />
                     <TimeFilter key={`time-${filterEpoch}`} singleSelect initialSelected={restored.time ? [restored.time] : undefined} onApply={sel => setFilterTime(sel[0] || '')} />
@@ -1823,7 +1949,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
 
               {/* Role guides — last on the company page, the same links as the
                   role bar, as the server's roleGuidesSection. */}
-              {showRoleLinks && !roleView && (
+              {showRoleLinks && !roleView && roleLinks.length > 0 && (
                 <section className="mt-10">
                   <h2 className="text-sm font-semibold text-[hsl(222,22%,15%)] mb-4">{companyRoleGuidesHeading(company.name)}</h2>
                   {roleLinks.map((r) => (

@@ -14,6 +14,7 @@ import {
   fetchCompanyPosts,
   fetchCompanyProfile,
   fetchCompanyRoleCounts,
+  fetchRoleStats,
   type CompanyBreakdown,
   type CompanyProfile,
   type PublicPost,
@@ -32,6 +33,7 @@ import {
   companyRoleGuidesHeading,
   companyRoleIntro,
   companyRoleJsonLd,
+  companyMoreRoles,
   companyRoleLinks,
   companyRoleSeoDescription,
   companyRoleSeoTitle,
@@ -40,6 +42,7 @@ import {
   guideLabel,
   isIndexableRole,
   roleLabelForSlug,
+  showRoleBar,
 } from '../../scripts/routes.mjs';
 
 type RoleLink = { slug: string; label: string; count: number };
@@ -237,22 +240,42 @@ function guidesSection(name: string, guides: CompanyGuide[]): string {
  * that earns an indexed page (companyRoleLinks), with its note count. It is
  * the role filter for readers and crawlers alike — a filter button is not
  * something a crawler follows. `current` is the role page being shown, null on
- * the company page. Nothing at all when no role qualifies.
+ * the company page.
+ *
+ * Then "More roles", a <details> fold with the company's other roles
+ * (companyMoreRoles). Those pages are `noindex, follow`, so their links are
+ * rel="nofollow": readers can filter by them, crawlers are not sent to thin
+ * pages. The fold starts open when `current` is one of them. Nothing at all
+ * when showRoleBar says so.
  */
-function roleLinksBar(slug: string, links: RoleLink[], current: string | null): string {
-  if (!links.length) return '';
-  const chip = (href: string, label: string, active: boolean, count?: number) =>
-    `<li><a class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium ${
+function roleLinksBar(slug: string, links: RoleLink[], more: RoleLink[], current: string | null): string {
+  if (!showRoleBar(links, more)) return '';
+  const chip = (href: string, label: string, active: boolean, count?: number, nofollow = false) =>
+    `<a class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium ${
       active
         ? 'border-[hsl(222,22%,15%)] bg-[hsl(222,22%,15%)] text-white'
         : 'border-[hsl(220,16%,90%)] bg-white text-[hsl(222,12%,45%)]'
-    }" href="${esc(href)}"${active ? ' aria-current="page"' : ''}>${esc(label)}${
+    }" href="${esc(href)}"${nofollow ? ' rel="nofollow"' : ''}${active ? ' aria-current="page"' : ''}>${esc(label)}${
       count !== undefined ? ` <span class="opacity-70">${esc(count.toLocaleString('en-US'))}</span>` : ''
-    }</a></li>`;
+    }</a>`;
+  const open = more.some((r) => r.slug === current);
   return join(
     '<nav class="mb-6" aria-label="Interview questions by role"><ul class="flex flex-wrap items-center gap-2">',
-    chip(`/interview-questions/${slug}`, 'All', current === null),
-    ...links.map((r) => chip(`/interview-questions/${slug}/${r.slug}`, r.label, r.slug === current, r.count)),
+    `<li>${chip(`/interview-questions/${slug}`, 'All', current === null)}</li>`,
+    ...links.map(
+      (r) => `<li>${chip(`/interview-questions/${slug}/${r.slug}`, r.label, r.slug === current, r.count)}</li>`,
+    ),
+    more.length &&
+      join(
+        `<li><details${open ? ' open' : ''}>`,
+        '<summary class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-dashed border-[hsl(220,16%,90%)] bg-white text-xs font-medium text-[hsl(222,12%,45%)] cursor-pointer list-none">More roles &#9662;</summary>',
+        '<ul class="mt-2 flex flex-wrap items-center gap-2">',
+        ...more.map(
+          (r) =>
+            `<li>${chip(`/interview-questions/${slug}/${r.slug}`, r.label, r.slug === current, r.count, true)}</li>`,
+        ),
+        '</ul></details></li>',
+      ),
     '</ul></nav>',
   );
 }
@@ -289,11 +312,14 @@ function renderBody({
   pageCount,
   current,
   roleLinks,
+  moreRoles,
 }: {
   name: string;
   slug: string;
   /** companyRoleLinks(); empty on /page/:n. */
   roleLinks: RoleLink[];
+  /** companyMoreRoles(); empty on /page/:n. */
+  moreRoles: RoleLink[];
   profile: CompanyProfile | null;
   /** companyIntro() — replaces profile.summary as the opening paragraph. */
   intro: string;
@@ -323,7 +349,7 @@ function renderBody({
       noteTotal === 1 ? 'note' : 'notes'
     }${profile?.latestUpdatedAt ? ` · updated ${esc(formatMonth(profile.latestUpdatedAt))}` : ''}</p>`,
     '</header>',
-    current === null && roleLinksBar(slug, roleLinks, null),
+    current === null && roleLinksBar(slug, roleLinks, moreRoles, null),
     posts.length
       ? join(...posts.map((p) => noteCard(p, name)))
       : '<p class="text-sm text-[hsl(222,12%,45%)]">No published notes for this company yet.</p>',
@@ -396,6 +422,7 @@ export async function renderCompanyPage(
   let feedTotal = 0;
   let guides: CompanyGuide[] = [];
   let roleCounts: Record<string, number> = {};
+  let roleStats: Awaited<ReturnType<typeof fetchRoleStats>> = [];
 
   try {
     // The URL segment is the backend's slug, so the profile is looked up by it
@@ -415,13 +442,15 @@ export async function renderCompanyPage(
     // are not optional — without them there is no page.
     // Guides are best-effort (never throw) and only on the company page itself.
     // Role counts likewise: company page only, best-effort per role.
-    const [breakdownResult, pageResult, guidesResult, roleCountsResult] = await Promise.all([
+    const [breakdownResult, pageResult, guidesResult, roleCountsResult, roleStatsResult] = await Promise.all([
       fetchCompanyBreakdown(name),
       collectPage(name, current),
       current === null ? fetchCompanyGuides(slug) : Promise.resolve([]),
       current === null ? fetchCompanyRoleCounts(name, ROLE_LABELS) : Promise.resolve({}),
+      current === null ? fetchRoleStats() : Promise.resolve([]),
     ]);
     roleCounts = roleCountsResult;
+    roleStats = roleStatsResult;
     guides = guidesResult;
     breakdown = breakdownResult;
     posts = pageResult.posts;
@@ -447,11 +476,15 @@ export async function renderCompanyPage(
   const faqJsonLd = current === null ? companyFaqJsonLd(name, breakdown) : null;
   // Gated on the feed's total: the role counts are search totals too.
   const roleLinks: RoleLink[] = companyRoleLinks(roleCounts, feedTotal);
+  // The indexed links stay on the search totals above; the fold is only what
+  // they leave out, so it can never change which pages are advertised.
+  const moreRoles: RoleLink[] = current === null ? companyMoreRoles(roleStats, name, roleLinks) : [];
 
   const body = renderBody({
     name,
     slug,
     roleLinks,
+    moreRoles,
     profile,
     intro,
     faq,
@@ -515,6 +548,7 @@ export async function renderCompanyPage(
       page: current,
       guides,
       roleLinks,
+      moreRoles,
       // The client applies this as-is: it cannot see the rendered body, so it
       // would get the word-floor half of the decision wrong.
       noindex,
@@ -543,6 +577,7 @@ function renderRoleBody({
   role,
   roleSlug,
   roleLinks,
+  moreRoles,
   intro,
   posts,
   noteTotal,
@@ -552,6 +587,7 @@ function renderRoleBody({
   role: string;
   roleSlug: string;
   roleLinks: RoleLink[];
+  moreRoles: RoleLink[];
   intro: string;
   posts: PublicPost[];
   noteTotal: number;
@@ -575,7 +611,7 @@ function renderRoleBody({
     }</p>`,
     '</header>',
     // The other roles at this company, this one highlighted.
-    roleLinksBar(slug, roleLinks, roleSlug),
+    roleLinksBar(slug, roleLinks, moreRoles, roleSlug),
     join(...posts.map((p) => noteCard(p, name))),
     '</div></div>',
   );
@@ -604,6 +640,7 @@ export async function renderCompanyRolePage(
   let feedTotal = 0;
   let companyTotal = 0;
   let roleCounts: Record<string, number> = {};
+  let roleStats: Awaited<ReturnType<typeof fetchRoleStats>> = [];
 
   try {
     // Same identity rule as the company page: the profile by slug decides
@@ -616,11 +653,13 @@ export async function renderCompanyRolePage(
     // The company's own search total is what the role's share is taken of —
     // the same number the company page and the sitemap use, not
     // profile.postCount (a database count that lags the index).
-    const [feed, companyFeed, counts] = await Promise.all([
+    const [feed, companyFeed, counts, stats] = await Promise.all([
       fetchCompanyPosts(name, 0, role),
       fetchCompanyPosts(name, 0),
       fetchCompanyRoleCounts(name, ROLE_LABELS),
+      fetchRoleStats(),
     ]);
+    roleStats = stats;
     posts = feed.posts;
     feedTotal = feed.total;
     companyTotal = companyFeed.total;
@@ -638,7 +677,8 @@ export async function renderCompanyRolePage(
   // number, and it is the same Elasticsearch count the sitemap is built from.
   const intro = companyRoleIntro(name, role, feedTotal, profile?.postCount);
   const roleLinks: RoleLink[] = companyRoleLinks(roleCounts, companyTotal);
-  const body = renderRoleBody({ name, slug, role, roleSlug, roleLinks, intro, posts, noteTotal: feedTotal });
+  const moreRoles: RoleLink[] = companyMoreRoles(roleStats, name, roleLinks);
+  const body = renderRoleBody({ name, slug, role, roleSlug, roleLinks, moreRoles, intro, posts, noteTotal: feedTotal });
 
   const noindex = !isIndexableRole(feedTotal, companyTotal) || shouldNoindexOnLength(body);
   const path = `/interview-questions/${slug}/${roleSlug}`;
@@ -664,6 +704,7 @@ export async function renderCompanyRolePage(
       page: null,
       role,
       roleLinks,
+      moreRoles,
       companyTotal,
       noindex,
     }),

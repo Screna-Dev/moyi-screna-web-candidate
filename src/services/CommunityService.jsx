@@ -20,6 +20,12 @@ export const getPublicCompaniesStats = (params = {}) => {
   return API.get('/community/public/companies/stats', { params });
 };
 
+// Every company x role with notes: [{ company, role, postCount }]. The
+// endpoint ignores `company=`, so this is the whole list (~70KB, ~1,100 rows).
+export const getPublicCompanyRoleStats = () => {
+  return API.get('/community/public/companies/roles/stats', { params: { minPosts: 1 } });
+};
+
 // One company's { displayName, slug, category, summary, postCount,
 // recentPostCount, latestUpdatedAt, passEligible }, looked up by exactly one of
 // { slug } (the company page's URL segment) or { company } (display name).

@@ -59,6 +59,8 @@ vi.hoisted(() => {
       { slug: 'software-engineer', label: 'Software Engineer', count: 30 },
       { slug: 'data-scientist', label: 'Data Scientist', count: 10 },
     ],
+    // Always embedded alongside roleLinks; empty here (no other roles).
+    moreRoles: [],
     // The server's call (here: a body under the word floor). 40 notes clears
     // MIN_POSTS_FOR_PAGE, so only the seed can make this page noindex.
     noindex: true,
