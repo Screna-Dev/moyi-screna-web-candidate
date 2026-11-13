@@ -655,21 +655,19 @@ export function HomePage() {
 
           {/* Desktop nav links */}
           <div className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+            {/* Same links as the shared Navbar. Routes go through the router (no
+                full reload, like the shared one); hashes stay on this page. */}
             {NAV_LINKS.map(({ label: link, href }) => (
-              <a
+              <Link
                 key={link}
-                href={href}
+                to={href.startsWith('#') ? { hash: href } : href}
                 className="text-[14px] transition-colors duration-150"
                 style={{ color: '#4A4D57', fontFamily: "'Inter', sans-serif" }}
-                onMouseEnter={(e) =>
-                  ((e.target as HTMLElement).style.color = '#2E5BFF')
-                }
-                onMouseLeave={(e) =>
-                  ((e.target as HTMLElement).style.color = '#4A4D57')
-                }
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#2E5BFF')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#4A4D57')}
               >
                 {link}
-              </a>
+              </Link>
             ))}
           </div>
 
@@ -782,15 +780,15 @@ export function HomePage() {
             style={{ borderColor: '#E8E8EA' }}
           >
             {NAV_LINKS.map(({ label: link, href }) => (
-              <a
+              <Link
                 key={link}
-                href={href}
+                to={href.startsWith('#') ? { hash: href } : href}
                 className="text-[15px]"
                 style={{ color: '#4A4D57' }}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {link}
-              </a>
+              </Link>
             ))}
             <Link
               to="/employers"

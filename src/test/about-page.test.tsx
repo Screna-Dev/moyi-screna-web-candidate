@@ -164,7 +164,7 @@ describe('AboutPage — head tags', () => {
 });
 
 // ─── Nav bars ─────────────────────────────────────────────
-const NAV_ORDER = ['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ', 'About'];
+const NAV_ORDER = ['Roles', 'Interview Questions', 'Blog', 'Pricing', 'FAQ', 'About'];
 
 /** The labels of the desktop link row, in order. */
 function desktopNavLabels(container: HTMLElement) {
@@ -181,6 +181,7 @@ describe('Shared Navbar (marketing pages)', () => {
     const { labels, row } = desktopNavLabels(container);
     expect(labels).toEqual(NAV_ORDER);
     expect(within(row).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
+    expect(within(row).getByRole('link', { name: 'Roles' })).toHaveAttribute('href', '/opportunities');
   });
 
   it('draws About in the accent colour on /about only', () => {
@@ -199,7 +200,7 @@ describe('Shared Navbar (marketing pages)', () => {
   it('never marks a hash link as current, even on the home page', () => {
     const { container } = renderAt(<Navbar />, '/');
     const { row } = desktopNavLabels(container);
-    for (const name of ['Features', 'Pricing', 'FAQ']) {
+    for (const name of ['Pricing', 'FAQ']) {
       expect(within(row).getByRole('link', { name })).toHaveStyle({ color: '#4A4D57' });
     }
   });
@@ -241,10 +242,23 @@ describe('Home page nav bar (its own copy)', () => {
       Roles: '/opportunities',
       'Interview Questions': '/interview-questions',
       Blog: '/blog',
-      Pricing: '#pricing',
-      FAQ: '#faq',
+      Pricing: '/#pricing',
+      FAQ: '/#faq',
       About: '/about',
     });
+  });
+
+  it('matches the shared Navbar: same links, same targets, For employers on both', () => {
+    const home = renderAt(<HomePage />, '/');
+    const homeRow = desktopNavLabels(home.container);
+    const homeLinks = within(homeRow.row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(within(home.container).getAllByRole('link', { name: 'For employers' })[0]).toHaveAttribute('href', '/employers');
+    home.unmount();
+    const shared = renderAt(<Navbar />, '/contact');
+    const sharedRow = desktopNavLabels(shared.container);
+    const sharedLinks = within(sharedRow.row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(sharedLinks).toEqual(homeLinks);
+    expect(within(shared.container).getByRole('link', { name: 'For employers' })).toHaveAttribute('href', '/employers');
   });
 
   it('collapses to the menu below lg and lists About there', () => {

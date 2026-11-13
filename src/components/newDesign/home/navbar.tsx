@@ -6,10 +6,10 @@ import { useUserPlan } from '@/hooks/useUserPlan';
 import { getPersonalInfo } from '@/services/ProfileServices';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 
-// Anchor links resolve to the home page + hash so they work from any page
-// (blog, goal, etc.), not just the landing page itself.
+// Same links as the home page's own nav (Roles first). Anchor links resolve
+// to the home page + hash so they work from any page (blog, goal, etc.).
 const NAV_LINKS = [
-  { label: 'Features', to: '/#features' },
+  { label: 'Roles', to: '/opportunities' },
   { label: 'Interview Questions', to: '/interview-questions' },
   { label: 'Blog', to: '/blog' },
   { label: 'Pricing', to: '/#pricing' },
@@ -117,6 +117,13 @@ export function Navbar() {
 
         {/* CTA */}
         <div className="flex items-center gap-3">
+          <Link
+            to="/employers"
+            className="hidden lg:inline-flex items-center justify-center h-9 px-4 rounded-[7px] text-[14px] font-medium transition-colors duration-150 text-[#4A4D57] hover:text-[#0A0A0A]"
+            style={{ fontFamily: "'Inter', sans-serif" }}
+          >
+            For employers
+          </Link>
           {user ? (
             <div className="relative hidden lg:block" ref={avatarRef}>
               <button
@@ -227,6 +234,14 @@ export function Navbar() {
               {label}
             </Link>
           ))}
+          <Link
+            to="/employers"
+            onClick={() => setMobileMenuOpen(false)}
+            className="text-[15px] font-medium"
+            style={{ color: '#2E5BFF' }}
+          >
+            For employers
+          </Link>
           {user ? (
             <>
               <Link
