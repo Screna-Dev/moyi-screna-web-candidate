@@ -31,7 +31,7 @@ import iconCheckPrimary from '@/assets/landing-candidate/check-primary.svg';
 import iconCheckCircle from '@/assets/landing-candidate/check-circle.svg';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-type SystemTab = 'Partner Roles' | 'Interview Report' | 'Interview Reports Library';
+type SystemTab = 'Partner Roles' | 'Interview Report' | 'Interview Questions Library';
 
 // Landing-page plan. FREE is UI-only; PRO is the backend subscription tier
 // (the only one on sale since change C9, billed MONTHLY); PRO_90_DAY is the
@@ -56,14 +56,14 @@ interface Plan {
 // ─── Data ────────────────────────────────────────────────────────────────────
 const NAV_LINKS: { label: string; href: string }[] = [
   { label: 'Roles', href: '/opportunities' },
-  { label: 'Interview Reports', href: '/interview-questions' },
+  { label: 'Interview Questions', href: '/interview-questions' },
   { label: 'Blog', href: '/blog' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
   { label: 'About', href: '/about' },
 ];
 
-const SYSTEM_TABS: SystemTab[] = ['Partner Roles', 'Interview Report', 'Interview Reports Library'];
+const SYSTEM_TABS: SystemTab[] = ['Partner Roles', 'Interview Report', 'Interview Questions Library'];
 
 const FAQ_ITEMS = [
   {
@@ -1301,7 +1301,7 @@ export function HomePage() {
               title="Product"
               links={[
                 { label: 'Roles', to: '/opportunities' },
-                { label: 'Interview Reports', to: '/interview-questions' },
+                { label: 'Interview Questions', to: '/interview-questions' },
                 { label: 'Pricing', to: '#pricing' },
                 { label: 'For hiring teams', to: '/employers' },
               ]}
@@ -1627,7 +1627,7 @@ function SystemTabsSection() {
           </>
         )}
 
-        {active === 'Interview Reports Library' && (
+        {active === 'Interview Questions Library' && (
           <>
             <div>
               <p className="text-[16px] sm:text-[17px] leading-[27.6px]" style={{ color: '#595959' }}>
@@ -1644,7 +1644,7 @@ function SystemTabsSection() {
                 to="/interview-questions"
                 className="inline-flex items-center h-10 px-6 mt-8 rounded-full text-[14px] font-medium text-white transition-colors duration-150 bg-[#2E5BFF] hover:bg-[#1E48E6]"
               >
-                Browse interview reports
+                Browse interview questions
               </Link>
             </div>
             <div className="flex flex-col gap-3">
