@@ -227,7 +227,7 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          {(job.scoreValue || interviewCompleted) && (
+          {((job.reportAvailable ?? !!job.scoreValue) || interviewCompleted) && (
             <button
               onClick={onViewReport}
               className="text-[#3c77f6] text-[14px] hover:underline transition-all"
@@ -293,9 +293,13 @@ export function OpportunitiesPage() {
   const [failed, setFailed] = useState(false);
   const starter = useCareerInterviewStarter();
 
-  // The list has no applicationId: read it from the job detail.
-  const openReport = async (jobId: string) => {
-    const appId = await getCareerJob(jobId).then((d) => d.myApplication?.applicationId).catch(() => undefined);
+  // applicationId from the row's myApplication (#320); before that's deployed,
+  // from the job detail.
+  const openReport = async (job: LiveOpportunityJob) => {
+    const jobId = job.id;
+    const appId =
+      job.career.myApplication?.applicationId ??
+      (await getCareerJob(jobId).then((d) => d.myApplication?.applicationId).catch(() => undefined));
     navigate(appId ? `/opportunities/applications/${encodeURIComponent(appId)}/results` : `/opportunities/job/${encodeURIComponent(jobId)}`);
   };
 
@@ -473,7 +477,7 @@ export function OpportunitiesPage() {
               job={job}
               onViewDetail={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
               onQuickInterview={() => void starter.begin(job.id)}
-              onViewReport={() => void openReport(job.id)}
+              onViewReport={() => void openReport(job as LiveOpportunityJob)}
               onContactRecruiter={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/contact`)}
             />
         ))}

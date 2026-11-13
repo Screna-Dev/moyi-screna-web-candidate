@@ -40,6 +40,7 @@ import {
   Award,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/newDesign/dashboard-layout';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { EditProfileModal, type EditProfileData } from '@/components/newDesign/edit-profile-modal';
 import { getPersonalInfo, getProfile, uploadResumeAndWait, isResumeUnreadableError, RESUME_UNREADABLE_MESSAGE } from '@/services/ProfileServices';
 import { useToast } from '@/hooks/use-toast';
@@ -243,6 +244,11 @@ const CAREER_STAGES: {
   },
 ];
 
+// Mentors are hidden this release (MENTOR_ENABLED): drop the mentor stage.
+const VISIBLE_STAGES = MENTOR_ENABLED ? CAREER_STAGES : CAREER_STAGES.filter((s) => s.id !== 'support');
+// The offer stage's "Learn More" leads to coaching; hide that button too.
+const stageHasCta = (s: { ctaHref: string }) => MENTOR_ENABLED || s.ctaHref !== '/coaching';
+
 // ─── Focus Actions ──────────────────────────────────────────────────────────
 
 const FOCUS_ACTIONS = [
@@ -291,6 +297,7 @@ const FOCUS_ACTIONS = [
     estimate: '~3 min',
   },
 ];
+const VISIBLE_FOCUS_ACTIONS = FOCUS_ACTIONS.filter((a) => MENTOR_ENABLED || a.href !== '/coaching');
 
 const badgeStyles: Record<string, string> = {
   rose:    'bg-rose-50 text-rose-600 border border-rose-100',
@@ -1754,7 +1761,7 @@ function OfferGrowPanel() {
 function CareerCommandCenter() {
   const [activeStage, setActiveStage] = useState('practice');
 
-  const expanded = CAREER_STAGES.find(s => s.id === activeStage)!;
+  const expanded = VISIBLE_STAGES.find(s => s.id === activeStage)!;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
@@ -1765,13 +1772,13 @@ function CareerCommandCenter() {
           <p className="text-[12px] text-slate-400 mt-0.5">Your guided journey from preparation to offer</p>
         </div>
         <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-[11px] font-semibold border border-blue-100">
-          Stage 2 of 5
+          Stage 2 of {VISIBLE_STAGES.length}
         </span>
       </div>
 
       {/* Stage rail */}
       <div className="flex items-stretch border-b border-slate-100 overflow-x-auto">
-        {CAREER_STAGES.map((stage, idx) => {
+        {VISIBLE_STAGES.map((stage, idx) => {
           const isActive = stage.id === activeStage;
           const isCompleted = stage.status === 'completed';
           const isLocked = stage.status === 'locked';
@@ -1875,12 +1882,14 @@ function CareerCommandCenter() {
                   ))}
                 </div>
 
-                <Link to={expanded.ctaHref} className="mt-5">
-                  <button className="w-full py-2.5 rounded-lg bg-[hsl(221,91%,60%)] text-white text-[13px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-colors flex items-center justify-center gap-1.5 shadow-[0_2px_8px_hsl(221,91%,60%)/25]">
-                    {expanded.cta}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </Link>
+                {stageHasCta(expanded) && (
+                  <Link to={expanded.ctaHref} className="mt-5">
+                    <button className="w-full py-2.5 rounded-lg bg-[hsl(221,91%,60%)] text-white text-[13px] font-semibold hover:bg-[hsl(221,91%,55%)] transition-colors flex items-center justify-center gap-1.5 shadow-[0_2px_8px_hsl(221,91%,60%)/25]">
+                      {expanded.cta}
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </Link>
+                )}
               </div>
             </div>
           )}
@@ -1898,7 +1907,7 @@ function TodayFocus() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-[15px] font-semibold text-slate-900">Today's Focus</h2>
-          <p className="text-[12px] text-slate-400 mt-0.5">4 actions, prioritized for you</p>
+          <p className="text-[12px] text-slate-400 mt-0.5">{VISIBLE_FOCUS_ACTIONS.length} actions, prioritized for you</p>
         </div>
         <span className="flex items-center gap-1 text-[12px] text-slate-400">
           <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -1906,8 +1915,8 @@ function TodayFocus() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        {FOCUS_ACTIONS.map((action) => {
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${VISIBLE_FOCUS_ACTIONS.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-3`}>
+        {VISIBLE_FOCUS_ACTIONS.map((action) => {
           const ActionIcon = action.icon;
           return (
             <motion.div
@@ -2488,7 +2497,7 @@ export function DashboardPage() {
 
           {/* Right column (1/3) */}
           <div className="flex flex-col gap-5">
-            <MentorshipSessions />
+            {MENTOR_ENABLED && <MentorshipSessions />}
             <ProgressMomentum />
             <CareerProfileCard userData={userData} loading={profileLoading} onEdit={() => setEditOpen(true)} onUploadResume={triggerResumeInput} />
           </div>

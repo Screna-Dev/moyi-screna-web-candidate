@@ -537,7 +537,10 @@ export function AuthPage() {
       // Auto-login after verification and go directly to onboarding.
       try {
         redirectingRef.current = true;
-        const loggedInUser = await login(registeredEmail, password, false);
+        // Remember the session (localStorage), like Google sign-up: with
+        // sessionStorage only, onboarding opened in another tab had no token
+        // and every save returned 401.
+        const loggedInUser = await login(registeredEmail, password, true);
         localStorage.removeItem('screna_new_user');
         if (loggedInUser?.role === 'ADMIN' || loggedInUser?.role === 'OPS') {
           navigate('/admin');

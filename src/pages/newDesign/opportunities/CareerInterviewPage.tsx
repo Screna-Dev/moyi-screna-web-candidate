@@ -6,7 +6,7 @@ import { CONSENT_VERSION } from "@/components/newDesign/opportunities/interviewC
 import { endCareerInterview, careersErrorCode, careersErrorMessage, getMyApplication, startCareerInterview, type CareerInterviewSession } from "@/services/careersApi";
 import { PrimaryButton, SecondaryButton, font, type CareerRoomState } from "@/components/newDesign/opportunities/careersShared";
 import { applicationStateMessage } from "@/components/newDesign/opportunities/careersDesignData";
-import { checkCareerResult, isBeingScored, markInterviewEnded, settleIfDone } from "@/components/newDesign/opportunities/careersEnded";
+import { checkCareerResult, isBeingScored, markInterviewEnded, settleIfDone, voidMessage } from "@/components/newDesign/opportunities/careersEnded";
 
 // Live AI interview for a job application, always on video. Reuses the
 // mock-interview room component (VideoInterview), but never the /ai-mock page: that page ends by calling the
@@ -49,6 +49,9 @@ export function CareerInterviewPage() {
   const [minutes, setMinutes] = useState(fromDialog?.session.maxInterviewDuration ?? fromDialog?.minutes ?? 20);
   const [phase, setPhase] = useState<Phase>(fromDialog ? "live" : "joining");
   const [message, setMessage] = useState("");
+  // completedAttempts before this attempt. On a rejoin the application is
+  // IN_PROGRESS, so its count is still the one from before.
+  const attemptsBefore = useRef<number | null>(fromDialog?.attemptsBefore ?? null);
 
   // Reload / direct link: rejoin only an interview that is already running.
   // Never start a fresh one from here — that would charge without the
@@ -62,7 +65,13 @@ export function CareerInterviewPage() {
         const app = await getMyApplication(applicationId);
         setTitle(app.jobTitle);
         setMinutes(app.interviewDurationMinutes);
-        if (settleIfDone(app) === "ready") return setPhase("done");
+        if (app.interviewStatus === "IN_PROGRESS") attemptsBefore.current = app.completedAttempts ?? null;
+        const settled = settleIfDone(app);
+        if (settled === "ready") return setPhase("done");
+        if (settled === "void" && app.interviewStatus === "COMPLETED") {
+          setMessage(voidMessage(app));
+          return setPhase("error");
+        }
         // Ended here and still scoring: don't rejoin.
         if (isBeingScored(app)) return setPhase("submitted");
         if (app.interviewStatus !== "IN_PROGRESS" || !app.canStartInterview) {
@@ -105,11 +114,11 @@ export function CareerInterviewPage() {
     let timer: number | undefined;
     const check = async () => {
       try {
-        const { outcome } = await checkCareerResult(applicationId);
+        const { outcome, app } = await checkCareerResult(applicationId);
         if (cancelled) return;
         if (outcome === "ready") return setPhase("done");
         if (outcome === "void") {
-          setMessage("This attempt didn't count — the interview didn't really get going. Nothing was used, and you can start again from My Jobs.");
+          setMessage(voidMessage(app));
           return setPhase("error");
         }
       } catch {
@@ -129,7 +138,7 @@ export function CareerInterviewPage() {
     if (ended.current) return;
     ended.current = true;
     // Before /end: from here until scoring finishes, "continue" is hidden.
-    markInterviewEnded(applicationId);
+    markInterviewEnded(applicationId, attemptsBefore.current);
     setPhase("ending");
     try {
       await endCareerInterview(applicationId);

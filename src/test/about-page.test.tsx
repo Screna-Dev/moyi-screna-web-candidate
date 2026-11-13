@@ -36,6 +36,7 @@ import { Footer } from '@/components/newDesign/home/footer';
 import { HomePage } from '@/pages/newDesign/home/home';
 import { ORGANIZATION_JSON_LD } from '@/constants/organization';
 import { SEO_COPY } from '@/constants/seo';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 const renderAt = (ui: React.ReactElement, path = '/about') =>
   render(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
@@ -93,7 +94,8 @@ describe('AboutPage — content', () => {
     expect(h3s).toEqual([
       'Real interview insights',
       'AI-powered practice',
-      'Human guidance',
+      // The mentor card is hidden while MENTOR_ENABLED is off.
+      ...(MENTOR_ENABLED ? ['Human guidance'] : []),
       'Relevant preparation',
       'Feedback you can use',
       'Technology with a human perspective',
@@ -260,6 +262,11 @@ describe('Footer', () => {
   it('links to /about under Support', () => {
     renderAt(<Footer />, '/');
     expect(screen.getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
+  });
+
+  it.skipIf(MENTOR_ENABLED)('has no coaching link while mentors are hidden', () => {
+    const { container } = renderAt(<Footer />, '/');
+    expect(container.querySelector('a[href="/coaching"]')).toBeNull();
   });
 });
 

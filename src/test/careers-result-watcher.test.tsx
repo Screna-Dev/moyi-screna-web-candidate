@@ -84,6 +84,33 @@ describe('CareerResultWatcher', () => {
     expect(toast).toHaveBeenCalledWith("Your interview for Platform Engineer didn't count", expect.anything());
   });
 
+  it('a retake that ends without a result does not announce the old result (11-10)', async () => {
+    markInterviewEnded('app-1', 1);
+    // Back to COMPLETED, completedAttempts unchanged: the previous result stands.
+    api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'COMPLETED', completedAttempts: 1, bestScore: 70, canStartInterview: true }));
+    renderAt('/opportunities');
+    await advance(0);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith("Your interview for Platform Engineer didn't count", expect.objectContaining({ description: expect.stringMatching(/previous result still stands/) }));
+    expect(localStorage.getItem('careerInterviewEnded:app-1')).toBeNull();
+  });
+
+  it('a retake with a new result announces it', async () => {
+    markInterviewEnded('app-1', 1);
+    api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'COMPLETED', completedAttempts: 2, canStartInterview: true }));
+    renderAt('/opportunities');
+    await advance(0);
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads marks written before attempts were tracked', async () => {
+    localStorage.setItem('careerInterviewEnded:app-1', String(Date.now()));
+    api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'COMPLETED', completedAttempts: 1 }));
+    renderAt('/opportunities');
+    await advance(0);
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
   it('checks every 5 s at first, then every 20 s after 3 minutes', async () => {
     markInterviewEnded('app-1');
     api.getMyApplication.mockResolvedValue(app());

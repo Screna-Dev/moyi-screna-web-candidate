@@ -15,6 +15,7 @@ import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // 'premium' = Advanced/Flagship tiers (full dashboard); 'basic' and 'free' see
@@ -230,8 +231,9 @@ function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStat
   const isPremium = plan === 'premium';
   const colCount = isPremium ? 4 : 2;
   // Mentorship is available to all members, so it's reflected in these stats regardless of plan.
-  const learningSub = 'Mock Interview + Mentorship Sessions';
-  const sessionsSub = 'Mock Interview + Mentorship Sessions';
+  // Mentor hidden this release (MENTOR_ENABLED): don't mention it.
+  const learningSub = MENTOR_ENABLED ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
+  const sessionsSub = learningSub;
 
   return (
     <div
@@ -2188,12 +2190,12 @@ export function DashboardHome({
         data-dashboard-grid
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
+          gridTemplateColumns: MENTOR_ENABLED ? '1fr 1fr 1fr' : '1fr 1fr',
           gap: 16,
           alignItems: 'start',
         }}
       >
-        <MentorshipCard />
+        {MENTOR_ENABLED && <MentorshipCard />}
         <InsightsCard isLoading={loading} insights={apiStats?.interviewPracticeInsights ?? null} />
         <CommunityCard />
       </div>

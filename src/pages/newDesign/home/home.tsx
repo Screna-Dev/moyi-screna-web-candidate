@@ -15,6 +15,7 @@ import { ADD_ON_INTERVIEWS, ADD_ON_PRICE, ADD_ON_VALID_DAYS, fetchInterviewQuota
 import { buildAuthPath } from '@/utils/returnTo';
 import { useSeo } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { ORGANIZATION_JSON_LD } from '@/constants/organization';
 import imgLogo from '@/imports/Frame1/2ac62cf8d338510e851fc6fd6ab9ce46a7956ad5.png';
 // WebP, resized to ~2x display size (see scripts/optimize-images.mjs).
@@ -308,8 +309,8 @@ function HowItWorksSection() {
             { num: '03', title: 'Quick Mock', desc: 'Start fast with a low-friction practice mode.' },
             { num: '04', title: 'Target job / JD', desc: 'Paste a JD or choose a recommended target role.' },
             { num: '05', title: 'AI Mock session', desc: 'Tailored questions, adjustable focus, built around your goal.' },
-            { num: '06', title: 'Feedback + next reps', desc: 'Improve, retry, or move into mentor review.' },
-            { num: '07', title: 'Mentorship', desc: 'Optional human guidance for strategy and confidence.' },
+            { num: '06', title: 'Feedback + next reps', desc: MENTOR_ENABLED ? 'Improve, retry, or move into mentor review.' : 'Improve, retry, and track your progress.' },
+            ...(MENTOR_ENABLED ? [{ num: '07', title: 'Mentorship', desc: 'Optional human guidance for strategy and confidence.' }] : []),
           ].map(card => (
             <div key={card.num} className="rounded-2xl p-4 flex items-start gap-3" style={{ background: 'white', border: '1px solid #2E5BFF' }}>
               <span className="text-[10px] font-semibold flex-shrink-0 mt-0.5" style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#1231B8' }}>{card.num}</span>

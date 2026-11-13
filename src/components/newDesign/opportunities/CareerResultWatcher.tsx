@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { checkCareerResult, onResultSettled, pendingResults } from "./careersEnded";
+import { checkCareerResult, onResultSettled, pendingResults, voidMessage } from "./careersEnded";
 
 // Checks, from any page, the interviews this browser ended that are still
 // being scored, and says so when a result lands. Mounted once in RootLayout.
@@ -39,7 +39,7 @@ export function CareerResultWatcher() {
           });
         } else {
           toast(`Your interview${app.jobTitle ? ` for ${app.jobTitle}` : ""} didn't count`, {
-            description: "It didn't really get going, so nothing was used. You can start again from My Jobs.",
+            description: voidMessage(app),
             duration: 10_000,
           });
         }

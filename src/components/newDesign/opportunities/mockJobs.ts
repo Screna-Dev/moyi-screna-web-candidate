@@ -28,6 +28,8 @@ export type OpportunityJob = {
   primaryBtnShadow?: string;
   scoreValue?: string;
   scoreStatus?: string;
+  // Live data: whether "View report" applies. Unset = shown with a score.
+  reportAvailable?: boolean;
 };
 
 export const opportunityJobs: OpportunityJob[] = [

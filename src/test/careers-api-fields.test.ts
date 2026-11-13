@@ -93,6 +93,50 @@ describe('Opportunities card', () => {
   });
 });
 
+describe('Opportunities card with myApplication (#320)', () => {
+  it('missing or null myApplication keeps the pre-#320 behaviour', () => {
+    const card = toOpportunityJob(job({ applied: true, myBestScore: 84 }), 0);
+    expect(card.reportAvailable).toBeUndefined();
+    expect(toOpportunityJob(job({ myApplication: null }), 0).primaryAction).toBe('Quick interview');
+  });
+
+  it('completed with a retake open: report, retake, candidate-paid, time left', () => {
+    const deadline = new Date(Date.now() + (4 * 60 + 32) * 60_000 + 30_000).toISOString();
+    const card = toOpportunityJob(
+      job({ applied: true, myBestScore: 84, myApplication: app({ bestScore: 84, canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: deadline, interviewFunding: 'CANDIDATE' }) }),
+      0,
+    );
+    expect(card.reportAvailable).toBe(true);
+    expect(card.primaryAction).toBe('Retake interview');
+    expect(card.interviewCostLabel).toBe('1 interview · ~20 minutes\n4h 32m left to start');
+  });
+
+  it('retake in progress: no report (result 409s), continue, no countdown', () => {
+    const card = toOpportunityJob(
+      job({ applied: true, myBestScore: 84, myApplication: app({ interviewStatus: 'IN_PROGRESS', bestScore: 84, canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: new Date(Date.now() + 3_600_000).toISOString(), interviewFunding: 'CANDIDATE' }) }),
+      0,
+    );
+    expect(card.reportAvailable).toBe(false);
+    expect(card.scoreValue).toBe('84/100');
+    expect(card.primaryAction).toBe('Continue interview');
+    expect(card.interviewCostLabel).not.toMatch(/left to start/);
+  });
+
+  it("applied, not started, sponsored: the application's funding", () => {
+    const card = toOpportunityJob(
+      job({ applied: true, interviewFunding: 'CANDIDATE', myApplication: app({ interviewStatus: 'NOT_STARTED', canStartInterview: true, interviewFunding: 'EMPLOYER' }) }),
+      0,
+    );
+    expect(card.interviewCostLabel).toMatch(/^Sponsored/);
+    expect(card.reportAvailable).toBe(false);
+  });
+
+  it('who pays is hidden when no interview can start', () => {
+    const card = toOpportunityJob(job({ applied: true, myBestScore: 60, myApplication: app({ bestScore: 60, canStartInterview: false, retakeAvailability: 'LIMIT_REACHED' }) }), 0);
+    expect(card.interviewCostLabel).toBe('');
+  });
+});
+
 describe('My Jobs card', () => {
   it('uses the application location, workplace and best score', () => {
     const row = toMyJob(app({ location: 'Austin, TX', workplaceType: 'REMOTE', bestScore: 72 }), 0);

@@ -1,6 +1,7 @@
 import { Linkedin, Mail } from 'lucide-react';
 import Logo from '@/assets/Navbar.png';
 import { SOCIAL_URLS } from '@/constants/site';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 function XIcon({ className }: { className?: string }) {
   return (
@@ -24,7 +25,7 @@ const linkClass =
 const headingClass = 'font-semibold text-[hsl(222,22%,15%)] text-sm mb-4';
 
 const PRODUCT_LINKS = [
-  { label: 'Coach', href: '/coaching' },
+  ...(MENTOR_ENABLED ? [{ label: 'Coach', href: '/coaching' }] : []),
   { label: 'Personalized Practice', href: '/personalized-practice' },
 ];
 

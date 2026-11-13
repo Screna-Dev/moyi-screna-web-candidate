@@ -71,6 +71,10 @@ export type CareerJob = {
   interviewFunding?: InterviewPayer;
   applied: boolean;
   myBestScore?: number | null; // 0–100, null until the caller completed an interview
+  // #320: the caller's application (same shape as GET /careers/applications/{id}),
+  // null when not applied. Missing until #320 is deployed: treat as null.
+  // The top-level interviewFunding stays "who pays for a first interview".
+  myApplication?: CareerApplication | null;
 };
 
 // Same shape as the employer's preview of the job. No question text.

@@ -26,6 +26,7 @@ import { JobApplyTab } from './job-apply-tab';
 import { ProfileTab } from './profile-tab';
 import { WidePageContainer } from './dashboard-page';
 import { getPersonalInfo } from '../../services/ProfileServices';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { DashboardHome } from '@/components/newDesign/dashboard-home-design';
 import {
   MENTOR_DASHBOARD_PATH,
@@ -50,7 +51,8 @@ const sidebarLinks = [
   // The /quick-mock route is kept for existing links.
   { icon: Target, label: 'Practices', path: '/personalized-practice', ai: true },
   { icon: Briefcase, label: 'Opportunities', path: '/opportunities' },
-  { icon: Users, label: 'Coaching', path: '/coaching' },
+  // Hidden this release (MENTOR_ENABLED).
+  ...(MENTOR_ENABLED ? [{ icon: Users, label: 'Coaching', path: '/coaching' }] : []),
 ];
 
 const sidebarAccountLinks = [
@@ -106,7 +108,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   const isAdmin = user?.role === 'ADMIN';
 
   // Dual-role accounts (candidate + mentor) can jump to the mentor dashboard.
-  const canSwitchToMentor = isDualRole(user);
+  const canSwitchToMentor = MENTOR_ENABLED && isDualRole(user);
   const switchToMentor = () => {
     setStoredDashboardMode('mentor');
     navigate(MENTOR_DASHBOARD_PATH);

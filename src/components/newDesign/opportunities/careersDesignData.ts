@@ -72,14 +72,23 @@ export type LiveOpportunityJob = OpportunityJob & { career: CareerJob };
 
 export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunityJob {
   const sample = opportunityJobs[index % opportunityJobs.length];
+  const my = job.myApplication ?? null;
   // Who pays now: an employer-sponsored job whose sponsorship ran out is
   // candidate-paid (interviewFunding), even though interviewPayer says EMPLOYER.
-  // Once applied and interviewed, the next interview is a retake: always the
-  // candidate's (the list has no application funding for other applied rows,
-  // so those fall back to the job's).
-  const scored = job.myBestScore != null;
-  const funding = job.applied && scored ? "CANDIDATE" : fundingOf(job);
+  // Applied (#320): the application's interviewFunding, which covers retakes.
+  // Before #320 is deployed: once interviewed, the next one is a retake and
+  // always the candidate's; other applied rows fall back to the job's.
+  const bestScore = my ? my.bestScore ?? job.myBestScore ?? null : job.myBestScore ?? null;
+  const scored = bestScore != null;
+  const done = my ? my.interviewStatus === "COMPLETED" : scored;
+  const funding = my ? my.interviewFunding ?? (done ? "CANDIDATE" : fundingOf(job)) : job.applied && scored ? "CANDIDATE" : fundingOf(job);
   const employerPays = funding === "EMPLOYER";
+  // "4h 32m left to start": only a completed application with a retake open.
+  // (During a retake in progress retakeAvailability can also read AVAILABLE.)
+  const left = my && done && my.retakeAvailability === "AVAILABLE" ? leftToStartLabel(my.retakeDeadline) : "";
+  const live = my?.interviewStatus === "IN_PROGRESS" && !isBeingScored(my);
+  // Who pays is shown only when an interview can start now.
+  const costLine = my && !my.canStartInterview ? "" : [costLabel(funding, job.interviewDurationMinutes), left].filter(Boolean).join("\n");
   return {
     ...sample,
     id: job.jobId,
@@ -105,12 +114,14 @@ export function toOpportunityJob(job: CareerJob, index: number): LiveOpportunity
     closingDateLabel: job.closesAt ? `Closes ${dateLabel(job.closesAt, job.timezone)}` : sample.closingDateLabel,
     postedDate: job.publishedAt ?? sample.postedDate,
     interviewCost: employerPays ? 0 : 1, // interviews; sorts sponsored first
-    interviewCostLabel: costLabel(funding, job.interviewDurationMinutes),
-    // Already interviewed: the design's retake state. Whether a retake is still
-    // allowed isn't on the list; starting one says so.
-    primaryAction: scored ? "Retake interview" : "Quick interview",
-    scoreValue: scored ? `${job.myBestScore}/100` : undefined,
+    interviewCostLabel: costLine,
+    // Already interviewed: the design's retake state. If a retake isn't
+    // allowed, starting one says why.
+    primaryAction: live ? "Continue interview" : done ? "Retake interview" : "Quick interview",
+    scoreValue: scored ? `${bestScore}/100` : undefined,
     scoreStatus: undefined, // qualification is never returned to candidates
+    // The result 409s while a retake is in progress: report only when COMPLETED.
+    reportAvailable: my ? done : undefined,
     career: job,
   };
 }

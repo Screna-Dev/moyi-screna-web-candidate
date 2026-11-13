@@ -1023,7 +1023,8 @@ export function BillingTab() {
   const planLeft = planGrants.reduce((n, g) => n + g.remaining, 0);
   const addOnLeft = addOnGrants.reduce((n, g) => n + g.remaining, 0);
   // "X of Y" from the plan grants' sessions (used included); never cached or
-  // hard-coded. A used-up grant isn't listed, so no plan grant = all used.
+  // hard-coded. The plan's current grant stays listed when used up (#319), so
+  // this reads "15 of 15 used"; before #319 it drops out, hence 'All used'.
   const included = planGrants.reduce((n, g) => n + (g.sessions ?? g.remaining), 0);
   const earliest = (dates: (string | null)[]) =>
     dates.filter((d): d is string => !!d).sort()[0] ?? null;

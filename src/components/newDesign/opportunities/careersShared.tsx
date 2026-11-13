@@ -89,7 +89,9 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
 // Carried to the interview room in navigation state. The room calls the start
 // endpoint itself when it is missing (reload = rejoin).
 // Career interviews are video only.
-export type CareerRoomState = { session: CareerInterviewSession; title: string; minutes: number };
+// attemptsBefore: completedAttempts before this attempt, to tell a retake's
+// new result from one that ended without a result (see careersEnded).
+export type CareerRoomState = { session: CareerInterviewSession; title: string; minutes: number; attemptsBefore?: number | null };
 
 export const roomPath = (applicationId: string) => `/opportunities/applications/${encodeURIComponent(applicationId)}/interview`;
 
@@ -130,7 +132,7 @@ export function StartInterviewDialog({ app, onClose, onChanged }: { app: CareerA
     setError("");
     try {
       const session = await startCareerInterview(app.applicationId, { acceptSelfPay: acceptSelfPay || candidatePays, consentVersion: CONSENT_VERSION });
-      const state: CareerRoomState = { session, title: app.jobTitle, minutes: app.interviewDurationMinutes };
+      const state: CareerRoomState = { session, title: app.jobTitle, minutes: app.interviewDurationMinutes, attemptsBefore: app.completedAttempts ?? null };
       navigate(roomPath(app.applicationId), { state });
     } catch (err) {
       const code = careersErrorCode(err);

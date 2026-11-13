@@ -17,7 +17,10 @@ import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 export type QuotaPlan = 'FREE' | 'PRO' | 'PRO_90_DAY';
 export type QuotaSource = 'FREE_MONTHLY' | 'PRO_PERIOD' | 'PRO_90_DAY' | 'ADD_ON';
 // sessions: how many the grant gave (used included; can change, so don't cache).
-// A used-up grant isn't listed.
+// #319 (C11): the plan's current grant (this month's FREE_MONTHLY, this
+// period's PRO_PERIOD, the PRO_90_DAY that expires last) stays listed with
+// remaining 0 once used up, until it expires. Other used-up grants (add-ons,
+// the Free month before an upgrade, an earlier pass) aren't listed.
 export type QuotaGrant = { source: QuotaSource; sessions?: number; remaining: number; expiresAt: string | null };
 export type InterviewQuota = {
   plan: QuotaPlan;
@@ -46,7 +49,9 @@ const POLL_MS = 2000;
 const POLL_LIMIT_MS = 30_000;
 
 // After Stripe: poll until a grant of `source` shows up that wasn't in
-// `before` (keys from grantKeys taken before the redirect; undefined = the
+// `before` (keys from grantKeys taken before the redirect, by expiresAt — the
+// current Pro 90-day grant stays listed once used up, so only a new expiresAt
+// means the purchase landed; undefined = the
 // marker was lost, so any grant of that source counts). Lands in 1–2 s in the
 // sandbox. Returns the quota, or null on timeout ("still processing").
 export async function waitForQuotaGrant(source: QuotaSource, before?: string[], isCancelled?: () => boolean): Promise<InterviewQuota | null> {

@@ -1,5 +1,6 @@
-import { lazy, useEffect, useLayoutEffect } from 'react';
+import { lazy, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { createBrowserRouter, Outlet, Navigate, useLocation, useRouteError } from 'react-router-dom';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -153,6 +154,10 @@ function ScrollToTop() {
   return null;
 }
 
+// Mentor pages are hidden this release (MENTOR_ENABLED): the routes stay, but
+// send visitors to the dashboard.
+const mentorRoute = (el: ReactNode) => (MENTOR_ENABLED ? el : <Navigate to="/dashboard" replace />);
+
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
@@ -238,7 +243,7 @@ export const router = createBrowserRouter([
       { path: '/mock-interview', element: <MockInterviewPage /> },
       { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
       { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
-      { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
+      { path: '/coaching', element: mentorRoute(<RequireAuth><CoachingPage /></RequireAuth>) },
       // Opportunities: the original design, fed by the /careers/* API where it
       // has data (job list, detail, applications, interview). Score/report/
       // recruiter-email pages still show the design's sample data until the
@@ -356,32 +361,32 @@ export const router = createBrowserRouter([
       },
       {
         path: '/onboarding-resume',
-        element: <OnboardingUploadResumePage />,
+        element: <RequireAuth><OnboardingUploadResumePage /></RequireAuth>,
         errorElement: <ErrorBoundary />,
       },
         {
           path: '/mentorship',
-          element: <MentorshipPage />,
+          element: mentorRoute(<MentorshipPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/mentor-details',
-          element: <MentorDetailsPage />,
+          element: mentorRoute(<MentorDetailsPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/guest-dashboard',
-          element: <GuestDashboardPage />,
+          element: mentorRoute(<GuestDashboardPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/select-dashboard',
-          element: <RequireAuth><SelectDashboardPage /></RequireAuth>,
+          element: mentorRoute(<RequireAuth><SelectDashboardPage /></RequireAuth>),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/mentor-dashboard',
-          element: <RequireAuth><MentorDashboardPage /></RequireAuth>,
+          element: mentorRoute(<RequireAuth><MentorDashboardPage /></RequireAuth>),
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },
