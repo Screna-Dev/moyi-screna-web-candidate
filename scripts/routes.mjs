@@ -466,6 +466,39 @@ export function companyRoleLinks(counts, companyTotal) {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
+/**
+ * The "More roles" fold: the company's other roles with notes, from the
+ * company × role stats rows ({ company, role, postCount }, all companies —
+ * the endpoint ignores `company=`). Roles already in `shown` (the indexed
+ * links) are left out, and so is any role with no URL segment in ROLE_SLUGS
+ * (Performance/Research Engineer, Research Scientist), whose URL would 404.
+ * Most notes first. These pages are `noindex, follow`, so their links carry
+ * rel="nofollow" wherever they are rendered.
+ */
+export function companyMoreRoles(rows, company, shown) {
+  const want = String(company ?? '').trim().toLowerCase();
+  if (!want || !Array.isArray(rows)) return [];
+  const skip = new Set((shown ?? []).map((r) => r.slug));
+  const bySlug = new Map();
+  for (const row of rows) {
+    if (String(row?.company ?? '').trim().toLowerCase() !== want) continue;
+    const slug = roleSlugForLabel(row?.role);
+    const count = Number(row?.postCount) || 0;
+    if (!slug || skip.has(slug) || count <= 0) continue;
+    bySlug.set(slug, { slug, label: ROLE_SLUGS[slug], count: (bySlug.get(slug)?.count ?? 0) + count });
+  }
+  return [...bySlug.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/**
+ * Whether the role bar renders at all. A company with no indexed role still
+ * gets "All" + "More roles" — unless that fold would hold a single role, which
+ * is the whole company again.
+ */
+export function showRoleBar(links, more) {
+  return (links?.length ?? 0) > 0 || (more?.length ?? 0) >= 2;
+}
+
 /** Heading of the company page's closing role section. */
 export function companyRoleGuidesHeading(name) {
   return `${name} interview guides by role`;

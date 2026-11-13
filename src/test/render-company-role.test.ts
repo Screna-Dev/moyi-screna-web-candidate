@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderCompanyPage, renderCompanyRolePage } from '../../api/_render/company';
 import {
+  companyMoreRoles,
   companyRoleLinks,
   isIndexableRole,
   roleLabelForSlug,
   roleSlugForLabel,
+  showRoleBar,
 } from '../../scripts/routes.mjs';
 
 // The request-time renderer for /interview-questions/:company/:role.
@@ -74,6 +76,19 @@ function mockBackend({ upstream = 200 } = {}) {
         json({ data: { posts: rows.slice(page * 10, page * 10 + 10), total: rows.length, size: 10, page } }),
       );
     }
+    if (url.pathname.endsWith('/companies/roles/stats')) {
+      // The whole list, whatever `company=` says — like the real endpoint.
+      const counts = new Map<string, { company: string; role: string; postCount: number }>();
+      for (const p of LIBRARY) {
+        const k = `${p.company}|${p.role}`;
+        const row = counts.get(k) ?? { company: p.company, role: p.role, postCount: 0 };
+        row.postCount += 1;
+        counts.set(k, row);
+      }
+      // No URL segment for this one: it must never be linked.
+      const rows = [...counts.values(), { company: 'Meta', role: 'Performance Engineer', postCount: 2 }];
+      return Promise.resolve(json({ status: 'SUCCESS', data: rows }));
+    }
     return Promise.resolve(new Response('not found', { status: 404 }));
   }) as never;
 }
@@ -134,11 +149,13 @@ describe('renderCompanyPage — role links', () => {
     mockBackend();
     const page = await renderCompanyPage(req, 'meta', null);
     expect(page.status).toBe(200);
-    // Bar, then the closing section: SWE 15 and PM 12; DS (4) has no page.
-    expect(roleHrefs(page.html)).toEqual([
+    // Bar, then the closing section: SWE 15 and PM 12; DS (4) has no indexed
+    // page, so it is only in the bar's nofollow "More roles" fold.
+    expect(roleHrefs(page.html.replace(/<details[\s\S]*?<\/details>/, ''))).toEqual([
       'software-engineer', 'product-manager',
       'software-engineer', 'product-manager',
     ]);
+    expect(roleHrefs(page.html.match(/<details[\s\S]*?<\/details>/)![0])).toEqual(['data-scientist']);
     const bar = page.html.indexOf('aria-label="Interview questions by role"');
     expect(bar).toBeGreaterThan(page.html.indexOf('</header>'));
     expect(bar).toBeLessThan(page.html.indexOf('href="/experience/'));
@@ -200,8 +217,11 @@ describe('renderCompanyRolePage', () => {
       '/interview-questions/meta',
       '/interview-questions/meta/software-engineer',
       '/interview-questions/meta/product-manager',
+      // The fold, nofollow.
+      '/interview-questions/meta/data-scientist',
     ]);
     expect(bar).toMatch(/href="\/interview-questions\/meta\/product-manager" aria-current="page"/);
+    expect(bar).toContain('<details>');
   });
 
   it('is noindex when the role is 90% of the company or more', async () => {
@@ -259,5 +279,74 @@ describe('renderCompanyRolePage', () => {
     mockBackend({ upstream: 503 });
     const page = await renderCompanyRolePage(req, 'meta', 'software-engineer');
     expect(page.status).toBe(503);
+  });
+});
+
+describe('companyMoreRoles / showRoleBar', () => {
+  const rows = [
+    { company: 'Meta', role: 'Software Engineer', postCount: 1194 },
+    { company: 'Meta', role: 'Product Designer', postCount: 5 },
+    { company: 'Meta', role: 'Backend Engineer', postCount: 4 },
+    { company: 'Meta', role: 'Data Analyst', postCount: 4 },
+    { company: 'Meta', role: 'Performance Engineer', postCount: 2 },
+    { company: 'Google', role: 'Business Analyst', postCount: 9 },
+  ];
+  const shown = [{ slug: 'software-engineer', label: 'Software Engineer', count: 1194 }];
+
+  it("lists the company's other slugged roles, most notes first", () => {
+    expect(companyMoreRoles(rows, 'Meta', shown)).toEqual([
+      { slug: 'product-designer', label: 'Product Designer', count: 5 },
+      { slug: 'backend-engineer', label: 'Backend Engineer', count: 4 },
+      { slug: 'data-analyst', label: 'Data Analyst', count: 4 },
+    ]);
+  });
+
+  it('matches the company name case-insensitively and nothing else', () => {
+    expect(companyMoreRoles(rows, 'google', []).map((r) => r.slug)).toEqual(['business-analyst']);
+    expect(companyMoreRoles(rows, 'Nope', [])).toEqual([]);
+    expect(companyMoreRoles(null as never, 'Meta', [])).toEqual([]);
+  });
+
+  it('hides the bar only when there is no indexed link and at most one other role', () => {
+    const one = [{ slug: 'a', label: 'A', count: 1 }];
+    expect(showRoleBar([], [])).toBe(false);
+    expect(showRoleBar([], one)).toBe(false);
+    expect(showRoleBar([], [...one, ...one])).toBe(true);
+    expect(showRoleBar(one, [])).toBe(true);
+  });
+});
+
+describe('More roles fold (rendered)', () => {
+  const nav = (html: string) => html.match(/<nav class="mb-6" aria-label="Interview questions by role">[\s\S]*?<\/ul><\/nav>/)![0];
+
+  it('company page: indexed links followed, the rest nofollow inside a closed fold', async () => {
+    mockBackend();
+    const { html } = await renderCompanyPage(req, 'meta', null);
+    const bar = nav(html);
+    expect(bar).toContain('href="/interview-questions/meta/software-engineer">');
+    expect(bar).toContain('href="/interview-questions/meta/product-manager">');
+    expect(bar).toContain('<details>');
+    expect(bar).toContain('href="/interview-questions/meta/data-scientist" rel="nofollow"');
+    expect(bar).not.toContain('performance-engineer');
+    // Every link inside the fold is nofollow; none outside it is.
+    const [outside, fold] = bar.split('<details');
+    expect(outside).not.toContain('nofollow');
+    expect([...fold.matchAll(/<a /g)].length).toBe([...fold.matchAll(/rel="nofollow"/g)].length);
+    expect(seedOf(html).moreRoles).toEqual([{ slug: 'data-scientist', label: 'Data Scientist', count: 4 }]);
+  });
+
+  it('a page for a fold role opens the fold with that role current', async () => {
+    mockBackend();
+    const { status, html } = await renderCompanyRolePage(req, 'meta', 'data-scientist');
+    expect(status).toBe(200);
+    const bar = nav(html);
+    expect(bar).toContain('<details open>');
+    expect(bar).toMatch(/href="\/interview-questions\/meta\/data-scientist" rel="nofollow" aria-current="page"/);
+  });
+
+  it('a one-role company gets no bar at all', async () => {
+    mockBackend();
+    const { html } = await renderCompanyPage(req, 'snap', null);
+    expect(html).not.toContain('aria-label="Interview questions by role"');
   });
 });

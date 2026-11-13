@@ -16,6 +16,7 @@ export const companyMocks = {
     getPublicCompanyProfile: vi.fn(),
     getPublicCompanyBreakdown: vi.fn(),
     getPostOptions: vi.fn(() => Promise.resolve({ data: { data: [] } })),
+    getPublicCompanyRoleStats: vi.fn(() => Promise.resolve({ data: { status: 'SUCCESS', data: [] } })),
   },
   auth: () =>
     state.signedIn
