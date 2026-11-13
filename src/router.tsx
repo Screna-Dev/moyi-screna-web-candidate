@@ -247,9 +247,8 @@ export const router = createBrowserRouter([
       // Opportunities: the original design, fed by the /careers/* API where it
       // has data (job list, detail, applications, interview). Score/report/
       // recruiter-email pages still show the design's sample data until the
-      // backend catches up with the design. Job 1 (partner job) and job 8
-      // (not-qualified result) are the design's sample frames on static paths;
-      // real job ids are UUIDs, so they never collide.
+      // backend catches up with the design. (The static sample frames for job 1
+      // and job 8 were removed; every job path takes a real id.)
       {
         element: <RequireAuth><OpportunitiesLayout /></RequireAuth>,
         children: [

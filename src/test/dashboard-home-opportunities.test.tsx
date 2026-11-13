@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router';
 import type { CareerJob } from '@/services/careersApi';
 import { createUserPlanMock } from '@/test/utils';
 import { DashboardHome } from '@/pages/newDesign/dashboard-home';
+import { getDashboardStats } from '@/services/DashboardService';
 
 // Candidate dashboard, design B-候选人-10-23 (Figma node 102:58): the chart
 // has no Applications tab, and a Featured Opportunities row shows the three
@@ -96,6 +97,37 @@ describe('dashboard chart tabs', () => {
   });
 });
 
+describe('application stats (#326)', () => {
+  const stats = (extra: Record<string, unknown>) =>
+    vi.mocked(getDashboardStats).mockResolvedValueOnce({ data: { totalLearningTimeMinutes: 30, sessionCompletedCount: 1, ...extra } } as never);
+
+  it('shows the last 30 days, the change and the daily average on every plan', async () => {
+    stats({ last30DaysApplicationCount: 12, prior30DaysApplicationCount: 8 });
+    listCareerJobs.mockResolvedValue(page([]));
+    renderDashboard();
+    expect(await screen.findByText('Applications This Period')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('↗ +50% vs prior period')).toBeInTheDocument();
+    expect(screen.getByText('0.4')).toBeInTheDocument();
+  });
+
+  it('no percentage when the prior period had none', async () => {
+    stats({ last30DaysApplicationCount: 3, prior30DaysApplicationCount: 0 });
+    listCareerJobs.mockResolvedValue(page([]));
+    renderDashboard();
+    expect(await screen.findByText('Applications This Period')).toBeInTheDocument();
+    expect(screen.queryByText(/vs prior period/)).not.toBeInTheDocument();
+    expect(screen.getByText('Last 30 days')).toBeInTheDocument();
+  });
+
+  it('hidden while the backend does not send the fields', async () => {
+    listCareerJobs.mockResolvedValue(page([]));
+    renderDashboard();
+    await screen.findAllByRole('tab');
+    expect(screen.queryByText('Applications This Period')).not.toBeInTheDocument();
+  });
+});
+
 describe('Featured Opportunities', () => {
   it('shows the three newest careers jobs with real values', async () => {
     listCareerJobs.mockResolvedValue(
@@ -109,7 +141,7 @@ describe('Featured Opportunities', () => {
     renderDashboard();
 
     expect(await screen.findByText('Backend Engineer')).toBeInTheDocument();
-    expect(listCareerJobs).toHaveBeenCalledWith({ page: 0 });
+    expect(listCareerJobs).toHaveBeenCalledWith({ page: 0, sort: 'NEWEST' });
     const s = within(section());
     expect(s.queryByText('Fourth Job')).not.toBeInTheDocument();
     expect(s.getAllByText('View details')).toHaveLength(3);
@@ -125,9 +157,16 @@ describe('Featured Opportunities', () => {
     expect(s.getByText('New York, NY · Remote')).toBeInTheDocument();
     expect(s.getByText('$40 – $55/hr')).toBeInTheDocument();
     expect(s.getByText('30 min · 1 interview')).toBeInTheDocument();
-    // Sample copy until the API has a recommendation reason
-    expect(s.getAllByText('Why recommended')).toHaveLength(3);
-    expect(s.getByText(/SQL proficiency/)).toBeInTheDocument();
+    // "Why recommended" isn't decided (backend 11-12): hidden, no sample copy.
+    expect(s.queryByText('Why recommended')).not.toBeInTheDocument();
+    expect(s.queryByText(/SQL proficiency/)).not.toBeInTheDocument();
+  });
+
+  it('leaves out a hidden salary instead of showing a made-up range', async () => {
+    listCareerJobs.mockResolvedValue(page([job({ salaryMin: null, salaryMax: null, salaryCurrency: null, salaryPeriod: null })]));
+    renderDashboard();
+    expect(await screen.findByText('Backend Engineer')).toBeInTheDocument();
+    expect(within(section()).queryByText(/\$/)).not.toBeInTheDocument();
   });
 
   it('links to the job and to the full list', async () => {

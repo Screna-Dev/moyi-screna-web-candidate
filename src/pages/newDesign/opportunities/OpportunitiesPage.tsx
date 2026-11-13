@@ -1,14 +1,14 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { sortJobs, type SortOption, type OpportunityJob } from "@/components/newDesign/opportunities/mockJobs";
-import { toOpportunityJob, type LiveOpportunityJob } from "@/components/newDesign/opportunities/careersDesignData";
+import { salaryRangeLabel, toOpportunityJob, type LiveOpportunityJob } from "@/components/newDesign/opportunities/careersDesignData";
 import { useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
-import { getCareerJob, listCareerJobs } from "@/services/careersApi";
+import { getCareerJob, listCareerJobs, type CareerJobSort, type ExperienceBand, type WorkplaceType } from "@/services/careersApi";
 
 // Design page (Downloads export) fed by GET /careers/jobs. Cards are mapped
-// onto the design's OpportunityJob shape; fields the API doesn't have yet come
-// from the design's sample data (see careersDesignData). Search, tabs and sort
-// run client-side over the loaded jobs, as in the design.
+// onto the design's OpportunityJob shape (see careersDesignData); a field the
+// API doesn't have is hidden, never filled with sample data. Sort, role,
+// location, experience and work arrangement go to the API (#325); the search
+// box filters the loaded jobs by title or company.
 
 const PAGE_LIMIT = 5; // 50 jobs
 
@@ -17,45 +17,52 @@ const imgSearch = `${assetPathPrefix}/cd8fa.svg`;
 const imgChevronDown = `${assetPathPrefix}/f7035.svg`;
 const imgGift = `${assetPathPrefix}/4c819.svg`;
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "newest", label: "Newest" },
-  { value: "closing-soon", label: "Closing soon" },
-  { value: "salary-high-low", label: "Salary: High to low" },
-  { value: "cost-low-high", label: "Interview cost: Low to high" },
+const SORT_OPTIONS: { value: CareerJobSort; label: string }[] = [
+  { value: "NEWEST", label: "Newest" },
+  { value: "CLOSING_SOON", label: "Closing soon" },
+  { value: "HIGHEST_SALARY", label: "Salary: High to low" },
 ];
 
-type JobTab = "all" | "partner" | "sponsored";
+const EXPERIENCE_OPTIONS: { value: ExperienceBand; label: string }[] = [
+  { value: "YEARS_0_2", label: "0–2 years" },
+  { value: "YEARS_3_5", label: "3–5 years" },
+  { value: "YEARS_6_9", label: "6–9 years" },
+  { value: "YEARS_10_PLUS", label: "10+ years" },
+];
 
-function ApplicationBar({ count, max }: { count: number; max: number }) {
-  const pct = Math.round((count / max) * 100);
+const WORKPLACE_OPTIONS: { value: WorkplaceType; label: string }[] = [
+  { value: "ON_SITE", label: "On-site" },
+  { value: "HYBRID", label: "Hybrid" },
+  { value: "REMOTE", label: "Remote" },
+];
+
+// Every job is a Partner Job this release (backend 11-12): no Screna
+// Sponsored tab or banner line.
+type JobTab = "all" | "partner";
+
+const TEXT_FILTER_DEBOUNCE_MS = 400;
+
+type FilterKey = "role" | "location" | "experience" | "workplace";
+
+function FilterButton({ label, active, open, onToggle, children }: { label: string; active: boolean; open: boolean; onToggle: () => void; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-end gap-1 shrink-0">
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className="text-[#1e232f] text-[20px] font-semibold leading-6"
-          style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-        >
-          {count} / {max}
-        </span>
-        <span
-          className="text-[#5a6172] text-[13px] leading-5"
-          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-        >
-          Applications
-        </span>
-      </div>
-      <div className="w-[172px] h-1.5 bg-[#e1e4ea] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full bg-[#3c77f6]"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span
-        className="text-[#5a6172] text-[13px] leading-5"
+    <div className="relative">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`flex items-center gap-2 border rounded-xl px-3.5 py-2.5 text-[14px] leading-5 transition-colors ${
+          active ? "bg-[rgba(60,119,246,0.08)] border-[rgba(60,119,246,0.3)] text-[#1751cf]" : "bg-white border-[#e1e4ea] text-[#5a6172] hover:bg-[#f3f4f7]"
+        }`}
         style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
       >
-        {max - count} spots remaining
-      </span>
+        {label}
+        <img src={imgChevronDown} alt="" className="w-4 h-4 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 bg-white border border-[#e1e4ea] rounded-xl shadow-[0px_4px_12px_rgba(0,0,0,0.08)] z-10 min-w-[220px] p-2">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -76,8 +83,9 @@ function JobTypeBadge({ type }: { type: "Partner Job" | "Screna Sponsored" }) {
   );
 }
 
-function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactRecruiter, interviewCompleted, emailSent }: { job: OpportunityJob; onViewDetail?: () => void; onViewReport?: () => void; onQuickInterview: () => void; onContactRecruiter?: () => void; interviewCompleted?: boolean; emailSent?: boolean }) {
-  const salaryFormatted = `$${(job.salaryMin / 1000).toFixed(0)},000 – $${(job.salaryMax / 1000).toFixed(0)},000`;
+function JobCard({ job, onViewDetail, onViewReport, onQuickInterview }: { job: LiveOpportunityJob; onViewDetail?: () => void; onViewReport?: () => void; onQuickInterview: () => void }) {
+  // Only what the API sent; a hidden salary is left out.
+  const meta = [job.location, job.workType, job.level, salaryRangeLabel(job.career)].filter(Boolean).join(" · ");
 
   return (
     <div className="bg-white border border-[#e1e4ea] rounded-2xl px-6 py-6 flex flex-col gap-4">
@@ -110,26 +118,31 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
             </span>
           </div>
         </div>
-        <ApplicationBar count={job.applicationCount} max={job.applicationMax} />
+        {/* Applicant count / cap: not shown to candidates (product, 11-12). */}
       </div>
 
       {/* Meta row */}
-      <p
-        className="text-[#5a6172] text-[14px] leading-5"
-        style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-      >
-        {job.location} · {job.workType} · {job.level} · {salaryFormatted}
-      </p>
+      {meta && (
+        <p
+          className="text-[#5a6172] text-[14px] leading-5"
+          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
+        >
+          {meta}
+        </p>
+      )}
 
       {/* Description */}
-      <p
-        className="text-[#4d525e] text-[14px] leading-[22px]"
-        style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-      >
-        {job.description}
-      </p>
+      {job.description && (
+        <p
+          className="text-[#4d525e] text-[14px] leading-[22px]"
+          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
+        >
+          {job.description}
+        </p>
+      )}
 
       {/* Tags */}
+      {job.tags.length > 0 && (
       <div className="flex flex-wrap gap-2">
         {job.tags.map((tag) => (
           <span
@@ -141,22 +154,13 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
           </span>
         ))}
       </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-end justify-between pt-1">
         <div className="flex flex-col gap-4">
           {/* Sponsor/score row — changes when interview completed */}
-          {interviewCompleted ? (
-            /* Completed state: show Best score + Qualified */
-            <div className="flex items-center gap-[11px]">
-              <span className="text-[#4d525e] text-[13px]" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>
-                Best score: 84/100
-              </span>
-              <span className="text-[#15a560] text-[13px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
-                Qualified
-              </span>
-            </div>
-          ) : job.scoreValue ? (
+          {job.scoreValue ? (
             <div className="flex items-center gap-[11px]">
               <span
                 className="text-[#4d525e] text-[13px]"
@@ -201,24 +205,6 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
             </div>
           )}
 
-          {/* Second line: CTA text or email status */}
-          {interviewCompleted && (
-            <div className="flex items-center justify-between w-full gap-4">
-              <p className="text-[#666b78] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-                {emailSent ? "Email sent · Confirmed by you" : "Send your recruiter email to apply."}
-              </p>
-              {!emailSent && (
-                <button
-                  onClick={onContactRecruiter}
-                  className="text-[#3c77f6] text-[14px] font-medium shrink-0 hover:underline"
-                  style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}
-                >
-                  Contact recruiter →
-                </button>
-              )}
-            </div>
-          )}
-
           <p
             className="text-[#5a6172] text-[14px] leading-5"
             style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
@@ -227,7 +213,7 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          {((job.reportAvailable ?? !!job.scoreValue) || interviewCompleted) && (
+          {(job.reportAvailable ?? !!job.scoreValue) && (
             <button
               onClick={onViewReport}
               className="text-[#3c77f6] text-[14px] hover:underline transition-all"
@@ -244,8 +230,6 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
             >
               View details
             </button>
-            {/* When completed: no Quick interview; show Retake interview */}
-            {!interviewCompleted && (
             <button
               onClick={onQuickInterview}
               className="bg-[#3c77f6] text-white text-[14px] font-medium leading-5 px-3 py-2 rounded-xl hover:bg-[#2d6ae0] transition-colors"
@@ -256,18 +240,9 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
             >
               {job.primaryAction}
             </button>
-            )}
-            {interviewCompleted && (
-            <button
-              className="bg-[#3c77f6] text-white text-[14px] font-medium leading-5 px-3 py-2 rounded-xl hover:bg-[#2d6ae0] transition-colors"
-              style={{ fontFamily: "'Inter:Medium', Inter, sans-serif", boxShadow: "0px 4px 3px rgba(60,119,246,0.2)" }}
-            >
-              Retake interview
-            </button>
-            )}
           </div>
           <div className="flex flex-col gap-0.5 items-end">
-            {job.interviewCostLabel.split("\n").map((line, i) => (
+            {job.interviewCostLabel.split("\n").filter(Boolean).map((line, i) => (
               <p
                 key={i}
                 className="text-[#5a6172] text-[13px] leading-[18px] text-right"
@@ -286,9 +261,37 @@ function JobCard({ job, onViewDetail, onViewReport, onQuickInterview, onContactR
 export function OpportunitiesPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [sort, setSort] = useState<CareerJobSort>("NEWEST");
+  const [role, setRole] = useState("");
+  const [location, setLocation] = useState("");
+  const [experience, setExperience] = useState<ExperienceBand[]>([]);
+  const [workplace, setWorkplace] = useState<WorkplaceType | undefined>();
+  const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
+  // Typed filters go to the API once typing pauses.
+  const [query, setQuery] = useState({ role: "", location: "" });
+  useEffect(() => {
+    const next = { role: role.trim(), location: location.trim().slice(0, 255) };
+    // Same values keep the same object, or the list would reload for nothing.
+    const t = window.setTimeout(
+      () => setQuery((q) => (q.role === next.role && q.location === next.location ? q : next)),
+      TEXT_FILTER_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [role, location]);
   const [activeTab, setActiveTab] = useState<JobTab>("all");
   const [sortOpen, setSortOpen] = useState(false);
+  // Escape closes an open sort / filter menu (outside click does too).
+  const menuOpen = sortOpen || openFilter !== null;
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSortOpen(false);
+      setOpenFilter(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   const [liveJobs, setLiveJobs] = useState<LiveOpportunityJob[] | null>(null);
   const [failed, setFailed] = useState(false);
   const starter = useCareerInterviewStarter();
@@ -303,13 +306,23 @@ export function OpportunitiesPage() {
     navigate(appId ? `/opportunities/applications/${encodeURIComponent(appId)}/results` : `/opportunities/job/${encodeURIComponent(jobId)}`);
   };
 
+  const experienceKey = experience.join(",");
   useEffect(() => {
     let cancelled = false;
+    setLiveJobs(null);
+    setFailed(false);
     (async () => {
       const all: LiveOpportunityJob[] = [];
       for (let page = 0; page < PAGE_LIMIT; page++) {
-        const res = await listCareerJobs({ page });
-        res.content.forEach((j) => all.push(toOpportunityJob(j, all.length)));
+        const res = await listCareerJobs({
+          page,
+          sort,
+          role: query.role || undefined,
+          location: query.location || undefined,
+          experience: experienceKey ? (experienceKey.split(",") as ExperienceBand[]) : undefined,
+          workplaceType: workplace,
+        });
+        res.content.forEach((j) => all.push(toOpportunityJob(j)));
         if (res.pageMeta.last || res.content.length === 0) break;
       }
       if (!cancelled) setLiveJobs(all);
@@ -317,12 +330,12 @@ export function OpportunitiesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sort, query, experienceKey, workplace]);
 
+  // Server order (sort) is kept; tabs and search narrow the loaded jobs.
   const filtered = useMemo(() => {
-    let jobs: OpportunityJob[] = liveJobs ?? [];
+    let jobs: LiveOpportunityJob[] = liveJobs ?? [];
     if (activeTab === "partner") jobs = jobs.filter((j) => j.jobType === "Partner Job");
-    if (activeTab === "sponsored") jobs = jobs.filter((j) => j.jobType === "Screna Sponsored");
     if (search.trim()) {
       const q = search.toLowerCase();
       jobs = jobs.filter(
@@ -331,8 +344,8 @@ export function OpportunitiesPage() {
           j.company.toLowerCase().includes(q)
       );
     }
-    return sortJobs(jobs, sort);
-  }, [search, sort, activeTab, liveJobs]);
+    return jobs;
+  }, [search, activeTab, liveJobs]);
 
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Newest";
 
@@ -366,18 +379,11 @@ export function OpportunitiesPage() {
       {/* Info banner */}
       <div className="bg-[#f3f4f7] border border-[#e1e4ea] rounded-xl px-5 py-5 mb-6">
         <p
-          className="text-[#4d525e] text-[14px] leading-5 mb-2"
+          className="text-[#4d525e] text-[14px] leading-5"
           style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
         >
           <span className="font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Partner Jobs:</span>{" "}
           Complete an assessment to apply automatically. Recruiters can unlock your profile and report.
-        </p>
-        <p
-          className="text-[#4d525e] text-[14px] leading-5"
-          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-        >
-          <span className="font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Screna Sponsored:</span>{" "}
-          Limited free first assessments. Qualify to prepare a recruiter email, then send it yourself to apply.
         </p>
       </div>
 
@@ -429,15 +435,15 @@ export function OpportunitiesPage() {
             className="text-[#5a6172] text-[14px] leading-5 shrink-0"
             style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
           >
-            {filtered.length} open roles
+            {filtered.length} open {filtered.length === 1 ? "role" : "roles"}
           </span>
         </div>
 
         {/* Bottom row: tabs + filters */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Job type tabs */}
-          {(["all", "partner", "sponsored"] as const).map((tab) => {
-            const labels = { all: "All jobs", partner: "Partner jobs", sponsored: "Screna Sponsored" };
+          {(["all", "partner"] as const).map((tab) => {
+            const labels = { all: "All jobs", partner: "Partner jobs" };
             const isActive = activeTab === tab;
             return (
               <button
@@ -455,17 +461,79 @@ export function OpportunitiesPage() {
             );
           })}
 
-          {/* Filter dropdowns */}
-          {["Role", "Location", "Experience", "Work arrangement"].map((f) => (
-            <button
-              key={f}
-              className="flex items-center gap-2 bg-white border border-[#e1e4ea] rounded-xl px-3.5 py-2.5 text-[14px] text-[#5a6172] leading-5 hover:bg-[#f3f4f7] transition-colors"
-              style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-            >
-              {f}
-              <img src={imgChevronDown} alt="" className="w-4 h-4 shrink-0" />
-            </button>
-          ))}
+          {/* Filter dropdowns (sent to GET /careers/jobs, #325) */}
+          <FilterButton label={query.role ? `Role: ${query.role}` : "Role"} active={!!query.role} open={openFilter === "role"} onToggle={() => setOpenFilter((f) => (f === "role" ? null : "role"))}>
+            <input
+              autoFocus
+              type="text"
+              placeholder="e.g. Backend Engineer"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && setOpenFilter(null)}
+              className="w-full border border-[#e1e4ea] rounded-lg px-3 py-2 text-[14px] leading-5 text-[#1e232f] placeholder:text-[#9ba1b0] outline-none focus:border-[#3c77f6]"
+              aria-label="Role"
+            />
+          </FilterButton>
+          <FilterButton label={query.location ? `Location: ${query.location}` : "Location"} active={!!query.location} open={openFilter === "location"} onToggle={() => setOpenFilter((f) => (f === "location" ? null : "location"))}>
+            <input
+              autoFocus
+              type="text"
+              maxLength={255}
+              placeholder="City, state or country"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && setOpenFilter(null)}
+              className="w-full border border-[#e1e4ea] rounded-lg px-3 py-2 text-[14px] leading-5 text-[#1e232f] placeholder:text-[#9ba1b0] outline-none focus:border-[#3c77f6]"
+              aria-label="Location"
+            />
+            <p className="text-[#8f99b5] text-[12px] leading-4 mt-1.5 px-1">For remote roles, use Work arrangement.</p>
+          </FilterButton>
+          <FilterButton
+            label={experience.length ? `Experience (${experience.length})` : "Experience"}
+            active={experience.length > 0}
+            open={openFilter === "experience"}
+            onToggle={() => setOpenFilter((f) => (f === "experience" ? null : "experience"))}
+          >
+            {EXPERIENCE_OPTIONS.map((o) => {
+              const on = experience.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  role="menuitemcheckbox"
+                  aria-checked={on}
+                  onClick={() => setExperience((xs) => (on ? xs.filter((x) => x !== o.value) : EXPERIENCE_OPTIONS.map((e) => e.value).filter((v) => v === o.value || xs.includes(v))))}
+                  className={`w-full flex items-center gap-2 text-left px-2 py-2 rounded-lg text-[14px] leading-5 hover:bg-[#f3f4f7] ${on ? "text-[#1751cf] font-medium" : "text-[#1e232f]"}`}
+                >
+                  <input type="checkbox" readOnly checked={on} tabIndex={-1} className="accent-[#3c77f6]" />
+                  {o.label}
+                </button>
+              );
+            })}
+          </FilterButton>
+          <FilterButton
+            label={WORKPLACE_OPTIONS.find((o) => o.value === workplace)?.label ?? "Work arrangement"}
+            active={!!workplace}
+            open={openFilter === "workplace"}
+            onToggle={() => setOpenFilter((f) => (f === "workplace" ? null : "workplace"))}
+          >
+            {[{ value: undefined, label: "Any" }, ...WORKPLACE_OPTIONS].map((o) => {
+              const on = workplace === o.value;
+              return (
+                <button
+                  key={o.label}
+                  role="menuitemradio"
+                  aria-checked={on}
+                  onClick={() => {
+                    setWorkplace(o.value);
+                    setOpenFilter(null);
+                  }}
+                  className={`w-full flex items-center gap-2 text-left px-2 py-2 rounded-lg text-[14px] leading-5 hover:bg-[#f3f4f7] ${on ? "text-[#1751cf] font-medium" : "text-[#1e232f]"}`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </FilterButton>
         </div>
       </div>
 
@@ -477,8 +545,7 @@ export function OpportunitiesPage() {
               job={job}
               onViewDetail={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
               onQuickInterview={() => void starter.begin(job.id)}
-              onViewReport={() => void openReport(job as LiveOpportunityJob)}
-              onContactRecruiter={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}/contact`)}
+              onViewReport={() => void openReport(job)}
             />
         ))}
         {filtered.length === 0 && (
@@ -487,15 +554,21 @@ export function OpportunitiesPage() {
               className="text-[#5a6172] text-[14px] leading-5"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              {failed ? "We couldn't load open roles. Refresh to try again." : !liveJobs ? "Loading open roles…" : "No jobs match your search."}
+              {failed ? "We couldn't load open roles. Refresh to try again." : !liveJobs ? "Loading open roles…" : "No jobs match your search or filters."}
             </p>
           </div>
         )}
       </div>
 
       {/* Close dropdown on outside click */}
-      {sortOpen && (
-        <div className="fixed inset-0 z-[5]" onClick={() => setSortOpen(false)} />
+      {(sortOpen || openFilter) && (
+        <div
+          className="fixed inset-0 z-[5]"
+          onClick={() => {
+            setSortOpen(false);
+            setOpenFilter(null);
+          }}
+        />
       )}
 
       {/* Apply → start interview (confirm, resume upload, not-enough-credits) */}

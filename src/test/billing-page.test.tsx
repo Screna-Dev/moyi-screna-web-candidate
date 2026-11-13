@@ -26,6 +26,7 @@ const svc = vi.hoisted(() => ({
   redeemCode: vi.fn(),
   createSubscription: vi.fn(),
   changeBillingCycle: vi.fn(),
+  getPrices: vi.fn(),
 }));
 vi.mock('@/services', () => ({ PaymentService: svc }));
 vi.mock('@/contexts/AuthContext', () => ({
@@ -36,6 +37,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('posthog-js/react', () => ({ usePostHog: () => null }));
 
 import { BillingTab } from '@/components/newDesign/billing-tab-design';
+import { resetCandidatePricesCache } from '@/hooks/useCandidatePrices';
 
 let assignedHref: string | null = null;
 const ok = (data: unknown = {}) => ({ data: { data } });
@@ -64,6 +66,9 @@ const loaded = (title = 'Pro · $29 / month') => screen.findByText(title);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetCandidatePricesCache();
+  // GET /payments/prices unreadable by default: the published defaults show.
+  svc.getPrices.mockRejectedValue({ response: { status: 500 } });
   sessionStorage.clear();
   assignedHref = null;
   Object.defineProperty(window, 'location', {
@@ -111,8 +116,9 @@ describe('Billing — Pro', () => {
     expect(screen.getByText('1 interview left · Resets Dec 3')).toBeInTheDocument();
     expect(screen.getByText('3 left')).toBeInTheDocument();
     expect(screen.getByText('Expires Feb 1')).toBeInTheDocument();
-    // 120 minutes used this period + 80 left of the monthly allowance.
-    expect(await screen.findByText('120 of 200 min')).toBeInTheDocument();
+    // Balance only, no "of N" (backend 11-12): 80 minutes left this period.
+    expect(await screen.findByText('80 min left')).toBeInTheDocument();
+    expect(screen.queryByText(/of 200 min/)).toBeNull();
   });
 
   it('"Buy 5 more" checks out the add-on and marks the return', async () => {
@@ -154,16 +160,36 @@ describe('Billing — Pro', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     svc.getInvoices.mockResolvedValue(ok({
       content: [
-        { stripeInvoiceId: 'in_2', amount: 1200, currency: 'usd', invoiceUrl: 'https://pay.stripe.com/2', createdAt: '2026-10-11T00:00:00Z' },
-        { stripeInvoiceId: 'in_1', amount: 2900, currency: 'usd', invoiceUrl: 'https://pay.stripe.com/1', createdAt: '2026-10-03T00:00:00Z' },
+        { stripeInvoiceId: 'in_2', amount: 1200, currency: 'usd', invoiceUrl: 'https://pay.stripe.com/2', createdAt: '2026-10-11T00:00:00Z', item: '5 interviews add-on' },
+        { stripeInvoiceId: 'in_1', amount: 2900, currency: 'usd', invoiceUrl: 'https://pay.stripe.com/1', createdAt: '2026-10-03T00:00:00Z', item: 'Pro' },
+        // Old invoice with neither a plan nor a description: item null (#323).
+        { stripeInvoiceId: 'in_0', amount: 2900, currency: 'usd', invoiceUrl: 'https://pay.stripe.com/0', createdAt: '2026-09-03T00:00:00Z', item: null },
       ],
     }));
     renderBilling();
+    // The row is named from invoice.item, never guessed from the amount.
     expect(await screen.findByText('5 interviews add-on')).toBeInTheDocument();
-    expect(screen.getByText('Pro, monthly')).toBeInTheDocument();
+    expect(screen.getByText('Pro')).toBeInTheDocument();
+    expect(screen.getByText('Payment')).toBeInTheDocument();
     expect(screen.getByText('$12.00')).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: 'Download' })[0]);
     expect(open).toHaveBeenCalledWith('https://pay.stripe.com/2', '_blank');
+  });
+});
+
+describe('Billing — live prices (#323)', () => {
+  it('uses GET /payments/prices instead of the hard-coded amounts', async () => {
+    svc.getPrices.mockResolvedValue(ok({
+      pro: { amountCents: 3100, currency: 'usd', sessionCount: 15, validDays: null },
+      pro90Day: { amountCents: 8900, currency: 'usd', sessionCount: 45, validDays: 90 },
+      interviewAddOn: { amountCents: 1450, currency: 'usd', sessionCount: 5, validDays: 90 },
+      credit: { amountCents: 10, currency: 'usd', sessionCount: null, validDays: null },
+      freeMonthlySessionCount: 2,
+    }));
+    renderBilling();
+    expect(await screen.findByText('Pro · $31 / month')).toBeInTheDocument();
+    expect(screen.getByText('Add 5 interviews for $14.50')).toBeInTheDocument();
+    expect(screen.queryByText(/\$29 \/ month/)).toBeNull();
   });
 });
 
@@ -226,6 +252,19 @@ describe('Billing — other plans and states', () => {
     expect(screen.getByRole('button', { name: 'Available with Pro' })).toBeDisabled();
     expect(screen.queryByText(/^Cancel /)).not.toBeInTheDocument();
     expect(svc.getPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it('a retired plan with no amount shows its name alone, never "— / month"', async () => {
+    svc.getSubscription.mockResolvedValue(sub({ memberPlan: 'PREMIUM_QUARTERLY', tier: 'PREMIUM', billingCycle: 'QUARTERLY', nextBillingAmount: null }));
+    renderBilling();
+    expect(await screen.findByText('Premium')).toBeInTheDocument();
+    expect(screen.queryByText(/— \/ month/)).toBeNull();
+  });
+
+  it('a quarterly amount is shown per quarter', async () => {
+    svc.getSubscription.mockResolvedValue(sub({ memberPlan: 'PREMIUM_QUARTERLY', tier: 'PREMIUM', billingCycle: 'QUARTERLY', nextBillingAmount: 47700, currency: 'usd' }));
+    renderBilling();
+    expect(await screen.findByText('Premium · $477.00 / quarter')).toBeInTheDocument();
   });
 
   it('a legacy tier switches to Pro after confirming', async () => {

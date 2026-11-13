@@ -225,7 +225,6 @@ export function StartInterviewDialog({ app, onClose, onChanged }: { app: CareerA
   if (consent) {
     return (
       <InterviewConsent
-        companyName={app.companyName}
         busy={busy}
         error={error}
         onBack={() => {
@@ -276,14 +275,12 @@ export function StartInterviewDialog({ app, onClose, onChanged }: { app: CareerA
 
 // Shown before every career interview. Agreeing moves on to the device check.
 function InterviewConsent({
-  companyName,
   busy,
   error,
   onAgree,
   onBack,
   onClose,
 }: {
-  companyName: string;
   busy: boolean;
   error: string;
   onAgree: () => void;
@@ -307,7 +304,7 @@ function InterviewConsent({
         </div>
       </div>
       <div className="bg-[#f6f7f9] rounded-lg px-4 py-3 flex flex-col gap-3 max-h-[320px] overflow-y-auto">
-        {CONSENT_SECTIONS(companyName).map((s) => (
+        {CONSENT_SECTIONS.map((s) => (
           <div key={s.title} className="flex flex-col gap-0.5">
             <p className="text-[#1e232f] text-[13px] font-semibold" style={{ fontFamily: font.semibold }}>
               {s.title}

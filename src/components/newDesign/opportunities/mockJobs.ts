@@ -9,12 +9,13 @@ export type OpportunityJob = {
   location: string;
   workType: string;
   level: string;
-  salaryMin: number;
-  salaryMax: number;
+  salaryMin: number | null; // null when the employer hides pay
+  salaryMax: number | null;
   description: string;
   tags: string[];
-  applicationCount: number;
-  applicationMax: number;
+  // Not shown to candidates this release (product decision, 11-12).
+  applicationCount?: number;
+  applicationMax?: number;
   sponsorInfo: string;
   spotsUsed?: number;
   spotsTotal?: number;
@@ -235,7 +236,7 @@ export const opportunityJobs: OpportunityJob[] = [
   },
 ];
 
-export type SortOption = "newest" | "closing-soon" | "salary-high-low" | "cost-low-high";
+export type SortOption = "newest" | "closing-soon" | "salary-high-low";
 
 export function sortJobs(jobs: OpportunityJob[], sort: SortOption): OpportunityJob[] {
   const sorted = [...jobs];
@@ -245,9 +246,7 @@ export function sortJobs(jobs: OpportunityJob[], sort: SortOption): OpportunityJ
     case "closing-soon":
       return sorted.sort((a, b) => a.closingDate.localeCompare(b.closingDate));
     case "salary-high-low":
-      return sorted.sort((a, b) => b.salaryMax - a.salaryMax);
-    case "cost-low-high":
-      return sorted.sort((a, b) => a.interviewCost - b.interviewCost);
+      return sorted.sort((a, b) => (b.salaryMax ?? b.salaryMin ?? 0) - (a.salaryMax ?? a.salaryMin ?? 0));
     default:
       return sorted;
   }
@@ -257,6 +256,7 @@ export function sortJobs(jobs: OpportunityJob[], sort: SortOption): OpportunityJ
 
 export type AssessmentStatus =
   | "In progress"
+  | "Completed"
   | "Qualified"
   | "Not yet qualified"
   | "Not started";

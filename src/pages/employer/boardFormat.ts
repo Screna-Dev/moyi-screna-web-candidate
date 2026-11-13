@@ -1,5 +1,4 @@
 import type { Candidate, HiringDecision } from '@/components/admin/console/pages/employer/types';
-import { mockCandidates } from '@/components/admin/console/pages/employer/mockData';
 import type { BoardCandidate, CandidateReport, HiringStatus } from './employerApi';
 import { formatInZone, zoneAbbr } from './jobMapping';
 
@@ -57,33 +56,25 @@ export function weakestLabelOf(row: Pick<BoardCandidate, 'weakestCriterion' | 'm
   return row.minCriterionScore !== null ? `All criteria ${row.minCriterionScore}+` : '';
 }
 
-// ─── Design sample data ───────────────────────────────────────────────────────
+// ─── Screening ────────────────────────────────────────────────────────────────
 // The AI doesn't assess screening criteria this release: the API returns
-// {met: 0, total: 0}. Per the "design first" rule the board column and report
-// section stay, filled from the design's sample candidates (by rank). Replace
-// before launch; every use is marked SAMPLE.
+// {met: 0, total: 0}. The board column and report section are hidden behind
+// SCREENING_ENABLED (the markup stays for when the AI scores them). Without a
+// real result these return null: never fill in sample figures.
 
-const sampleFor = (rank: number) => mockCandidates[(Math.max(1, rank) - 1) % 31];
+export const SCREENING_ENABLED = false;
 
-// SAMPLE when the API has no screening result.
-export function screeningOf(row: Pick<BoardCandidate, 'screening' | 'rank'>): { met: number; total: number; sample: boolean } {
-  if (row.screening.total > 0) return { ...row.screening, sample: false };
-  const s = sampleFor(row.rank);
-  return { met: s.screeningMet, total: s.screeningTotal, sample: true };
+export function screeningOf(row: Pick<BoardCandidate, 'screening'>): { met: number; total: number } | null {
+  return row.screening.total > 0 ? { met: row.screening.met, total: row.screening.total } : null;
 }
 
-// SAMPLE when the API has no screening items.
-export function reportScreeningOf(report: Pick<CandidateReport, 'screening' | 'rank'>): {
+export function reportScreeningOf(report: Pick<CandidateReport, 'screening'>): {
   met: number;
   total: number;
   items: { label: string; met: boolean }[];
-  sample: boolean;
-} {
-  if (report.screening.total > 0) {
-    return { met: report.screening.met, total: report.screening.total, items: report.screening.items.map((i) => ({ label: i.text, met: i.met })), sample: false };
-  }
-  const s = sampleFor(report.rank.position);
-  return { met: s.screeningMet, total: s.screeningTotal, items: s.screening, sample: true };
+} | null {
+  if (report.screening.total === 0) return null;
+  return { met: report.screening.met, total: report.screening.total, items: report.screening.items.map((i) => ({ label: i.text, met: i.met })) };
 }
 
 // "4:25" from seconds.

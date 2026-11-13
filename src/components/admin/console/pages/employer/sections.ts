@@ -3,6 +3,11 @@ import type { EmployerView } from './types';
 // The employer screens are reached from three admin sidebar entries under
 // "Hiring". Deeper screens (wizard, board, report, contact) keep their parent
 // entry highlighted.
+// The admin console's Hiring pages run on mockData.ts (sample companies,
+// jobs and candidates). Hidden from the sidebar and unreachable until they're
+// wired to the API; the code stays (the /employer app reuses these views).
+export const ADMIN_HIRING_ENABLED = false;
+
 export type EmployerSection = 'employer-dashboard' | 'employer-jobs' | 'employer-candidates';
 
 export const EMPLOYER_SECTIONS: EmployerSection[] = ['employer-dashboard', 'employer-jobs', 'employer-candidates'];

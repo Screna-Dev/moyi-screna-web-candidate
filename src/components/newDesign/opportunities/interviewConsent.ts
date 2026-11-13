@@ -12,7 +12,7 @@
 // ≤ 64 characters (else 400 VALIDATION_ERROR). Recorded verbatim.
 export const CONSENT_VERSION = "placeholder-2026-11";
 
-export const CONSENT_SECTIONS = (companyName: string) => [
+export const CONSENT_SECTIONS = [
   {
     title: "Recording",
     body: "Your interview is recorded on video, including your voice and camera. A transcript is created from the recording.",
@@ -22,8 +22,9 @@ export const CONSENT_SECTIONS = (companyName: string) => [
     body: "Screna uses AI to assess your answers against the criteria set for this role. The assessment supports the recruiter's decision; it does not make it.",
   },
   {
+    // Only Screna is named here, never the hiring company.
     title: "Sharing with the employer",
-    body: `${companyName} receives your assessment, transcript, recording and the resume on your profile for this application.`,
+    body: "Screna receives your assessment, transcript, recording and the resume on your profile for this application.",
   },
   {
     title: "Your choice",

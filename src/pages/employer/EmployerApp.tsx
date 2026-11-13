@@ -16,7 +16,7 @@ import { EmployerJobsView } from './EmployerJobsView';
 import { EmployerJobWizard } from './EmployerJobWizard';
 import { OrgContext, useOrg, type OrgState } from './orgContext';
 import { toast } from 'sonner';
-import { CreditsContext, PLAN_CHECKOUT_KEY, REPORT_CHECKOUT_KEY, hasBusinessIntent, takeBusinessIntent } from './creditsContext';
+import { CreditsContext, PLAN_CHECKOUT_KEY, REPORT_CHECKOUT_KEY, hasBusinessIntent, reportUnlocksLeft, takeBusinessIntent } from './creditsContext';
 import { alreadyOnBusiness, businessCheckoutError, openBusinessCheckout } from './businessCheckout';
 import { EmployerApplicationsView } from './EmployerApplicationsView';
 import { EmployerBoardView } from './EmployerBoardView';
@@ -36,7 +36,7 @@ import { FIELD_LABELS, orgToCompany } from './orgOptions';
 // (/employer/jobs, see EmployerJobWizard), and so are Applications, the
 // candidate board, the report and Contact candidate (Employer*View, backend
 // guide frontend-employer-board-api.md; view candidateId = applicationId).
-// The dashboard is partly real (see EmployerDashboard); the plan is mock.
+// The dashboard is fed by GET /employer/dashboard + /employer/jobs (see EmployerDashboard).
 
 type NavKey = EmployerSection | 'plan' | 'profile';
 
@@ -163,27 +163,31 @@ function OrgProvider({ children }: { children: ReactNode }) {
 // (GET /employer/plan; interviews in progress are held against it). Without
 // the allowance an upgrade wouldn't move these numbers, since subscribing
 // grants allowance, not credits. Credits not loaded (or failed) = a dash.
+// Report unlocks: reportUnlocksLeft (prepaid only while past_due).
 function leftOf(credits: CreditBalances | null, plan: EmployerPlan | null | undefined, kind: 'interview' | 'report'): number | string {
-  if (!credits) return '—';
+  if (!credits || plan === undefined) return '—';
+  if (kind === 'report') return reportUnlocksLeft(credits, plan) ?? '—';
   const a = plan?.plan === 'BUSINESS' ? plan.allowance : null;
-  const allowance = !a ? 0 : kind === 'report' ? a.reports.included - a.reports.used : a.interviews.included - a.interviews.used - a.interviews.held;
-  return credits[kind] + Math.max(0, allowance);
+  return credits.interview + Math.max(0, a ? a.interviews.included - a.interviews.used - a.interviews.held : 0);
 }
 
 type Balances = { credits: CreditBalances | null; plan?: EmployerPlan | null };
 
 function CurrentPlanCard({ credits, plan }: Balances) {
   const { plan: mockPlan, go } = useEmployerStore();
-  // The real tier once /employer/plan answered; the mock store's otherwise.
-  const business = plan ? plan.plan === 'BUSINESS' : mockPlan.tier === 'business';
+  // The real tier once /employer/plan answered; the mock store's if it failed;
+  // no label while it loads (a Business org must not read "Free").
+  const business = plan === undefined ? null : plan ? plan.plan === 'BUSINESS' : mockPlan.tier === 'business';
   return (
     <div className="m-3 rounded-2xl bg-[rgba(60,119,246,0.08)] p-4 flex flex-col gap-2.5">
       <div className="flex items-center gap-1.5">
         <CreditCard size={14} className="text-[#3c77f6]" />
         <span className="text-[13px] leading-[19.5px] font-semibold text-[#1e232f]">Current Plan</span>
-        <span className="px-1.5 py-0.5 rounded bg-[rgba(60,119,246,0.12)] text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">
-          {business ? 'Business' : 'Free'}
-        </span>
+        {business !== null && (
+          <span className="px-1.5 py-0.5 rounded bg-[rgba(60,119,246,0.12)] text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">
+            {business ? 'Business' : 'Free'}
+          </span>
+        )}
       </div>
       <div className="flex flex-col gap-1 text-[12px] leading-[18px]">
         <div className="flex justify-between">
@@ -420,7 +424,7 @@ function useBusinessIntent() {
 // on a new view) and on refresh() (unlocking a report). Failures show dashes.
 function useCredits(viewName: string) {
   const [credits, setCredits] = useState<CreditBalances | null>(null);
-  const [plan, setPlan] = useState<EmployerPlan | null>(null);
+  const [plan, setPlan] = useState<EmployerPlan | null | undefined>(undefined);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let cancelled = false;

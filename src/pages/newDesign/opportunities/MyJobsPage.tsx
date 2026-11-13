@@ -7,9 +7,10 @@ import { onResultSettled, settleIfDone } from "@/components/newDesign/opportunit
 import { listMyApplications, type CareerApplication } from "@/services/careersApi";
 
 // Design page (Downloads export) fed by GET /careers/applications. Rows are
-// mapped onto the design's MyJob shape; qualification and email status
-// aren't returned and come from the design's sample data (see
-// careersDesignData). Search and status filters run client-side.
+// mapped onto the design's MyJob shape (see careersDesignData). Qualified and
+// the recruiter-email status belong to the Screna Sponsored flow, not in this
+// release, so a finished interview shows "Completed". Search and status
+// filters run client-side.
 
 const PAGE_LIMIT = 5; // 50 applications
 
@@ -23,6 +24,8 @@ function assessmentBadge(status: AssessmentStatus) {
   switch (status) {
     case "In progress":
       return { bg: "bg-[#e6edfa]", border: "border-[#bfd2f6]", text: "text-[#3c77f6]", label: "Assessment · In progress" };
+    case "Completed":
+      return { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", text: "text-[#16a34a]", label: "Assessment · Completed" };
     case "Qualified":
       return { bg: "bg-[#f0fdf4]", border: "border-[#bbf7d0]", text: "text-[#16a34a]", label: "Qualified" };
     case "Not yet qualified":
@@ -110,12 +113,14 @@ function MyJobCard({ job, onBrowse, onAction }: { job: MyJob; onBrowse: () => vo
       </div>
 
       {/* Location */}
-      <p
-        className="text-[#5a6172] text-[13px] leading-[19.5px]"
-        style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-      >
-        {job.location}
-      </p>
+      {job.location && (
+        <p
+          className="text-[#5a6172] text-[13px] leading-[19.5px]"
+          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
+        >
+          {job.location}
+        </p>
+      )}
 
       {/* Status badges */}
       <div className="flex flex-wrap gap-2">
@@ -257,7 +262,7 @@ export function MyJobsPage() {
         const res = await listMyApplications(page);
         res.content.forEach((a) => {
           settleIfDone(a); // finished while the candidate was elsewhere
-          all.push(toMyJob(a, all.length));
+          all.push(toMyJob(a));
         });
         if (res.pageMeta.last || res.content.length === 0) break;
       }
@@ -272,7 +277,7 @@ export function MyJobsPage() {
   useEffect(
     () =>
       onResultSettled(({ app }) =>
-        setRows((prev) => prev?.map((row, i) => (row.career.applicationId === app.applicationId ? toMyJob(app, i) : row)) ?? prev),
+        setRows((prev) => prev?.map((row) => (row.career.applicationId === app.applicationId ? toMyJob(app) : row)) ?? prev),
       ),
     [],
   );
@@ -364,7 +369,7 @@ export function MyJobsPage() {
             className="text-[#1e232f] text-[14px] font-semibold leading-5 shrink-0"
             style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
           >
-            {filtered.length} jobs
+            {filtered.length} {filtered.length === 1 ? "job" : "jobs"}
           </span>
         </div>
 
@@ -417,7 +422,7 @@ export function MyJobsPage() {
         <StartInterviewDialog
           app={starting}
           onClose={() => setStarting(null)}
-          onChanged={(app) => setRows((prev) => prev?.map((row, i) => (row.career.applicationId === app.applicationId ? toMyJob(app, i) : row)) ?? prev)}
+          onChanged={(app) => setRows((prev) => prev?.map((row) => (row.career.applicationId === app.applicationId ? toMyJob(app) : row)) ?? prev)}
         />
       )}
     </div>

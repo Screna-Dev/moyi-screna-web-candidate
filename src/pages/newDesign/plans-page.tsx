@@ -18,6 +18,7 @@ import { markPendingCheckout } from '@/utils/pendingCheckout';
 import { PaymentService } from '@/services';
 import { hasStoredSession } from '@/services/api';
 import { safeCapture } from '@/utils/posthog';
+import { useCandidatePrices } from '@/hooks/useCandidatePrices';
 import { EVENTS } from '@/constants/analyticsEvents';
 
 // In-app Pricing page (Figma "Candidate pricing", 2026-11), opened from the
@@ -139,6 +140,10 @@ export function PlansPage() {
   const [addOnOpen, setAddOnOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const plan = quota?.plan ?? null;
+  // Live prices (#323) once signed in; the published defaults otherwise.
+  const prices = useCandidatePrices();
+  const priceOf = (key: string, fallback: string) =>
+    key === 'PRO' ? `${prices.pro} / month` : key === 'PRO_90_DAY' ? `${prices.pro90Day} one time` : fallback;
 
   const fail = (err: unknown) => {
     const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -248,12 +253,12 @@ export function PlansPage() {
                     <span className="rounded-full bg-[#e6edfa] px-3 py-1 text-[11px] leading-[16.5px] font-semibold text-[#3c77f6]">{p.badge}</span>
                   )}
                 </div>
-                <p className="pt-5 text-[26px] leading-[39px] font-bold tracking-[0.22px] text-[#1e232f]">{p.price}</p>
+                <p className="pt-5 text-[26px] leading-[39px] font-bold tracking-[0.22px] text-[#1e232f]">{priceOf(p.key, p.price)}</p>
                 <p className="pt-1 text-[14px] leading-[21px] tracking-[-0.15px] text-[#5a6172]">{p.tagline}</p>
                 <div className="pt-5">{action(p.key)}</div>
                 {p.key === 'PRO' && (
                   <p className="pt-[11px] text-[11px] leading-4 text-[#8f99b5]">
-                    Renews monthly at $29 until you cancel. Cancel anytime in{' '}
+                    Renews monthly at {prices.pro} until you cancel. Cancel anytime in{' '}
                     <Link to={BILLING} className="font-medium text-[#3c77f6] hover:underline">Account → Billing</Link>.
                   </p>
                 )}
@@ -275,10 +280,10 @@ export function PlansPage() {
             <div className="flex-1 min-w-0">
               <h2 className="text-[18px] leading-[27px] font-bold tracking-[-0.44px] text-[#1e232f]">Out of interviews?</h2>
               <p className="pt-1 max-w-[760px] text-[13px] leading-5 text-[#5a6172]">
-                Add {ADD_ON_INTERVIEWS} for {ADD_ON_PRICE}. For Pro and Pro 90-day members. Valid {ADD_ON_VALID_DAYS} days, used after your plan's interviews. Redo limits stay the same.
+                Add {ADD_ON_INTERVIEWS} for {prices.addOn}. For Pro and Pro 90-day members. Valid {ADD_ON_VALID_DAYS} days, used after your plan's interviews. Redo limits stay the same.
               </p>
             </div>
-            <p className="text-[24px] leading-9 font-bold text-[#1e232f]">{ADD_ON_PRICE}</p>
+            <p className="text-[24px] leading-9 font-bold text-[#1e232f]">{prices.addOn}</p>
             {plan === 'PRO' || plan === 'PRO_90_DAY' ? (
               <button onClick={() => setAddOnOpen(true)} className="shrink-0 px-5 py-3 rounded-xl bg-[#3c77f6] hover:bg-[#2d6ae0] text-white text-[14px] leading-[21px] font-semibold">
                 Add {ADD_ON_INTERVIEWS} interviews
@@ -296,20 +301,23 @@ export function PlansPage() {
             <table className="w-full min-w-[720px] text-left">
               <thead>
                 <tr className="bg-[#f3f6fb]">
-                  {['Feature', 'Free', 'Pro · $29/mo', 'Pro 90-day · $79'].map((h) => (
+                  {['Feature', 'Free', `Pro · ${prices.pro}/mo`, `Pro 90-day · ${prices.pro90Day}`].map((h) => (
                     <th key={h} className="px-5 py-4 text-[13px] leading-[19.5px] font-semibold text-[#1e232f]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {COMPARE.map(([feature, ...values]) => (
+                {COMPARE.map(([rawFeature, ...values]) => {
+                  const feature = rawFeature.replace(` for ${ADD_ON_PRICE}`, ` for ${prices.addOn}`);
+                  return (
                   <tr key={feature} className="border-t border-[#e1e4ea]">
                     <td className="px-5 py-[14px] text-[13px] leading-[19.5px] font-medium text-[#1e232f]">{feature}</td>
                     {values.map((v, i) => (
                       <td key={i} className="px-5 py-[14px] text-[13px] leading-[19.5px] text-[#5a6172]">{v}</td>
                     ))}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

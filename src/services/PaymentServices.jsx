@@ -135,7 +135,15 @@ export const createInterviewAddOnCheckout = () => {
   return API.post(`${BASE_URL}/interview-add-on`);
 };
 
+// #323: what a candidate can buy and what each costs (Stripe, cached a few
+// minutes server-side). Signed-in only. { pro, pro90Day, interviewAddOn,
+// credit: {amountCents, currency, sessionCount, validDays}, freeMonthlySessionCount }.
+export const getPrices = () => {
+  return API.get(`${BASE_URL}/prices`);
+};
+
 const PaymentService = {
+  getPrices,
   createSubscription,
   getSubscription,
   changeTier,

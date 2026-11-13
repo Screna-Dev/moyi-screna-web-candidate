@@ -6,8 +6,8 @@ import type { CareerApplication, CareerInterviewResult } from '@/services/career
 import { InterviewResultPage } from '@/pages/newDesign/opportunities/InterviewResultPage';
 import { toMyJob } from '@/components/newDesign/opportunities/careersDesignData';
 
-// The candidate's own result (#303): real values where GET .../result has
-// them, design samples elsewhere (design-first rule).
+// The candidate's own result (#303): real values only. A section the API has
+// nothing for is hidden, never filled with the design's samples (backend 11-12).
 
 const api = vi.hoisted(() => ({ getMyInterviewResult: vi.fn(), getMyApplication: vi.fn() }));
 vi.mock('@/services/careersApi', async (orig) => ({ ...(await orig<object>()), ...api }));
@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe('interview result page', () => {
-  it('shows the real score, criteria, summary and decision, and samples where the API has nothing', async () => {
+  it('shows the real score, criteria, summary and status, and no samples where the API has nothing', async () => {
     api.getMyInterviewResult.mockResolvedValue(RESULT);
     renderPage();
     expect(await screen.findByText('Platform Engineer · Acme')).toBeInTheDocument();
@@ -68,10 +68,80 @@ describe('interview result page', () => {
     expect(screen.getByText('91/100')).toBeInTheDocument();
     expect(screen.getByText('Solid backend fundamentals.')).toBeInTheDocument();
     expect(screen.getByText('Clear trade-offs')).toBeInTheDocument();
-    // Empty areas → the design's sample list.
-    expect(screen.getByText('State assumptions before presenting a solution.')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting recruiter decision')).toBeInTheDocument();
+    // Empty areas / no questions → hidden, no sample list.
+    expect(screen.queryByText('Areas to strengthen')).toBeNull();
+    expect(screen.queryByText('State assumptions before presenting a solution.')).toBeNull();
+    expect(screen.queryByText('Question-by-question feedback')).toBeNull();
+    // No criterion feedback text, qualification, contact or shared-report copy.
+    expect(screen.queryByText(/Strong understanding of idempotency/)).toBeNull();
+    expect(screen.queryByText(/Qualified|qualified/)).toBeNull();
+    expect(screen.queryByText(/Contact recruiter|Email status|Contact eligibility/)).toBeNull();
+    expect(screen.queryByText(/shared report/)).toBeNull();
+    // A completed interview awaiting a decision reads "Recommended".
+    expect(screen.getByText('Recommended')).toBeInTheDocument();
     expect(api.getMyInterviewResult).toHaveBeenCalledWith('app-1');
+  });
+
+  it('Download PDF opens the print dialog', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    api.getMyInterviewResult.mockResolvedValue(RESULT);
+    renderPage();
+    (await screen.findByRole('button', { name: 'Download PDF' })).click();
+    expect(print).toHaveBeenCalledTimes(1);
+    print.mockRestore();
+  });
+
+  it('standingStatus TOO_FEW_CANDIDATES says so and does not poll (#324)', async () => {
+    api.getMyInterviewResult.mockResolvedValue({ ...RESULT, standing: null, standingStatus: 'TOO_FEW_CANDIDATES' });
+    renderPage();
+    expect(await screen.findByText(/once more candidates finish/)).toBeInTheDocument();
+    expect(api.getMyInterviewResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('standingStatus PENDING polls until ranked (#324)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      api.getMyInterviewResult
+        .mockResolvedValueOnce({ ...RESULT, standing: null, standingStatus: 'PENDING' })
+        .mockResolvedValueOnce({ ...RESULT, standing: null, standingStatus: 'PENDING' })
+        .mockResolvedValue({ ...RESULT, standing: { rank: 3, rankedCandidates: 12, topPercent: null, pointsBehindTop5: null }, standingStatus: 'RANKED' });
+      renderPage();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('Updating your ranking…')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6000);
+      });
+      expect(screen.getByText('#3 of 12')).toBeInTheDocument();
+      const calls = api.getMyInterviewResult.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(api.getMyInterviewResult.mock.calls.length).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('standingStatus PENDING stops after the limit and says it updates soon (#324)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      api.getMyInterviewResult.mockResolvedValue({ ...RESULT, standing: null, standingStatus: 'PENDING' });
+      renderPage();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(screen.getByText('Your ranking updates soon.')).toBeInTheDocument();
+      const calls = api.getMyInterviewResult.mock.calls.length;
+      expect(calls).toBe(11); // first load + 10 polls
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(api.getMyInterviewResult.mock.calls.length).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('409 while scoring: says so and keeps checking until the result is ready', async () => {
@@ -97,7 +167,7 @@ describe('interview result page', () => {
   });
 
   it('My Jobs shows a rejected application as not selected', () => {
-    expect(toMyJob(app({ hiringDecision: 'REJECTED' }), 0).applicationStatus).toBe('Not selected');
-    expect(toMyJob(app(), 0).applicationStatus).toBe('Applied');
+    expect(toMyJob(app({ hiringDecision: 'REJECTED' })).applicationStatus).toBe('Not selected');
+    expect(toMyJob(app()).applicationStatus).toBe('Applied');
   });
 });

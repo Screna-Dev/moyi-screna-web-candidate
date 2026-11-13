@@ -641,7 +641,7 @@ export function EvaluationPage() {
         response.data?.data;
       if (isSuccess) {
         const newModuleId = response.data?.data?.module_id || interviewId;
-        navigate(`/ai-mock?interviewId=${newModuleId}`);
+        navigate(`/ai-mock?interviewId=${newModuleId}&mode=voice`); // voice only (#322)
       }
     } catch (err) {
       console.error('Retake failed:', err);

@@ -224,8 +224,9 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
     warmupStartedRef.current = true;
 
     const stateSession = (location.state as any)?.prefetchedSession as { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | undefined;
-    const mode = searchParams.get('mode') ?? 'video';
-    const audioOnly = mode !== 'video';
+    // Mock interviews are voice only (#322): the backend charges every one at
+    // the voice rate, so ?mode=video is ignored and no camera is requested.
+    const audioOnly = true;
 
     const setup = async () => {
       // Voice-only sessions skip video capture to avoid unnecessary camera permission prompts.
@@ -287,7 +288,8 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
     type: (searchParams.get('type') as InterviewType) || 'behavioral',
     difficulty: (searchParams.get('difficulty') as Difficulty) || 'junior',
     duration: searchParams.get('duration') || '20',
-    mode: (searchParams.get('mode') as Mode) || 'video',
+    // Voice only (#322), whatever ?mode= says.
+    mode: 'voice' as Mode,
     company: '',
   });
 
@@ -901,9 +903,9 @@ function ModeSelectStage({
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="grid grid-cols-2 gap-4"
+          className="grid grid-cols-1 gap-4 max-w-xs mx-auto w-full"
         >
-          {/* Voice */}
+          {/* Voice. Video was removed: mock interviews are voice only (#322). */}
           <button
             onClick={() => onSelect('voice')}
             className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border transition-all duration-200 ${
@@ -925,27 +927,6 @@ function ModeSelectStage({
             </div>
           </button>
 
-          {/* Video */}
-          <button
-            onClick={() => onSelect('video')}
-            className={`group flex flex-col items-center gap-4 p-6 rounded-2xl border transition-all duration-200 ${
-              isDark
-                ? 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] hover:border-blue-400/40'
-                : 'bg-white border-slate-100 hover:border-blue-400/60 hover:shadow-md shadow-sm'
-            }`}
-          >
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors duration-200 ${
-              isDark
-                ? 'bg-blue-500/10 group-hover:bg-blue-500/20'
-                : 'bg-blue-50 group-hover:bg-blue-100'
-            }`}>
-              <Video className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="text-center">
-              <p className={`font-medium text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>Video</p>
-              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Face-to-face practice</p>
-            </div>
-          </button>
         </motion.div>
 
         {/* Privacy note */}
@@ -980,7 +961,6 @@ function SetupStage({
   const isDark = theme === 'dark';
   const modes: { value: Mode; icon: React.ReactNode; label: string }[] = [
     { value: 'voice', icon: <Mic className="w-4 h-4" />, label: 'Voice' },
-    { value: 'video', icon: <Video className="w-4 h-4" />, label: 'Video' },
   ];
 
   return (

@@ -10,6 +10,7 @@ import { EmployerApplicationsView } from '@/pages/employer/EmployerApplicationsV
 import { EmployerBoardView } from '@/pages/employer/EmployerBoardView';
 import { EmployerReportView } from '@/pages/employer/EmployerReportView';
 import { EmployerContactView } from '@/pages/employer/EmployerContactView';
+import { SCREENING_ENABLED, reportScreeningOf, screeningOf } from '@/pages/employer/boardFormat';
 
 // Employer board guide (backend docs/frontend-employer-board-api.md):
 // Applications list, board (+ visit after render), unlock, report, decision,
@@ -246,8 +247,10 @@ describe('Candidate board', () => {
     expect(screen.getByTitle('Up 2 places since your last visit.')).toBeInTheDocument();
     expect(screen.getByTitle('Down 1 place since your last visit.')).toBeInTheDocument();
     expect(screen.getByText('New')).toBeInTheDocument();
-    // Real screening when the API has it; design sample (3 dots) when it's 0/0.
-    expect(screen.getByText('2/3')).toBeInTheDocument();
+    // Screening isn't assessed this release: no column, no figures (not even
+    // a row's real 2/3), and never a sample.
+    expect(screen.queryByText('Screening Criteria')).not.toBeInTheDocument();
+    expect(screen.queryByText('2/3')).not.toBeInTheDocument();
     expect(screen.getByText('5 completed this week')).toBeInTheDocument();
     expect(screen.getByText('14 report unlocks remaining')).toBeInTheDocument();
     expect(screen.getByText('1 contacted')).toBeInTheDocument();
@@ -349,6 +352,15 @@ describe('Candidate report', () => {
     expect(screen.getByRole('button', { name: 'View full transcript' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Play recording' })).toBeDisabled();
     expect(screen.queryByText(/will be notified/)).not.toBeInTheDocument();
+    // Screening section and tile are hidden this release.
+    expect(screen.queryByText(/screening criteria/i)).not.toBeInTheDocument();
+  });
+
+  it('screening helpers never fill in sample figures', () => {
+    expect(screeningOf({ screening: { met: 0, total: 0 } })).toBeNull();
+    expect(screeningOf({ screening: { met: 2, total: 3 } })).toEqual({ met: 2, total: 3 });
+    expect(reportScreeningOf({ screening: { met: 0, total: 0, items: [] } })).toBeNull();
+    expect(SCREENING_ENABLED).toBe(false);
   });
 
   it('moving forward saves the decision and offers to contact the candidate', async () => {

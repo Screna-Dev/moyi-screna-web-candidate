@@ -40,3 +40,11 @@ export function nextAction(job: Job): { label: string; view: EmployerView } {
       return { label: 'Continue editing', view: { name: 'wizard', jobId: job.id } };
   }
 }
+
+// "+12% vs prior period" from the last 30 days vs the 30 before. Hidden
+// (null) when the prior period had no applicants: no meaningful percentage.
+export function applicantTrend(last30: number, prior30: number): { text: string; tone?: 'green' } | null {
+  if (!prior30) return null;
+  const pct = Math.round(((last30 - prior30) / prior30) * 100);
+  return { text: `${pct > 0 ? '+' : ''}${pct}% vs prior period`, tone: pct > 0 ? 'green' : undefined };
+}

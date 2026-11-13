@@ -75,7 +75,7 @@ describe('labels', () => {
 
 describe('Opportunities card', () => {
   it('uses skills, years and who pays now', () => {
-    const card = toOpportunityJob(job({ skills: ['Go', 'Kafka'], yearsExperienceMin: 5, interviewFunding: 'CANDIDATE' }), 0);
+    const card = toOpportunityJob(job({ skills: ['Go', 'Kafka'], yearsExperienceMin: 5, interviewFunding: 'CANDIDATE' }));
     expect(card.tags).toEqual(['Go', 'Kafka']);
     expect(card.level).toBe('Senior (5+ years)');
     // Sponsorship ran out: no longer "Sponsored".
@@ -84,27 +84,26 @@ describe('Opportunities card', () => {
   });
 
   it('shows my best score and offers a retake', () => {
-    const card = toOpportunityJob(job({ applied: true, myBestScore: 84 }), 0);
+    const card = toOpportunityJob(job({ applied: true, myBestScore: 84 }));
     expect(card.scoreValue).toBe('84/100');
     expect(card.primaryAction).toBe('Retake interview');
     // The next interview is a retake: candidate-paid even on a sponsored job.
     expect(card.interviewCostLabel).toMatch(/^1 interview/);
-    expect(toOpportunityJob(job(), 0).scoreValue).toBeUndefined();
+    expect(toOpportunityJob(job()).scoreValue).toBeUndefined();
   });
 });
 
 describe('Opportunities card with myApplication (#320)', () => {
   it('missing or null myApplication keeps the pre-#320 behaviour', () => {
-    const card = toOpportunityJob(job({ applied: true, myBestScore: 84 }), 0);
+    const card = toOpportunityJob(job({ applied: true, myBestScore: 84 }));
     expect(card.reportAvailable).toBeUndefined();
-    expect(toOpportunityJob(job({ myApplication: null }), 0).primaryAction).toBe('Quick interview');
+    expect(toOpportunityJob(job({ myApplication: null })).primaryAction).toBe('Quick interview');
   });
 
   it('completed with a retake open: report, retake, candidate-paid, time left', () => {
     const deadline = new Date(Date.now() + (4 * 60 + 32) * 60_000 + 30_000).toISOString();
     const card = toOpportunityJob(
       job({ applied: true, myBestScore: 84, myApplication: app({ bestScore: 84, canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: deadline, interviewFunding: 'CANDIDATE' }) }),
-      0,
     );
     expect(card.reportAvailable).toBe(true);
     expect(card.primaryAction).toBe('Retake interview');
@@ -114,7 +113,6 @@ describe('Opportunities card with myApplication (#320)', () => {
   it('retake in progress: no report (result 409s), continue, no countdown', () => {
     const card = toOpportunityJob(
       job({ applied: true, myBestScore: 84, myApplication: app({ interviewStatus: 'IN_PROGRESS', bestScore: 84, canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: new Date(Date.now() + 3_600_000).toISOString(), interviewFunding: 'CANDIDATE' }) }),
-      0,
     );
     expect(card.reportAvailable).toBe(false);
     expect(card.scoreValue).toBe('84/100');
@@ -125,32 +123,31 @@ describe('Opportunities card with myApplication (#320)', () => {
   it("applied, not started, sponsored: the application's funding", () => {
     const card = toOpportunityJob(
       job({ applied: true, interviewFunding: 'CANDIDATE', myApplication: app({ interviewStatus: 'NOT_STARTED', canStartInterview: true, interviewFunding: 'EMPLOYER' }) }),
-      0,
     );
     expect(card.interviewCostLabel).toMatch(/^Sponsored/);
     expect(card.reportAvailable).toBe(false);
   });
 
   it('who pays is hidden when no interview can start', () => {
-    const card = toOpportunityJob(job({ applied: true, myBestScore: 60, myApplication: app({ bestScore: 60, canStartInterview: false, retakeAvailability: 'LIMIT_REACHED' }) }), 0);
+    const card = toOpportunityJob(job({ applied: true, myBestScore: 60, myApplication: app({ bestScore: 60, canStartInterview: false, retakeAvailability: 'LIMIT_REACHED' }) }));
     expect(card.interviewCostLabel).toBe('');
   });
 });
 
 describe('My Jobs card', () => {
   it('uses the application location, workplace and best score', () => {
-    const row = toMyJob(app({ location: 'Austin, TX', workplaceType: 'REMOTE', bestScore: 72 }), 0);
+    const row = toMyJob(app({ location: 'Austin, TX', workplaceType: 'REMOTE', bestScore: 72 }));
     expect(row.location).toBe('Austin, TX · Remote');
     expect(row.bestScore).toBe(72);
   });
 
   it('offers Retake only while one can start, with the time left', () => {
     const deadline = new Date(Date.now() + (2 * 60 + 5) * 60_000 + 30_000).toISOString();
-    const open = toMyJob(app({ canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: deadline }), 0);
+    const open = toMyJob(app({ canStartInterview: true, retakeAvailability: 'AVAILABLE', retakeDeadline: deadline }));
     expect(open.actions.map((a) => a.label)).toEqual(['View report', 'Retake interview']);
     expect(open.creditInfo).toBe('1 interview · 2h 5m left to start');
 
-    const closed = toMyJob(app({ canStartInterview: false, retakeAvailability: 'WINDOW_CLOSED' }), 0);
+    const closed = toMyJob(app({ canStartInterview: false, retakeAvailability: 'WINDOW_CLOSED' }));
     expect(closed.actions.map((a) => a.label)).toEqual(['View report']);
     expect(closed.creditInfo).toBeUndefined();
   });
@@ -188,7 +185,7 @@ describe('result standing (rules from 11-09)', () => {
 describe('retake gate and 409 reload message', () => {
   it('no Retake or countdown unless retakeAvailability is AVAILABLE', () => {
     const deadline = new Date(Date.now() + 3600_000).toISOString();
-    const row = toMyJob(app({ canStartInterview: true, retakeAvailability: 'WINDOW_CLOSED', retakeDeadline: deadline }), 0);
+    const row = toMyJob(app({ canStartInterview: true, retakeAvailability: 'WINDOW_CLOSED', retakeDeadline: deadline }));
     expect(row.actions.map((a) => a.label)).toEqual(['View report']);
     expect(row.creditInfo).toBeUndefined();
   });

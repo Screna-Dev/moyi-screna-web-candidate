@@ -17,7 +17,7 @@ import {
   type CandidateFilters,
   type Page,
 } from './employerApi';
-import { closingLabel, jobLinkOf, performanceOf, screeningOf, shortDate, updatedLabel, weakestLabelOf } from './boardFormat';
+import { SCREENING_ENABLED, closingLabel, jobLinkOf, performanceOf, screeningOf, shortDate, updatedLabel, weakestLabelOf } from './boardFormat';
 import { EmployerUnlockDialog, type UnlockTarget } from './EmployerUnlockDialog';
 
 // Application board (Figma "Candidate Board - Main", "— No Completed
@@ -25,7 +25,7 @@ import { EmployerUnlockDialog, type UnlockTarget } from './EmployerUnlockDialog'
 // After the first page of candidates has rendered, POST .../board/visits
 // records the visit (rank snapshot + resets the job's "New" count); calling it
 // earlier would wipe isNew and movement. 10 rows per page (the API's size).
-// Screening: see screeningOf (design sample while the AI doesn't assess it).
+// Screening: hidden this release (SCREENING_ENABLED in boardFormat).
 
 type Chip = 'all' | 'unlocked' | 'locked';
 type ScoreFilter = 'Score: All' | '80+' | '70+' | 'Below 70';
@@ -307,7 +307,7 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
                       <th className="px-3 py-3">Candidate</th>
                       <th className="px-3 py-3">Score</th>
                       <th className="px-3 py-3">Interview Performance</th>
-                      <th className="px-3 py-3">Screening Criteria</th>
+                      {SCREENING_ENABLED && <th className="px-3 py-3">Screening Criteria</th>}
                       <th className="px-3 py-3 w-[220px]">Actions</th>
                     </tr>
                   </thead>
@@ -343,9 +343,7 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
                           <td className="px-3 py-3">
                             <PerformanceBar segments={performanceOf(c)} label={weakestLabelOf(c)} />
                           </td>
-                          <td className="px-3 py-3">
-                            <ScreeningDots met={scr.met} total={scr.total} />
-                          </td>
+                          {SCREENING_ENABLED && <td className="px-3 py-3">{scr && <ScreeningDots met={scr.met} total={scr.total} />}</td>}
                           <td className="px-3 py-3">
                             {unlockedRow ? (
                               <div className="flex items-center gap-2">
@@ -365,7 +363,7 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
                     })}
                     {rows.content.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-5 py-10 text-center text-[14px] text-[#5a6172]">
+                        <td colSpan={SCREENING_ENABLED ? 6 : 5} className="px-5 py-10 text-center text-[14px] text-[#5a6172]">
                           No candidates match these filters.
                         </td>
                       </tr>

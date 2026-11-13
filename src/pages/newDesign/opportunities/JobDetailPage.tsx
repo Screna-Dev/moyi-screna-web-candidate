@@ -1,49 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
 import { languageLabel, useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
 import { leftToStartLabel, retakeBlockedMessage, seniorityLabel, workplaceLabel, yearsLabel } from "@/components/newDesign/opportunities/careersDesignData";
 import { getCareerJob, type CareerJobDetail, type CareerPosting, type InterviewPayer } from "@/services/careersApi";
 
-// Design page (Downloads export), filled from GET /careers/jobs/{id};
-// anything the API doesn't return yet keeps the design's sample text. The
-// score / retake / recruiter-email panels are design sample content until the
-// backend supports them.
-
-const SAMPLE = {
-  title: "Software Engineer",
-  company: "Driftvale",
-  jobType: "Screna Sponsored",
-  meta: "Seattle, WA · Hybrid · Full-time",
-  level: "Entry level · 0–2 years",
-  salary: "$85,000 – $110,000 / year",
-  skills: ["Python", "SQL", "Backend Development"],
-  overview:
-    "Driftvale is looking for an early-career Software Engineer to help build and maintain backend services. You'll work with engineering teammates to deliver reliable features, improve data handling, and investigate technical issues.",
-  responsibilities: [
-    "Build and maintain backend services and APIs.",
-    "Work with SQL databases and improve query performance.",
-    "Write tests and contribute to code reviews.",
-    "Investigate bugs and help improve service reliability.",
-    "Collaborate with teammates to deliver product features.",
-  ],
-  requirements: [
-    "Programming experience with Python or a similar language.",
-    "Understanding of APIs, SQL, and relational databases.",
-    "Ability to break down problems and explain technical decisions.",
-    "Experience contributing to a software project through coursework, internships, or work.",
-    "Clear communication and a collaborative approach.",
-  ],
-  preferred: [
-    "Experience with cloud services.",
-    "Familiarity with automated testing and CI/CD.",
-    "Experience investigating performance or reliability issues.",
-  ],
-  minutes: 30,
-  language: "English",
-  cost: "30 credits",
-  deadline: "Oct 28, 2026 · 11:59 PM PT",
-};
+// Design page (Downloads export), filled from GET /careers/jobs/{id}. Real
+// data only: anything the posting doesn't have is hidden (backend 11-12).
+// Every job is a Partner Job this release, so the Screna Sponsored copy
+// (public listing, qualify, recruiter email, shared report link) is replaced
+// by the Partner flow: interview → the employer sees the result.
 
 const PERIOD: Record<string, string> = { YEAR: "year", MONTH: "month", WEEK: "week", DAY: "day", HOUR: "hour" };
 const EMPLOYMENT: Record<string, string> = { FULL_TIME: "Full-time", PART_TIME: "Part-time", CONTRACT: "Contract", INTERNSHIP: "Internship", TEMPORARY: "Temporary" };
@@ -67,31 +32,31 @@ function deadlineLabel(iso: string, tz: string | null) {
   }
 }
 
-// Real values where the posting has them, design sample text otherwise.
 // funding: who pays if an interview starts now (detail.interviewFunding).
-function viewOf(p: CareerPosting | null, funding?: InterviewPayer) {
-  if (!p) return SAMPLE;
+function viewOf(p: CareerPosting, funding?: InterviewPayer) {
   const years = yearsLabel(p.yearsExperienceMin, p.yearsExperienceMax);
   const minutes = p.interview.durationMinutes;
   return {
     title: p.title,
     company: p.company.name,
     jobType: "Partner Job",
-    meta: [p.location, workplaceLabel(p.workplaceType), p.employmentType ? EMPLOYMENT[p.employmentType] : ""].filter(Boolean).join(" · ") || SAMPLE.meta,
-    level: [seniorityLabel(p.seniority), years].filter(Boolean).join(" · ") || SAMPLE.level,
+    meta: [p.location, workplaceLabel(p.workplaceType), p.employmentType ? EMPLOYMENT[p.employmentType] : ""].filter(Boolean).join(" · "),
+    level: [seniorityLabel(p.seniority), years].filter(Boolean).join(" · "),
     salary:
       p.salaryMin != null || p.salaryMax != null
         ? `${[p.salaryMin, p.salaryMax].filter((n): n is number => n != null).map((n) => money(n, p.salaryCurrency)).join(" – ")}${p.salaryPeriod ? ` / ${PERIOD[p.salaryPeriod]}` : ""}`
-        : SAMPLE.salary,
-    skills: p.skills.length ? p.skills : SAMPLE.skills,
-    overview: p.roleOverview || SAMPLE.overview,
-    responsibilities: p.responsibilities.length ? p.responsibilities : SAMPLE.responsibilities,
-    requirements: p.requirements.length ? p.requirements : SAMPLE.requirements,
-    preferred: p.preferredQualifications.length ? p.preferredQualifications : SAMPLE.preferred,
+        : "",
+    skills: p.skills ?? [],
+    overview: p.roleOverview || p.summary || "",
+    responsibilities: p.responsibilities ?? [],
+    requirements: p.requirements ?? [],
+    preferred: p.preferredQualifications ?? [],
+    // #325: name + description (null on jobs published before 11-13).
+    criteria: p.interview.criteria ?? [],
     minutes,
     language: languageLabel(p.interview.language),
     cost: (funding ?? p.interview.interviewPayer) === "EMPLOYER" ? "Free · sponsored by recruiter" : "1 interview",
-    deadline: p.closesAt ? deadlineLabel(p.closesAt, p.timezone) : SAMPLE.deadline,
+    deadline: p.closesAt ? deadlineLabel(p.closesAt, p.timezone) : "",
   };
 }
 
@@ -99,7 +64,6 @@ const assetPathPrefix = "/images/opportunities";
 const imgMapPin = `${assetPathPrefix}/0e220.svg`;
 const imgBriefcase = `${assetPathPrefix}/c4789.svg`;
 const imgDollarSign = `${assetPathPrefix}/7704b.svg`;
-const imgEmailIcon = `${assetPathPrefix}/2c691.svg`;
 const imgInfo = `${assetPathPrefix}/2f058.svg`;
 const imgClock = `${assetPathPrefix}/b10d2.svg`;
 const imgMic = `${assetPathPrefix}/6f308.svg`;
@@ -135,7 +99,6 @@ export function JobDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const jobId = id ?? "";
-  const { emailStatus } = useOpportunities();
   const [detail, setDetail] = useState<CareerJobDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const starter = useCareerInterviewStarter((app) => setDetail((d) => (d ? { ...d, myApplication: app } : d)));
@@ -154,14 +117,30 @@ export function JobDetailPage() {
   const isCompleted = myApp?.interviewStatus === "COMPLETED";
   // Applied: who pays the next interview is the application's funding; a
   // retake is always the candidate's.
-  const v = viewOf(detail?.posting ?? null, isCompleted ? "CANDIDATE" : myApp?.interviewFunding ?? detail?.interviewFunding);
+  const v = detail && viewOf(detail.posting, isCompleted ? "CANDIDATE" : myApp?.interviewFunding ?? detail?.interviewFunding);
   const bestScore = myApp?.bestScore != null ? `${myApp.bestScore}/100` : "—";
   // Completed + canStartInterview = a retake can start now (always candidate-paid).
   const canRetake = isCompleted && !!myApp?.canStartInterview && (myApp?.retakeAvailability ?? "AVAILABLE") === "AVAILABLE";
   const retakeLeft = leftToStartLabel(myApp?.retakeDeadline);
-  const isEmailSent = emailStatus[jobId] === "sent";
+  // #317: the start button only when an interview can start. Applied: the
+  // application's canStartInterview (still true for existing applicants of a
+  // job auto-closed by sponsorship). Not applied: only while the job takes
+  // applications.
+  const canStart = myApp ? myApp.canStartInterview : detail?.acceptingApplications !== false;
+  const inProgress = myApp?.interviewStatus === "IN_PROGRESS";
+  const decision = myApp?.hiringDecision;
+  // A result puts the candidate on the employer's board: "Recommended" until
+  // the employer decides (backend 11-12).
+  const applicationStatus = decision === "MOVED_FORWARD" ? "Moved forward" : decision === "REJECTED" ? "Not selected" : "Recommended";
+  const aboutSections = v
+    ? ([
+        ["What you'll do", v.responsibilities],
+        ["What we're looking for", v.requirements],
+        ["Nice to have", v.preferred],
+      ] as const).filter(([, items]) => items.length > 0)
+    : [];
 
-  if (!detail) {
+  if (!detail || !v) {
     return (
       <div className="bg-white border border-[#e1e4ea] rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
         <p className="text-[#1e232f] text-[18px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
@@ -215,6 +194,7 @@ export function JobDetailPage() {
 
         {/* Meta row */}
         <div className="flex flex-wrap gap-5">
+          {v.meta && (
           <div className="flex gap-1.5 items-center">
             <img src={imgMapPin} alt="" className="w-4 h-4 shrink-0" />
             <p
@@ -224,6 +204,8 @@ export function JobDetailPage() {
               {v.meta}
             </p>
           </div>
+          )}
+          {v.level && (
           <div className="flex gap-1.5 items-center">
             <img src={imgBriefcase} alt="" className="w-4 h-4 shrink-0" />
             <p
@@ -233,6 +215,8 @@ export function JobDetailPage() {
               {v.level}
             </p>
           </div>
+          )}
+          {v.salary && (
           <div className="flex gap-1.5 items-center">
             <img src={imgDollarSign} alt="" className="w-4 h-4 shrink-0" />
             <p
@@ -242,9 +226,11 @@ export function JobDetailPage() {
               {v.salary}
             </p>
           </div>
+          )}
         </div>
 
         {/* Skills */}
+        {v.skills.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {v.skills.map((tag) => (
             <span
@@ -257,16 +243,7 @@ export function JobDetailPage() {
           ))}
         </div>
 
-        {/* Email row */}
-        <div className="flex items-center gap-2">
-          <img src={imgEmailIcon} alt="" className="w-6 h-6 shrink-0" />
-          <p
-            className="text-[#4d4d4d] text-[13px] leading-[normal]"
-            style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-          >
-            xxxxrena.gmail.com
-          </p>
-        </div>
+        )}
 
         <Divider />
 
@@ -277,15 +254,9 @@ export function JobDetailPage() {
             className="text-[#5a6172] text-[14px] leading-5 flex-1"
             style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
           >
-            This role comes from a public job listing. Complete Screna's assessment and qualify to prepare a recruiter email. Send it yourself to apply.
+            Partner Job: complete the AI interview to apply. {v.company} sees your result and can unlock your profile and report.
           </p>
         </div>
-        <p
-          className="text-[#737373] text-[12px] leading-[normal]"
-          style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-        >
-          Screna's assessment is based on the public job description and is not an employer-administered interview.
-        </p>
       </div>
 
       {/* How it works */}
@@ -298,14 +269,11 @@ export function JobDetailPage() {
         </p>
         <div className="grid grid-cols-4 gap-4">
           {[
-            { step: "STEP 1", title: "Complete your assessment", body: "Take an AI assessment based on the public job description." },
-            { step: "STEP 2", title: "View your results", body: "See your score, feedback, and qualification status." },
-            {
-              step: "STEP 3", title: "Contact if qualified", body: "Review your email draft and send it from your own account.",
-              badge: "If qualified",
-            },
-            { step: "STEP 4", title: "Track in My Jobs", body: "Confirm your email was sent to mark the role as applied." },
-          ].map(({ step, title, body, badge }) => (
+            { step: "STEP 1", title: "Complete your interview", body: "Take a short AI interview set up by the employer for this role." },
+            { step: "STEP 2", title: "View your results", body: "See your score and feedback." },
+            { step: "STEP 3", title: "Employer review", body: "Your result goes to the employer, who can unlock your profile and report." },
+            { step: "STEP 4", title: "Track in My Jobs", body: "Follow your application status in My Jobs." },
+          ].map(({ step, title, body, badge }: { step: string; title: string; body: string; badge?: string }) => (
             <div key={step} className="bg-[#f9fafb] rounded-xl p-3 flex flex-col gap-2">
               <p
                 className="text-[#5a6172] text-[11px] font-bold tracking-[0.5px] uppercase leading-[normal]"
@@ -342,7 +310,9 @@ export function JobDetailPage() {
         {/* Left column */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
           {/* Job Description */}
+          {(v.overview || aboutSections.length > 0) && (
           <div className="bg-white border border-[#e1e4ea] rounded-2xl p-8 flex flex-col gap-6">
+            {v.overview && (
             <div className="flex flex-col gap-3">
               <p
                 className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
@@ -351,43 +321,29 @@ export function JobDetailPage() {
                 About the role
               </p>
               <p
-                className="text-[#5a6172] text-[14px] leading-[22px]"
+                className="text-[#5a6172] text-[14px] leading-[22px] whitespace-pre-line"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
                 {v.overview}
               </p>
             </div>
-            <Divider />
-            <div className="flex flex-col gap-3">
-              <p
-                className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
-                style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-              >
-                What you'll do
-              </p>
-              <BulletList items={v.responsibilities} />
-            </div>
-            <Divider />
-            <div className="flex flex-col gap-3">
-              <p
-                className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
-                style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-              >
-                What we're looking for
-              </p>
-              <BulletList items={v.requirements} />
-            </div>
-            <Divider />
-            <div className="flex flex-col gap-3">
-              <p
-                className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
-                style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-              >
-                Nice to have
-              </p>
-              <BulletList items={v.preferred} />
-            </div>
+            )}
+            {aboutSections.map(([title, items], i) => (
+              <div key={title} className="flex flex-col gap-6">
+                {(i > 0 || v.overview) && <Divider />}
+                <div className="flex flex-col gap-3">
+                  <p
+                    className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
+                    style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
+                  >
+                    {title}
+                  </p>
+                  <BulletList items={[...items]} />
+                </div>
+              </div>
+            ))}
           </div>
+          )}
 
           {/* Assessment Info */}
           <div className="bg-white border border-[#e1e4ea] rounded-2xl p-8 flex flex-col gap-6">
@@ -396,13 +352,13 @@ export function JobDetailPage() {
                 className="text-[#1e232f] text-[18px] font-semibold leading-[normal]"
                 style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
               >
-                About the Screna assessment
+                About the AI interview
               </p>
               <p
                 className="text-[#5a6172] text-[14px] leading-[22px]"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
-                This AI assessment is generated from the public job description. It evaluates relevant skills and provides a report you can share with the recruiter.
+                The employer set up this AI interview for the role. Your answers are scored on the areas below, and the employer sees your result.
               </p>
             </div>
             <div className="bg-[#f9fafb] rounded-lg p-3 flex gap-6 flex-wrap">
@@ -422,6 +378,9 @@ export function JobDetailPage() {
                 </div>
               ))}
             </div>
+            {/* #325: the criteria the interview is scored on; jobs published
+                before 11-13 have no descriptions, so the name only. */}
+            {v.criteria.length > 0 && (
             <div className="flex flex-col gap-3">
               <p
                 className="text-[#1e232f] text-[15px] font-semibold leading-[normal]"
@@ -430,22 +389,18 @@ export function JobDetailPage() {
                 Assessment areas
               </p>
               <div className="flex flex-col gap-3">
-                {[
-                  { bold: "Backend fundamentals", rest: " — APIs, application logic, and error handling." },
-                  { bold: "Databases", rest: " — SQL, indexes, and transactions." },
-                  { bold: "Problem solving", rest: " — Clarifying requirements and explaining trade-offs." },
-                  { bold: "Project experience", rest: " — Your contribution, decisions, and results." },
-                ].map(({ bold, rest }) => (
-                  <div key={bold} className="flex gap-2 items-start">
+                {v.criteria.map(({ name, description }, i) => (
+                  <div key={`${name}-${i}`} className="flex gap-2 items-start">
                     <span className="text-[#5a6172] text-[14px] shrink-0">•</span>
                     <p className="text-[14px] leading-5" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-                      <span className="font-bold text-[#1e232f]" style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}>{bold}</span>
-                      <span className="text-[#5a6172]">{rest}</span>
+                      <span className="font-bold text-[#1e232f]" style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}>{name}</span>
+                      {description && <span className="text-[#5a6172]">{` — ${description}`}</span>}
                     </p>
                   </div>
                 ))}
               </div>
             </div>
+            )}
           </div>
         </div>
 
@@ -468,7 +423,7 @@ export function JobDetailPage() {
                 className="text-[#5a6172] text-[13px] leading-[18px]"
                 style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
               >
-                Qualify to prepare a recruiter email with your resume and assessment report link.
+                Complete the AI interview to apply. The employer reviews your result.
               </p>
             </div>
             <Divider />
@@ -478,7 +433,7 @@ export function JobDetailPage() {
                 { icon: imgMic, label: "FORMAT", value: `Video · ${v.language}` },
                 { icon: imgAward, label: "ASSESSMENT COST", value: v.cost },
                 { icon: imgCalendar, label: "ASSESSMENT DEADLINE", value: v.deadline },
-              ].map(({ icon, label, value }) => (
+              ].filter((row) => row.value).map(({ icon, label, value }) => (
                 <div key={label} className="flex gap-3 items-center">
                   <img src={icon} alt="" className="w-4 h-4 shrink-0" />
                   <div className="flex flex-col gap-0.5">
@@ -498,13 +453,15 @@ export function JobDetailPage() {
                 </div>
               ))}
             </div>
+            {canStart ? (
+            <>
             <button
               onClick={() => void starter.begin(jobId)}
               disabled={starter.busyJob === jobId}
               className="bg-[#3c77f6] text-white text-[14px] font-semibold leading-[normal] px-4 py-3 rounded-xl flex items-center justify-center gap-2.5 hover:bg-[#2d6ae0] transition-colors w-full"
               style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif", boxShadow: "0px 4px 3px rgba(60,119,246,0.2)" }}
             >
-              Start AI interview
+              {inProgress ? "Continue AI interview" : "Start AI interview"}
               <img src={imgArrowRight} alt="" className="w-4 h-4 shrink-0" />
             </button>
             <p
@@ -513,12 +470,15 @@ export function JobDetailPage() {
             >
               Review the cost and check your microphone before you begin.
             </p>
-            <p
-              className="text-[#737373] text-[11px] leading-[normal]"
-              style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-            >
-              Completing the assessment does not submit an application.
-            </p>
+            </>
+            ) : (
+              <p
+                className="text-[#5a6172] text-[13px] leading-5"
+                style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
+              >
+                This role is no longer accepting applications.
+              </p>
+            )}
           </div>
           ) : (
           /* Completed — shows assessment & application panel */
@@ -533,87 +493,25 @@ export function JobDetailPage() {
               Your assessment &amp; application
             </p>
 
-            {!isEmailSent ? (
-              /* Email not sent: frame 18:14 right panel */
-              <>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
-                      Assessment status
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>Qualified</p>
-                      <span className="bg-[#e8f7ee] text-[#2e8b57] text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Qualified</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Best score</p>
-                    <p className="text-[#1e232f] text-[13px] font-bold" style={{ fontFamily: "'Inter:Bold', Inter, sans-serif" }}>{bestScore}</p>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Application status</p>
-                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>Not applied yet</p>
-                  </div>
+            <div className="flex flex-col gap-4">
+              {[
+                ["Assessment status", "Completed"],
+                ["Best score", bestScore],
+                ["Application status", applicationStatus],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between">
+                  <p className="text-[#5a6172] text-[11px] font-semibold tracking-[0.5px] uppercase" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
+                    {label}
+                  </p>
+                  <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>{value}</p>
                 </div>
-                <div className="h-0 relative shrink-0 w-full">
-                  <div className="absolute inset-[-1px_0_0_0]">
-                    <img alt="" className="block max-w-none size-full" src={imgLine3} />
-                  </div>
-                </div>
-                <p className="text-[#5a6172] text-[13px] leading-[18px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-                  You've qualified to contact the recruiter. Send your recruiter email to apply.
-                </p>
-                <button
-                  onClick={() => navigate(`/opportunities/job/${jobId}/contact`)}
-                  className="text-[#3c77f6] text-[14px] font-semibold text-left hover:underline w-fit"
-                  style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-                >
-                  Contact recruiter →
-                </button>
-                <div className="h-0 relative shrink-0 w-full">
-                  <div className="absolute inset-[-1px_0_0_0]">
-                    <img alt="" className="block max-w-none size-full" src={imgLine3} />
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* Email sent: frame 19:574 right panel */
-              <>
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Assessment status:</p>
-                    <span className="bg-[#e5f5e5] text-[#228b22] text-[12px] font-semibold px-2 py-0.5 rounded-[10px]" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>Qualified</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Best score:</p>
-                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>{bestScore}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Application status:</p>
-                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>Applied</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[#5a6172] text-[13px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>Email status:</p>
-                    <p className="text-[#1e232f] text-[13px] font-medium" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>Sent · Confirmed by you</p>
-                  </div>
-                </div>
-                <p className="text-[#5a6172] text-[13px] leading-[18px]" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-                  You marked your recruiter email as sent. Track this application in My Jobs.
-                </p>
-                <button
-                  onClick={() => navigate("/opportunities/my-jobs")}
-                  className="text-[#3c77f6] text-[13px] font-semibold text-left hover:underline w-fit"
-                  style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
-                >
-                  Go to My Jobs →
-                </button>
-                <div className="h-0 relative shrink-0 w-full">
-                  <div className="absolute inset-[-1px_0_0_0]">
-                    <img alt="" className="block max-w-none size-full" src={imgLine3} />
-                  </div>
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+            <div className="h-0 relative shrink-0 w-full">
+              <div className="absolute inset-[-1px_0_0_0]">
+                <img alt="" className="block max-w-none size-full" src={imgLine3} />
+              </div>
+            </div>
 
             <div className="flex gap-3">
               <button
@@ -642,9 +540,7 @@ export function JobDetailPage() {
                   : ""}
             </p>
             <p className="text-[#5a6172] text-[11px] leading-4" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
-              {isEmailSent
-                ? "A higher score updates your shared report link automatically. No need to resend your email."
-                : "Your highest score is retained. Retakes do not extend your original 6-hour window."}
+              Your highest score is retained. Retakes do not extend the retake deadline.
             </p>
           </div>
           )}
@@ -661,15 +557,14 @@ export function JobDetailPage() {
               className="text-[#5a6172] text-[12px] leading-[normal]"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              You can start additional attempts within 6 hours of your first submission, while this role remains open.
+              You can start another attempt before the retake deadline, while this role remains open.
             </p>
             <div className="flex flex-col gap-2.5">
               {[
                 "Each retake uses 1 interview from your plan.",
-                "Retakes do not extend the original six-hour window.",
-                "Only a higher score updates your shared report.",
-                "Equal or lower scores leave your shared report unchanged.",
-                "Once you qualify, recruiter contact access is retained.",
+                "Retakes do not extend the retake deadline.",
+                "Only a higher score updates your best score.",
+                "Equal or lower scores leave your best score unchanged.",
               ].map((item) => (
                 <div key={item} className="flex gap-2 items-start">
                   <span className="text-[#5a6172] text-[12px] shrink-0">•</span>
@@ -695,8 +590,8 @@ export function JobDetailPage() {
             <div className="flex flex-col gap-2.5">
               {[
                 "View your score and feedback.",
-                "If qualified, review a recruiter email draft with your resume automatically attached and your report link included.",
-                "Send the email from your own account, then confirm sending in Screna to mark the role as applied.",
+                "Your result goes to the employer, who can unlock your profile and report.",
+                "Track your application in My Jobs.",
               ].map((item) => (
                 <div key={item} className="flex gap-2 items-start">
                   <span className="text-[#5a6172] text-[12px] shrink-0">•</span>
@@ -709,24 +604,12 @@ export function JobDetailPage() {
                 </div>
               ))}
             </div>
-            <p
-              className="text-[#5a6172] text-[12px] leading-[normal]"
-              style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-            >
-              If you haven't qualified yet, you can review your feedback and retake while eligible.
-            </p>
             <Divider />
-            <p
-              className="text-[#737373] text-[11px] leading-[normal]"
-              style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
-            >
-              The report link shows your highest-scoring assessment for this role and your current ranking.
-            </p>
             <p
               className="text-[rgba(90,97,114,0.8)] text-[11px] leading-4"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              The recruiter decides whether to respond or move forward.
+              The employer decides whether to move forward.
             </p>
           </div>
         </div>

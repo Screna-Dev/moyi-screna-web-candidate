@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import {
   ADD_ON_INTERVIEWS,
-  ADD_ON_PRICE,
   ADD_ON_VALID_DAYS,
   fetchInterviewQuota,
   grantKeys,
@@ -11,6 +10,7 @@ import {
 } from "@/hooks/useInterviewQuota";
 import { markPendingCheckout } from "@/utils/pendingCheckout";
 import { careersErrorCode } from "@/services/careersApi";
+import { useCandidatePrices } from "@/hooks/useCandidatePrices";
 
 const font = { regular: "'Inter:Regular', Inter, sans-serif", semibold: "'Inter:Semi_Bold', Inter, sans-serif" };
 
@@ -38,6 +38,7 @@ export function AddInterviewsDialog({ onClose, onUpgrade }: { onClose: () => voi
   }, []);
 
   const free = notEligible || quota?.plan === "FREE";
+  const addOnPrice = useCandidatePrices().addOn; // #323
   const loading = !quota && !loadFailed;
 
   // Stays busy until the redirect: a second checkout would be a second charge.
@@ -59,7 +60,7 @@ export function AddInterviewsDialog({ onClose, onUpgrade }: { onClose: () => voi
     ? []
     : [
         { label: "You get", value: `${ADD_ON_INTERVIEWS} partner-role interviews` },
-        { label: "Price", value: `${ADD_ON_PRICE}, charged once` },
+        { label: "Price", value: `${addOnPrice}, charged once` },
         { label: "Valid for", value: `${ADD_ON_VALID_DAYS} days` },
         ...(quota ? [{ label: "Interviews left now", value: String(quota.available) }] : []),
       ];
@@ -141,7 +142,7 @@ export function AddInterviewsDialog({ onClose, onUpgrade }: { onClose: () => voi
             className="bg-[#2e5bff] hover:bg-[#2449d6] text-white text-[14px] font-semibold px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60"
             style={{ fontFamily: font.semibold }}
           >
-            {free ? "Get Pro" : busy ? "Opening checkout…" : `Add ${ADD_ON_INTERVIEWS} interviews · ${ADD_ON_PRICE}`}
+            {free ? "Get Pro" : busy ? "Opening checkout…" : `Add ${ADD_ON_INTERVIEWS} interviews · ${addOnPrice}`}
           </button>
         </div>
       </div>

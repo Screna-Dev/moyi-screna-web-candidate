@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Info, X, Loader2 } from 'lucide-react';
 import { useSubscription, hasEntitlement } from '@/hooks/useSubscription';
 import { useUserPlanIfAny } from '@/hooks/useUserPlan';
+import { useCandidatePrices } from '@/hooks/useCandidatePrices';
 import {
-  ADD_ON_INTERVIEWS, ADD_ON_PRICE, ADD_ON_VALID_DAYS, PLAN_INTERVIEWS,
+  ADD_ON_INTERVIEWS, ADD_ON_VALID_DAYS, PLAN_INTERVIEWS,
   fetchInterviewQuota, grantKeys, startQuotaCheckout, useInterviewQuota, waitForQuotaGrant,
   type InterviewQuota, type QuotaSource,
 } from '@/hooks/useInterviewQuota';
@@ -32,6 +33,8 @@ const formatAmountCents = (cents: number, currency = 'usd') =>
 
 interface Invoice {
   stripeInvoiceId: string;
+  item?: string | null;
+  description?: string | null;
   amount: number;
   currency: string;
   invoiceUrl: string;
@@ -289,7 +292,8 @@ function PaymentToast({ message, onDone }: { message: string; onDone: () => void
 // of them sees it as "Current" (not selectable) next to Pro. The badges are
 // derived per render from the live subscription — never hardcoded here.
 type SwitchTier = 'basic' | 'advanced' | 'flagship' | 'pro';
-// basic / advanced / flagship: legacy tiers, still billed at their old price. Pro: $29 (Stripe).
+// basic / advanced / flagship: legacy tiers, still billed at their old price.
+// Pro's entry is only the fallback: the live price is GET /payments/prices (#323).
 const TIER_PRICE: Record<SwitchTier, string> = { basic: '$7.99', advanced: '$29.99', flagship: '$79.99', pro: '$29' };
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -303,6 +307,7 @@ const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade
   (TIER_ORDER[toTier] ?? 0) >= (TIER_ORDER[fromTier] ?? 0) ? 'upgrade' : 'downgrade';
 
 export function BillingTab() {
+  const prices = useCandidatePrices(); // #323
   // ── Real data sources ──
   const [searchParams, setSearchParams] = useSearchParams();
   const {
@@ -408,7 +413,7 @@ export function BillingTab() {
   const nextBillingDate = formatDate(subscription?.currentPeriodEnd);
   const nextBillingAmount = subscription?.nextBillingAmount != null
     ? formatAmountCents(subscription.nextBillingAmount, subscription.currency)
-    : planState === 'free' ? '—' : TIER_PRICE[planState];
+    : planState === 'free' ? '—' : planState === 'pro' ? prices.pro : TIER_PRICE[planState];
 
   // days_since_subscribed：用 firstSubAt（首次订阅，续订不刷新）计算。
   // 老数据可能为 null，此时仍然上报 null。
@@ -469,7 +474,7 @@ export function BillingTab() {
   // The endpoint returns a paginated ledger of CREDIT/DEBIT transactions, not a
   // monthly aggregate — so we page through the current billing period, sum the
   // DEBITs (credits consumed), and keep the entries for the history list.
-  const [usedThisMonth, setUsedThisMonth] = useState(0);
+  const [, setUsedThisMonth] = useState(0);
 
   const fetchUsage = useCallback(async () => {
     const startISO = subscription?.currentPeriodStart;
@@ -1033,15 +1038,11 @@ export function BillingTab() {
   const card = paymentMethod && paymentMethod.status !== 'NONE' ? paymentMethod : null;
 
   // ── Practice minutes = credits (1 credit per minute) ──
-  const practiceTotal = usedThisMonth + credits.recurringCreditBalance;
   const practiceReset = subscription?.currentPeriodEnd ?? credits.resetDate;
 
-  // Invoices carry no line item, so name the row from what each product costs.
-  const invoiceItem = (inv: Invoice) =>
-    inv.amount === 1200 ? `${ADD_ON_INTERVIEWS} interviews add-on`
-      : inv.amount === 7900 ? 'Pro 90-day'
-        : inv.amount === 2900 ? 'Pro, monthly'
-          : 'Payment';
+  // #323: each invoice says what it paid for (item); null on old invoices
+  // with neither a plan nor a description.
+  const invoiceItem = (inv: Invoice) => inv.item || inv.description || 'Payment';
 
   const goPricing = () => navigate('/plans');
   const btn = 'inline-flex items-center justify-center gap-1.5 px-4 py-[10px] rounded-xl text-[13px] leading-[19.5px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
@@ -1052,10 +1053,16 @@ export function BillingTab() {
   const h2 = 'text-[18px] leading-[27px] font-bold tracking-[-0.44px] text-[#1e232f]';
   const body = 'text-[13px] leading-5 text-[#5a6172]';
 
+  // The price only when it's known (a legacy row may have no amount: name
+  // alone, never "— / month"), per the subscription's own billing cycle.
+  const memberPrice = planState === 'pro' ? prices.pro : nextBillingAmount;
+  const perCycle = planState === 'pro' || !subscription?.billingCycle || subscription.billingCycle === 'monthly'
+    ? 'month'
+    : subscription.billingCycle === 'quarterly' ? 'quarter' : 'year';
   const planTitle = isMember
-    ? `${planName} · ${planState === 'pro' ? TIER_PRICE.pro : nextBillingAmount} / month`
+    ? memberPrice && memberPrice !== '—' ? `${planName} · ${memberPrice} / ${perCycle}` : planName
     : isPro90
-      ? 'Pro 90-day · $79 once'
+      ? `Pro 90-day · ${prices.pro90Day} once`
       : 'Free · $0';
   const planLine = isMember
     ? isPastDue
@@ -1080,7 +1087,7 @@ export function BillingTab() {
             isActing={isActing}
             fromPlanName={planName}
             toPlanName={titleCase(selectedPlan)}
-            toPlanPrice={`${TIER_PRICE[selectedPlan]}/mo`}
+            toPlanPrice={`${selectedPlan === 'pro' ? prices.pro : TIER_PRICE[selectedPlan]}/mo`}
             changeType={getChangeType(planState, selectedPlan)}
             nextBillingDate={nextBillingDate}
           />
@@ -1246,7 +1253,8 @@ export function BillingTab() {
           <div className="bg-white border border-[#e1e4ea] rounded-2xl p-5">
             <p className={eyebrow}>Practice</p>
             <p className="pt-3 text-[20px] leading-[30px] font-bold tracking-[-0.45px] text-[#1e232f]">
-              {usedThisMonth} of {practiceTotal} min
+              {/* Balance only, no "of N" (backend 11-12): 1 credit = 1 minute. */}
+              {credits.recurringCreditBalance} min left
             </p>
             <p className="pt-1 text-[12px] leading-[18px] text-[#8f99b5]">
               {practiceReset ? `Resets ${formatShortDate(practiceReset)}` : 'No monthly reset'}
@@ -1270,7 +1278,7 @@ export function BillingTab() {
       {/* ── Add-on (Pro / Pro 90-Day only: 403 INSUFFICIENT_PLAN_TIER otherwise) ── */}
       <section className={`${section} mt-5 flex flex-col sm:flex-row sm:items-center gap-5`}>
         <div className="flex-1 min-w-0">
-          <h2 className={h2}>Add {ADD_ON_INTERVIEWS} interviews for {ADD_ON_PRICE}</h2>
+          <h2 className={h2}>Add {ADD_ON_INTERVIEWS} interviews for {prices.addOn}</h2>
           <p className={`pt-1 ${body}`}>Valid {ADD_ON_VALID_DAYS} days. Used after your plan's interviews.</p>
         </div>
         {quota?.plan === 'FREE' ? (

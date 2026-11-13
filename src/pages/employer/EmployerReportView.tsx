@@ -6,7 +6,7 @@ import { BackLink, Button, Card, Dialog, EmptyBox, Pill, cx } from '@/components
 import { DecisionPill, ScreeningDots, copyText } from '@/components/admin/console/pages/employer/views/candidateShared';
 import { authErrorCode, authErrorMessage } from './employerAuth';
 import { getCandidateReport, getQuestionMedia, getResumeLink, setHiringDecision, type CandidateReport, type HiringStatus, type ReportQuestion } from './employerApi';
-import { browserZone, clock, dateTimeAt, decisionOf, reportScreeningOf } from './boardFormat';
+import { SCREENING_ENABLED, browserZone, clock, dateTimeAt, decisionOf, reportScreeningOf } from './boardFormat';
 import { EmployerUnlockDialog } from './EmployerUnlockDialog';
 
 // Applications report (Figma "候选人view report"), from GET .../report. The
@@ -15,7 +15,7 @@ import { EmployerUnlockDialog } from './EmployerUnlockDialog';
 // per-question criteria, transcript or audio: the design's buttons stay but
 // are disabled. Resume / transcript / audio links expire after 15 minutes, so
 // they are fetched on each click. Decisions don't notify the candidate.
-// Screening: reportScreeningOf (design sample while the AI doesn't assess it).
+// Screening: hidden this release (SCREENING_ENABLED in boardFormat).
 // PDF download isn't provided by the API yet.
 
 const LANGUAGES: Record<string, string> = { en: 'English' };
@@ -102,7 +102,7 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
   const r = report;
   const decision = decisionOf(r.hiringStatus);
   const decided = r.hiringStatus !== 'AWAITING' && !changing;
-  const screening = reportScreeningOf(r);
+  const screening = SCREENING_ENABLED ? reportScreeningOf(r) : null;
   const questions = [...r.questions].sort((a, b) => a.seq - b.seq);
   const language = LANGUAGES[r.interview.language] ?? r.interview.language;
 
@@ -187,15 +187,19 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
         </div>
       </Card>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className={cx('grid gap-4', screening ? 'grid-cols-4' : 'grid-cols-3')}>
         {[
           { label: 'Overall score', value: `${r.overallScore}/100`, hint: 'Latest completed interview' },
           { label: 'Current rank', value: `#${r.rank.position} of ${r.rank.outOf}`, hint: 'Based on completed interviews' },
-          {
-            label: 'Screening criteria',
-            value: <ScreeningDots met={screening.met} total={screening.total} />,
-            hint: screening.met === screening.total ? 'All screening criteria met' : `${screening.met} of ${screening.total} criteria met`,
-          },
+          ...(screening
+            ? [
+                {
+                  label: 'Screening criteria',
+                  value: <ScreeningDots met={screening.met} total={screening.total} />,
+                  hint: screening.met === screening.total ? 'All screening criteria met' : `${screening.met} of ${screening.total} criteria met`,
+                },
+              ]
+            : []),
           {
             label: 'Interview duration',
             value: r.interview.durationMinutes !== null ? `${r.interview.durationMinutes} min` : '—',
@@ -231,6 +235,7 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
             ))}
           </Card>
 
+          {screening && (
           <Card className="p-6 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-[16px] font-semibold text-[#1e232f]">Screening criteria</h2>
@@ -247,6 +252,7 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
               </p>
             ))}
           </Card>
+          )}
 
           <Card className="p-6 flex flex-col gap-3">
             <div>

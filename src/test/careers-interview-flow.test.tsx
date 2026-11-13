@@ -321,7 +321,7 @@ describe('retake', () => {
 // ─── Scoring window ───────────────────────────────────────────────────────────
 
 describe('after ending, "Continue interview" is hidden while scoring', () => {
-  const labels = (a: CareerApplication) => toMyJob(a, 0).actions.map((x) => x.label);
+  const labels = (a: CareerApplication) => toMyJob(a).actions.map((x) => x.label);
 
   it('offers Continue for an interview in progress that was not ended here', () => {
     expect(labels(app({ interviewStatus: 'IN_PROGRESS' }))).toContain('Continue interview');
@@ -332,7 +332,7 @@ describe('after ending, "Continue interview" is hidden while scoring', () => {
     const a = app({ interviewStatus: 'IN_PROGRESS' });
     expect(isBeingScored(a)).toBe(true);
     expect(labels(a)).toEqual(['View details']);
-    expect(toMyJob(a, 0).creditInfo).toBeUndefined();
+    expect(toMyJob(a).creditInfo).toBeUndefined();
   });
 
   it('the mark expires after 30 minutes and never applies to other statuses', () => {

@@ -4,13 +4,27 @@ import type { CreditBalances, EmployerPlan } from './employerApi';
 // GET /employer/credits, shared by the shell (top-bar badges, sidebar card)
 // and the views that spend credits (unlocking a report), which call refresh()
 // afterwards so the badges update without a screen change.
-// plan: GET /employer/plan (null until loaded, or on a backend without it). A
+// plan: GET /employer/plan (undefined until it answers, null if it failed). A
 // Business org can unlock and sponsor from its allowance with 0 credits.
 export type CreditsState = { credits: CreditBalances | null; plan?: EmployerPlan | null; refresh: () => void };
 
 export const CreditsContext = createContext<CreditsState>({ credits: null, plan: null, refresh: () => {} });
 
 export const useEmployerCredits = () => useContext(CreditsContext);
+
+// Report unlocks the org can still make before paying more: prepaid Report
+// Credits plus, on Business, what's left of this month's allowance. While a
+// payment is past due the allowance is capped server-side, so only prepaid
+// credits count. null until both credits and plan have answered, so a Business
+// org never flashes its prepaid-only count (or a false "running low").
+export function reportUnlocksLeft(credits: CreditBalances | null, plan: EmployerPlan | null | undefined): number | null {
+  if (!credits || plan === undefined) return null;
+  const a = plan?.plan === 'BUSINESS' && plan.status !== 'past_due' ? plan.allowance : null;
+  return credits.report + (a ? Math.max(0, a.reports.included - a.reports.used) : 0);
+}
+
+// "Report credits are running low" at or below this many unlocks left.
+export const LOW_REPORT_UNLOCKS = 5;
 
 // Report Credits bought from the board: Stripe returns to the same
 // /employer/credits?checkout=…&jobId=… URL as Interview Credits bought from the

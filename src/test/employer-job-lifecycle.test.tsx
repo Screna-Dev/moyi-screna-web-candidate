@@ -48,6 +48,7 @@ function item(over: Partial<JobListItem> = {}): JobListItem {
     publishedAt: '2026-10-28T00:00:00Z',
     applicationCount: 3,
     completedCount: 1,
+    unlockedCount: 0,
     updatedAt: '2026-10-28T00:00:00Z',
     actions: ACTIONS,
     ...over,

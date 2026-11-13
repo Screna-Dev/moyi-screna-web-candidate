@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { useOpportunities } from "@/components/newDesign/opportunities/OpportunitiesContext";
 
 const assetPathPrefix = "/images/opportunities";
@@ -16,7 +16,20 @@ function Divider() {
   return <div className="w-full h-px bg-[#e1e4ea]" />;
 }
 
+// The contact-recruiter flow belongs to Screna Sponsored (public) jobs, which
+// come after this release (backend 11-12): the page is a design mock with no
+// candidate endpoint. Hidden: the route sends people to the job instead.
+export const CONTACT_RECRUITER_ENABLED = false;
+
 export function ContactRecruiterPage() {
+  const { id } = useParams<{ id: string }>();
+  if (!CONTACT_RECRUITER_ENABLED) {
+    return <Navigate to={id ? `/opportunities/job/${encodeURIComponent(id)}` : "/opportunities"} replace />;
+  }
+  return <ContactRecruiterDesign />;
+}
+
+function ContactRecruiterDesign() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const jobId = id ?? "5";

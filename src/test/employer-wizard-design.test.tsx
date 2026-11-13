@@ -157,6 +157,16 @@ describe('closing range', () => {
 
 // ─── Step 2: interview language ─────────────────────────────────────────────
 
+describe('step 2: criteria visibility notice', () => {
+  it('tells the employer candidates see the criteria and descriptions on the job page', async () => {
+    api.getJob.mockResolvedValue(apiJob({ wizardStep: 2 }));
+    render(<EmployerJobWizard jobId="job-1" />);
+    expect(await screen.findByText('What should the interview evaluate?')).toBeInTheDocument();
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent('Candidates see these criteria and their descriptions on the job page.');
+  });
+});
+
 describe('interview language', () => {
   it('has no language field: interviews are English only', async () => {
     api.getJob.mockResolvedValue(apiJob({ wizardStep: 2 }));

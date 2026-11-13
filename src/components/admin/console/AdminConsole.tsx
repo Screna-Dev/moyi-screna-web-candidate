@@ -14,7 +14,7 @@ import { OpsManager } from './pages/OpsManager';
 import { PGS } from './pages/PGS';
 import { EmployerHiring } from './pages/employer/EmployerHiring';
 import { EmployerStoreProvider, useEmployerStore } from './pages/employer/store';
-import { SECTION_VIEW, isEmployerSection, sectionOf } from './pages/employer/sections';
+import { ADMIN_HIRING_ENABLED, SECTION_VIEW, isEmployerSection, sectionOf } from './pages/employer/sections';
 import { Card } from '@/components/newDesign/ui/card';
 import { UsersList } from '@/components/admin/UsersList';
 import { UserDetailPanel } from '@/components/admin/UserDetailPanel';
@@ -60,6 +60,10 @@ function UsersAdminTab() {
 function PageContent({ page, isOps }: { page: Page; isOps: boolean }) {
   // ADMIN must never see the OPS-only Job Applications page even if state drifts there.
   if (page === 'resume-applications' && !isOps) {
+    return <CommandCenter />;
+  }
+  // Hiring pages are sample data only: hidden until wired (ADMIN_HIRING_ENABLED).
+  if (isEmployerSection(page) && !ADMIN_HIRING_ENABLED) {
     return <CommandCenter />;
   }
   switch (page) {

@@ -122,6 +122,9 @@ export type CareerPosting = {
     questionCount: number;
     interviewPayer: InterviewPayer;
     candidateInstructions: string | null;
+    // #325: what the interview is scored on, in the employer's order. Jobs
+    // published before 11-13 have description null: show the name only.
+    criteria?: { name: string; description: string | null }[];
   };
   screeningCriteria: string[]; // hard requirements confirmed during the interview
 };
@@ -166,6 +169,9 @@ export type RetakeAvailability = 'NONE' | 'AVAILABLE' | 'UNAVAILABLE' | 'DECIDED
 export type CareerJobDetail = {
   posting: CareerPosting;
   interviewFunding?: InterviewPayer; // who pays if an interview starts now (#297)
+  // #317: an applicant can open the detail after the job closed. false = no
+  // new applications (closed, or auto-closed when sponsorship ran out).
+  acceptingApplications?: boolean;
   myApplication: CareerApplication | null;
 };
 
@@ -186,16 +192,43 @@ export type CareerInterviewSession = {
 const data = <T>(res: { data: unknown }) => ((res.data as { data?: unknown })?.data ?? res.data) as T;
 const enc = encodeURIComponent;
 
-export type CareerJobFilters = { q?: string; role?: string; workplaceType?: WorkplaceType; employmentType?: EmploymentType; page: number };
+// #325. Bands of yearsExperienceMin, inclusive; a job without years shows
+// under every band.
+export type ExperienceBand = 'YEARS_0_2' | 'YEARS_3_5' | 'YEARS_6_9' | 'YEARS_10_PLUS';
+// NEWEST (default) / CLOSING_SOON (no deadline last) / HIGHEST_SALARY (yearly USD).
+export type CareerJobSort = 'NEWEST' | 'CLOSING_SOON' | 'HIGHEST_SALARY';
 
-// Newest first, 10 per page, page is 0-based.
+export type CareerJobFilters = {
+  q?: string;
+  role?: string;
+  workplaceType?: WorkplaceType;
+  employmentType?: EmploymentType;
+  location?: string; // contains, case-insensitive, max 255
+  experience?: ExperienceBand[];
+  sort?: CareerJobSort;
+  page: number;
+};
+
+// 10 per page, page is 0-based (max 1000). experience goes comma-separated.
 export async function listCareerJobs(filters: CareerJobFilters): Promise<Page<CareerJob>> {
-  const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== ''));
+  const params = Object.fromEntries(
+    Object.entries({ ...filters, experience: filters.experience?.join(',') }).filter(([, v]) => v !== undefined && v !== ''),
+  );
   return data(await API.get('/careers/jobs', { params }));
 }
 
-export async function getCareerJob(jobId: string): Promise<CareerJobDetail> {
-  return data(await API.get(`/careers/jobs/${enc(jobId)}`));
+// Callers asking for the same job at the same time (the layout's header title
+// and the job page) share one request; nothing is cached once it settles.
+const careerJobInflight = new Map<string, Promise<CareerJobDetail>>();
+
+export function getCareerJob(jobId: string): Promise<CareerJobDetail> {
+  const pending = careerJobInflight.get(jobId);
+  if (pending) return pending;
+  const req = API.get(`/careers/jobs/${enc(jobId)}`)
+    .then((res) => data<CareerJobDetail>(res))
+    .finally(() => careerJobInflight.delete(jobId));
+  careerJobInflight.set(jobId, req);
+  return req;
 }
 
 export async function applyToJob(jobId: string): Promise<CareerApplication> {
@@ -250,6 +283,10 @@ export function careersErrorData<T>(err: unknown): T | undefined {
 // resume. The candidate also gets an email when it's ready.
 // - standing ranks bestScore among the job's completed candidates; null while
 //   too few have one, and after a new best until the ranking includes it.
+//   standingStatus (#324) says which: RANKED (standing set),
+//   TOO_FEW_CANDIDATES (only more completed interviews change it), PENDING
+//   (ranking not caught up yet, usually seconds; poll with a limit). Missing
+//   before #324 is deployed.
 //   Pro / Pro 90-day: rank + rankedCandidates. Free: topPercent (null in the
 //   lower half) + pointsBehindTop5 (null within the top five).
 // - questions: in order, follow-ups included; summary / gapAnalysis /
@@ -260,6 +297,8 @@ export type CareerResultStanding = {
   topPercent: number | null;
   pointsBehindTop5: number | null;
 };
+
+export type StandingStatus = 'RANKED' | 'TOO_FEW_CANDIDATES' | 'PENDING';
 
 export type CareerResultQuestion = {
   seq: number;
@@ -286,6 +325,7 @@ export type CareerInterviewResult = {
   areasToStrengthen: string[];
   reportUnlockedAt?: string | null; // when the employer unlocked the report
   standing?: CareerResultStanding | null;
+  standingStatus?: StandingStatus;
   questions?: CareerResultQuestion[];
 };
 

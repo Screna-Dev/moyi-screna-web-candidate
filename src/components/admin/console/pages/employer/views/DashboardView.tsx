@@ -5,7 +5,7 @@ import { useEmployerStore } from '../store';
 import { applicationsSeries } from '../mockData';
 import type { Candidate, Job } from '../types';
 import { Button, Card, Pill, SectionTitle, StatCard, cx, statusTone } from '../ui';
-import { applicationWindowLabel, nextAction, unlockedCount } from './jobTableHelpers';
+import { applicantTrend, applicationWindowLabel, nextAction, unlockedCount } from './jobTableHelpers';
 import { HiringGuide } from './HiringGuide';
 
 type Metric = 'applications' | 'interviews' | 'reports';
@@ -28,18 +28,42 @@ function seriesFor(metric: Metric, range: Range) {
 
 export type DashboardAttention = { title: string; body: string; action: string; tone: 'amber' | 'gray'; onClick: () => void };
 
-// Employer app only: real figures for the parts the employer API covers
-// (jobs list + counts). Everything else keeps the design's sample data until
-// the backend adds it (product decision 2026-10-23: the design leads, the API
-// follows). Without it the dashboard is the admin console's mock version.
+// Employer app only: real figures from GET /employer/dashboard (stats, daily
+// activity, decisions), GET /employer/jobs (job counts, needs attention, My
+// Jobs) and the board list (recent candidates). Real users never see sample
+// figures: a block whose source failed or is empty is hidden. Without `live`
+// the dashboard is the admin console's mock version, unchanged.
+export type LiveDashboardStats = {
+  applicantsTotal: number;
+  applicantsLast30: number;
+  applicantsPrior30: number;
+  interviewsCompleted: number;
+  interviewsLast7Days: number;
+  reportsUnlocked: number;
+  pending: number;
+  movedForward: number;
+  rejected: number;
+  contacted: number;
+  daily: { date: string; applications: number; interviews: number; reports: number }[]; // oldest first, today last
+};
+
+export type LiveRecentCandidate = { id: string; rank: number; label: string; unlocked: boolean; score: number; movement: number | null };
+
 export type LiveDashboard = {
   totalJobs: number;
   open: number;
   scheduled: number;
-  interviewsCompleted: number | null; // null = couldn't be totalled; sample value shown
-  attention: DashboardAttention[]; // real items; sample "waiting for a decision" is added
+  stats: LiveDashboardStats | null; // null = GET /employer/dashboard failed: its blocks are hidden
+  recent: { jobId: string; jobTitle: string; candidates: LiveRecentCandidate[] } | null; // null = hidden
+  attention: DashboardAttention[]; // real items; "waiting for a decision" is added from stats
   jobsTable: ReactNode;
 };
+
+const RANGE_DAYS: Record<Range, number> = { '7d': 7, '30d': 30, '3m': 90 };
+
+function liveSeries(daily: LiveDashboardStats['daily'], metric: Metric, range: Range) {
+  return daily.slice(-RANGE_DAYS[range]).map((d, i) => ({ day: i + 1, date: d.date, value: d[metric] }));
+}
 
 function greetingPrefix() {
   const h = new Date().getHours();
@@ -277,20 +301,57 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
   const [metric, setMetric] = useState<Metric>('applications');
   const [range, setRange] = useState<Range>('30d');
   const mockStats = useCompanyStats(jobs, candidatesFor);
-  const stats = live
-    ? { ...mockStats, open: live.open, scheduled: live.scheduled, interviews: live.interviewsCompleted ?? mockStats.interviews }
-    : mockStats;
+  const ls = live?.stats ?? null;
+  // Sample figures for the admin console mock; API figures for the employer
+  // app; null hides the stats-backed blocks (dashboard endpoint failed).
+  const stats = !live
+    ? {
+        ...mockStats,
+        applicants30: mockStats.applicants,
+        trend: { text: '+18% vs prior period', tone: 'green' as const } as ReturnType<typeof applicantTrend>,
+        interviewsHint: '8 completed this week',
+      }
+    : ls
+      ? {
+          open: live.open,
+          scheduled: live.scheduled,
+          applicants: ls.applicantsTotal,
+          applicants30: ls.applicantsLast30,
+          trend: applicantTrend(ls.applicantsLast30, ls.applicantsPrior30),
+          interviews: ls.interviewsCompleted,
+          interviewsHint: `${ls.interviewsLast7Days} completed this week`,
+          unlocked: ls.reportsUnlocked,
+          pending: ls.pending,
+          moved: ls.movedForward,
+          rejected: ls.rejected,
+          contacted: ls.contacted,
+        }
+      : null;
   const [guideOpen, setGuideOpen] = useState(false);
 
-  const series = useMemo(() => seriesFor(metric, range), [metric, range]);
+  const series = useMemo(
+    () => (!live ? seriesFor(metric, range) : ls ? liveSeries(ls.daily, metric, range) : []),
+    [live, ls, metric, range],
+  );
   const total = Math.round(series.reduce((s, p) => s + p.value, 0));
-  const avg = (total / series.length).toFixed(1);
+  const avg = series.length ? (total / series.length).toFixed(1) : '0.0';
 
   if (live ? live.totalJobs === 0 : jobs.length === 0) return <FirstTimeDashboard />;
 
   const firstName = company.contact.name.trim().split(/\s+/)[0] || 'there';
   const firstOpen = jobs.find((j) => j.status === 'Open' && j.interviewsCompleted > 0);
-  const recent = firstOpen ? candidatesFor(firstOpen.id).slice(0, 3) : [];
+  // One shape for both: the mock store's candidates or the live board's top 3.
+  const recent: { jobId: string; jobTitle: string; candidates: LiveRecentCandidate[] } | null = live
+    ? live.recent
+    : firstOpen
+      ? {
+          jobId: firstOpen.id,
+          jobTitle: firstOpen.title,
+          candidates: candidatesFor(firstOpen.id)
+            .slice(0, 3)
+            .map((c, i) => ({ id: c.id, rank: i + 1, label: c.unlocked ? c.name : c.anonLabel, unlocked: c.unlocked, score: c.score, movement: c.rankDelta ?? null })),
+        }
+      : { jobId: '', jobTitle: '', candidates: [] };
   const drafts = jobs.filter((j) => j.status === 'Draft');
   const closingSoon = jobs.find((j) => j.status === 'Open' && j.interviewsCompleted > 0);
 
@@ -305,7 +366,7 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
       onClick: () => go({ name: 'board', jobId: closingSoon.id }),
     });
   }
-  if (stats.pending > 0) {
+  if (stats && stats.pending > 0) {
     attention.push({
       title: `${stats.pending} candidate${stats.pending === 1 ? ' is' : 's are'} waiting for a decision`,
       body: 'These candidates are unlocked but undecided.',
@@ -353,13 +414,20 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Active Jobs" value={stats.open + stats.scheduled} hint={`${stats.open} open · ${stats.scheduled} scheduled`} icon={<Briefcase size={13} />} />
-        <StatCard label="Applicants · Last 30 Days" value={stats.applicants} hint="+18% vs prior period" hintTone="green" icon={<Users size={13} />} />
-        <StatCard label="Interviews Completed" value={stats.interviews} hint="8 completed this week" icon={<Check size={13} />} />
-        <StatCard label="Decisions Pending" value={stats.pending} hint="Unlocked candidates awaiting a decision" icon={<HelpCircle size={13} />} />
+        {stats ? (
+          <>
+            <StatCard label="Active Jobs" value={stats.open + stats.scheduled} hint={`${stats.open} open · ${stats.scheduled} scheduled`} icon={<Briefcase size={13} />} />
+            <StatCard label="Applicants · Last 30 Days" value={stats.applicants30} hint={stats.trend?.text} hintTone={stats.trend?.tone} icon={<Users size={13} />} />
+            <StatCard label="Interviews Completed" value={stats.interviews} hint={stats.interviewsHint} icon={<Check size={13} />} />
+            <StatCard label="Decisions Pending" value={stats.pending} hint="Unlocked candidates awaiting a decision" icon={<HelpCircle size={13} />} />
+          </>
+        ) : (
+          live && <StatCard label="Active Jobs" value={live.open + live.scheduled} hint={`${live.open} open · ${live.scheduled} scheduled`} icon={<Briefcase size={13} />} />
+        )}
       </div>
 
       {/* Activity chart */}
+      {stats && (
       <Card className="p-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex bg-[#f3f4f7] rounded-lg p-1 gap-1">
@@ -402,7 +470,8 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           </div>
         </div>
         <div className="h-[200px] mt-4">
-          <ResponsiveContainer width="100%" height="100%">
+          {/* A positive first size: recharts warns on its default -1×-1 before it measures. */}
+          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 200 }}>
             <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="empDashFill" x1="0" y1="0" x2="0" y2="1">
@@ -413,7 +482,10 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
               <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#eef0f3" />
               <XAxis dataKey="day" hide />
               <YAxis hide allowDecimals={false} />
-              <Tooltip formatter={(v) => [v, 'Count']} labelFormatter={(l) => `Day ${l}`} />
+              <Tooltip
+                formatter={(v) => [v, 'Count']}
+                labelFormatter={(l, payload) => (payload?.[0]?.payload as { date?: string } | undefined)?.date ?? `Day ${l}`}
+              />
               <Area type="linear" dataKey="value" stroke="#3c77f6" strokeWidth={2} fill="url(#empDashFill)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -422,14 +494,15 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           <span className="w-1.5 h-1.5 rounded-full bg-[#3c77f6]" /> {METRIC_LABEL[metric]}
         </p>
       </Card>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className={cx('grid grid-cols-1 gap-4', stats && recent ? 'lg:grid-cols-3' : stats || recent ? 'lg:grid-cols-2' : '')}>
         {/* Needs attention */}
         <Card className="p-4 flex flex-col gap-3">
           <SectionTitle title="Needs Attention" right={<Bell size={16} className="text-[#d98c00]" />} />
           {attention.length === 0 && <p className="text-[13px] text-[#5a6172]">Nothing needs attention right now.</p>}
-          {attention.map((a) => (
-            <div key={a.title} className={cx('rounded-lg px-3 py-2.5 border', a.tone === 'amber' ? 'bg-[#fffbeb] border-[#fde68a]' : 'bg-[#f6f7f9] border-transparent')}>
+          {attention.map((a, i) => (
+            <div key={`${i}-${a.title}`} className={cx('rounded-lg px-3 py-2.5 border', a.tone === 'amber' ? 'bg-[#fffbeb] border-[#fde68a]' : 'bg-[#f6f7f9] border-transparent')}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[13px] font-semibold text-[#1e232f]">{a.title}</p>
                 <button type="button" onClick={a.onClick} className="text-[12px] font-medium text-[#3c77f6] hover:underline shrink-0">{a.action}</button>
@@ -440,6 +513,7 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
         </Card>
 
         {/* Pipeline */}
+        {stats && (
         <Card className="p-4 flex flex-col gap-2">
           <SectionTitle
             title="Candidate Pipeline"
@@ -469,8 +543,10 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           ))}
           <p className="text-[11px] text-[#5a6172] mt-1">{stats.contacted} candidates contacted</p>
         </Card>
+        )}
 
         {/* Recent candidates */}
+        {recent && (
         <Card className="p-4 flex flex-col gap-3">
           <SectionTitle
             title={
@@ -479,30 +555,30 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
               </span>
             }
             right={
-              firstOpen && (
-                <button type="button" onClick={() => go({ name: 'board', jobId: firstOpen.id })} className="text-[12px] font-medium text-[#3c77f6] hover:underline">
+              recent.jobId && (
+                <button type="button" onClick={() => go({ name: 'board', jobId: recent.jobId })} className="text-[12px] font-medium text-[#3c77f6] hover:underline">
                   View all →
                 </button>
               )
             }
           />
-          {recent.length === 0 && <p className="text-[13px] text-[#5a6172]">No completed interviews yet.</p>}
-          {recent.map((c, i) => (
+          {recent.candidates.length === 0 && <p className="text-[13px] text-[#5a6172]">No completed interviews yet.</p>}
+          {recent.candidates.map((c) => (
             <div key={c.id} className="bg-[#f6f7f9] rounded-lg px-3 py-2.5 flex flex-col gap-1">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold text-[#3c77f6] bg-white rounded px-1.5 py-0.5">#{i + 1}</span>
+                <span className="text-[10px] font-semibold text-[#3c77f6] bg-white rounded px-1.5 py-0.5">#{c.rank}</span>
                 <span className={cx('w-3 h-3 rounded-full', c.unlocked ? 'bg-[#3c77f6]' : 'bg-[#4d525e]')} />
-                <span className="text-[13px] font-semibold text-[#1e232f] flex-1 truncate">{c.unlocked ? c.name : c.anonLabel}</span>
+                <span className="text-[13px] font-semibold text-[#1e232f] flex-1 truncate">{c.label}</span>
                 <span className={cx('text-[10px] font-medium', c.unlocked ? 'text-[#15a560]' : 'text-[#5a6172]')}>{c.unlocked ? 'Unlocked' : 'Locked'}</span>
               </div>
               <div className="flex items-center justify-between text-[12px]">
                 <span className="text-[#5a6172]">
-                  {firstOpen?.title} · Score {c.score}
-                  {c.rankDelta ? ` · ↑${c.rankDelta}` : ''}
+                  {recent.jobTitle} · Score {c.score}
+                  {c.movement ? ` · ${c.movement > 0 ? '↑' : '↓'}${Math.abs(c.movement)}` : ''}
                 </span>
                 <button
                   type="button"
-                  onClick={() => go(c.unlocked ? { name: 'report', jobId: c.jobId, candidateId: c.id } : { name: 'board', jobId: c.jobId })}
+                  onClick={() => go(c.unlocked ? { name: 'report', jobId: recent.jobId, candidateId: c.id } : { name: 'board', jobId: recent.jobId })}
                   className="text-[#3c77f6] font-medium hover:underline"
                 >
                   {c.unlocked ? 'View report' : 'Unlock'}
@@ -512,6 +588,7 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           ))}
           <p className="text-[11px] text-[#5a6172] mt-auto">Live rankings update when candidates submit a new attempt.</p>
         </Card>
+        )}
       </div>
 
       <Card className="p-5">
@@ -524,9 +601,11 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
         </div>
       </Card>
 
-      <p className="flex items-center gap-1.5 text-[11px] text-[#9ba1b0]">
-        <ClipboardList size={12} /> Trend figures (+18%, completed this week) are placeholders until the employer API exists.
-      </p>
+      {!live && (
+        <p className="flex items-center gap-1.5 text-[11px] text-[#9ba1b0]">
+          <ClipboardList size={12} /> Trend figures (+18%, completed this week) are placeholders until the employer API exists.
+        </p>
+      )}
     </div>
   );
 }

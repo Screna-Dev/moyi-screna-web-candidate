@@ -78,6 +78,11 @@ export function StepInterview({ job, update, showErrors, ai, showSettings = true
       {/* ── Criteria ── */}
       <Card className="p-6 flex flex-col gap-4">
         <CardTitle subtitle="These criteria guide the interview questions, report, and candidate ranking.">What should the interview evaluate?</CardTitle>
+        {/* The candidate job page lists every criterion with its description. */}
+        <div role="note" className="flex items-start gap-2 bg-[#eef4ff] border border-[#dbe5fb] rounded-lg px-3 py-2.5 text-[13px] text-[#1e232f]">
+          <Info size={14} className="shrink-0 mt-0.5 text-[#3c77f6]" />
+          Candidates see these criteria and their descriptions on the job page. Don't include anything you wouldn't share with applicants.
+        </div>
         <div className="flex flex-col gap-2">
           {job.criteria.map((c) => {
             const editing = editingCriterion === c.id;

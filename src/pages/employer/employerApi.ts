@@ -168,6 +168,28 @@ export async function getCredits(): Promise<CreditBalances> {
   return { interview: d.interview ?? 0, report: d.report ?? 0 };
 }
 
+// --- Dashboard (#326) ---------------------------------------------------------
+// Counts over every job of the org. Days and the 30-day periods follow
+// `timezone` (IANA; UTC when missing). daily: 90 entries, oldest first, today
+// last. recentCandidatesJobId: the open job with the most recently completed
+// interview (show its top candidates from the board list), null when none.
+
+export type EmployerDashboardDay = { date: string; applicationCount: number; interviewCount: number; reportUnlockCount: number };
+
+export type EmployerDashboardData = {
+  jobs: { openCount: number; scheduledCount: number; draftCount: number; closedCount: number };
+  applicants: { totalCount: number; last30DaysCount: number; prior30DaysCount: number };
+  interviews: { completedCount: number; completedLast7DaysCount: number };
+  unlockedReportCount: number;
+  decisions: { pendingCount: number; movedForwardCount: number; rejectedCount: number; contactedCount: number };
+  daily: EmployerDashboardDay[];
+  recentCandidatesJobId: string | null;
+};
+
+export async function getEmployerDashboard(timezone?: string | null): Promise<EmployerDashboardData> {
+  return data(await employerApi.get('/employer/dashboard', { params: { timezone: timezone || undefined } }));
+}
+
 // --- Applications ------------------------------------------------------------
 
 // Sidebar "N New" badge: candidates who completed an interview since the
@@ -509,6 +531,7 @@ export type JobListItem = {
   publishedAt: string | null;
   applicationCount: number;
   completedCount: number;
+  unlockedCount: number; // reports unlocked for this job (#326)
   updatedAt: string;
   actions: JobActions; // drive the buttons from this, not from status
 };
@@ -772,8 +795,17 @@ export type EmployerPlan = {
 
 export type PlanLimitReached = { reason: 'CAP_REACHED' | 'PAST_DUE'; capCents: number | null; spentCents: number };
 
-export async function getEmployerPlan(): Promise<EmployerPlan> {
-  return data(await employerApi.get('/employer/plan'));
+// The shell (on every screen change) and Plan & Usage ask at the same moment;
+// they share one request while it's in flight. Nothing is cached after.
+let employerPlanInflight: Promise<EmployerPlan> | null = null;
+export function getEmployerPlan(): Promise<EmployerPlan> {
+  employerPlanInflight ??= employerApi
+    .get('/employer/plan')
+    .then((res) => data<EmployerPlan>(res))
+    .finally(() => {
+      employerPlanInflight = null;
+    });
+  return employerPlanInflight;
 }
 
 // → Stripe URL. Returns to /employer/credits?checkout=… (shared with credits).
@@ -808,6 +840,25 @@ export async function setOverageCap(capCents: number): Promise<EmployerPlan> {
 
 export async function clearOverageCap(): Promise<EmployerPlan> {
   return data(await employerApi.delete('/employer/plan/overage-cap'));
+}
+
+// Live Stripe prices (#323). All amounts in cents. 500 when Stripe is
+// unreadable: callers show nothing rather than a guessed price.
+export type Money = { amountCents: number; currency: string };
+export type EmployerPlanPrices = {
+  business: {
+    monthly: Money;
+    annual: Money;
+    reportAllowance: number;
+    interviewAllowance: number;
+    overage: { reportUnitCents: number; interviewUnitCents: number };
+  };
+  reportCredit: Money;
+  interviewCredit: Money;
+};
+
+export async function getEmployerPlanPrices(): Promise<EmployerPlanPrices> {
+  return data(await employerApi.get('/employer/plan/prices'));
 }
 
 // --- Errors ------------------------------------------------------------------

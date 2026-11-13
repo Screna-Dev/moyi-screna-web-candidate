@@ -9,8 +9,8 @@ import { listMyBookings, cancelBooking, rescheduleBooking, getMentor, getMentorS
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
-import { listCareerJobs } from '@/services/careersApi';
-import { toOpportunityJob, type LiveOpportunityJob } from '@/components/newDesign/opportunities/careersDesignData';
+import { fundingOf, listCareerJobs } from '@/services/careersApi';
+import { salaryRangeLabel, toOpportunityJob, type LiveOpportunityJob } from '@/components/newDesign/opportunities/careersDesignData';
 import { useDwellTracking } from '@/hooks/useDwellTracking';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
@@ -28,8 +28,9 @@ export type DashboardStats = {
   totalLearningTime?: string;
   sessionsCompleted?: number | string;
   applicationsThisPeriod?: number | string;
-  applicationsDelta?: string;
+  applicationsDelta?: string; // "↗ +18% vs prior period"; "" when the prior period was 0
   avgDailyApplications?: number | string;
+  hasApplicationStats?: boolean; // the API sent the #326 fields
 };
 
 type DailyEntry = { date: string; value: number };
@@ -47,7 +48,18 @@ type DashboardStatsApi = {
   interviewPracticeInsights?: InterviewInsights | null;
   dailyLearningTimeMinutes?: DailyEntry[];
   dailySessionCount?: DailyEntry[];
+  // #326: rolling 30 x 24 h, counted when the candidate applies; every plan.
+  last30DaysApplicationCount?: number;
+  prior30DaysApplicationCount?: number;
 };
+
+// "↗ +18% vs prior period" / "↘ -25% vs prior period"; "" when the prior
+// period had none (no percentage against 0).
+function applicationsDeltaLabel(last30: number, prior30: number | undefined) {
+  if (!prior30) return '';
+  const pct = Math.round(((last30 - prior30) / prior30) * 100);
+  return `${pct >= 0 ? '↗' : '↘'} ${pct >= 0 ? '+' : ''}${pct}% vs prior period`;
+}
 
 function formatMinutesAsHm(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return '0h 0m';
@@ -66,7 +78,7 @@ const EMPTY_STATS: DashboardStats = {
   totalLearningTime: '—',
   sessionsCompleted: '—',
   applicationsThisPeriod: '—',
-  applicationsDelta: '—',
+  applicationsDelta: '',
   avgDailyApplications: '—',
 };
 
@@ -227,9 +239,12 @@ function StatCardSkeleton() {
   );
 }
 
-function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
-  const isPremium = plan === 'premium';
-  const colCount = isPremium ? 4 : 2;
+function StatsRow({ stats, isLoading }: { plan: Plan; stats: DashboardStats; isLoading: boolean }) {
+  // "Applications This Period" / "Avg. Daily Applications" come from
+  // /dashboard/stats (#326) and show on every plan. Hidden only while the
+  // backend doesn't send them yet.
+  const showApplications = !!stats.hasApplicationStats;
+  const colCount = showApplications ? 4 : 2;
   // Mentorship is available to all members, so it's reflected in these stats regardless of plan.
   // Mentor hidden this release (MENTOR_ENABLED): don't mention it.
   const learningSub = MENTOR_ENABLED ? 'Mock Interview + Mentorship Sessions' : 'Mock Interview';
@@ -251,12 +266,12 @@ function StatsRow({ plan, stats, isLoading }: { plan: Plan; stats: DashboardStat
         <>
           <StatCard label="Total Learning Time" value={stats.totalLearningTime ?? '—'} sub={learningSub} icon={<IconClock />} />
           <StatCard label="Sessions Completed" value={stats.sessionsCompleted ?? '—'} sub={sessionsSub} icon={<IconCheck />} />
-          {isPremium && (
+          {showApplications && (
             <>
               <StatCard
                 label="Applications This Period"
                 value={stats.applicationsThisPeriod ?? '—'}
-                sub={`↗ ${stats.applicationsDelta ?? '—'} vs prior period`}
+                sub={stats.applicationsDelta || 'Last 30 days'}
                 icon={<IconSend />}
               />
               <StatCard
@@ -1940,37 +1955,19 @@ function tagStyle(color: string, bg: string): CSSProperties {
 
 // ─── Dashboard Home (main export) ────────────────────────────────────────────
 // ─── Featured Opportunities ──────────────────────────────────────────────────
-// The three newest /careers jobs, mapped like the Opportunities page
-// (toOpportunityJob) so both show the same values and sample fallbacks.
-// "Why recommended" has no API field yet: it is the design's sample copy,
-// picked by position, and must be replaced before launch.
-const WHY_RECOMMENDED_SAMPLES = [
-  'Strong match for your product strategy coursework and case study experience.',
-  'Your data analysis skills and SQL proficiency align well with this role.',
-  "Your mentorship progress in growth strategy matches this team's focus area.",
-];
-
-const SALARY_PERIOD: Record<string, string> = { YEAR: '/yr', MONTH: '/mo', WEEK: '/wk', DAY: '/day', HOUR: '/hr' };
-
-function salaryLabel(job: LiveOpportunityJob): string {
-  let money: Intl.NumberFormat;
-  try {
-    money = new Intl.NumberFormat('en-US', { style: 'currency', currency: job.career.salaryCurrency || 'USD', maximumFractionDigits: 0 });
-  } catch {
-    money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-  }
-  const period = SALARY_PERIOD[job.career.salaryPeriod ?? 'YEAR'] ?? '/yr';
-  return `${money.format(job.salaryMin)} – ${money.format(job.salaryMax)}${period}`;
-}
-
+// The three newest /careers jobs (sort NEWEST), mapped like the Opportunities
+// page (toOpportunityJob). "Why recommended" isn't decided yet (backend
+// 11-12): hidden until there is a reason per job.
+// Who pays for a first interview now (interviewFunding), not the employer's setting.
 function assessmentLabel(job: LiveOpportunityJob): string {
   const minutes = job.career.interviewDurationMinutes;
-  return job.career.interviewPayer === 'EMPLOYER' ? `${minutes} min · Free` : `${minutes} min · 1 interview`;
+  return fundingOf(job.career) === 'EMPLOYER' ? `${minutes} min · Free` : `${minutes} min · 1 interview`;
 }
 
 const FEATURED_LABEL: CSSProperties = { fontSize: 11, fontWeight: 500, lineHeight: '16.5px', letterSpacing: 0.4, textTransform: 'uppercase', color: T.textSecondary };
 
-function OpportunityCard({ job, why, onOpen }: { job: LiveOpportunityJob; why: string; onOpen: () => void }) {
+function OpportunityCard({ job, onOpen }: { job: LiveOpportunityJob; onOpen: () => void }) {
+  const salary = salaryRangeLabel(job.career);
   const place = [job.location, job.workType].filter(Boolean).join(' · ');
   return (
     <Panel style={{ borderRadius: 16, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -1995,12 +1992,7 @@ function OpportunityCard({ job, why, onOpen }: { job: LiveOpportunityJob; why: s
         <div style={{ fontSize: 15, fontWeight: 600, lineHeight: '22.5px', color: T.textPrimary }}>{job.title}</div>
         {place && <div style={{ fontSize: 12, lineHeight: '18px', color: T.textSecondary }}>{place}</div>}
         {job.level && <div style={{ fontSize: 12, lineHeight: '18px', color: T.textSecondary }}>{job.level}</div>}
-        <div style={{ fontSize: 12, fontWeight: 500, lineHeight: '18px', color: T.textPrimary }}>{salaryLabel(job)}</div>
-      </div>
-
-      <div style={{ background: T.bgSecondary, borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={FEATURED_LABEL}>Why recommended</div>
-        <div style={{ fontSize: 13, lineHeight: '18.2px', color: T.textSecondary }}>{why}</div>
+        {salary && <div style={{ fontSize: 12, fontWeight: 500, lineHeight: '18px', color: T.textPrimary }}>{salary}</div>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -2010,7 +2002,7 @@ function OpportunityCard({ job, why, onOpen }: { job: LiveOpportunityJob; why: s
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <div style={FEATURED_LABEL}>Closing date</div>
-          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: T.textPrimary }}>{job.closingDateLabel}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: T.textPrimary }}>{job.closingDateLabel || 'No deadline'}</div>
         </div>
       </div>
 
@@ -2053,8 +2045,8 @@ function FeaturedOpportunities() {
 
   useEffect(() => {
     let cancelled = false;
-    listCareerJobs({ page: 0 })
-      .then((res) => !cancelled && setJobs(res.content.slice(0, 3).map((j, i) => toOpportunityJob(j, i))))
+    listCareerJobs({ page: 0, sort: 'NEWEST' })
+      .then((res) => !cancelled && setJobs(res.content.slice(0, 3).map((j) => toOpportunityJob(j))))
       .catch(() => !cancelled && setFailed(true));
     return () => {
       cancelled = true;
@@ -2089,11 +2081,10 @@ function FeaturedOpportunities() {
       ) : (
         <div data-dashboard-grid style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'start' }}>
           {jobs
-            ? jobs.map((job, i) => (
+            ? jobs.map((job) => (
                 <OpportunityCard
                   key={job.id}
                   job={job}
-                  why={WHY_RECOMMENDED_SAMPLES[i % WHY_RECOMMENDED_SAMPLES.length]}
                   onOpen={() => navigate(`/opportunities/job/${encodeURIComponent(job.id)}`)}
                 />
               ))
@@ -2143,6 +2134,14 @@ export function DashboardHome({
         ...EMPTY_STATS,
         totalLearningTime: formatMinutesAsHm(apiStats.totalLearningTimeMinutes ?? 0),
         sessionsCompleted: apiStats.sessionCompletedCount ?? 0,
+        ...(typeof apiStats.last30DaysApplicationCount === 'number'
+          ? {
+              hasApplicationStats: true,
+              applicationsThisPeriod: apiStats.last30DaysApplicationCount,
+              applicationsDelta: applicationsDeltaLabel(apiStats.last30DaysApplicationCount, apiStats.prior30DaysApplicationCount),
+              avgDailyApplications: Math.round((apiStats.last30DaysApplicationCount / 30) * 10) / 10,
+            }
+          : {}),
       }
     : EMPTY_STATS;
 

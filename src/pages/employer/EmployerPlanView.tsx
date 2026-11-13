@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
-import { BUSINESS_ANNUAL_PRICE, BUSINESS_PRICE, BUSINESS_UNLOCKS } from '@/components/admin/console/pages/employer/mockData';
 import { Button, Dialog, cx } from '@/components/admin/console/pages/employer/ui';
 import { CardLabel, OutlineButton, PlanCard, UsageBar } from '@/components/admin/console/pages/employer/views/PlanUsageView';
 import { authErrorCode, authErrorMessage } from './employerAuth';
@@ -10,23 +9,32 @@ import {
   cancelEmployerPlan,
   clearOverageCap,
   getEmployerPlan,
+  getEmployerPlanPrices,
   resumeEmployerPlan,
   setOverageCap,
   switchEmployerPlanToAnnual,
   type BusinessBillingCycle,
   type EmployerPlan,
+  type EmployerPlanPrices,
 } from './employerApi';
 import { useEmployerCredits } from './creditsContext';
 import { businessCheckoutError, openBusinessCheckout } from './businessCheckout';
 import { formatInZone } from './jobMapping';
+import { formatMoney } from './money';
 
 // Employer-app Plan & Usage: the design (Figma 2451:1052, as in the admin
 // console's PlanUsageView) fed by GET /employer/plan. Real where the API has
 // it: plan, billing cycle, period end, cancellation, allowance usage, overage
-// spent and cap; on Free, the credits left (GET /employer/credits). Design
-// sample values where it doesn't (the price, seats, invoices). Added for the API: subscribe with a
+// spent and cap; on Free, the credits left (GET /employer/credits); prices
+// from GET /employer/plan/prices (nothing shown while loading or if Stripe is
+// unreadable, never a guessed price). Seats and invoices wait for the
+// billing portal (past-due has no card-update UI, only the email note): hidden behind
+// BILLING_PORTAL_ENABLED (markup kept). Added for the API: subscribe with a
 // billing-cycle choice, cancel / resume, the past-due and cap-reached notes,
 // and the post-Stripe "confirming" state.
+
+// Seats and the invoice list/download. Off until the billing portal ships.
+export const BILLING_PORTAL_ENABLED = false;
 
 const SALES_EMAIL = 'operations@screna.ai';
 const mono = 'font-[family-name:var(--font-mono)]';
@@ -41,14 +49,17 @@ const dollars = (cents: number) => cents / 100;
 
 export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancelled' }) {
   const store = useEmployerStore();
-  const { credits, refresh: refreshShell } = useEmployerCredits();
-  const [plan, setPlan] = useState<EmployerPlan | null>(null);
+  const { credits, plan: shellPlan, refresh: refreshShell } = useEmployerCredits();
+  // The shell has usually loaded the plan already: show it at once, then the
+  // fresh read below replaces it.
+  const [plan, setPlan] = useState<EmployerPlan | null>(shellPlan ?? null);
   const [loadError, setLoadError] = useState(false);
   const [confirming, setConfirming] = useState(checkout === 'success');
   const [busy, setBusy] = useState<string | null>(null);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [cap, setCap] = useState('');
+  const [cap, setCap] = useState(shellPlan?.overage?.capCents == null ? '' : String(dollars(shellPlan.overage.capCents)));
+  const [prices, setPrices] = useState<EmployerPlanPrices | null>(null);
 
   const apply = useCallback((p: EmployerPlan) => {
     setPlan(p);
@@ -72,6 +83,18 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
       cancelled = true;
     };
   }, [apply]);
+
+  // Live prices; on error (500 when Stripe is unreadable) prices stay null and
+  // every price label is left out.
+  useEffect(() => {
+    let cancelled = false;
+    getEmployerPlanPrices()
+      .then((p) => !cancelled && setPrices(p))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Back from Stripe: the subscription lands by webhook, usually in seconds.
   useEffect(() => {
@@ -178,8 +201,12 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
   const pastDue = plan.status === 'past_due';
   const a = plan.allowance;
   const o = plan.overage;
-  // Sample: the API has no seats or invoices yet.
+  // Sample: the API has no seats or invoices yet (only shown with BILLING_PORTAL_ENABLED).
   const sample = store.plan;
+  const monthlyPrice = prices ? formatMoney(prices.business.monthly) : null;
+  const annualPrice = prices ? formatMoney(prices.business.annual) : null;
+  const currentPrice = annual ? annualPrice && `${annualPrice}/year` : monthlyPrice && `${monthlyPrice}/month`;
+  const unlocksIncluded = a?.reports.included ?? prices?.business.reportAllowance ?? null;
 
   return (
     <div className="flex flex-col gap-5 pb-12">
@@ -198,16 +225,17 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2.5">
                 <span className="text-[22px] leading-[33px] font-extrabold text-[#0a0a0a]">Business</span>
-                <span className="px-2.5 py-[3px] rounded-full bg-[#eef2ff] text-[#2e5bff] text-[12px] leading-[18px] font-semibold">
-                  {annual ? `${usd(BUSINESS_ANNUAL_PRICE, false)}/year` : `${usd(BUSINESS_PRICE, false)}/month`}
-                </span>
+                {currentPrice && (
+                  <span className="px-2.5 py-[3px] rounded-full bg-[#eef2ff] text-[#2e5bff] text-[12px] leading-[18px] font-semibold">{currentPrice}</span>
+                )}
               </div>
               <p className="text-[13px] leading-[19.5px] text-[#4a4d57]">
-                {plan.cancelAtPeriodEnd ? `Ends ${dateOf(plan.currentPeriodEnd)}, then returns to Free` : `Renews ${dateOf(plan.currentPeriodEnd)}`} · {sample.seatsUsed} of{' '}
-                {sample.seats} seats in use
+                {plan.cancelAtPeriodEnd ? `Ends ${dateOf(plan.currentPeriodEnd)}, then returns to Free` : `Renews ${dateOf(plan.currentPeriodEnd)}`}
+                {BILLING_PORTAL_ENABLED && ` · ${sample.seatsUsed} of ${sample.seats} seats in use`}
               </p>
               {pastDue && (
                 <p className="text-[13px] leading-[19.5px] text-[#dc2626]">
+                  {/* No self-serve card update (billing portal postponed): the email route is the only fix. */}
                   Your last payment failed. Your allowance still works, but no overage until billing is up to date. Email {SALES_EMAIL} to update your payment method.
                 </p>
               )}
@@ -215,12 +243,14 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
             <div className="flex flex-wrap gap-2">
               {!annual && !pastDue && !plan.cancelAtPeriodEnd && (
                 <OutlineButton onClick={() => void run('annual', switchEmployerPlanToAnnual, 'Switched to annual billing')}>
-                  {busy === 'annual' ? 'Switching…' : `Switch to annual · ${usd(BUSINESS_ANNUAL_PRICE, false)}`}
+                  {busy === 'annual' ? 'Switching…' : annualPrice ? `Switch to annual · ${annualPrice}` : 'Switch to annual'}
                 </OutlineButton>
               )}
-              <OutlineButton tone="gray" onClick={() => toast.info(`Changing seats isn't self-serve yet. Email ${SALES_EMAIL} and we'll set it up.`)}>
-                Manage seats
-              </OutlineButton>
+              {BILLING_PORTAL_ENABLED && (
+                <OutlineButton tone="gray" onClick={() => toast.info(`Changing seats isn't self-serve yet. Email ${SALES_EMAIL} and we'll set it up.`)}>
+                  Manage seats
+                </OutlineButton>
+              )}
               {plan.cancelAtPeriodEnd ? (
                 <OutlineButton onClick={() => void run('resume', resumeEmployerPlan, 'Your Business plan will keep renewing')}>
                   {busy === 'resume' ? 'Resuming…' : 'Resume'}
@@ -321,7 +351,7 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
 
       <section className="rounded-2xl px-6 md:px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[linear-gradient(178deg,#2e5bff_0%,#1231b8_100%)]">
         <div className="flex flex-col gap-1">
-          <p className="text-[16px] leading-6 font-bold text-white">Need more than {a?.reports.included ?? BUSINESS_UNLOCKS} unlocks or custom workflows?</p>
+          <p className="text-[16px] leading-6 font-bold text-white">{unlocksIncluded !== null ? `Need more than ${unlocksIncluded} unlocks or custom workflows?` : 'Need more unlocks or custom workflows?'}</p>
           <p className="text-[13px] leading-[19.5px] text-white/75">Enterprise plans include unlimited seats, custom reporting, and a dedicated account manager.</p>
         </div>
         <a
@@ -333,6 +363,7 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
       </section>
 
       {/* Sample: no invoice API yet. */}
+      {BILLING_PORTAL_ENABLED && (
       <PlanCard>
         <CardLabel>Invoices</CardLabel>
         {sample.invoices.length === 0 ? (
@@ -370,6 +401,7 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
           </div>
         )}
       </PlanCard>
+      )}
 
       <Dialog
         open={subscribeOpen}
@@ -384,10 +416,10 @@ export function EmployerPlanView({ checkout }: { checkout?: 'success' | 'cancell
         <p className="text-[14px] text-[#5a6172]">Choose how you'd like to be billed. You'll finish payment on Stripe. Annual billing can't be changed back to monthly.</p>
         <div className="flex flex-col gap-2">
           <Button variant="primary" disabled={busy === 'subscribe'} onClick={() => void subscribe('MONTHLY')}>
-            Monthly · {usd(BUSINESS_PRICE, false)}/month
+            {monthlyPrice ? `Monthly · ${monthlyPrice}/month` : 'Monthly'}
           </Button>
           <Button disabled={busy === 'subscribe'} onClick={() => void subscribe('ANNUAL')}>
-            Annual · {usd(BUSINESS_ANNUAL_PRICE, false)}/year
+            {annualPrice ? `Annual · ${annualPrice}/year` : 'Annual'}
           </Button>
         </div>
       </Dialog>

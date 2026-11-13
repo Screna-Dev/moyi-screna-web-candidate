@@ -7,6 +7,7 @@ import { openBusinessCheckout } from '@/pages/employer/businessCheckout';
 import { clearEmployerSession, saveEmployerSession } from '@/pages/employer/employerAuth';
 import { toast } from 'sonner';
 import { EmployerPlanView } from '@/pages/employer/EmployerPlanView';
+import { formatMoney } from '@/pages/employer/money';
 import { mockCompanies } from '@/components/admin/console/pages/employer/mockData';
 
 // Plan & Usage shows live numbers: GET /employer/plan for Business, the
@@ -20,6 +21,7 @@ vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 vi.mock('@/pages/employer/employerApi', async (orig) => ({
   ...(await orig<object>()),
   getEmployerPlan: vi.fn(),
+  getEmployerPlanPrices: vi.fn(),
   setOverageCap: vi.fn(),
   startPlanCheckout: vi.fn(),
 }));
@@ -42,20 +44,33 @@ const BUSINESS: EmployerPlan = {
   overage: { spentCents: 1250, capCents: null, capReached: false, reportUnitCents: 500, interviewUnitCents: 300, allowed: true },
 };
 
-function renderPlan(credits = { report: 4, interview: 9 }) {
+function renderPlan(credits = { report: 4, interview: 9 }, shellPlan: EmployerPlan | null = null) {
   const refresh = vi.fn();
   render(
-    <CreditsContext.Provider value={{ credits, plan: null, refresh }}>
+    <CreditsContext.Provider value={{ credits, plan: shellPlan, refresh }}>
       <EmployerPlanView />
     </CreditsContext.Provider>,
   );
   return { refresh };
 }
 
+const PRICES: employerApi.EmployerPlanPrices = {
+  business: {
+    monthly: { amountCents: 39900, currency: 'usd' },
+    annual: { amountCents: 399000, currency: 'usd' },
+    reportAllowance: 100,
+    interviewAllowance: 50,
+    overage: { reportUnitCents: 500, interviewUnitCents: 300 },
+  },
+  reportCredit: { amountCents: 800, currency: 'usd' },
+  interviewCredit: { amountCents: 500, currency: 'usd' },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   clearEmployerSession();
+  api.getEmployerPlanPrices.mockResolvedValue(PRICES);
 });
 
 function stubLocation() {
@@ -105,12 +120,52 @@ describe('Plan & Usage', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the shell's plan at once instead of waiting for its own read", async () => {
+    api.getEmployerPlan.mockReturnValue(new Promise(() => {}));
+    renderPlan(undefined, BUSINESS);
+    expect(await screen.findByText('$12.50')).toBeInTheDocument();
+    expect(screen.queryByText('Loading…')).toBeNull();
+  });
+
   it('Business: usage and overage come from GET /employer/plan', async () => {
     api.getEmployerPlan.mockResolvedValue(BUSINESS);
     renderPlan();
     expect(await screen.findByText('$12.50')).toBeInTheDocument();
     expect(screen.getByText(/Report unlocks/)).toBeInTheDocument();
     expect(screen.getByText(/7/)).toBeInTheDocument();
+  });
+
+  it('Business: the price comes from GET /employer/plan/prices; no seats or invoices', async () => {
+    api.getEmployerPlan.mockResolvedValue(BUSINESS);
+    renderPlan();
+    expect(await screen.findByText('$399/month')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Switch to annual · $3,990' })).toBeInTheDocument();
+    expect(api.getEmployerPlanPrices).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/seats in use/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage seats' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Invoices')).not.toBeInTheDocument();
+  });
+
+  it('prices unreadable (500): no made-up price anywhere', async () => {
+    api.getEmployerPlanPrices.mockRejectedValue(new Error('500'));
+    api.getEmployerPlan.mockResolvedValue({ ...BUSINESS, allowance: null });
+    renderPlan();
+    expect(await screen.findByRole('button', { name: 'Switch to annual' })).toBeInTheDocument();
+    expect(screen.queryByText(/\/month|\/year/)).not.toBeInTheDocument();
+    expect(screen.getByText('Need more unlocks or custom workflows?')).toBeInTheDocument();
+  });
+
+  it('Free: the upgrade dialog shows live prices', async () => {
+    api.getEmployerPlan.mockResolvedValue(FREE);
+    renderPlan();
+    fireEvent.click(await screen.findByRole('button', { name: 'Upgrade to Business' }));
+    expect(await screen.findByRole('button', { name: 'Monthly · $399/month' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annual · $3,990/year' })).toBeInTheDocument();
+  });
+
+  it('formatMoney keeps cents only when there are any', () => {
+    expect(formatMoney({ amountCents: 39900, currency: 'usd' })).toBe('$399');
+    expect(formatMoney({ amountCents: 1250, currency: 'USD' })).toBe('$12.50');
   });
 
   it('Save cap calls the API and shows the returned plan', async () => {
