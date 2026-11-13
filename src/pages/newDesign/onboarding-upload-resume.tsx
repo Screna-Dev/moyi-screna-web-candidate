@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { buildAuthPath } from '@/utils/returnTo';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check, ArrowRight, ArrowLeft, UploadCloud, FileText, RefreshCw,
@@ -562,9 +563,15 @@ function unwrap<T = Record<string, unknown>>(res: { data?: unknown }): T {
 export function OnboardingUploadResumePage() {
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo') || '';
+
+  // 401 = no session in this tab (token missing or cleared). Retrying can't
+  // succeed, so go to sign-in and come back here afterwards.
+  const isUnauthorized = (err: unknown) => (err as { response?: { status?: number } })?.response?.status === 401;
+  const toSignIn = () => navigate(buildAuthPath(location), { replace: true });
 
   const [step, setStep] = useState(2);
   const [direction, setDirection] = useState(1);
@@ -635,6 +642,7 @@ export function OnboardingUploadResumePage() {
           setStep(2);
         }
       } catch (err) {
+        if (!cancelled && isUnauthorized(err)) return toSignIn();
         // Progress lookup failed — fall back to the first step rather than
         // trapping the user. A brand-new user simply starts at step 2.
         console.error('[onboarding] progress lookup failed', err);
@@ -703,6 +711,7 @@ export function OnboardingUploadResumePage() {
       goTo(3);
     } catch (err) {
       console.error('[onboarding] submit referral source failed', err);
+      if (isUnauthorized(err)) return toSignIn();
       toast({
         title: 'Something went wrong',
         description: 'Could not save your answer. Please try again.',

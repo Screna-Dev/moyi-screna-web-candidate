@@ -30,7 +30,7 @@ export default function Jobs() {
     canAccessJobs,
     canPushProfile
   } = useUserPlan();
-  const { upgradeToAdvanced, isChangingPlan } = useUpgradePrompt();
+  const { upgradeToPro, isChangingPlan } = useUpgradePrompt();
   
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -261,7 +261,7 @@ export default function Jobs() {
   };
 
   const handleUpgrade = async () => {
-    await upgradeToAdvanced();
+    await upgradeToPro();
   };
 
   // Handle active title change

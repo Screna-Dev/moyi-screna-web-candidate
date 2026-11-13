@@ -18,13 +18,15 @@ import { MediumPageContainer } from '@/components/newDesign/dashboard-page';
 import { Input } from '@/components/newDesign/ui/input';
 import { Label } from '@/components/newDesign/ui/label';
 import { BillingTab } from '@/components/newDesign/billing-tab-design';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { useAuth } from '@/contexts/AuthContext';
 import { getPersonalInfo, savePersonalInfo, changePassword } from '@/services/ProfileServices';
 
 const TABS = [
   { id: 'profile',       label: 'Account',       icon: User },
   { id: 'security',      label: 'Security',      icon: Shield },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
+  // Its only setting is mentor session reminders: hidden with mentors.
+  ...(MENTOR_ENABLED ? [{ id: 'notifications', label: 'Notifications', icon: Bell }] : []),
   { id: 'billing',       label: 'Billing',       icon: CreditCard },
 ];
 

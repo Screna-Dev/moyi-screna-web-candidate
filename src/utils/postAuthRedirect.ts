@@ -23,6 +23,13 @@ export const ONBOARDING_PATH = '/onboarding-resume';
 
 /** Build /onboarding-resume with the params the page reads. */
 export function onboardingPath({ returnTo, ref }: { returnTo?: string; ref?: string } = {}) {
+  // Bounced off onboarding itself (RequireAuth → /auth?returnTo=/onboarding-resume?ref=…):
+  // unwrap it instead of nesting, so the page still sees ?ref= and its own returnTo.
+  if (returnTo && returnTo.split(/[?#]/)[0] === ONBOARDING_PATH) {
+    const inner = new URLSearchParams(returnTo.split('?')[1]?.split('#')[0] ?? '');
+    const innerRef = inner.get('ref') || inner.get('referral_code') || inner.get('referralCode') || '';
+    return onboardingPath({ returnTo: inner.get('returnTo') || undefined, ref: ref?.trim() || innerRef });
+  }
   const params = new URLSearchParams();
   if (returnTo) params.set('returnTo', returnTo);
   if (ref?.trim()) params.set('ref', ref.trim());

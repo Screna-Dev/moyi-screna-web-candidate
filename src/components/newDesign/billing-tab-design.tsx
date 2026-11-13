@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Check, CheckCircle2, Download, Info,
-  Plus, X, Loader2, RotateCcw, Gift, CreditCard, AlertTriangle,
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { CheckCircle2, Info, X, Loader2 } from 'lucide-react';
 import { useSubscription, hasEntitlement } from '@/hooks/useSubscription';
+import { useUserPlanIfAny } from '@/hooks/useUserPlan';
+import { useCandidatePrices } from '@/hooks/useCandidatePrices';
+import {
+  ADD_ON_INTERVIEWS, ADD_ON_VALID_DAYS, PLAN_INTERVIEWS,
+  fetchInterviewQuota, grantKeys, startQuotaCheckout, useInterviewQuota, waitForQuotaGrant,
+  type InterviewQuota, type QuotaSource,
+} from '@/hooks/useInterviewQuota';
 import {
   markPendingCheckout, readPendingCheckout, clearPendingCheckout,
   type PendingCheckoutKind,
@@ -22,11 +25,16 @@ const formatDate = (iso: string | null | undefined) => {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+// Usage tiles use the short form, as in the design ("Resets Nov 3").
+const formatShortDate = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
 const formatAmountCents = (cents: number, currency = 'usd') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
 
 interface Invoice {
   stripeInvoiceId: string;
+  item?: string | null;
+  description?: string | null;
   amount: number;
   currency: string;
   invoiceUrl: string;
@@ -52,96 +60,8 @@ interface PaymentMethodData {
   status: 'VALID' | 'EXPIRES_BEFORE_RENEWAL' | 'EXPIRED' | 'NONE';
 }
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type PlanState  = 'free' | 'basic' | 'advanced' | 'flagship';
+type PlanState  = 'free' | 'basic' | 'advanced' | 'flagship' | 'pro';
 type CancelState = 'active' | 'refund_window' | 'post_window' | 'canceled';
-
-// ─── Benefit Data ──────────────────────────────────────────────────────────────
-const FREE_L = [
-  'AI Interview Mocks',
-  'Mentor Marketplace access',
-  'Resume review',
-  'Application tracking',
-  'Interview Insights Community',
-];
-const FREE_R = [
-  'Dedicated job search advisor',
-  'Auto-apply to matched roles',
-  'Resume submission & outreach',
-  'Salary negotiation coaching',
-  'Weekly live sessions',
-];
-
-// ─── BenefitItem ────────────────────────────────────────────────────────────────
-function BenefitItem({ label, dark }: { label: string; dark?: boolean }) {
-  return (
-    <div className="flex items-start gap-2">
-      <div
-        className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center mt-px"
-        style={{ background: dark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.28)' }}
-      >
-        <Check className="w-2.5 h-2.5 text-white" strokeWidth={2.5} />
-      </div>
-      <span className="text-xs leading-snug" style={{ color: dark ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.90)' }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// ─── Membership Banner ──────────────────────────────────────────────────────────
-function MembershipBanner({
-  plan,
-  cancelAtPeriodEnd = false,
-  accessEndsDate    = 'Jul 24, 2026',
-  nextBillingDate   = 'Jul 24, 2026',
-  nextBillingAmount = '$29.99',
-  userName          = 'Alex',
-  onUpgrade,
-}: {
-  plan: PlanState;
-  cancelAtPeriodEnd?: boolean;
-  accessEndsDate?:    string;
-  nextBillingDate?:   string;
-  nextBillingAmount?: string;
-  userName?:          string;
-  onUpgrade?:         () => void;
-}) {
-  /* ── Free / Non-member ── */
-  if (plan === 'free') {
-    return (
-      <div className="relative overflow-hidden rounded-2xl p-6" style={{ background: '#172554' }}>
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(ellipse at 80% 15%, color-mix(in srgb, #3b82f6 16%, transparent) 0%, transparent 55%), radial-gradient(ellipse at 15% 80%, color-mix(in srgb, #3b82f6 9%, transparent) 0%, transparent 55%)',
-        }} />
-        <div className="relative">
-          <p style={{ fontSize: 20, fontWeight: 500, color: '#fff', marginBottom: 6, lineHeight: 1.3 }}>
-            Unlock everything Screna has to offer
-          </p>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', marginBottom: 20, lineHeight: 1.55 }}>
-            Join as a member to access mentorship, auto-apply, personalized coaching, and more.
-          </p>
-          <div className="grid grid-cols-2 mb-5" style={{ gap: '8px 32px' }}>
-            <div className="flex flex-col gap-2.5">{FREE_L.map(f => <BenefitItem key={f} label={f} dark />)}</div>
-            <div className="flex flex-col gap-2.5">{FREE_R.map(f => <BenefitItem key={f} label={f} dark />)}</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onUpgrade}
-              className="px-5 py-2.5 rounded-xl font-medium hover:opacity-90 transition-opacity"
-              style={{ background: '#fff', color: '#0f1f3d', fontSize: 14 }}
-            >
-              Upgrade to Member
-            </button>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>From $7.99 / mo · Cancel anytime</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Paid member — banner intentionally removed for members ── */
-  return null;
-}
 
 // ─── Switch Plan Confirm Modal ──────────────────────────────────────────────────
 // An upgrade is charged to the saved card immediately and takes effect right
@@ -219,56 +139,6 @@ function SwitchPlanConfirmModal({
           >
             {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {isUpgrade ? 'Confirm and pay' : 'Schedule change'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─── Cancel Confirm Modal ───────────────────────────────────────────────────────
-function CancelConfirmModal({
-  onClose,
-  onConfirm,
-  isActing = false,
-  accessEndsDate = 'Jul 24, 2026',
-}: {
-  onClose: () => void;
-  onConfirm: () => void | Promise<void>;
-  isActing?: boolean;
-  accessEndsDate?: string;
-}) {
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }} transition={{ duration: 0.16 }}
-        className="bg-card w-[400px] rounded-xl shadow-xl p-6"
-        onClick={e => e.stopPropagation()}
-      >
-        <h3 className="text-foreground mb-2" style={{ fontSize: 16 }}>Cancel subscription?</h3>
-        <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-          Your access continues until {accessEndsDate}. You can reactivate any time before then.
-        </p>
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={onClose}
-            disabled={isActing}
-            className="px-4 py-2 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-          >
-            Keep subscription
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={isActing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-destructive/50 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors disabled:opacity-60"
-          >
-            {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Cancel subscription
           </button>
         </div>
       </motion.div>
@@ -416,48 +286,29 @@ function PaymentToast({ message, onDone }: { message: string; onDone: () => void
   );
 }
 
-// ─── Section Label ──────────────────────────────────────────────────────────────
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2">
-      {children}
-    </p>
-  );
-}
-
-// ─── Status Badge ───────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: 'Active' | 'Past Due' | 'Canceled' }) {
-  const map = {
-    Active:    'bg-green-100 text-green-700',
-    'Past Due':'bg-amber-100 text-amber-700',
-    Canceled:  'bg-secondary text-muted-foreground',
-  } as const;
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${map[status]}`}>
-      {status}
-    </span>
-  );
-}
-
 // ─── Billing Tab (main export) ──────────────────────────────────────────────────
-// Tier options for the switch-plan panel. The "Current"/"Scheduled" badges are
+// Tier options for the switch-plan panel. Since change C9 only Pro is on sale:
+// BASIC / ADVANCED / FLAGSHIP can't be a target (400), so a subscriber on one
+// of them sees it as "Current" (not selectable) next to Pro. The badges are
 // derived per render from the live subscription — never hardcoded here.
-const PLAN_OPTIONS = [
-  { id: 'basic',    name: 'Basic',    price: '$7.99/mo',  desc: 'billed monthly' },
-  { id: 'advanced', name: 'Advanced', price: '$29.99/mo', desc: 'billed monthly' },
-  { id: 'flagship', name: 'Flagship', price: '$79.99/mo', desc: 'billed monthly' },
-] as const;
+type SwitchTier = 'basic' | 'advanced' | 'flagship' | 'pro';
+// basic / advanced / flagship: legacy tiers, still billed at their old price.
+// Pro's entry is only the fallback: the live price is GET /payments/prices (#323).
+const TIER_PRICE: Record<SwitchTier, string> = { basic: '$7.99', advanced: '$29.99', flagship: '$79.99', pro: '$29' };
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+
 // plan_switch_confirmed 用：按 tier 排序判断 upgrade / downgrade。
-const TIER_ORDER: Record<string, number> = { free: 0, basic: 1, advanced: 2, flagship: 3 };
+// Advanced → Pro is the same level (C9 "PRO: 2") and the same price, so it is
+// treated as an immediate change, not a scheduled downgrade.
+const TIER_ORDER: Record<string, number> = { free: 0, basic: 1, advanced: 2, pro: 2, flagship: 3 };
 const getChangeType = (fromTier: string, toTier: string): 'upgrade' | 'downgrade' =>
-  (TIER_ORDER[toTier] ?? 0) > (TIER_ORDER[fromTier] ?? 0) ? 'upgrade' : 'downgrade';
+  (TIER_ORDER[toTier] ?? 0) >= (TIER_ORDER[fromTier] ?? 0) ? 'upgrade' : 'downgrade';
 
 export function BillingTab() {
+  const prices = useCandidatePrices(); // #323
   // ── Real data sources ──
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     subscription, isActing, changeTier, cancel, resume, refresh, cancelPendingDowngrade,
@@ -465,6 +316,11 @@ export function BillingTab() {
   } = useSubscription();
   const navigate = useNavigate();
   const posthog = usePostHog();
+  // Interviews for candidate-paid partner-role AI interviews (change C9).
+  const { quota, refresh: refreshQuota } = useInterviewQuota();
+  // A Pro 90-day changes the app-wide plan without a subscription row.
+  const planContext = useUserPlanIfAny();
+  const refreshPlan = async () => planContext?.refreshPlan();
 
   // Guards the async fetchers below from setting state after unmount, and holds
   // the invoice-poll timer so it can be cancelled rather than outliving us.
@@ -555,10 +411,9 @@ export function BillingTab() {
           ? `${pendingCycleName} billing`
           : null;
   const nextBillingDate = formatDate(subscription?.currentPeriodEnd);
-  const TIER_PRICE: Record<string, string> = { basic: '$7.99', advanced: '$29.99', flagship: '$79.99' };
   const nextBillingAmount = subscription?.nextBillingAmount != null
     ? formatAmountCents(subscription.nextBillingAmount, subscription.currency)
-    : TIER_PRICE[planState] ?? '—';
+    : planState === 'free' ? '—' : planState === 'pro' ? prices.pro : TIER_PRICE[planState];
 
   // days_since_subscribed：用 firstSubAt（首次订阅，续订不刷新）计算。
   // 老数据可能为 null，此时仍然上报 null。
@@ -568,43 +423,10 @@ export function BillingTab() {
       : null;
 
   // ── Subscription UI ──
-  const [switchPlanOpen,  setSwitchPlanOpen]  = useState(false);
-  const [selectedPlan,    setSelectedPlan]    = useState<'basic' | 'advanced' | 'flagship'>('advanced');
+  // Only a legacy tier (Basic / Advanced / Flagship) can switch, and only to Pro
+  // (C9). The switch charges the saved card, so it asks first.
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
-
-  // Preselect the tier the user is actually on once the subscription loads (and
-  // after any change), so the panel never opens on a stale selection.
-  useEffect(() => {
-    if (planState !== 'free') setSelectedPlan(planState);
-  }, [planState]);
-
-  // Belt and braces: a downgrade could get scheduled (another tab, or the row
-  // above) while the panel is already open on that tier.
-  const isSelectionScheduled = selectedPlan === subscription?.downgradePendingTier;
-
-  // Badges come from live data: the tier in use, plus a scheduled downgrade
-  // target if one is pending. The scheduled tier is not selectable — requesting
-  // the same downgrade again is a no-op at best, so it's disabled and undone via
-  // "Cancel change" on the plan row instead.
-  const planOptions = PLAN_OPTIONS.map(plan => {
-    const isScheduled = plan.id === subscription?.downgradePendingTier;
-    return {
-      ...plan,
-      disabled: isScheduled,
-      badge:
-        plan.id === planState
-          ? { text: 'Current', color: 'blue' as const }
-          : isScheduled
-            ? { text: 'Scheduled', color: 'green' as const }
-            : null,
-    };
-  });
-  const [cancelOpen,      setCancelOpen]      = useState(false);
-  const [cancelSubmitted, setCancelSubmitted] = useState(false);
-  // Which cancel path the backend actually took, learned by polling afterwards.
-  const [cancelOutcome, setCancelOutcome] =
-    useState<'refunded' | 'scheduled' | 'processing' | null>(null);
-  const [showCancelModal, setShowCancelModal] = useState(false);
+  const selectedPlan: SwitchTier = 'pro';
 
   // ── Credits (real API) ──
   const [showBuyCredits,  setShowBuyCredits]  = useState(false);
@@ -652,7 +474,7 @@ export function BillingTab() {
   // The endpoint returns a paginated ledger of CREDIT/DEBIT transactions, not a
   // monthly aggregate — so we page through the current billing period, sum the
   // DEBITs (credits consumed), and keep the entries for the history list.
-  const [usedThisMonth, setUsedThisMonth] = useState(0);
+  const [, setUsedThisMonth] = useState(0);
 
   const fetchUsage = useCallback(async () => {
     const startISO = subscription?.currentPeriodStart;
@@ -859,6 +681,19 @@ export function BillingTab() {
             const now = await fetchCredits();
             if (now !== null && before !== null && now !== before) break;
           }
+        } else if (pending.kind === 'pro-90-day' || pending.kind === 'interview-add-on') {
+          // One-time purchases land as a new interview-quota grant. A Pro
+          // subscriber's plan stays PRO after buying Pro 90-day, so watch the
+          // grants, not the plan.
+          const source: QuotaSource = pending.kind === 'pro-90-day' ? 'PRO_90_DAY' : 'ADD_ON';
+          const landed = await waitForQuotaGrant(source, pending.grantsBefore, () => cancelled);
+          if (!cancelled && mountedRef.current) {
+            setToastMsg(
+              landed
+                ? pending.kind === 'pro-90-day' ? 'Pro 90-Day is active' : 'Interviews added'
+                : 'Payment is still processing · refresh in a moment',
+            );
+          }
         } else if (pending.kind === 'card') {
           // The setup-session page doesn't charge anything and has no
           // subscription-side field to poll — a changed `last4` is the only
@@ -900,7 +735,9 @@ export function BillingTab() {
           await Promise.allSettled(
             pending.kind === 'card'
               ? [refresh(), fetchCredits(), fetchInvoices()]
-              : [fetchCredits(), fetchInvoices()],
+              : pending.kind === 'pro-90-day' || pending.kind === 'interview-add-on'
+                ? [refreshQuota(), refreshPlan(), fetchInvoices()]
+                : [fetchCredits(), fetchInvoices(), refreshQuota()],
           );
         }
       }
@@ -979,19 +816,6 @@ export function BillingTab() {
     }
   };
 
-  // Step 1 — never call the API straight from the panel. An upgrade charges the
-  // saved card immediately (no Checkout page to act as a confirmation), so ask
-  // first.
-  const handleRequestSwitch = () => {
-    if (selectedPlan === planState) {
-      setSwitchPlanOpen(false);
-      return;
-    }
-    // Already queued for the end of the period — nothing to request.
-    if (isSelectionScheduled) return;
-    setShowSwitchConfirm(true);
-  };
-
   // Step 2 — POST /payments/subscriptions/tier. The 200 only means Stripe
   // accepted it: the row is updated later by webhook, and an upgrade can still
   // fail at the card while returning 200. `changeTier` therefore polls; `settled`
@@ -1000,7 +824,6 @@ export function BillingTab() {
   const handleConfirmSwitch = async () => {
     if (selectedPlan === planState) {
       setShowSwitchConfirm(false);
-      setSwitchPlanOpen(false);
       return;
     }
     const changeType = getChangeType(planState, selectedPlan);
@@ -1025,7 +848,6 @@ export function BillingTab() {
     }
 
     setShowSwitchConfirm(false);
-    setSwitchPlanOpen(false);
 
     if (!settled) {
       fireToast('Change submitted · still processing, refresh in a moment');
@@ -1058,8 +880,6 @@ export function BillingTab() {
       refunded,
       settled,
     });
-    setShowCancelModal(false);
-    setCancelOpen(false);
 
     if (!settled) {
       fireToast('Cancellation submitted · still processing, refresh in a moment');
@@ -1071,34 +891,6 @@ export function BillingTab() {
         ? `Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`
         : `Subscription canceled · access continues until ${nextBillingDate}`,
     );
-  };
-
-  // Refund-window variant of the same call. We can't know in advance whether the
-  // refund path will run — `firstSubRefundUsed` isn't exposed — so the outcome
-  // comes from what the polling actually observed.
-  //
-  // On the refund path access ends at once, which flips planState to Free and
-  // unmounts this whole module along with the inline confirmation, so the result
-  // also goes out as a toast (rendered above the isMember gate).
-  const handleSubmitCancellation = async () => {
-    const { ok, settled, refunded } = await cancel();
-    if (!ok) return;
-    safeCapture(posthog, EVENTS.SUBSCRIPTION_CANCELLED, {
-      plan_tier: planState,
-      days_since_subscribed: daysSinceSubscribed,
-      refunded,
-      settled,
-    });
-    setCancelSubmitted(true);
-    setCancelOutcome(!settled ? 'processing' : refunded ? 'refunded' : 'scheduled');
-    fireToast(
-      !settled
-        ? 'Cancellation submitted · still processing, refresh in a moment'
-        : refunded
-          ? `Subscription canceled · ${nextBillingAmount} refund on its way (5–10 business days)`
-          : `Subscription canceled · access continues until ${nextBillingDate}`,
-    );
-    if (settled) await refreshBilling();
   };
 
   // Undo a scheduled downgrade (tier and/or cycle) before it lands →
@@ -1195,34 +987,97 @@ export function BillingTab() {
     });
   };
 
-  const isCanceled     = cancelState === 'canceled';
-  const bannerCancelAtPeriod = isCanceled || cancelState === 'post_window';
+  // Pro 90-day / interview add-on → one-time Stripe Checkout (C9). The grant
+  // keys from before the redirect let the return tell the new grant from an
+  // old one. The button stays disabled until the redirect: a second completed
+  // checkout is a second real charge, and neither purchase is refundable.
+  const [buyingQuota, setBuyingQuota] = useState<'pro-90-day' | 'interview-add-on' | null>(null);
+  const handleBuyQuota = async (kind: 'pro-90-day' | 'interview-add-on') => {
+    setBuyingQuota(kind);
+    try {
+      const before: InterviewQuota | null = await fetchInterviewQuota().catch(() => null);
+      const url = await startQuotaCheckout(kind);
+      markPendingCheckout(kind, undefined, undefined, before ? grantKeys(before, kind === 'pro-90-day' ? 'PRO_90_DAY' : 'ADD_ON') : undefined);
+      window.location.href = url;
+    } catch (err) {
+      const code = (err as { response?: { data?: { errorCode?: string } } })?.response?.data?.errorCode;
+      fireToast(code === 'INSUFFICIENT_PLAN_TIER' ? 'More interviews are available on Pro' : "Couldn't start checkout · please try again");
+      setBuyingQuota(null);
+    }
+  };
 
-  // Reasons the backend rejects /tier outright — surface them instead of letting
-  // the user submit a request that always 400s.
-  const switchBlockedReason = isLegacySubscription
-    ? 'Your current plan is a legacy plan and can no longer be changed. Cancel it to move to a current plan.'
+  const isCanceled = cancelState === 'canceled';
+
+  // Reasons the backend rejects /tier outright — a legacy tier's "Switch to
+  // Pro" is disabled with the reason instead of letting it 400.
+  const switchBlockedReason = subscription?.planSwitchPending
+    ? `Your plan switches to Pro on ${nextBillingDate}.`
     : subscription?.cancelAtPeriodEnd
-      ? 'Your subscription is scheduled to cancel. Reactivate it before changing plan.'
+      ? 'Your subscription is scheduled to cancel. Keep it before changing plan.'
       : pendingChangeLabel
         ? 'A plan change is already scheduled. Cancel it before choosing a different plan.'
         : isPastDue
           ? 'Your last payment failed. Plan changes are unavailable until billing is up to date.'
           : null;
-  const canSwitchPlan = !isCanceled && switchBlockedReason === null;
+  const isLegacyTier = planState === 'basic' || planState === 'advanced' || planState === 'flagship';
 
-  // If the subscription moves into a state the backend rejects changes in (another
-  // tab schedules a downgrade, a renewal fails), collapse an open panel instead of
-  // leaving a Confirm button that can only 400.
-  useEffect(() => {
-    if (!canSwitchPlan) setSwitchPlanOpen(false);
-  }, [canSwitchPlan]);
+  // ── Interviews (quota) ──
+  const planGrantSources: QuotaSource[] = ['FREE_MONTHLY', 'PRO_PERIOD', 'PRO_90_DAY'];
+  const planGrants = (quota?.grants ?? []).filter(g => planGrantSources.includes(g.source));
+  const addOnGrants = (quota?.grants ?? []).filter(g => g.source === 'ADD_ON');
+  const planLeft = planGrants.reduce((n, g) => n + g.remaining, 0);
+  const addOnLeft = addOnGrants.reduce((n, g) => n + g.remaining, 0);
+  // "X of Y" from the plan grants' sessions (used included); never cached or
+  // hard-coded. The plan's current grant stays listed when used up (#319), so
+  // this reads "15 of 15 used"; before #319 it drops out, hence 'All used'.
+  const included = planGrants.reduce((n, g) => n + (g.sessions ?? g.remaining), 0);
+  const earliest = (dates: (string | null)[]) =>
+    dates.filter((d): d is string => !!d).sort()[0] ?? null;
+  const planResets = quota?.plan === 'FREE' ? quota.resetsAt : earliest(planGrants.map(g => g.expiresAt));
+  const isPro90 = quota?.plan === 'PRO_90_DAY' && !isMember;
+  const card = paymentMethod && paymentMethod.status !== 'NONE' ? paymentMethod : null;
 
-  // Credit balance = recurring credits + permanent credits.
-  const creditBalance = credits.recurringCreditBalance + credits.permanentCreditBalance;
+  // ── Practice minutes = credits (1 credit per minute) ──
+  const practiceReset = subscription?.currentPeriodEnd ?? credits.resetDate;
+
+  // #323: each invoice says what it paid for (item); null on old invoices
+  // with neither a plan nor a description.
+  const invoiceItem = (inv: Invoice) => inv.item || inv.description || 'Payment';
+
+  const goPricing = () => navigate('/plans');
+  const btn = 'inline-flex items-center justify-center gap-1.5 px-4 py-[10px] rounded-xl text-[13px] leading-[19.5px] font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
+  const primaryBtn = `${btn} bg-[#3c77f6] text-white hover:bg-[#2d6ae0]`;
+  const outlineBtn = `${btn} bg-white border border-[#d9deea] text-[#4d525e] hover:bg-[#f9fafb]`;
+  const section = 'bg-white border border-[#e1e4ea] rounded-2xl p-6';
+  const eyebrow = 'text-[12px] leading-[18px] font-medium tracking-[0.5px] uppercase text-[#5a6172]';
+  const h2 = 'text-[18px] leading-[27px] font-bold tracking-[-0.44px] text-[#1e232f]';
+  const body = 'text-[13px] leading-5 text-[#5a6172]';
+
+  // The price only when it's known (a legacy row may have no amount: name
+  // alone, never "— / month"), per the subscription's own billing cycle.
+  const memberPrice = planState === 'pro' ? prices.pro : nextBillingAmount;
+  const perCycle = planState === 'pro' || !subscription?.billingCycle || subscription.billingCycle === 'monthly'
+    ? 'month'
+    : subscription.billingCycle === 'quarterly' ? 'quarter' : 'year';
+  const planTitle = isMember
+    ? memberPrice && memberPrice !== '—' ? `${planName} · ${memberPrice} / ${perCycle}` : planName
+    : isPro90
+      ? `Pro 90-day · ${prices.pro90Day} once`
+      : 'Free · $0';
+  const planLine = isMember
+    ? isPastDue
+      ? "We couldn't process your last payment. Update your payment method to keep your access."
+      : subscription?.cancelAtPeriodEnd
+        ? `Ends ${nextBillingDate}${card ? ` · Card ending ${card.last4}` : ''}`
+        : subscription?.planSwitchPending
+          ? `Your plan switches to Pro on ${nextBillingDate}.`
+          : `Renews ${nextBillingDate}${card ? ` · Card ending ${card.last4}` : ''}`
+    : isPro90
+      ? `Ends ${formatDate(earliest(planGrants.map(g => g.expiresAt)))} · Charged once, never renews`
+      : `${PLAN_INTERVIEWS.FREE} partner-role interviews a month`;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col">
       {/* ── Modals ── */}
       <AnimatePresence>
         {showSwitchConfirm && (
@@ -1232,21 +1087,24 @@ export function BillingTab() {
             isActing={isActing}
             fromPlanName={planName}
             toPlanName={titleCase(selectedPlan)}
-            toPlanPrice={PLAN_OPTIONS.find(p => p.id === selectedPlan)?.price ?? '—'}
+            toPlanPrice={`${selectedPlan === 'pro' ? prices.pro : TIER_PRICE[selectedPlan]}/mo`}
             changeType={getChangeType(planState, selectedPlan)}
             nextBillingDate={nextBillingDate}
           />
         )}
       </AnimatePresence>
-      <AnimatePresence>{showCancelModal  && <CancelConfirmModal  onClose={() => setShowCancelModal(false)} onConfirm={handleCancelSubscription} isActing={isActing} accessEndsDate={nextBillingDate} />}</AnimatePresence>
-      <AnimatePresence>{showBuyCredits   && <BuyCreditsModal  onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
-      <AnimatePresence>{showRedeemCode   && <RedeemCodeModal  onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
+      <AnimatePresence>{showBuyCredits && <BuyCreditsModal onClose={() => setShowBuyCredits(false)} onPurchase={handleBuyCredits} />}</AnimatePresence>
+      <AnimatePresence>{showRedeemCode && <RedeemCodeModal onClose={() => setShowRedeemCode(false)} onRedeem={handleRedeem} />}</AnimatePresence>
       {toastMsg && <PaymentToast message={toastMsg} onDone={() => setToastMsg(null)} />}
+
+      <h1 className="text-[28px] leading-[35px] font-bold text-[#1e232f]" style={{ fontFamily: "'Playfair Display', serif" }}>
+        Billing
+      </h1>
 
       {/* Came back from Stripe without paying. Deliberately neutral — backing
           out of checkout is a normal choice, not a failure. */}
       {checkoutCancelled && !checkoutPending && (
-        <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-secondary px-4 py-3">
+        <div className="mt-6 flex items-start justify-between gap-3 rounded-xl border border-border bg-secondary px-4 py-3">
           <div className="flex items-start gap-2.5">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
             <div>
@@ -1273,7 +1131,7 @@ export function BillingTab() {
       {/* Returned from Stripe Checkout — the webhook hasn't landed yet. Never
           say "failed" here: the event is most likely still in the queue. */}
       {checkoutPending && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-border bg-secondary px-4 py-3">
+        <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-border bg-secondary px-4 py-3">
           <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin text-muted-foreground" />
           <div>
             <p className="text-sm font-medium text-foreground">
@@ -1288,596 +1146,228 @@ export function BillingTab() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════
-          MODULE 1 — Membership Benefits Banner
-          ════════════════════════════════════════════════════ */}
-      <MembershipBanner
-        plan={planState}
-        cancelAtPeriodEnd={bannerCancelAtPeriod}
-        accessEndsDate={nextBillingDate}
-        nextBillingDate={nextBillingDate}
-        nextBillingAmount={nextBillingAmount}
-        userName={user?.name?.split(' ')[0] || 'Alex'}
-        onUpgrade={() => {
-          // upgrade_clicked —— Settings 页「Upgrade to Member」CTA
-          safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
-            current_tier: planState,
-            target_tier: null,
-            source: 'settings',
-          });
-          navigate('/#pricing');
-        }}
-      />
-
-      {/* ════════════════════════════════════════════════════
-          MODULE 2 — Subscription Plan & History
-          (only visible for paid members)
-          ════════════════════════════════════════════════════ */}
-      {isMember && (
-        <div>
-          <SectionLabel>Subscription</SectionLabel>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-
-            {/* ── Current Plan Row ── */}
-            <div className="px-5 py-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-foreground">
-                      {planName} plan · {nextBillingAmount}/mo · {cycleName}
-                    </span>
-                    <StatusBadge status={isCanceled ? 'Canceled' : isPastDue ? 'Past Due' : 'Active'} />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {isCanceled
-                      ? 'Your subscription has been canceled.'
-                      : isPastDue
-                        ? "We couldn't process your last payment. Update your payment method to keep your access."
-                        : cancelState === 'post_window'
-                          ? `Cancellation scheduled · Access continues until ${nextBillingDate}`
-                          : `Next billing: ${nextBillingDate} · ${nextBillingAmount}`}
-                  </p>
-                  {/* Main entry point for C6: a failed renewal is the primary
-                      reason a user would ever need to touch their card. */}
-                  {isPastDue && (
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <button
-                        onClick={handleUpdatePaymentMethod}
-                        className="text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors"
-                      >
-                        Update payment method
-                      </button>
-                      <button
-                        onClick={handleRetryPayment}
-                        disabled={isRetryingPayment}
-                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors disabled:opacity-60"
-                      >
-                        {isRetryingPayment && <Loader2 className="w-3 h-3 animate-spin" />}
-                        Retry payment
-                      </button>
-                    </div>
-                  )}
-                  {/* A retired plan can only be canceled — every tier and
-                      billing-cycle change is rejected by the backend. */}
-                  {isLegacySubscription && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      This is a legacy plan. It can't be changed — cancel it to move to a current plan.
-                    </p>
-                  )}
-                  {/* A scheduled downgrade (tier and/or cycle) only takes effect
-                      at the end of the current period, and can be undone until
-                      then.
-                      Suppressed once a cancellation is scheduled: the downgrade
-                      lands at the next renewal, and after a cancellation there
-                      is no next renewal — so it can never apply. Showing both
-                      "access ends on X" and "changing to Y on X" is a
-                      contradiction, and the backend rejects
-                      cancel-pending-downgrade while a cancel is pending anyway
-                      (resume first). */}
-                  {pendingChangeLabel && !isCanceled && !pendingCancelSupersedes && (
-                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                      <p className="text-xs text-muted-foreground">
-                        Changing to {pendingChangeLabel} on {nextBillingDate}
-                      </p>
-                      <button
-                        onClick={handleCancelPendingDowngrade}
-                        disabled={isActing}
-                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors disabled:opacity-60"
-                      >
-                        {isActing && <Loader2 className="w-3 h-3 animate-spin" />}
-                        Cancel change
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {!isCanceled && (
-                  <button
-                    onClick={() => setSwitchPlanOpen(v => !v)}
-                    disabled={!canSwitchPlan}
-                    title={switchBlockedReason ?? undefined}
-                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors shrink-0 ml-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                  >
-                    Switch plan
-                  </button>
-                )}
-              </div>
-
-              {/* Switch Plan Panel */}
-              <AnimatePresence>
-                {switchPlanOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 bg-secondary rounded-lg overflow-hidden border border-border/60">
-                      {planOptions.map(plan => (
-                        <button
-                          key={plan.id}
-                          type="button"
-                          onClick={() => setSelectedPlan(plan.id)}
-                          disabled={plan.disabled}
-                          aria-pressed={selectedPlan === plan.id}
-                          className={`w-full text-left flex items-center justify-between px-4 py-3 border-b border-border/50 last:border-0 transition-colors ${
-                            plan.disabled
-                              ? 'cursor-not-allowed opacity-60'
-                              : selectedPlan === plan.id
-                                ? 'cursor-pointer bg-primary/5'
-                                : 'cursor-pointer hover:bg-muted'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-foreground">{plan.name}</span>
-                              {plan.badge && (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${plan.badge.color === 'blue' ? 'bg-primary/10 text-primary' : 'bg-green-100 text-green-700'}`}>
-                                  {plan.badge.text}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {plan.price} · {plan.desc}
-                              {plan.disabled && ' · already scheduled'}
-                            </p>
-                          </div>
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${selectedPlan === plan.id ? 'border-primary bg-primary' : 'border-border bg-card'}`}>
-                            {selectedPlan === plan.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                          </div>
-                        </button>
-                      ))}
-                      <div className="bg-card border-t border-border">
-                        {selectedPlan !== planState && (
-                          <p className="px-4 pt-3 text-[11px] text-muted-foreground leading-relaxed">
-                            {isSelectionScheduled
-                              ? `${titleCase(selectedPlan)} is already scheduled for ${nextBillingDate} — use "Cancel change" above to undo it.`
-                              : getChangeType(planState, selectedPlan) === 'upgrade'
-                              ? 'Upgrades are charged to your card today, prorated for the rest of the period, and apply immediately.'
-                              : `Downgrades take effect ${nextBillingDate ? `on ${nextBillingDate}` : 'at the end of your billing period'} — you keep your current access until then.`}
-                          </p>
-                        )}
-                        <div className="flex gap-2 px-4 py-3">
-                          <button
-                            onClick={handleRequestSwitch}
-                            disabled={isActing || selectedPlan === planState || isSelectionScheduled}
-                            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                            Confirm change
-                          </button>
-                          <button
-                            onClick={() => setSwitchPlanOpen(false)}
-                            className="px-4 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* ── Cancellation Area ── */}
-            <div className="px-5 py-4 border-t border-border">
-
-              {/* State: active — tiny text link */}
-              {cancelState === 'active' && (
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">Need to make a change to your plan?</p>
-                  <button
-                    onClick={() => { trackCancelClicked(); setShowCancelModal(true); }}
-                    className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors hover:underline underline-offset-2 ml-4"
-                  >
-                    Cancel subscription
-                  </button>
-                </div>
-              )}
-
-              {/* State: refund_window — red button + inline form */}
-              {cancelState === 'refund_window' && (
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-destructive">Cancel subscription</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        You're eligible for a full refund.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setCancelOpen(v => !v)}
-                      className="px-3 py-1.5 rounded-lg border border-destructive/50 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors shrink-0 ml-4"
-                    >
-                      Cancel and refund
-                    </button>
-                  </div>
-                  <AnimatePresence>
-                    {cancelOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        {cancelSubmitted ? (
-                          <div className="mt-3 bg-secondary border border-border rounded-lg p-4">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-foreground shrink-0" />
-                              <p className="text-xs font-medium text-foreground">
-                                {cancelOutcome === 'processing'
-                                  ? 'Cancellation submitted'
-                                  : 'Subscription canceled'}
-                              </p>
-                            </div>
-                            {/* Which path ran is only knowable after polling. */}
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              {cancelOutcome === 'processing'
-                                ? "We're still confirming this with our payment provider. Refresh in a moment to see the final status."
-                                : cancelOutcome === 'refunded'
-                                  ? `A full refund of ${nextBillingAmount} is on its way to your original payment method. Allow 5–10 business days for it to appear on your statement.`
-                                  : `This subscription wasn't eligible for a refund, so your access continues until ${nextBillingDate} and won't renew.`}
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="mt-3 bg-red-50 border border-red-100 rounded-lg p-4">
-                            <p className="text-xs font-medium text-red-600 mb-1">Cancel subscription</p>
-                            <p className="text-xs text-red-500/80 mb-3">
-                              This can't be undone.
-                            </p>
-                            <div className="flex items-start gap-2.5 bg-white/70 rounded-lg px-3 py-2.5 mb-3 border border-red-100">
-                              <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                              <p className="text-xs text-muted-foreground leading-relaxed">
-                                {/* refundOnCancel is the backend's live verdict (checked when this panel opened),
-                                    so the outcome can be stated as fact rather than hedged. */}
-                                You'll get <span className="text-foreground font-medium">{nextBillingAmount}</span>{' '}
-                                back to your original payment method (5–10 business days) and access ends right
-                                away.
-                              </p>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={handleSubmitCancellation}
-                                disabled={isActing}
-                                className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-destructive text-white text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
-                              >
-                                {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                                Confirm cancellation
-                              </button>
-                              <button
-                                onClick={() => setCancelOpen(false)}
-                                className="px-4 py-1.5 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50/80 transition-colors"
-                              >
-                                Keep subscription
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
-              {/* State: post_window — cancellation is scheduled; resume undoes it.
-                  This is the only state where /subscriptions/resume applies: once
-                  the status is actually `canceled` the plan reads as Free and this
-                  whole module is hidden. */}
-              {cancelState === 'post_window' && (
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-foreground">Your access ends {nextBillingDate}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      You can reactivate any time before then.
-                      {/* Be explicit that resuming restores the queued downgrade —
-                          it isn't discarded, just unreachable while canceled. */}
-                      {pendingChangeLabel && ` Reactivating restores the scheduled change to ${pendingChangeLabel}.`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleReactivate}
-                    disabled={isActing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/40 text-xs font-medium text-primary hover:bg-primary/5 transition-colors shrink-0 ml-4 disabled:opacity-60"
-                  >
-                    {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                    Reactivate
-                  </button>
-                </div>
-              )}
-
-              {/* State: canceled — access end date + reactivate */}
-              {cancelState === 'canceled' && (
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-foreground">Your access ends {nextBillingDate}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      You can reactivate anytime before then.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleReactivate}
-                    disabled={isActing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/40 text-xs font-medium text-primary hover:bg-primary/5 transition-colors shrink-0 ml-4 disabled:opacity-60"
-                  >
-                    {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                    Reactivate
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════════
-          MODULE 3 — Credit Balance & Usage
-          ════════════════════════════════════════════════════ */}
-      <div>
-        <SectionLabel>Credit balance</SectionLabel>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-          {/* Left — dark time balance card */}
-          <div className="rounded-xl p-5 flex flex-col gap-4" style={{ background: '#172554' }}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-sans)' }}>Credit balance</span>
-            </div>
-            <div>
-              <p className="leading-none font-semibold text-white" style={{ fontSize: 38, fontFamily: 'var(--font-sans)' }}>{creditBalance}</p>
-              <p className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, fontFamily: 'var(--font-sans)' }}>Use credits for AI mock interviews, personalized practice, and coaching support.</p>
-            </div>
-
-            {/* Breakdown — how the balance is calculated: recurring + permanent = total */}
-            <div className="flex flex-col gap-1.5 rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)', fontFamily: 'var(--font-sans)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Recurring credits</span>
-                <span className="text-[11px] font-medium text-white">{credits.recurringCreditBalance}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Permanent credits</span>
-                <span className="text-[11px] font-medium text-white">{credits.permanentCreditBalance}</span>
-              </div>
-              <div className="h-px my-0.5" style={{ background: 'rgba(255,255,255,0.12)' }} />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Total balance</span>
-                <span className="text-[11px] font-semibold text-white">{creditBalance}</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 mt-auto">
-              <button
-                onClick={() => {
-                  // buy_credits_clicked —— 打开购买 credits 弹窗
-                  safeCapture(posthog, EVENTS.BUY_CREDITS_CLICKED, {
-                    current_tier: planState,
-                    source: 'settings',
-                  });
-                  setShowBuyCredits(true);
-                }}
-                className="w-full py-2 rounded-lg bg-white text-xs font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
-                style={{ color: '#172554', fontFamily: 'var(--font-sans)' }}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Buy extra credits
+      {/* ── Current plan ── */}
+      <section className={`${section} mt-6`}>
+        <p className={eyebrow}>Current plan</p>
+        <h2 className="pt-2 text-[22px] leading-[33px] font-bold tracking-[-0.26px] text-[#1e232f]">{planTitle}</h2>
+        <p className={`pt-2 ${isPastDue ? 'text-[13px] leading-5 text-[#b91c1c]' : body}`}>{planLine}</p>
+        {isLegacySubscription && (
+          <p className={`pt-1 ${body}`}>This is a legacy plan. It can't be changed — cancel it to move to a current plan.</p>
+        )}
+        {/* A scheduled downgrade only lands at the period end and can be undone
+            until then; a scheduled cancellation supersedes it. */}
+        {pendingChangeLabel && !isCanceled && !pendingCancelSupersedes && (
+          <p className={`pt-1 ${body}`}>
+            Changing to {pendingChangeLabel} on {nextBillingDate} ·{' '}
+            <button onClick={handleCancelPendingDowngrade} disabled={isActing} className="font-medium text-[#3c77f6] hover:underline disabled:opacity-60">
+              Cancel change
+            </button>
+          </p>
+        )}
+        {/* `status` is the backend's verdict against the NEXT renewal date. */}
+        {isMember && card?.status === 'EXPIRES_BEFORE_RENEWAL' && (
+          <p className="pt-1 text-[13px] leading-5 text-[#b45309]">
+            This card expires before your next renewal{nextBillingDate ? ` on ${nextBillingDate}` : ''} — update it to avoid a failed payment.
+          </p>
+        )}
+        {isMember && card?.status === 'EXPIRED' && (
+          <p className="pt-1 text-[13px] leading-5 text-[#b91c1c]">
+            This card has expired. Update your payment method to keep your subscription active.
+          </p>
+        )}
+        {isMember && pmError && (
+          <p className={`pt-1 ${body}`}>
+            Couldn't load your payment method.{' '}
+            <button onClick={() => { setPmLoading(true); fetchPaymentMethod(); }} className="font-medium text-[#3c77f6] hover:underline">
+              Retry
+            </button>
+          </p>
+        )}
+        <div className="flex flex-wrap gap-3 pt-5">
+          {isMember && isPastDue ? (
+            <>
+              <button onClick={handleUpdatePaymentMethod} className={primaryBtn}>Update payment method</button>
+              <button onClick={handleRetryPayment} disabled={isRetryingPayment} className={outlineBtn}>
+                {isRetryingPayment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Retry payment
               </button>
-              <button
-                onClick={() => setShowRedeemCode(true)}
-                className="w-full py-2 rounded-lg text-white text-xs font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
-                style={{ background: '#2563eb', fontFamily: 'var(--font-sans)' }}
-              >
-                <Gift className="w-3.5 h-3.5" />
-                Redeem code
+            </>
+          ) : isMember ? (
+            <>
+              {isLegacyTier ? (
+                <button
+                  onClick={() => setShowSwitchConfirm(true)}
+                  disabled={switchBlockedReason !== null || isActing}
+                  title={switchBlockedReason ?? undefined}
+                  className={primaryBtn}
+                >
+                  Switch to Pro
+                </button>
+              ) : planState === 'pro' && !subscription?.cancelAtPeriodEnd ? (
+                <button onClick={() => void handleBuyQuota('pro-90-day')} disabled={buyingQuota !== null} className={primaryBtn}>
+                  {buyingQuota === 'pro-90-day' ? 'Opening checkout…' : 'Switch to 90-day'}
+                </button>
+              ) : null}
+              <button onClick={handleUpdatePaymentMethod} disabled={pmLoading} className={outlineBtn}>
+                {card ? 'Update card' : 'Add payment method'}
               </button>
-            </div>
-          </div>
-
-          {/* Right — usage card (real data from GET /payments/credit-usage) */}
-          <div className="rounded-xl bg-card border border-border p-5">
-            <p className="text-xs font-medium text-foreground mb-4" style={{ fontFamily: 'var(--font-sans)' }}>This month's usage</p>
-            {(() => {
-              const used  = usedThisMonth;
-              const total = used + creditBalance;
-              const pct   = total > 0 ? Math.min(100, Math.max(0, Math.round((used / total) * 100))) : 0;
-              return (
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-1.5">
-                      <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>AI interviews</span>
-                      <span className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>{used} / {total}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-border overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#3b82f6' }} />
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground" style={{ fontFamily: 'var(--font-sans)' }}>You don't need to pay extra credits.</p>
-                </div>
-              );
-            })()}
-            <div className="text-[11px] text-muted-foreground mt-4 flex items-start gap-1 leading-relaxed" style={{ fontFamily: 'var(--font-sans)' }}>
-              <Info className="w-3 h-3 shrink-0 mt-0.5" />
-              {(() => {
-                const reset = subscription?.currentPeriodEnd ?? credits.resetDate;
-                if (reset) {
-                  return (
-                    <div className="flex flex-col gap-0.5">
-                      <span>{credits.recurringCreditBalance} recurring credit{credits.recurringCreditBalance === 1 ? '' : 's'} reset {formatDate(reset)}.</span>
-                      {credits.permanentCreditBalance > 0 && (
-                        <span>{credits.permanentCreditBalance} permanent credit{credits.permanentCreditBalance === 1 ? '' : 's'} never expire.</span>
-                      )}
-                    </div>
-                  );
-                }
-                return <span>No monthly reset — all {creditBalance} credit{creditBalance === 1 ? '' : 's'} are permanent.</span>;
-              })()}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ════════════════════════════════════════════════════
-          MODULE 4 — Payment Method (backend change C6)
-          Hidden entirely for free / never-subscribed / fully-ended users —
-          mirrors the Subscription module's `isMember` gate, and there is
-          nothing to show (`status` would be NONE for them anyway).
-          ════════════════════════════════════════════════════ */}
-      {isMember && (
-        <div>
-          <SectionLabel>Payment method</SectionLabel>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            {pmLoading ? (
-              <div className="flex items-center gap-2.5 px-5 py-4 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading payment method…
-              </div>
-            ) : pmError ? (
-              // This section calls Stripe directly and independently of the
-              // rest of the page — its own failure must not block anything
-              // else, and shouldn't look like a billing problem.
-              <div className="flex items-center justify-between px-5 py-4">
-                <p className="text-sm text-muted-foreground">Couldn't load your payment method.</p>
-                <button
-                  onClick={() => { setPmLoading(true); fetchPaymentMethod(); }}
-                  className="text-xs font-medium text-primary hover:underline underline-offset-2"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : !paymentMethod || paymentMethod.status === 'NONE' ? (
-              // NONE means no saved card (e.g. legacy row from before we
-              // collected one) — for a member this is unusual, so still offer
-              // a way to add one rather than showing nothing at all.
-              <div className="flex items-center justify-between px-5 py-4">
-                <p className="text-sm text-muted-foreground">No payment method on file.</p>
-                <button
-                  onClick={handleUpdatePaymentMethod}
-                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-secondary transition-colors"
-                >
-                  Add payment method
-                </button>
-              </div>
-            ) : (
-              <div className="px-5 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-7 rounded-lg flex items-center justify-center shrink-0 bg-secondary border border-border">
-                      <CreditCard className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {paymentMethod.brand ? titleCase(paymentMethod.brand) : 'Card'} ending in {paymentMethod.last4}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Expires {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleUpdatePaymentMethod}
-                    className="text-xs font-medium text-primary hover:underline underline-offset-2 transition-colors shrink-0 ml-4"
-                  >
-                    Update card
-                  </button>
-                </div>
-
-                {/* `status` is the backend's verdict against the NEXT renewal
-                    date, not "today" — a card expiring after the next renewal
-                    is VALID and shows nothing here. */}
-                {paymentMethod.status === 'EXPIRES_BEFORE_RENEWAL' && (
-                  <div className="flex items-start gap-2 mt-3 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-100">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-800 leading-relaxed">
-                      This card expires before your next renewal
-                      {nextBillingDate ? ` on ${nextBillingDate}` : ''} — update it to avoid a failed payment.
-                    </p>
-                  </div>
-                )}
-                {paymentMethod.status === 'EXPIRED' && (
-                  <div className="flex items-start gap-2 mt-3 px-3 py-2.5 rounded-lg bg-red-50 border border-red-100">
-                    <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
-                    <p className="text-xs text-red-700 leading-relaxed">
-                      This card has expired. Update your payment method to keep your subscription active.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════════
-          MODULE 5 — Invoices
-          ════════════════════════════════════════════════════ */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <SectionLabel>Invoices</SectionLabel>
-          {user?.email && <p className="text-xs text-muted-foreground">Sent to {user.email}</p>}
-        </div>
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          {invoices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mb-3">
-                <Download className="w-4 h-4 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium text-foreground mb-1">No invoices yet</p>
-              <p className="text-xs text-muted-foreground">Your invoices will appear here after your first billing cycle.</p>
-            </div>
+              <button onClick={goPricing} className={outlineBtn}>View pricing</button>
+            </>
+          ) : isPro90 ? (
+            <button onClick={goPricing} className={outlineBtn}>View pricing</button>
           ) : (
             <>
-              {/* Table header */}
-              <div className="grid grid-cols-4 bg-secondary px-5 py-2.5 border-b border-border">
-                {['Date', 'Amount', 'Status', 'Invoice'].map(h => (
-                  <span key={h} className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{h}</span>
-                ))}
-              </div>
-              {/* Rows */}
-              <div className="divide-y divide-border">
-                {invoices.map((inv, i) => (
-                  <div key={inv.stripeInvoiceId ?? i} className="grid grid-cols-4 items-center px-5 py-3.5 hover:bg-secondary/40 transition-colors">
-                    <span className="text-xs text-muted-foreground">{formatDate(inv.createdAt)}</span>
-                    <button
-                      onClick={() => inv.invoiceUrl && window.open(inv.invoiceUrl, '_blank')}
-                      className="text-xs font-medium text-primary hover:underline underline-offset-2 text-left"
-                    >
-                      {formatAmountCents(inv.amount, inv.currency)}
-                    </button>
-                    <span>
-                      <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">
-                        Paid
-                      </span>
-                    </span>
-                    <button
-                      onClick={() => inv.invoiceUrl && window.open(inv.invoiceUrl, '_blank')}
-                      disabled={!inv.invoiceUrl}
-                      className="flex items-center gap-1 text-xs font-medium text-primary hover:opacity-75 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Download className="w-3 h-3" />
-                      Download
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <button
+                onClick={() => {
+                  safeCapture(posthog, EVENTS.UPGRADE_CLICKED, { current_tier: planState, target_tier: 'pro', source: 'settings' });
+                  goPricing();
+                }}
+                className={primaryBtn}
+              >
+                Get Pro
+              </button>
+              <button onClick={() => void handleBuyQuota('pro-90-day')} disabled={buyingQuota !== null} className={outlineBtn}>
+                {buyingQuota === 'pro-90-day' ? 'Opening checkout…' : 'Get Pro 90-Day'}
+              </button>
+              <button onClick={goPricing} className={outlineBtn}>View pricing</button>
             </>
           )}
         </div>
-      </div>
+      </section>
 
+      {/* ── Usage ── */}
+      <section className="pt-6">
+        <h2 className={h2}>Usage</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
+          <div className="bg-white border border-[#e1e4ea] rounded-2xl p-5">
+            <p className={eyebrow}>Interviews</p>
+            <p className="pt-3 text-[20px] leading-[30px] font-bold tracking-[-0.45px] text-[#1e232f]">
+              {!quota ? '—' : planGrants.length ? `${Math.max(0, included - planLeft)} of ${included} used` : 'All used'}
+            </p>
+            <p className="pt-1 text-[12px] leading-[18px] text-[#8f99b5]">
+              {quota
+                ? `${planLeft} interview${planLeft === 1 ? '' : 's'} left${planResets ? ` · ${quota.plan === 'PRO_90_DAY' ? 'Ends' : 'Resets'} ${formatShortDate(planResets)}` : ''}`
+                : 'Partner-role interviews you pay for'}
+            </p>
+          </div>
+          <div className="bg-white border border-[#e1e4ea] rounded-2xl p-5">
+            <p className={eyebrow}>Practice</p>
+            <p className="pt-3 text-[20px] leading-[30px] font-bold tracking-[-0.45px] text-[#1e232f]">
+              {/* Balance only, no "of N" (backend 11-12): 1 credit = 1 minute. */}
+              {credits.recurringCreditBalance} min left
+            </p>
+            <p className="pt-1 text-[12px] leading-[18px] text-[#8f99b5]">
+              {practiceReset ? `Resets ${formatShortDate(practiceReset)}` : 'No monthly reset'}
+              {credits.permanentCreditBalance > 0 && ` · +${credits.permanentCreditBalance} extra min`}
+              {' · '}
+              <button onClick={() => setShowBuyCredits(true)} className="text-[12px] leading-[18px] font-medium text-[#3c77f6] hover:underline">Buy minutes</button>
+              {' · '}
+              <button onClick={() => setShowRedeemCode(true)} className="text-[12px] leading-[18px] font-medium text-[#3c77f6] hover:underline">Redeem code</button>
+            </p>
+          </div>
+          <div className="bg-white border border-[#e1e4ea] rounded-2xl p-5">
+            <p className={eyebrow}>Add-on interviews</p>
+            <p className="pt-3 text-[20px] leading-[30px] font-bold tracking-[-0.45px] text-[#1e232f]">{addOnLeft} left</p>
+            <p className="pt-1 text-[12px] leading-[18px] text-[#8f99b5]">
+              {addOnLeft > 0 ? `Expires ${formatShortDate(earliest(addOnGrants.map(g => g.expiresAt)))}` : 'No active add-on interviews'}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Add-on (Pro / Pro 90-Day only: 403 INSUFFICIENT_PLAN_TIER otherwise) ── */}
+      <section className={`${section} mt-5 flex flex-col sm:flex-row sm:items-center gap-5`}>
+        <div className="flex-1 min-w-0">
+          <h2 className={h2}>Add {ADD_ON_INTERVIEWS} interviews for {prices.addOn}</h2>
+          <p className={`pt-1 ${body}`}>Valid {ADD_ON_VALID_DAYS} days. Used after your plan's interviews.</p>
+        </div>
+        {quota?.plan === 'FREE' ? (
+          <button disabled className={`${btn} bg-[#eef0f4] text-[#8f99b5] shrink-0`}>Available with Pro</button>
+        ) : (
+          <button onClick={() => void handleBuyQuota('interview-add-on')} disabled={buyingQuota !== null} className={`${primaryBtn} shrink-0`}>
+            {buyingQuota === 'interview-add-on' ? 'Opening checkout…' : `Buy ${ADD_ON_INTERVIEWS} more`}
+          </button>
+        )}
+      </section>
+
+      {/* ── Cancel (subscriptions only). One step, as the design says; a
+          scheduled cancellation turns this into "Keep" (resume). ── */}
+      {isMember && !isCanceled && (
+        <section className={`${section} mt-5`}>
+          {cancelState === 'post_window' ? (
+            <>
+              <h2 className={h2}>{planName} ends {nextBillingDate}</h2>
+              <p className={`pt-2 max-w-[760px] ${body}`}>
+                You can keep it any time before then, and every full report you've received stays available.
+                {pendingChangeLabel && ` Keeping it restores the scheduled change to ${pendingChangeLabel}.`}
+              </p>
+              <div className="flex gap-3 pt-5">
+                <button onClick={handleReactivate} disabled={isActing} className={primaryBtn}>
+                  {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Keep {planName}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className={h2}>Cancel {planName}</h2>
+              <p className={`pt-2 max-w-[760px] ${body}`}>
+                {cancelState === 'refund_window'
+                  ? `Cancel here in one step. You're within the refund window, so you'll get ${nextBillingAmount} back and ${planName} ends right away. Every full report you've received stays available.`
+                  : `Cancel here in one step. You keep ${planName} until ${nextBillingDate}, and every full report you've received stays available.`}
+              </p>
+              <div className="flex gap-3 pt-5">
+                <button
+                  onClick={() => { trackCancelClicked(); void handleCancelSubscription(); }}
+                  disabled={isActing}
+                  className={primaryBtn}
+                >
+                  {isActing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {cancelState === 'refund_window' ? 'Cancel and refund' : 'Cancel subscription'}
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ── Payment history ── */}
+      <section className={`${section} mt-5`}>
+        <h2 className={h2}>Payment history</h2>
+        {invoices.length === 0 ? (
+          <p className={`pt-4 ${body}`}>No payments yet.</p>
+        ) : (
+          <div className="pt-4 overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left">
+              <thead>
+                <tr className="border-b border-[#e1e4ea]">
+                  {['Date', 'Item', 'Amount', 'Receipt'].map(h => (
+                    <th key={h} className="pb-3 text-[12px] leading-[18px] font-medium text-[#5a6172]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv, i) => (
+                  <tr key={inv.stripeInvoiceId ?? i} className="border-b border-[#edf0f2] last:border-0">
+                    <td className="py-4 text-[13px] leading-[19.5px] text-[#4d525e]">{formatDate(inv.createdAt)}</td>
+                    <td className="py-4 text-[13px] leading-[19.5px] text-[#4d525e]">{invoiceItem(inv)}</td>
+                    <td className="py-4 text-[13px] leading-[19.5px] text-[#4d525e]">{formatAmountCents(inv.amount, inv.currency)}</td>
+                    <td className="py-4">
+                      <button
+                        onClick={() => inv.invoiceUrl && window.open(inv.invoiceUrl, '_blank')}
+                        disabled={!inv.invoiceUrl}
+                        className="text-[13px] leading-[19.5px] font-medium text-[#3c77f6] hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

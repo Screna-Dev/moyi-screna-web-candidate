@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
-import { noteMocks, notePost, setPass, setPlan, setSignedIn } from './note-page-mocks';
+import { noteMocks, notePost, setPlan, setSignedIn } from './note-page-mocks';
 
 vi.mock('@/services/CommunityService', async (orig) => ({ ...(await orig<object>()), ...noteMocks.community }));
 vi.mock('@/services/api', async (orig) => ({ ...(await orig<object>()), hasStoredSession: () => noteMocks.session.signedIn }));
@@ -20,7 +20,6 @@ vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ 
 vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ children }: any) => <div data-testid="insights">{children}</div> }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => noteMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => noteMocks.plan() }));
-vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => noteMocks.passes() }));
 
 import { ExperienceDetailPage } from '@/pages/newDesign/experience-detail';
 import { safeCapture } from '@/utils/posthog';
@@ -45,7 +44,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   setSignedIn(true);
   setPlan('Free');
-  setPass(null);
   // By default post-1 is the company's 4th newest — outside the full pair.
   companyRows('new-1', 'new-2', 'new-3', 'post-1');
 });
@@ -57,7 +55,7 @@ describe('note page — Free/Basic preview', () => {
     expect(await screen.findByText("You're reading a preview")).toBeInTheDocument();
     expect(screen.getByText(TRIMMED_NOTE)).toBeInTheDocument();
     expect(screen.getByText('First line only')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Upgrade to Advanced to read the full note/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upgrade to Pro to read the full note/ })).toBeInTheDocument();
     expect(screen.queryByText('Upgrade to view this post')).toBeNull();
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
@@ -119,17 +117,6 @@ describe('note page — Free/Basic preview', () => {
     expect(await screen.findByText("You're reading a preview")).toBeInTheDocument();
   });
 
-  it('never marks a note as a preview for a Company Pass holder on that company', async () => {
-    setPass('Meta');
-    noteMocks.community.getPost.mockResolvedValue({
-      data: { data: notePost({ user: null, isAnonymous: true, notes: FULL_NOTE }) },
-    });
-    renderNote();
-    expect(await screen.findByText(FULL_NOTE)).toBeInTheDocument();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByText("You're reading a preview")).toBeNull();
-    expect(noteMocks.community.getPosts).not.toHaveBeenCalled();
-  });
 
   it('falls back to the payload when the rank lookup fails', async () => {
     noteMocks.community.getPosts.mockRejectedValue(new Error('down'));

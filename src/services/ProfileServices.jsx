@@ -258,8 +258,15 @@ export const uploadResumeAndWait = async (file, opts = {}) => {
  * Get personal info (name, email, avatar, country, timezone)
  * @returns {Promise} API response with personal info data
  */
+// Several components (auth restore, layout, navbar, pages) ask for this at the
+// same moment on page load; they share one request while it's in flight.
+// Nothing is cached once it settles.
+let personalInfoInflight = null;
 export const getPersonalInfo = () => {
-  return API.get(`${BASE_URL}/personal-info`);
+  personalInfoInflight ??= API.get(`${BASE_URL}/personal-info`).finally(() => {
+    personalInfoInflight = null;
+  });
+  return personalInfoInflight;
 };
 
 /**

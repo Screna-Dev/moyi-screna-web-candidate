@@ -38,6 +38,7 @@ function getTypeLabel(type: string): string {
     product: 'Product Sense',
     'system-design': 'System Design',
     resume: 'Resume Deep-Dive',
+    job: 'AI Job Interview', // /opportunities application interviews
   };
   return map[type] || 'Mock Interview';
 }
@@ -224,9 +225,11 @@ export function VideoInterview({
     let isCancelled = false;
     const capture = async () => {
       try {
+        // Browser noise suppression off: the server already runs Krisp, and
+        // processing the voice twice hurts transcription and barge-in detection.
         const constraints: MediaStreamConstraints = config.mode !== 'video'
-          ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }
-          : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+          ? { audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } }
+          : { audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true }, 
               video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (isCancelled) {

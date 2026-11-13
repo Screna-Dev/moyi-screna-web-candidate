@@ -6,15 +6,18 @@ import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
 
-// Plan types — mirrors the backend tier enum (BASIC | ADVANCED | FLAGSHIP)
-// plus Free for users without an active subscription.
-export type PlanType = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
+// Plan types — mirrors the backend tier enum (BASIC | ADVANCED | FLAGSHIP | PRO)
+// plus Free for users without an active subscription. PRO is the only tier on
+// sale since change C9; the others stay for existing subscribers.
+export type PlanType = 'Free' | 'Basic' | 'Advanced' | 'Pro' | 'Flagship';
 
-// Rank used to decide upgrade vs. downgrade.
+// Rank used to decide upgrade vs. downgrade, and the feature level: Pro gates
+// like Advanced (C9: "PRO: 2").
 export const PLAN_ORDER: Record<PlanType, number> = {
   Free: 0,
   Basic: 1,
   Advanced: 2,
+  Pro: 2,
   Flagship: 3,
 };
 
@@ -163,8 +166,11 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
     tier: string | null | undefined,
     status: string | null | undefined,
   ): PlanType => {
+    const t = String(tier ?? '').toLowerCase();
+    // Pro 90-day without a subscription: tier PRO, status null (C9).
+    if (t === 'pro' && !status) return 'Pro';
     if (!tier || !status || !['active', 'past_due'].includes(status)) return 'Free';
-    const t = String(tier).toLowerCase();
+    if (t === 'pro') return 'Pro';
     if (t === 'flagship') return 'Flagship';
     if (t === 'advanced') return 'Advanced';
     if (t === 'basic') return 'Basic';
@@ -218,12 +224,14 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
           if (tierSource.includes('flagship')) tier = 'flagship';
           else if (tierSource.includes('advanced')) tier = 'advanced';
           else if (tierSource.includes('basic')) tier = 'basic';
+          else if (/\bpro\b|\bpro_/.test(tierSource)) tier = 'pro';
           else tier = null;
 
           status = (data.status as string) ?? null;
-          // Any identifying field means a row exists — including legacy rows
-          // whose tier didn't match above and left `tier` null.
-          recordExists = Boolean(tierSource || data.status || data.id || data.currentPeriodEnd);
+          // A row exists iff status is set (C1): users without a subscription
+          // get tier FREE, or PRO during a Pro 90-day (C9), with status null.
+          // Legacy rows are the ones whose tier didn't match above.
+          recordExists = Boolean(data.status);
           cancelAtPeriodEnd = Boolean(data.cancelAtPeriodEnd);
           hasPendingDowngrade =
             Boolean(data.downgradePendingPlan) ||
@@ -424,10 +432,10 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   const effectiveIsLoading = isAuthLoading || isLoading;
   const currentPlan = planData.currentPlan;
   
-  // Premium means Advanced or Flagship. Basic is a paid plan but stays
-  // low-tier for feature gating — e.g. it only gets limited InterviewPrep
-  // Notes access, same as Free.
-  const isPremium = currentPlan === 'Advanced' || currentPlan === 'Flagship';
+  // Premium means Advanced, Pro (incl. Pro 90-day) or Flagship. Basic is a paid
+  // plan but stays low-tier for feature gating — e.g. it only gets limited
+  // InterviewPrep Notes access, same as Free.
+  const isPremium = PLAN_ORDER[currentPlan] >= PLAN_ORDER.Advanced;
   const isFree = currentPlan === 'Free';
 
   // Feature access - return false while loading to prevent flash of wrong content.
@@ -476,6 +484,10 @@ export const UserPlanProvider = ({ children }: UserPlanProviderProps) => {
   );
 };
 
+// The plan context, or null outside a UserPlanProvider (for components that
+// only want to refresh it when it's there).
+export const useUserPlanIfAny = (): UserPlanContextValue | null => useContext(UserPlanContext) ?? null;
+
 // Custom hook to use the plan context
 export const useUserPlan = (): UserPlanContextValue => {
   const context = useContext(UserPlanContext);
@@ -501,9 +513,8 @@ export const useUpgradePrompt = () => {
     return result.success;
   };
 
-  const upgradeToBasic = () => upgradeTo('Basic');
-  const upgradeToAdvanced = () => upgradeTo('Advanced');
-  const upgradeToFlagship = () => upgradeTo('Flagship');
+  // Pro is the only plan on sale since change C9 (Basic / Advanced / Flagship 400).
+  const upgradeToPro = () => upgradeTo('Pro');
 
   const downgradeToFree = async (): Promise<boolean> => {
     const result = await changePlan('Free');
@@ -512,9 +523,7 @@ export const useUpgradePrompt = () => {
   };
 
   const upgradeToNext = async (): Promise<boolean> => {
-    if (planData.currentPlan === 'Free') return upgradeToBasic();
-    if (planData.currentPlan === 'Basic') return upgradeToAdvanced();
-    if (planData.currentPlan === 'Advanced') return upgradeToFlagship();
+    if (PLAN_ORDER[planData.currentPlan] < PLAN_ORDER.Pro) return upgradeToPro();
     return false;
   };
 
@@ -527,9 +536,7 @@ export const useUpgradePrompt = () => {
 
   return {
     upgradeTo,
-    upgradeToBasic,
-    upgradeToAdvanced,
-    upgradeToFlagship,
+    upgradeToPro,
     downgradeToFree,
     upgradeToNext,
     isUpgrade,

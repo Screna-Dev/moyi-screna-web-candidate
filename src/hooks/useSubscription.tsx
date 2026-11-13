@@ -3,7 +3,10 @@ import { PaymentService } from '@/services';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, isStaffRole } from '@/contexts/AuthContext';
 
-export type Tier = 'basic' | 'advanced' | 'flagship';
+// 'pro' is the only tier on sale since change C9; the others stay for existing
+// subscribers and history. A Pro 90-day holder without a subscription reads
+// tier PRO with status null (no record here; see useInterviewQuota).
+export type Tier = 'basic' | 'advanced' | 'flagship' | 'pro';
 export type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 export type SubscriptionStatus =
   | 'incomplete'   // created in Stripe, first payment not succeeded
@@ -41,6 +44,9 @@ export interface SubscriptionData {
   downgradePendingCycle?: BillingCycle | null;
   nextBillingAmount?: number | null;
   currency?: string;
+  // C9: set (e.g. "PRO_MONTHLY") when operations moved the plan to Pro and it
+  // switches at the next renewal. Tier changes answer 400 meanwhile.
+  planSwitchPending: string | null;
 }
 
 // Backend entitlement rule (EntitlementService): paid features stay on while
@@ -161,6 +167,7 @@ interface RawSubscription {
   downgradePendingTier?: string | null;
   downgradePendingCycle?: string | null;
   downgradePendingBillingCycle?: string | null;
+  planSwitchPending?: string | null;
   nextBillingAmount?: number | null;
   currency?: string;
   firstSubAt?: string | null;
@@ -168,7 +175,7 @@ interface RawSubscription {
   refundOnCancel?: boolean;
 }
 
-const TIER_VALUES: ReadonlySet<string> = new Set(['basic', 'advanced', 'flagship']);
+const TIER_VALUES: ReadonlySet<string> = new Set(['basic', 'advanced', 'flagship', 'pro']);
 const CYCLE_VALUES: ReadonlySet<string> = new Set(['monthly', 'quarterly', 'annual']);
 // Retired tiers that only exist on pre-migration rows. The backend rejects every
 // tier/billing-cycle change on these, so the UI offers cancel only.
@@ -251,6 +258,7 @@ const normalizeSubscription = (raw: RawSubscription | null): SubscriptionData | 
     downgradePendingCycle: pendingCycleExplicit ?? pending.cycle,
     nextBillingAmount: raw.nextBillingAmount ?? null,
     currency: raw.currency ?? 'usd',
+    planSwitchPending: raw.planSwitchPending ?? null,
   };
 };
 

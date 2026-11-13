@@ -64,6 +64,8 @@ Allow: /experience
 
 # Marketing, support and legal pages.
 Allow: /faq
+# Employer landing page. $-anchored so it cannot open the signed-in /employer app.
+Allow: /employers$
 Allow: /help
 Allow: /contact
 Allow: /about

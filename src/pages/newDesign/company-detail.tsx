@@ -51,7 +51,6 @@ import { CompanyMockLauncher } from '@/components/newDesign/interview-insights/q
 import { LockedNoteTail } from '@/components/newDesign/interview-insights/locked-note-tail';
 import { mostCommonRole } from '@/utils/quickMockDefaults';
 import { useSeo, SITE_URL } from '@/hooks/useSeo';
-import { useCompanyPasses } from '@/hooks/useCompanyPass';
 import {
   companyFaq,
   companyFaqJsonLd,
@@ -339,7 +338,7 @@ function UpgradeModal({
             {count > 0 ? `Unlock all ${count.toLocaleString()} experiences` : 'Unlock all experiences'}
           </h3>
           <p className="mt-2 text-sm text-[hsl(222,12%,45%)]">
-            Upgrade to Advanced for full access to every post.
+            Upgrade to Pro for full access to every post.
           </p>
         </div>
 
@@ -357,7 +356,7 @@ function UpgradeModal({
           onClick={onUpgrade}
           className="mt-7 w-full rounded-xl bg-[hsl(221,91%,60%)] py-3 text-sm font-semibold text-white transition-colors hover:bg-[hsl(221,91%,50%)]"
         >
-          Upgrade to Advanced
+          Upgrade to Pro
         </button>
         <button
           type="button"
@@ -419,9 +418,8 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // the text itself, and it is decided server-side rather than here:
   //
   //   signed out   every note cut to its first sentence by the public endpoint.
-  //   Free/Basic   the 2 newest notes per company in full (all of them for a
-  //                company they hold a Company Pass for); every other note cut
-  //                exactly like a guest's, with `user: null`.
+  //   Free/Basic   the 2 newest notes per company in full; every other note
+  //                cut exactly like a guest's, with `user: null`.
   //   Advanced+    nothing cut.
   //
   // Sorting, keyword search and the round/level/time filters remain an Advanced
@@ -1336,12 +1334,9 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   // company's 2 newest — the first 2 rows of page 0, sort forced to NEWEST —
   // are full and every later row is trimmed. `user` only ever confirms "full"
   // (a trimmed note always has `user: null`, but so does an anonymous full
-  // one), so a card with an author is never marked. Never for Advanced+, for a
-  // Company Pass holder on this company, or for cards from the public payload
-  // (seed, archive windows), which are trimmed for everyone and say nothing
-  // about the reader's plan.
-  const { find: findCompanyPass } = useCompanyPasses();
-  const hasCompanyPass = !!findCompanyPass(company.name);
+  // one), so a card with an author is never marked. Never for Advanced+, or
+  // for cards from the public payload (seed, archive windows), which are
+  // trimmed for everyone and say nothing about the reader's plan.
   // Under a role filter the feed's first two rows are the ROLE's newest, not
   // the company's, so rank says nothing; the company's 2 newest are looked up
   // instead (page 0 of the unfiltered public search, same NEWEST order). Until
@@ -1362,7 +1357,6 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
   }, [isLowTier, queryRole, apiName]);
   const isPlanPreview = (post: Post, rank: number) =>
     isLowTier &&
-    !hasCompanyPass &&
     (queryRole ? !!companyNewestIds && !companyNewestIds.has(post.id) : rank >= 2) &&
     post.user === null &&
     !publicIds.current.has(post.id);
@@ -1587,7 +1581,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                         key={label}
                         type="button"
                         onClick={() => setUpgradeOpen(true)}
-                        title="Upgrade to Advanced to filter"
+                        title="Upgrade to Pro to filter"
                         className="flex h-[32px] items-center gap-[6px] whitespace-nowrap rounded-full border border-[hsl(220,16%,90%)] bg-[hsl(220,20%,98%)] px-3 text-[12px] font-medium text-[hsl(222,12%,45%)] transition-colors hover:border-[hsl(221,91%,60%)]/40 hover:text-[hsl(222,22%,15%)]"
                       >
                         <Lock className="size-3 text-[hsl(222,12%,55%)]" />
@@ -1598,7 +1592,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                   <button
                     type="button"
                     onClick={() => setUpgradeOpen(true)}
-                    title="Upgrade to Advanced to sort"
+                    title="Upgrade to Pro to sort"
                     className="flex items-center gap-1.5 text-sm text-[hsl(222,12%,50%)] transition-colors hover:text-[hsl(222,22%,15%)]"
                   >
                     <Lock className="w-3.5 h-3.5 text-[hsl(222,12%,55%)]" />
@@ -1660,17 +1654,17 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                       <p className="text-sm font-semibold text-[hsl(222,22%,15%)]">
                         {signedOut
                           ? 'The newest notes, shortened answers'
-                          : 'Read every note in full with Advanced'}
+                          : 'Read every note in full with Pro'}
                       </p>
                       <p className="mt-0.5 text-xs text-[hsl(222,12%,45%)]">
                         {signedOut
                           ? `See the newest notes for ${company.name}, each answer trimmed to its first line — create a free account to browse ${noteTotal ? `all ${noteTotal.toLocaleString()}` : 'them all'} and read them in full.`
-                          : `Your plan includes the 2 newest notes for ${company.name} in full; the rest show the first line of each answer. Upgrade to Advanced to read ${noteTotal ? `all ${noteTotal.toLocaleString()} notes` : 'every note'} in full, and to search, sort and filter them.`}
+                          : `Your plan includes the 2 newest notes for ${company.name} in full; the rest show the first line of each answer. Upgrade to Pro to read ${noteTotal ? `all ${noteTotal.toLocaleString()} notes` : 'every note'} in full, and to search, sort and filter them.`}
                       </p>
                     </div>
                   </div>
                   <Button
-                    onClick={() => navigate(signedOut ? buildAuthPath(companyPath) : '/#pricing')}
+                    onClick={() => navigate(signedOut ? buildAuthPath(companyPath) : '/plans')}
                     className="h-9 shrink-0 rounded-lg bg-[hsl(221,91%,60%)] px-4 text-xs text-white hover:bg-[hsl(221,91%,50%)]"
                   >
                     {signedOut ? 'Sign up free' : 'Upgrade'}
@@ -1807,7 +1801,7 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
                                 role={post.role}
                                 round={post.round}
                                 onUnlock={() => (signedOut ? navigate(buildAuthPath(companyPath)) : setUpgradeOpen(true))}
-                                label={signedOut ? 'Create a free account to read the full write-up' : 'Upgrade to Advanced to read the full write-up'}
+                                label={signedOut ? 'Create a free account to read the full write-up' : 'Upgrade to Pro to read the full write-up'}
                               />
                             </div>
                           )}
@@ -2077,14 +2071,14 @@ export function CompanyDetailPage({ isPublic = false }: { isPublic?: boolean } =
         count={notesCount}
         onClose={() => setUpgradeOpen(false)}
         onUpgrade={() => {
-          // upgrade_clicked —— paywall 弹窗内的升级 CTA（文案为 "Upgrade to Advanced"）
+          // upgrade_clicked —— paywall 弹窗内的升级 CTA（文案为 "Upgrade to Pro"）
           safeCapture(posthog, EVENTS.UPGRADE_CLICKED, {
             current_tier: planData.currentPlan.toLowerCase(),
             target_tier: 'advanced',
             source: 'paywall',
           });
           setUpgradeOpen(false);
-          navigate('/#pricing');
+          navigate('/plans');
         }}
       />
     </Layout>

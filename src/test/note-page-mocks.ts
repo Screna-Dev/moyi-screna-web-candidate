@@ -6,7 +6,7 @@ import { createUserPlanMock, mockPlanData } from '@/test/utils';
 
 type Plan = 'Free' | 'Basic' | 'Advanced' | 'Flagship';
 
-const state = { signedIn: true, plan: 'Free' as Plan, passCompany: null as string | null };
+const state = { signedIn: true, plan: 'Free' as Plan };
 
 export const noteMocks = {
   session: state,
@@ -26,16 +26,6 @@ export const noteMocks = {
       isPremium: state.plan === 'Advanced' || state.plan === 'Flagship',
       isFree: state.plan === 'Free',
     }),
-  passes: () => ({
-    passes: [],
-    isLoading: false,
-    find: (company?: string) => (company && company === state.passCompany ? { company, status: 'ACTIVE' } : null),
-  }),
-};
-
-/** Give the reader an active Company Pass for this company (null = none). */
-export const setPass = (company: string | null) => {
-  state.passCompany = company;
 };
 
 export const setSignedIn = (v: boolean) => {

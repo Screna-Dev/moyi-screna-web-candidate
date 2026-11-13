@@ -247,6 +247,18 @@ API.interceptors.response.use(
 
     const originalRequest = error.config;
 
+    // A banned account can still hold an unexpired token; the backend then
+    // answers 403 AUTH_ACCOUNT_BANNED (e.g. on starting a career interview).
+    // End the session. Sign-in itself shows the error, so leave auth calls alone.
+    if (
+      error.response.status === 403 &&
+      error.response.data?.errorCode === 'AUTH_ACCOUNT_BANNED' &&
+      !isAuthEndpoint(originalRequest?.url)
+    ) {
+      handleSessionEnded();
+      return Promise.reject(error);
+    }
+
     // A signed-out visitor has no session to refresh or end. The public pages
     // (/interview-questions and friends) legitimately hit auth-only endpoints
     // and take the 401 as "not available to guests"; bouncing them to /auth

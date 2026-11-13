@@ -45,6 +45,14 @@ export default defineConfig({
       "react-router": path.resolve(__dirname, "node_modules/react-router/dist/development/index.mjs"),
     },
   },
+  // Dev only: pre-bundle deps that are first imported by lazy routes. Vite
+  // otherwise discovers them mid-session (e.g. livekit-client when an
+  // interview room opens), re-optimizes, and the page's import 504s
+  // ("Outdated Optimize Dep"), which the app shows as "A new version of the
+  // site is available".
+  optimizeDeps: {
+    include: ['livekit-client'],
+  },
   // Strip console.log from production builds (keeps console.error/warn)
   esbuild: {
     pure: ['console.log'],

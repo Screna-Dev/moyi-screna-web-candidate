@@ -127,6 +127,16 @@ export function statusReasonLabel(reason: string | null | undefined): string {
   return STATUS_REASON_LABELS[reason] ?? reason;
 }
 
+// ─── Mentor feature switch ────────────────────────────────────────────────────
+
+// Hidden for this release (2026-11-12): every mentor / coaching entry point is
+// gated on this — routes (/coaching, /mentorship, /mentor-details,
+// /guest-dashboard, /select-dashboard, /mentor-dashboard redirect to
+// /dashboard), sidebar links, the dual-role switch, dashboard mentorship cards,
+// the "Mentor Session" history tab, mentor reminders in settings, footer and
+// marketing copy. Nothing is deleted; flip to true to bring it all back.
+export const MENTOR_ENABLED = false;
+
 // ─── Special offer ($1 intro session, PR-5) ───────────────────────────────────
 
 // Release gate. The rollout notes are explicit that BOTH the mentor-side config

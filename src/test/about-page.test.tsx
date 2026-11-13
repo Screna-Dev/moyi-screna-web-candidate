@@ -36,6 +36,7 @@ import { Footer } from '@/components/newDesign/home/footer';
 import { HomePage } from '@/pages/newDesign/home/home';
 import { ORGANIZATION_JSON_LD } from '@/constants/organization';
 import { SEO_COPY } from '@/constants/seo';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 const renderAt = (ui: React.ReactElement, path = '/about') =>
   render(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
@@ -93,7 +94,8 @@ describe('AboutPage — content', () => {
     expect(h3s).toEqual([
       'Real interview insights',
       'AI-powered practice',
-      'Human guidance',
+      // The mentor card is hidden while MENTOR_ENABLED is off.
+      ...(MENTOR_ENABLED ? ['Human guidance'] : []),
       'Relevant preparation',
       'Feedback you can use',
       'Technology with a human perspective',
@@ -162,7 +164,7 @@ describe('AboutPage — head tags', () => {
 });
 
 // ─── Nav bars ─────────────────────────────────────────────
-const NAV_ORDER = ['Features', 'Interview Questions', 'Blog', 'Pricing', 'FAQ', 'About'];
+const NAV_ORDER = ['Roles', 'Interview Questions', 'Blog', 'Pricing', 'FAQ', 'About'];
 
 /** The labels of the desktop link row, in order. */
 function desktopNavLabels(container: HTMLElement) {
@@ -179,6 +181,7 @@ describe('Shared Navbar (marketing pages)', () => {
     const { labels, row } = desktopNavLabels(container);
     expect(labels).toEqual(NAV_ORDER);
     expect(within(row).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
+    expect(within(row).getByRole('link', { name: 'Roles' })).toHaveAttribute('href', '/opportunities');
   });
 
   it('draws About in the accent colour on /about only', () => {
@@ -197,7 +200,7 @@ describe('Shared Navbar (marketing pages)', () => {
   it('never marks a hash link as current, even on the home page', () => {
     const { container } = renderAt(<Navbar />, '/');
     const { row } = desktopNavLabels(container);
-    for (const name of ['Features', 'Pricing', 'FAQ']) {
+    for (const name of ['Pricing', 'FAQ']) {
       expect(within(row).getByRole('link', { name })).toHaveStyle({ color: '#4A4D57' });
     }
   });
@@ -218,11 +221,14 @@ describe('Shared Navbar (marketing pages)', () => {
   });
 });
 
+// The home page's own nav follows the candidate landing redesign (Roles,
+// Interview Questions), so it no longer mirrors the shared Navbar — but it keeps
+// About, like the shared one.
 describe('Home page nav bar (its own copy)', () => {
-  it('lists the same links as the shared Navbar, About included', () => {
+  it('lists the landing links, About included', () => {
     const { container } = renderAt(<HomePage />, '/');
     const { labels, row } = desktopNavLabels(container);
-    expect(labels).toEqual(NAV_ORDER);
+    expect(labels).toEqual(['Roles', 'Interview Questions', 'Blog', 'Pricing', 'FAQ', 'About']);
     expect(within(row).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
   });
 
@@ -233,13 +239,26 @@ describe('Home page nav bar (its own copy)', () => {
       within(row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]),
     );
     expect(hrefs).toEqual({
-      Features: '#features',
+      Roles: '/opportunities',
       'Interview Questions': '/interview-questions',
       Blog: '/blog',
-      Pricing: '#pricing',
-      FAQ: '#faq',
+      Pricing: '/#pricing',
+      FAQ: '/#faq',
       About: '/about',
     });
+  });
+
+  it('matches the shared Navbar: same links, same targets, For employers on both', () => {
+    const home = renderAt(<HomePage />, '/');
+    const homeRow = desktopNavLabels(home.container);
+    const homeLinks = within(homeRow.row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(within(home.container).getAllByRole('link', { name: 'For employers' })[0]).toHaveAttribute('href', '/employers');
+    home.unmount();
+    const shared = renderAt(<Navbar />, '/contact');
+    const sharedRow = desktopNavLabels(shared.container);
+    const sharedLinks = within(sharedRow.row).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(sharedLinks).toEqual(homeLinks);
+    expect(within(shared.container).getByRole('link', { name: 'For employers' })).toHaveAttribute('href', '/employers');
   });
 
   it('collapses to the menu below lg and lists About there', () => {
@@ -257,6 +276,11 @@ describe('Footer', () => {
   it('links to /about under Support', () => {
     renderAt(<Footer />, '/');
     expect(screen.getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about');
+  });
+
+  it.skipIf(MENTOR_ENABLED)('has no coaching link while mentors are hidden', () => {
+    const { container } = renderAt(<Footer />, '/');
+    expect(container.querySelector('a[href="/coaching"]')).toBeNull();
   });
 });
 

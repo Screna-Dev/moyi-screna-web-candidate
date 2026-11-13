@@ -20,7 +20,10 @@ const MAX_AGE_MS = 15 * 60 * 1000;
 // page doesn't charge anything — success is detected by `last4` changing, not
 // by a webhook-driven subscription field, so it carries the pre-redirect last4
 // to diff against.
-export type PendingCheckoutKind = 'subscription' | 'credits' | 'card';
+// 'pro-90-day' / 'interview-add-on' (change C9) are one-time purchases whose
+// result is a new interview-quota grant; they carry the grant keys from before
+// the redirect so the return can tell the new grant from an old one.
+export type PendingCheckoutKind = 'subscription' | 'credits' | 'card' | 'pro-90-day' | 'interview-add-on';
 
 export interface PendingCheckout {
   kind: PendingCheckoutKind;
@@ -28,6 +31,8 @@ export interface PendingCheckout {
   target?: string;
   /** 'card' only: last4 before redirecting, so the return can detect a change. */
   last4Before?: string | null;
+  /** 'pro-90-day' / 'interview-add-on' only: grantKeys before redirecting. */
+  grantsBefore?: string[];
   ts: number;
 }
 
@@ -35,9 +40,10 @@ export function markPendingCheckout(
   kind: PendingCheckoutKind,
   target?: string,
   last4Before?: string | null,
+  grantsBefore?: string[],
 ): void {
   try {
-    const payload: PendingCheckout = { kind, target, last4Before, ts: Date.now() };
+    const payload: PendingCheckout = { kind, target, last4Before, grantsBefore, ts: Date.now() };
     sessionStorage.setItem(KEY, JSON.stringify(payload));
   } catch {
     // Private mode / storage disabled — the page just won't show the

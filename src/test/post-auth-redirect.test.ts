@@ -15,6 +15,7 @@ vi.mock('@/services/OnboardingServices', () => ({
 }));
 
 import { resolvePostAuthPath, onboardingPath } from '@/utils/postAuthRedirect';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 const candidate = { role: 'CANDIDATE', roles: ['CANDIDATE'] };
 const mentor = { role: 'MENTOR', roles: ['MENTOR'] };
@@ -83,6 +84,13 @@ describe('resolvePostAuthPath - returning candidate', () => {
     expect(await resolvePostAuthPath(candidate)).toBe('/dashboard');
   });
 
+  it('bounced off onboarding (RequireAuth): back to onboarding with ?ref= on top, not nested', async () => {
+    mockGetOnboardingProgress.mockResolvedValue(progress(false));
+    const path = await resolvePostAuthPath(candidate, { returnTo: '/onboarding-resume?ref=TEST123' });
+    expect(path).toBe('/onboarding-resume?ref=TEST123');
+    expect(onboardingPath({ returnTo: '/onboarding-resume?returnTo=%2Fopportunities&ref=X' })).toBe('/onboarding-resume?returnTo=%2Fopportunities&ref=X');
+  });
+
   it('falls back to the dashboard when the progress lookup fails', async () => {
     // Infrastructure error (endpoint down / migration not run) must not trap a
     // returning user in onboarding.
@@ -91,7 +99,18 @@ describe('resolvePostAuthPath - returning candidate', () => {
   });
 });
 
-describe('resolvePostAuthPath - non-candidate accounts', () => {
+// Mentor dashboards are hidden this release: everyone lands on /dashboard.
+describe.skipIf(MENTOR_ENABLED)('resolvePostAuthPath - mentors hidden (MENTOR_ENABLED off)', () => {
+  it('sends mentor-only and dual-role accounts to the candidate dashboard', async () => {
+    expect(await resolvePostAuthPath(mentor)).toBe('/dashboard');
+    expect(await resolvePostAuthPath(mentor, { forceOnboarding: true })).toBe('/dashboard');
+    localStorage.setItem('screna_dashboard_mode', 'mentor');
+    expect(await resolvePostAuthPath(dualRole)).toBe('/dashboard');
+    expect(mockGetOnboardingProgress).not.toHaveBeenCalled();
+  });
+});
+
+describe.runIf(MENTOR_ENABLED)('resolvePostAuthPath - non-candidate accounts', () => {
   it('sends a mentor-only account to the mentor dashboard', async () => {
     expect(await resolvePostAuthPath(mentor)).toBe('/mentor-dashboard');
     expect(mockGetOnboardingProgress).not.toHaveBeenCalled();

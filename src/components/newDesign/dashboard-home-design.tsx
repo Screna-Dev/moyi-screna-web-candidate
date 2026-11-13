@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useUserPlan, type PlanType } from '@/hooks/useUserPlan';
 import { listMyBookings } from '@/services/MentorService';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { getProfilePreferences } from '@/services/ProfileServices';
 import { getPosts } from '@/services/CommunityService';
 import { getDashboardStats } from '@/services/DashboardService';
@@ -78,7 +79,7 @@ function buildChartPaths(data: number[], W = 800, H = 180, pad = 16) {
 
 // ─── Stats grid ───────────────────────────────────────────────────────────────
 function StatsGrid({ plan, stats, loading }: { plan: Plan; stats: DashboardStatsApi | null; loading: boolean }) {
-  const sub = plan === 'free' ? 'Mock Interview' : 'Mock Interview + Mentorship Sessions';
+  const sub = plan === 'free' || !MENTOR_ENABLED ? 'Mock Interview' : 'Mock Interview + Mentorship Sessions';
   const learningTime = stats ? formatMinutesAsHm(stats.totalLearningTimeMinutes ?? 0) : '—';
   const sessions = stats ? String(stats.sessionCompletedCount ?? 0) : '—';
   const items = [
@@ -428,7 +429,7 @@ function MentorshipPanel() {
           </div>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--foreground)' }}>Mentorship is a member benefit</div>
           <div style={{ fontSize: 12, color: 'var(--muted-foreground)', lineHeight: 1.5, maxWidth: 260, marginBottom: 8 }}>Book 1:1 sessions with senior mentors and track every session in one place.</div>
-          <button onClick={() => navigate('/#pricing')} className="rounded-lg" style={{ padding: '9px 16px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
+          <button onClick={() => navigate('/plans')} className="rounded-lg" style={{ padding: '9px 16px', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>
             Upgrade to membership
           </button>
         </div>
@@ -720,8 +721,8 @@ export function DashboardHome({ userData }: { userData: UserData | null }) {
         sessionsDaily={stats?.dailySessionCount}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
-        <MentorshipPanel />
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${MENTOR_ENABLED ? 'xl:grid-cols-3' : ''} gap-6 items-start`}>
+        {MENTOR_ENABLED && <MentorshipPanel />}
         <InterviewInsightsPanel insights={stats?.interviewPracticeInsights ?? null} loading={statsLoading} />
         <CommunityPicksPanel />
       </div>

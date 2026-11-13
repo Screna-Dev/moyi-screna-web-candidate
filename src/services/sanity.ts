@@ -1,5 +1,5 @@
 import { createClient, type ClientConfig } from '@sanity/client';
-import imageUrlBuilder from '@sanity/image-url';
+import { createImageUrlBuilder } from '@sanity/image-url';
 // Plain .mjs manifest, shared with scripts/ and api/ — see scripts/routes.mjs.
 import { COMPANY_GUIDES_QUERY, sortCompanyGuides, guideLabel } from '../../scripts/routes.mjs';
 
@@ -197,7 +197,7 @@ export async function getCompanyGuides(companySlug: string): Promise<CompanyGuid
 // ---------------------------------------------------------------------------
 // Image URL builder (respects hotspot/crop)
 // ---------------------------------------------------------------------------
-const builder = imageUrlBuilder(sanityClient);
+const builder = createImageUrlBuilder(sanityClient);
 
 export function urlFor(source: SanityImage) {
   return builder.image(source);

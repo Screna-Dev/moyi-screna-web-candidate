@@ -8,7 +8,9 @@ const BASE_URL = '/payments';
 const toApiEnum = (v) => String(v).toUpperCase();
 
 // First-time subscription: creates a new sub for the user. Returns Stripe URL.
-// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP', billingCycle: 'MONTHLY' } (MONTHLY only for now)
+// body: { tier: 'PRO', billingCycle: 'MONTHLY' }. Since change C9, PRO is the
+// only tier on sale: BASIC / ADVANCED / FLAGSHIP answer 400 "no longer available".
+// Existing subscribers keep their tier and can change to PRO.
 export const createSubscription = (tier, billingCycle) => {
   return API.post(`${BASE_URL}/subscriptions`, {
     tier: toApiEnum(tier),
@@ -22,7 +24,8 @@ export const getSubscription = () => {
 };
 
 // Change tier for an existing subscriber. Upgrade prorated immediate, downgrade pending.
-// body: { tier: 'BASIC' | 'ADVANCED' | 'FLAGSHIP' }
+// body: { tier: 'PRO' } (the only allowed target since C9). While the
+// subscription shows planSwitchPending, this answers 400.
 export const changeTier = (tier) => {
   return API.post(`${BASE_URL}/subscriptions/tier`, { tier: toApiEnum(tier) });
 };
@@ -113,7 +116,34 @@ export const getInvoices = (page = 0) => {
   });
 };
 
+// ─── Interview quota (change C9) ───────────────────────────────────
+// Candidate-paid partner-role interviews use interviews, not credits.
+// { plan: 'FREE' | 'PRO' | 'PRO_90_DAY', available, grants: [{ source, remaining,
+// expiresAt }], resetsAt? (FREE only) }.
+export const getInterviewQuota = () => {
+  return API.get(`${BASE_URL}/interview-quota`);
+};
+
+// One-time Stripe Checkout, no body → { url }. Return URL shared with
+// subscriptions. Fulfilment is async: poll getInterviewQuota. Never refunded.
+export const createPro90DayCheckout = () => {
+  return API.post(`${BASE_URL}/pro-90-day`);
+};
+
+// PRO / PRO_90_DAY only, else 403 INSUFFICIENT_PLAN_TIER.
+export const createInterviewAddOnCheckout = () => {
+  return API.post(`${BASE_URL}/interview-add-on`);
+};
+
+// #323: what a candidate can buy and what each costs (Stripe, cached a few
+// minutes server-side). Signed-in only. { pro, pro90Day, interviewAddOn,
+// credit: {amountCents, currency, sessionCount, validDays}, freeMonthlySessionCount }.
+export const getPrices = () => {
+  return API.get(`${BASE_URL}/prices`);
+};
+
 const PaymentService = {
+  getPrices,
   createSubscription,
   getSubscription,
   changeTier,
@@ -130,6 +160,9 @@ const PaymentService = {
   createOneTimeSession,
   redeemCode,
   getInvoices,
+  getInterviewQuota,
+  createPro90DayCheckout,
+  createInterviewAddOnCheckout,
 };
 
 export default PaymentService;

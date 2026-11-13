@@ -25,7 +25,6 @@ import {
   stablePosthog,
   INTRO,
   FAQ_Q1,
-  passesMock,
 } from './company-page-mocks';
 
 vi.hoisted(() => {
@@ -81,7 +80,6 @@ vi.mock('@/components/newDesign/dashboard-layout', () => ({ DashboardLayout: ({ 
 vi.mock('@/components/newDesign/insights-layout', () => ({ InsightsLayout: ({ children }: any) => <div>{children}</div> }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => companyMocks.auth() }));
 vi.mock('@/hooks/useUserPlan', () => ({ useUserPlan: () => companyMocks.plan() }));
-vi.mock('@/hooks/useCompanyPass', () => ({ useCompanyPasses: () => passesMock() }));
 
 import { CompanyDetailPage } from '@/pages/newDesign/company-detail';
 
@@ -191,6 +189,6 @@ describe('embedded copy — intro, FAQ and Free/Basic cards', () => {
     setPlan('Free');
     renderCompany();
     await screen.findByText('Seeded summary 1.');
-    expect(screen.queryByRole('button', { name: /Upgrade to Advanced to read the full write-up/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Upgrade to Pro to read the full write-up/ })).toBeNull();
   });
 });

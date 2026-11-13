@@ -8,6 +8,8 @@
  * never see the chooser and ignore the persisted value.
  */
 
+import { MENTOR_ENABLED } from '@/constants/mentorship';
+
 export type DashboardMode = 'candidate' | 'mentor';
 
 // Persisted preferred dashboard for dual-role users.
@@ -61,6 +63,9 @@ export function clearStoredDashboardMode(): void {
 //  - mentor only → mentor dashboard
 //  - everyone else (candidate / admin handled separately) → candidate dashboard
 export function resolvePostLoginPath(user: RoleBearer): string {
+  // Mentor dashboards are hidden this release (MENTOR_ENABLED): everyone lands
+  // on the candidate dashboard.
+  if (!MENTOR_ENABLED) return CANDIDATE_DASHBOARD_PATH;
   if (isDualRole(user)) {
     const stored = getStoredDashboardMode();
     if (stored === 'mentor') return MENTOR_DASHBOARD_PATH;

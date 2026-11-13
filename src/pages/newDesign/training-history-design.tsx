@@ -22,6 +22,7 @@ import { usePostHog } from 'posthog-js/react';
 import type { PostHog } from 'posthog-js';
 import { safeCapture } from '@/utils/posthog';
 import { EVENTS } from '@/constants/analyticsEvents';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import svgPaths from './svg-training-history';
 
 // ─── Types ────────────────────────────────────────────
@@ -1499,7 +1500,7 @@ export function TrainingHistoryPage() {
   const posthog = usePostHog();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab,        setActiveTab]        = useState<MainTab>(
-    searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
+    MENTOR_ENABLED && searchParams.get('tab') === 'mentor' ? 'mentor' : 'ai-mock',
   );
   const [mentorFilter,     setMentorFilter]     = useState<'all' | 'Upcoming' | 'Pending' | 'Completed' | 'Cancelled'>('all');
   const [roleFilter,       setRoleFilter]       = useState<string | 'all'>('all');
@@ -1613,7 +1614,8 @@ export function TrainingHistoryPage() {
 
   const TABS: { id: MainTab; label: string; icon: any }[] = [
     { id: 'ai-mock', label: 'AI Mock',        icon: Bot   },
-    { id: 'mentor',  label: 'Mentor Session', icon: Users },
+    // Hidden this release (MENTOR_ENABLED).
+    ...(MENTOR_ENABLED ? [{ id: 'mentor' as const, label: 'Mentor Session', icon: Users }] : []),
   ];
 
   return (

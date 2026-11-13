@@ -33,9 +33,11 @@ class LiveKitService {
     this.room = new Room({
       adaptiveStream: true,
       dynacast: true,
+      // Same as the interview pages' own capture: no browser noise suppression,
+      // the server runs Krisp. Used if LiveKit ever opens the mic itself.
       audioCaptureDefaults: {
         echoCancellation: true,
-        noiseSuppression: true,
+        noiseSuppression: false,
         autoGainControl: true,
       },
       videoCaptureDefaults: {

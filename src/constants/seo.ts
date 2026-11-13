@@ -15,6 +15,11 @@ export const SEO_COPY = {
     description:
       'Screna AI is an interview preparation platform for tech job seekers: AI mock interviews, personalized training plans, real interview experiences, and 1:1 mentors.',
   },
+  employers: {
+    title: 'Screna for Employers — Ranked AI Interviews for Every Applicant',
+    description:
+      'Every applicant finishes an AI interview first. See the full ranked list, scores and four dimensions free, and pay only to contact the candidates you want.',
+  },
   blog: {
     title: 'Blog — Interview Prep & Career Insights | Screna AI',
     description:

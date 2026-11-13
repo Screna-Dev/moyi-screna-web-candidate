@@ -13,6 +13,7 @@ import { getPostOptions } from '../../services/CommunityService';
 import { emitResumeUploaded, useResumeUploaded } from '@/hooks/useResumeUploaded';
 import { resumeFileName } from '@/utils/resumeFile';
 import { T, panelTitleStyle, primaryButtonStyle } from '@/lib/design-tokens';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 
 type UserData = {
   firstName?: string;
@@ -701,7 +702,7 @@ function ProfileCoreContent({ userData }: { userData: UserData | null }) {
                     { emoji: '🎯', label: 'AI mock interview tailoring' },
                     { emoji: '💼', label: 'Job matching & applications' },
                     { emoji: '🤝', label: 'Mentor pairing recommendations' },
-                  ].map((item) => (
+                  ].filter((item) => MENTOR_ENABLED || !item.label.startsWith('Mentor')).map((item) => (
                     <div key={item.label} className="flex items-center gap-2">
                       <span className="text-sm">{item.emoji}</span>
                       <span className="text-sm text-muted-foreground">{item.label}</span>

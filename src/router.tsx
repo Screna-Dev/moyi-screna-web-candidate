@@ -1,5 +1,6 @@
-import { lazy, useEffect, useLayoutEffect } from 'react';
+import { lazy, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { createBrowserRouter, Outlet, Navigate, useLocation, useRouteError } from 'react-router-dom';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserPlanProvider } from './hooks/useUserPlan';
 import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
@@ -11,6 +12,7 @@ import { RecommendedJobsProvider } from './hooks/useRecommendedJobs';
 // is code-split below.
 import { HomePage } from './pages/newDesign/home/home';
 import FaqPage from './pages/newDesign/home/faq-page';
+import { EmployerLandingPage } from './pages/employerLanding/employer-landing';
 import { BlogListPage } from './pages/newDesign/blog/blog-list';
 import { BlogPostPage } from './pages/newDesign/blog/blog-post';
 import { ContactPage } from './pages/newDesign/contact';
@@ -32,6 +34,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { CompanyDetailPage } from './pages/newDesign/company-detail';
 import { ExperienceDetailPage } from './pages/newDesign/experience-detail';
 import { isChunkLoadError, reloadForChunkError } from './utils/chunkReload';
+import { CareerResultWatcher } from '@/components/newDesign/opportunities/CareerResultWatcher';
 
 // ─── Lazy routes ────────────────────────────────────────────────────────────
 // Everything behind the login wall, plus auth/onboarding. App.tsx already
@@ -62,6 +65,13 @@ const MockInterviewPage = lazy(() => import('./pages/newDesign/home/mock-intervi
 const PersonalizedPracticePage = lazy(() => import('./pages/newDesign/personalized-practice-design').then((m) => ({ default: m.PersonalizedPracticePage })));
 const QuickMockPage = lazy(() => import('./pages/newDesign/quick-mock-page').then((m) => ({ default: m.QuickMockPage })));
 const CoachingPage = lazy(() => import('./pages/newDesign/coaching-page').then((m) => ({ default: m.CoachingPage })));
+const OpportunitiesLayout = lazy(() => import('./pages/newDesign/opportunities/opportunities-layout').then((m) => ({ default: m.OpportunitiesLayout })));
+const OpportunitiesPage = lazy(() => import('./pages/newDesign/opportunities/OpportunitiesPage').then((m) => ({ default: m.OpportunitiesPage })));
+const MyJobsPage = lazy(() => import('./pages/newDesign/opportunities/MyJobsPage').then((m) => ({ default: m.MyJobsPage })));
+const JobDetailPage = lazy(() => import('./pages/newDesign/opportunities/JobDetailPage').then((m) => ({ default: m.JobDetailPage })));
+const InterviewResultPage = lazy(() => import('./pages/newDesign/opportunities/InterviewResultPage').then((m) => ({ default: m.InterviewResultPage })));
+const ContactRecruiterPage = lazy(() => import('./pages/newDesign/opportunities/ContactRecruiterPage').then((m) => ({ default: m.ContactRecruiterPage })));
+const CareerInterviewPage = lazy(() => import('./pages/newDesign/opportunities/CareerInterviewPage').then((m) => ({ default: m.CareerInterviewPage })));
 const SessionConfirmPage = lazy(() => import('./components/newDesign/session-confirm').then((m) => ({ default: m.SessionConfirmPage })));
 const AIMockPage = lazy(() => import('./pages/newDesign/ai-mock').then((m) => ({ default: m.AIMockPage })));
 const AIMockWhitePage = lazy(() => import('./pages/newDesign/ai-mock-white').then((m) => ({ default: m.AIMockWhitePage })));
@@ -74,6 +84,7 @@ const DashboardHomePage = lazy(() => import('./pages/newDesign/dashboard-home').
 const MyContributionsPage = lazy(() => import('./pages/newDesign/my-contributions-design').then((m) => ({ default: m.MyContributionsPage })));
 const ReferEarnPage = lazy(() => import('./pages/newDesign/refer-earn-design').then((m) => ({ default: m.ReferEarnPage })));
 const HistoryPage = lazy(() => import('./pages/newDesign/training-history-design').then((m) => ({ default: m.TrainingHistoryPage })));
+const PlansRoute = lazy(() => import('./pages/newDesign/plans-page').then((m) => ({ default: m.PlansRoute })));
 const SettingsPage = lazy(() => import('./pages/newDesign/settings-design').then((m) => ({ default: m.SettingsPage })));
 
 // Interview insights (login-walled)
@@ -87,6 +98,8 @@ const MentorDashboardPage = lazy(() => import('./pages/mentor/mentor-dashboard')
 const SelectDashboardPage = lazy(() => import('./pages/mentor/select-dashboard').then((m) => ({ default: m.SelectDashboardPage })));
 
 // Admin
+const EmployerLoginPage = lazy(() => import('./pages/employer/EmployerLoginPage').then((m) => ({ default: m.EmployerLoginPage })));
+const EmployerApp = lazy(() => import('./pages/employer/EmployerApp').then((m) => ({ default: m.EmployerApp })));
 const AdminRoute = lazy(() => import('./components/AdminRoute'));
 const AdminConsole = lazy(() => import('./components/admin/console/AdminConsole'));
 const AdminRedeemCodes = lazy(() => import('./pages/AdminRedeemCodes'));
@@ -141,6 +154,10 @@ function ScrollToTop() {
   return null;
 }
 
+// Mentor pages are hidden this release (MENTOR_ENABLED): the routes stay, but
+// send visitors to the dashboard.
+const mentorRoute = (el: ReactNode) => (MENTOR_ENABLED ? el : <Navigate to="/dashboard" replace />);
+
 // Root layout — provides auth context inside the router so useNavigate works
 function RootLayout() {
   return (
@@ -153,6 +170,8 @@ function RootLayout() {
           {/* Signed-in users who skipped onboarding step 3 get asked for their
               resume on every app page, not just the dashboard. */}
           <ResumePromptModal />
+          {/* Says when a career interview's result is ready, from any page. */}
+          <CareerResultWatcher />
           <CookieBanner />
         </RecommendedJobsProvider>
       </UserPlanProvider>
@@ -212,6 +231,7 @@ export const router = createBrowserRouter([
       // (vercel.json also issues a 301 for /pricing at the edge in production.)
       { path: '/pricing', element: <Navigate to="/#pricing" replace /> },
       { path: '/faq', element: <FaqPage /> },
+      { path: '/employers', element: <EmployerLandingPage /> },
       { path: '/blog', element: <BlogListPage /> },
       { path: '/blog/:slug', element: <BlogPostPage /> },
       { path: '/auth', element: <AuthPage /> },
@@ -223,7 +243,24 @@ export const router = createBrowserRouter([
       { path: '/mock-interview', element: <MockInterviewPage /> },
       { path: '/personalized-practice', element: <RequireAuth><PersonalizedPracticePage /></RequireAuth> },
       { path: '/quick-mock', element: <RequireAuth><QuickMockPage /></RequireAuth> },
-      { path: '/coaching', element: <RequireAuth><CoachingPage /></RequireAuth> },
+      { path: '/coaching', element: mentorRoute(<RequireAuth><CoachingPage /></RequireAuth>) },
+      // Opportunities: the original design, fed by the /careers/* API where it
+      // has data (job list, detail, applications, interview). Score/report/
+      // recruiter-email pages still show the design's sample data until the
+      // backend catches up with the design. (The static sample frames for job 1
+      // and job 8 were removed; every job path takes a real id.)
+      {
+        element: <RequireAuth><OpportunitiesLayout /></RequireAuth>,
+        children: [
+          { path: '/opportunities', element: <OpportunitiesPage /> },
+          { path: '/opportunities/my-jobs', element: <MyJobsPage /> },
+          { path: '/opportunities/job/:id', element: <JobDetailPage /> },
+          { path: '/opportunities/applications/:applicationId/results', element: <InterviewResultPage /> },
+          { path: '/opportunities/job/:id/contact', element: <ContactRecruiterPage /> },
+        ],
+      },
+      // Full-screen interview room, outside the dashboard shell.
+      { path: '/opportunities/applications/:applicationId/interview', element: <RequireAuth><CareerInterviewPage /></RequireAuth> },
       { path: '/session-confirm', element: <RequireAuth><SessionConfirmPage /></RequireAuth> },
       { path: '/ai-mock', element: <RequireAuth><AIMockPage /></RequireAuth> },
       { path: '/ai-mockwhite', element: <RequireAuth><AIMockWhitePage /></RequireAuth> },
@@ -238,6 +275,8 @@ export const router = createBrowserRouter([
       { path: '/refer', element: <RequireAuth><ReferEarnPage /></RequireAuth> },
       { path: '/history', element: <RequireAuth><HistoryPage /></RequireAuth> },
       { path: '/settings', element: <RequireAuth><SettingsPage /></RequireAuth> },
+      // In-app Pricing (signed in). Visitors get the landing page's pricing section.
+      { path: '/plans', element: <PlansRoute /> },
       // /billing is deprecated — billing now lives under Settings. Redirect old
       // links/bookmarks to the canonical location.
       { path: '/billing', element: <Navigate to="/settings?tab=billing" replace /> },
@@ -321,35 +360,41 @@ export const router = createBrowserRouter([
       },
       {
         path: '/onboarding-resume',
-        element: <OnboardingUploadResumePage />,
+        element: <RequireAuth><OnboardingUploadResumePage /></RequireAuth>,
         errorElement: <ErrorBoundary />,
       },
         {
           path: '/mentorship',
-          element: <MentorshipPage />,
+          element: mentorRoute(<MentorshipPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/mentor-details',
-          element: <MentorDetailsPage />,
+          element: mentorRoute(<MentorDetailsPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/guest-dashboard',
-          element: <GuestDashboardPage />,
+          element: mentorRoute(<GuestDashboardPage />),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/select-dashboard',
-          element: <RequireAuth><SelectDashboardPage /></RequireAuth>,
+          element: mentorRoute(<RequireAuth><SelectDashboardPage /></RequireAuth>),
           errorElement: <ErrorBoundary />,
         },
         {
           path: '/mentor-dashboard',
-          element: <RequireAuth><MentorDashboardPage /></RequireAuth>,
+          element: mentorRoute(<RequireAuth><MentorDashboardPage /></RequireAuth>),
           errorElement: <ErrorBoundary />,
         },
       { path: '*', element: <ErrorBoundary /> },
+
+      // employer side — separate company-email sign-in, no Google
+      { path: '/employer/login', element: <EmployerLoginPage /> },
+      { path: '/employer', element: <EmployerApp /> },
+      // Stripe return after buying employer credits (?checkout=…&jobId=…)
+      { path: '/employer/credits', element: <EmployerApp /> },
 
       // admin — ADMIN sees full console; OPS sees only Job Application
       { path: '/admin', element: <AdminRoute allowedRoles={['ADMIN', 'OPS']}><AdminConsole /></AdminRoute> },

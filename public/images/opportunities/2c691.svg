@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Email Icon">
+<circle id="Email Circle" cx="12" cy="12" r="12" fill="#5978F2"/>
+<g id="envelope-body">
+<mask id="path-2-inside-1_0_31" fill="white">
+<rect x="5" y="7" width="14" height="10" rx="1"/>
+</mask>
+<rect x="5" y="7" width="14" height="10" rx="1" stroke="white" stroke-width="3" mask="url(#path-2-inside-1_0_31)"/>
+</g>
+<path id="flap-left" d="M6.29568 8.23507L11.3828 13.3828" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+<path id="flap-right" d="M17.9497 8.00001L11 14" stroke="white" stroke-width="1.5"/>
+</g>
+</svg>

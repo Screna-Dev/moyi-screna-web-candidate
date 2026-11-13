@@ -104,3 +104,21 @@ describe('onboarding source step', () => {
     for (const other of ORDER.filter((l) => l !== label)) expect(isSelected(other)).toBe(false);
   });
 });
+
+describe('onboarding without a session (401)', () => {
+  const unauthorized = Object.assign(new Error('401'), { response: { status: 401 } });
+
+  it('progress 401 → sign-in with returnTo, not the survey', async () => {
+    mockGetProgress.mockRejectedValue(unauthorized);
+    renderPage();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/auth?returnTo=%2Fonboarding', { replace: true }));
+  });
+
+  it('Continue 401 → sign-in instead of "Please try again"', async () => {
+    mockSubmitSource.mockRejectedValue(unauthorized);
+    renderPage();
+    fireEvent.click(await screen.findByText('Reddit'));
+    fireEvent.click(screen.getByRole('button', { name: /Continue to resume/ }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/auth?returnTo=%2Fonboarding', { replace: true }));
+  });
+});

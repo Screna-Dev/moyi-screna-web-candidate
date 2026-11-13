@@ -12,9 +12,11 @@ import {
   Megaphone,
   Gift,
   Clock,
+  Briefcase,
 } from "lucide-react";
 import { C } from "./ui/styles";
 import { useAuth } from "@/contexts/AuthContext";
+import { ADMIN_HIRING_ENABLED, isEmployerSection } from "./pages/employer/sections";
 
 export type Page =
   | "command-center"
@@ -28,7 +30,10 @@ export type Page =
   | "settings"
   | "redeem-codes"
   | "audit-logs"
-  | "pgs";
+  | "pgs"
+  | "employer-dashboard"
+  | "employer-jobs"
+  | "employer-candidates";
 
 interface SidebarProps {
   currentPage: Page;
@@ -53,6 +58,14 @@ const buildSections = (jobApplicationsBadge?: string): SidebarSection[] => [
     items: [
       { id: "resume-applications", label: "Job Applications", icon: FileText, badge: jobApplicationsBadge },
       { id: "mentorship",          label: "Mentorship",       icon: Users },
+    ],
+  },
+  {
+    label: "Hiring",
+    items: [
+      { id: "employer-dashboard",  label: "Hiring Dashboard", icon: LayoutDashboard },
+      { id: "employer-jobs",       label: "Jobs",             icon: Briefcase },
+      { id: "employer-candidates", label: "Candidates",       icon: Users },
     ],
   },
   {
@@ -89,6 +102,8 @@ export function Sidebar({ currentPage, onPageChange, userRole, jobApplicationsBa
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        // Hiring runs on sample data until it's wired to the API.
+        if (!ADMIN_HIRING_ENABLED && isEmployerSection(item.id)) return false;
         if (role === "OPS") return item.id === "resume-applications";
         // Non-OPS (ADMIN, etc.): hide the OPS-only Job Applications tab
         return item.id !== "resume-applications";

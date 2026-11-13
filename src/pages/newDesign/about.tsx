@@ -5,6 +5,7 @@ import { Footer } from '../../components/newDesign/home/footer';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSeo, SITE_URL } from '@/hooks/useSeo';
 import { SEO_COPY } from '@/constants/seo';
+import { MENTOR_ENABLED } from '@/constants/mentorship';
 import { ORGANIZATION_JSON_LD } from '@/constants/organization';
 
 // /about — the company facts page. Static copy, prerendered at build time
@@ -35,11 +36,14 @@ const PILLARS: { icon: LucideIcon; title: string; body: string }[] = [
     title: 'AI-powered practice',
     body: 'Practice answering questions tailored to your target role and receive feedback that helps you identify what to work on next.',
   },
-  {
-    icon: Users,
-    title: 'Human guidance',
-    body: 'Connect with experienced mentors for perspective, advice, and support that reflects your goals.',
-  },
+  // Hidden with mentors this release (MENTOR_ENABLED).
+  ...(MENTOR_ENABLED
+    ? [{
+        icon: Users,
+        title: 'Human guidance',
+        body: 'Connect with experienced mentors for perspective, advice, and support that reflects your goals.',
+      }]
+    : []),
 ];
 
 const PRINCIPLES = [
@@ -89,8 +93,9 @@ export function AboutPage() {
               <span className="text-[#2E5BFF]">with confidence.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-[700px] text-[17px] md:text-[18px] leading-[1.625] text-[#4A4D57]">
-              Screna brings together AI-powered interview practice, real interview insights, and guidance from
-              experienced mentors to help you prepare for your next opportunity.
+              {MENTOR_ENABLED
+                ? 'Screna brings together AI-powered interview practice, real interview insights, and guidance from experienced mentors to help you prepare for your next opportunity.'
+                : 'Screna brings together AI-powered interview practice and real interview insights to help you prepare for your next opportunity.'}
             </p>
             <p className="mx-auto mt-4 max-w-[620px] text-[16px] md:text-[17px] leading-[1.625] text-[#62748E]">
               We help you understand what to expect, identify where to improve, and approach interviews with greater
@@ -133,7 +138,7 @@ export function AboutPage() {
             >
               Learn what to expect. Practice with purpose. Get guidance.
             </h2>
-            <div className="mt-16 grid gap-8 md:grid-cols-3">
+            <div className={`mt-16 grid gap-8 ${PILLARS.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
               {PILLARS.map(({ icon: Icon, title, body }) => (
                 <div key={title} className="rounded-2xl border border-[hsl(220,16%,90%)] bg-white p-8">
                   <div className="flex size-[52px] items-center justify-center rounded-xl border border-[#2E5BFF]/15 bg-[#2E5BFF]/[0.06]">
