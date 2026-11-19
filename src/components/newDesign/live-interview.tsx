@@ -83,6 +83,8 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+export type LiveEndReason = 'user_ended' | 'interviewer_left' | 'disconnected';
+
 // ════════════════════════════════════════════════════════
 // MAIN LIVE INTERVIEW COMPONENT
 // ════════════════════════════════════════════════════════
@@ -96,7 +98,9 @@ export function LiveInterview({
 }: {
   config: LiveConfig;
   interviewId?: string;
-  onEnd: () => void;
+  // Why the interview ended: the candidate's End button, the AI interviewer
+  // leaving (the normal finish), or the connection dropping.
+  onEnd: (reason: LiveEndReason) => void;
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
   prefetchedStream?: MediaStream | null;
@@ -130,12 +134,12 @@ export function LiveInterview({
   const botHasSpokenRef = useRef(false);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const safeEnd = useCallback(() => {
+  const safeEnd = useCallback((reason: LiveEndReason) => {
     if (!endCalledRef.current) {
       endCalledRef.current = true;
       stopUserTranscript();
       resetCaptions();
-      onEnd();
+      onEnd(reason);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onEnd]);
@@ -166,6 +170,14 @@ export function LiveInterview({
       ]);
     },
   });
+
+  // Mute: switch the captured mic track off in place (the same track LiveKit
+  // published). Not LiveKit's mute: that makes the server stop forwarding the
+  // mic to the AI interviewer, and after unmuting the interviewer stopped
+  // hearing the candidate. A disabled track keeps sending silence.
+  useEffect(() => {
+    localStream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+  }, [muted, localStream]);
 
   // ── Capture audio (or reuse prefetched stream from warmup) ──
   useEffect(() => {
@@ -216,13 +228,13 @@ export function LiveInterview({
       setLiveConnected(false);
       // Only end interview if bot has spoken — prevents StrictMode/cleanup from ending prematurely
       if (botHasSpokenRef.current && !endCalledRef.current) {
-        setTimeout(() => safeEnd(), 0);
+        setTimeout(() => safeEnd('disconnected'), 0);
       }
     },
     onInterviewEnded: () => {
       console.log('[LiveInterview] Bot participant disconnected');
       if (botHasSpokenRef.current && !endCalledRef.current) {
-        setTimeout(() => safeEnd(), 0);
+        setTimeout(() => safeEnd('interviewer_left'), 0);
       }
     },
     onActiveSpeakersChanged: ({ isAISpeaking, isUserSpeaking: userSpeaking }: { isAISpeaking: boolean; isUserSpeaking: boolean }) => {
@@ -569,16 +581,7 @@ export function LiveInterview({
         <div className="flex items-center justify-center gap-5">
           {/* Mute */}
           <button
-            onClick={() => {
-              setMuted((m) => {
-                const next = !m;
-                // Sync mute state to LiveKit when in live mode
-                if (isLiveMode) {
-                  try { LiveKitService.getRoom()?.localParticipant?.setMicrophoneEnabled(!next); } catch { /* ignore */ }
-                }
-                return next;
-              });
-            }}
+            onClick={() => setMuted((m) => !m)}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
               muted
                 ? 'bg-red-500/15 border border-red-400/20 text-red-400'
@@ -609,7 +612,7 @@ export function LiveInterview({
                   Cancel
                 </button>
                 <button
-                  onClick={safeEnd}
+                  onClick={() => safeEnd('user_ended')}
                   className="h-10 px-5 rounded-full bg-red-500/90 text-white text-xs hover:bg-red-500 transition-colors shadow-lg shadow-red-500/20"
                 >
                   End Session
@@ -617,6 +620,7 @@ export function LiveInterview({
               </motion.div>
             ) : (
               <button
+                aria-label="End interview"
                 onClick={() => setShowEndConfirm(true)}
                 className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${
                   isDark

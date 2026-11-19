@@ -1,4 +1,4 @@
-import type { PostHog } from 'posthog-js';
+import type { CaptureOptions, PostHog } from 'posthog-js';
 import { getAuthState } from '@/utils/authState';
 
 /**
@@ -11,13 +11,23 @@ import { getAuthState } from '@/utils/authState';
  * 没有用 PostHog 的 super properties：那是写进 localStorage 的设备级持久属性，
  * 退出时清不干净，会把上一个用户的登录态带给下一个。
  */
-export const safeCapture = (posthog: PostHog | null | undefined, eventName: string, properties?: Record<string, any>) => {
+export const safeCapture = (
+  posthog: PostHog | null | undefined,
+  eventName: string,
+  properties?: Record<string, any>,
+  // e.g. { transport: 'sendBeacon', send_instantly: true } for an event sent
+  // while the page is closing (pagehide).
+  options?: CaptureOptions,
+) => {
   if (!posthog) {
     return;
   }
 
   try {
-    posthog.capture(eventName, { auth_state: getAuthState(), ...properties });
+    const props = { auth_state: getAuthState(), ...properties };
+    // Options only when given, so ordinary events are sent exactly as before.
+    if (options) posthog.capture(eventName, props, options);
+    else posthog.capture(eventName, props);
   } catch (error) {
     // 静默处理错误，避免影响用户体验
     // 通常是由于广告拦截器阻止了 PostHog 请求

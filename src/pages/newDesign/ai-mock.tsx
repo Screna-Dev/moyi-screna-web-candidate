@@ -33,6 +33,7 @@ import * as InterviewSessionService from '@/services/IntervewSesstionServices';
 import LiveKitService from '@/services/LiveKitService';
 import { usePostHog } from 'posthog-js/react';
 import { safeCapture } from '@/utils/posthog';
+import { useMockAbandonTracking } from '@/hooks/useMockAbandonTracking';
 import { EVENTS } from '@/constants/analyticsEvents';
 
 // ─── Session credentials from API ──────────────────────
@@ -297,8 +298,16 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
 
   // mock_completed —— 完整完成所有题目（进入 cooldown 即代表自然结束，非中途退出）
   const mockCompletedRef = useRef(false);
+  // mock_abandoned —— End before cooldown, closing the tab, or leaving the
+  // page while live (see useMockAbandonTracking).
+  const { reportAbandoned, abandonedRef: mockAbandonedRef } = useMockAbandonTracking({
+    posthog,
+    stage,
+    completedRef: mockCompletedRef,
+    props: { interview_id: interviewId, type: config.type, difficulty: config.difficulty, mode: config.mode, source: entryMeta.source },
+  });
   useEffect(() => {
-    if (stage === 'cooldown' && !mockCompletedRef.current) {
+    if (stage === 'cooldown' && !mockCompletedRef.current && !mockAbandonedRef.current) {
       mockCompletedRef.current = true;
       safeCapture(posthog, EVENTS.MOCK_COMPLETED, {
         interview_id: interviewId,
@@ -593,15 +602,7 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
     console.log('🔴 Ending meeting...');
 
     // mock_abandoned —— 在到达 cooldown（自然完成）之前结束 = 中途放弃
-    if (stage !== 'cooldown' && !mockCompletedRef.current) {
-      safeCapture(posthog, EVENTS.MOCK_ABANDONED, {
-        interview_id: interviewId,
-        type: config.type,
-        difficulty: config.difficulty,
-        mode: config.mode,
-        stage_at_exit: stage,
-      });
-    }
+    if (stage !== 'cooldown') reportAbandoned('session_ended');
 
     setInterviewEnded(true);
     interviewEndedRef.current = true;
@@ -819,7 +820,12 @@ export function AIMockPage({ defaultTheme = 'light' }: { defaultTheme?: ThemeMod
               <LiveInterview
                 config={config}
                 interviewId={interviewId}
-                onEnd={() => setStage('cooldown')}
+                onEnd={(reason) => {
+                  // The candidate's End button before the interview finished
+                  // on its own = abandoned (not completed).
+                  if (reason === 'user_ended') reportAbandoned('end_button');
+                  setStage('cooldown');
+                }}
                 theme={theme}
                 prefetchedStream={prefetchedStream}
                 sessionCredentials={
