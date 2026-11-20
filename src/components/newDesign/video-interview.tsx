@@ -285,7 +285,7 @@ export function VideoInterview({
         return;
       }
 
-      let session;
+      let session: { liveKitUrl: string; liveKitToken: string; maxInterviewDuration?: number | null };
       if (prefetchedSession?.liveKitUrl && prefetchedSession?.liveKitToken) {
         console.log('✅ Using pre-fetched session credentials');
         session = prefetchedSession;

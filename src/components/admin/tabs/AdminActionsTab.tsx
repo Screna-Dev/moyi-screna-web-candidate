@@ -71,7 +71,7 @@ export function AdminActionsTab({ user, onUserUpdated }: AdminActionsTabProps) {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanType | ''>('');
 
-  const isUserBanned = user.status === 'BANNED';
+  const isUserBanned = String(user.status ?? '').toUpperCase() === 'BANNED';
 
   // Reset password state
   const [isResettingPassword, setIsResettingPassword] = useState(false);

@@ -26,14 +26,14 @@ interface UserDetailPanelProps {
 
 export function UserDetailPanel({ user, open, onOpenChange, onUserUpdated }: UserDetailPanelProps) {
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active':
+    switch (String(status ?? '').toUpperCase()) {
+      case 'ACTIVE':
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'Trial':
+      case 'TRIAL':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'Inactive':
+      case 'INACTIVE':
         return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
-      case 'Banned':
+      case 'BANNED':
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       default:
         return 'bg-gray-100 text-gray-800';
