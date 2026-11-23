@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Lightbulb, Clock, MessageSquareText, EyeOff, CircleDot, AlertTriangle, X, FileText, User } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Loader2, Lightbulb, Clock, MessageSquareText, EyeOff, CircleDot, AlertTriangle, X, FileText, User } from 'lucide-react';
 import LiveKitService from '@/services/LiveKitService';
 import { createInterviewSession } from '@/services/IntervewSesstionServices';
 import type { SessionCredentials } from '@/pages/newDesign/ai-mock';
@@ -55,15 +55,21 @@ export function VideoInterview({
   prefetchedSession = null,
   prefetchedStream = null,
   prefetchedConnected = false,
+  awaitEnd = false,
 }: {
   config: VideoInterviewConfig;
   interviewId?: string;
-  onEnd: () => void;
+  // With awaitEnd, may return a promise; the room is left only after it settles.
+  onEnd: () => void | Promise<void>;
   theme?: 'dark' | 'light';
   sessionCredentials?: SessionCredentials | null;
   prefetchedSession?: { liveKitUrl: string; liveKitToken: string; maxInterviewDuration: number | null } | null;
   prefetchedStream?: MediaStream | null;
   prefetchedConnected?: boolean;
+  // Careers only: call onEnd first and leave the LiveKit room only after it
+  // settles, so the server's end call reaches the bot before the disconnect
+  // does (#318). Mock interviews keep the old order (leave, then onEnd).
+  awaitEnd?: boolean;
 }) {
   const isDark = theme === 'dark';
 
@@ -91,6 +97,8 @@ export function VideoInterview({
   const [hintRevealed, setHintRevealed] = useState(false);
   const [selfViewHidden, setSelfViewHidden] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  // awaitEnd: true while onEnd is in flight; the End button spins and is disabled.
+  const [ending, setEnding] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const [liveConnected, setLiveConnected] = useState(false);
@@ -114,12 +122,25 @@ export function VideoInterview({
   const setOpenSnackbar = (_open: boolean) => {};
   const setSuccess = (msg: string) => console.log('[VideoInterview]', msg);
 
-  // endMeeting: ends the interview
-  const endMeeting = () => {
-    if (!endCalledRef.current) {
-      endCalledRef.current = true;
+  // endMeeting: ends the interview. With awaitEnd, wait for onEnd (the
+  // server's end call) before leaving the room: if the bot sees the candidate
+  // leave first it records a disconnect, not a candidate-ended interview (#318).
+  const endMeeting = async () => {
+    if (endCalledRef.current) return;
+    endCalledRef.current = true;
+    if (!awaitEnd) {
       LiveKitService.disconnect({ intentional: true }).catch(() => {});
       onEnd();
+      return;
+    }
+    setShowEndModal(false);
+    setEnding(true);
+    try {
+      await onEnd();
+    } catch (err) {
+      console.warn('[VideoInterview] onEnd failed', err);
+    } finally {
+      LiveKitService.disconnect({ intentional: true }).catch(() => {});
     }
   };
   const safeEnd = endMeeting;
@@ -264,7 +285,7 @@ export function VideoInterview({
         return;
       }
 
-      let session;
+      let session: { liveKitUrl: string; liveKitToken: string; maxInterviewDuration?: number | null };
       if (prefetchedSession?.liveKitUrl && prefetchedSession?.liveKitToken) {
         console.log('✅ Using pre-fetched session credentials');
         session = prefetchedSession;
@@ -417,6 +438,18 @@ export function VideoInterview({
     setAudioLevel(0);
   };
 
+  // Mute / camera off: switch the captured tracks off in place (the same
+  // tracks LiveKit published). Not LiveKit's mute: that makes the server stop
+  // forwarding the mic to the AI interviewer, and after unmuting the
+  // interviewer stopped hearing the candidate. A disabled track keeps sending
+  // silence (black frames for video), so the interviewer's stream never breaks.
+  useEffect(() => {
+    localStream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+  }, [muted, localStream]);
+  useEffect(() => {
+    localStream?.getVideoTracks().forEach((t) => { t.enabled = cameraOn; });
+  }, [cameraOn, localStream]);
+
   // Start audio detection when stream is ready
   useEffect(() => {
     if (localStream && !audioLevelIntervalRef.current) {
@@ -481,28 +514,20 @@ export function VideoInterview({
         cameraOn={cameraOn}
         transcriptOpen={transcriptOpen}
         selfViewHidden={selfViewHidden}
-        onToggleMic={() => {
-          setMuted((m) => {
-            const next = !m;
-            if (isLiveMode) {
-              try { LiveKitService.getRoom()?.localParticipant?.setMicrophoneEnabled(!next); } catch { /* ignore */ }
-            }
-            return next;
-          });
-        }}
+        onToggleMic={() => setMuted((m) => !m)}
         onToggleCamera={() => {
-          setCameraOn((c) => {
-            const next = !c;
-            if (isLiveMode) {
-              try { LiveKitService.getRoom()?.localParticipant?.setCameraEnabled(next); } catch { /* ignore */ }
-            }
-            return next;
-          });
+          const next = !cameraOn;
+          setCameraOn(next);
+          // No camera captured (voice-only start): let LiveKit open one.
+          if (isLiveMode && !localStreamRef.current?.getVideoTracks().length) {
+            try { LiveKitService.getRoom()?.localParticipant?.setCameraEnabled(next); } catch { /* ignore */ }
+          }
         }}
         onToggleTranscript={() => setTranscriptOpen((o) => !o)}
         onToggleSelfView={() => setSelfViewHidden((h) => !h)}
         onShowHint={() => setShowHint(true)}
         onEndInterview={() => setShowEndModal(true)}
+        ending={ending}
         isDark={isDark}
       />
 
@@ -1303,6 +1328,7 @@ function BottomControlBar({
   onToggleSelfView,
   onShowHint,
   onEndInterview,
+  ending = false,
   isDark,
 }: {
   muted: boolean;
@@ -1315,6 +1341,7 @@ function BottomControlBar({
   onToggleSelfView: () => void;
   onShowHint: () => void;
   onEndInterview: () => void;
+  ending?: boolean;
   isDark: boolean;
 }) {
   return (
@@ -1401,14 +1428,15 @@ function BottomControlBar({
       <div className="flex items-center min-w-[120px] justify-end">
         <button
           onClick={onEndInterview}
-          className={`flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[11px] transition-all duration-200 ${
+          disabled={ending}
+          className={`flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[11px] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
             isDark
               ? 'bg-red-500/10 border border-red-400/15 text-red-400 hover:bg-red-500/20 hover:border-red-400/25'
               : 'bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 hover:border-red-300'
           }`}
         >
-          <PhoneOff className="w-3 h-3" />
-          <span>End Interview</span>
+          {ending ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneOff className="w-3 h-3" />}
+          <span>{ending ? 'Ending…' : 'End Interview'}</span>
         </button>
       </div>
     </div>

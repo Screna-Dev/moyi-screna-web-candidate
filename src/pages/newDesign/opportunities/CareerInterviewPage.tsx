@@ -23,9 +23,11 @@ import { checkCareerResult, isBeingScored, markInterviewEnded, settleIfDone, voi
 // the application still reads IN_PROGRESS, so the room marks it as ended
 // (careersEnded) and a reload shows "submitted" instead of rejoining.
 
-type Phase = "joining" | "live" | "ending" | "submitted" | "done" | "error";
+type Phase = "joining" | "live" | "submitted" | "done" | "error";
 
 const POLL_MS = 4000;
+// Longest the room waits on POST .../interview/end before leaving anyway.
+const END_TIMEOUT_MS = 3000;
 
 function Screen({ children }: { children: ReactNode }) {
   return (
@@ -134,17 +136,28 @@ export function CareerInterviewPage() {
   }, [phase, applicationId]);
 
   const ended = useRef(false);
+  // The room stays mounted (End button spinning) while /end is in flight:
+  // unmounting it leaves the LiveKit room, and the bot must not see the
+  // candidate leave before /end lands, or it records a disconnect instead of
+  // a candidate-ended interview (#318, card 747). On timeout or error we leave
+  // anyway — no worse than before.
   const finish = async () => {
     if (ended.current) return;
     ended.current = true;
     // Before /end: from here until scoring finishes, "continue" is hidden.
     markInterviewEnded(applicationId, attemptsBefore.current);
-    setPhase("ending");
+    let timer: number | undefined;
     try {
-      await endCareerInterview(applicationId);
+      // Don't hold the candidate in the room forever if /end hangs.
+      await Promise.race([
+        endCareerInterview(applicationId),
+        new Promise<void>((resolve) => { timer = window.setTimeout(resolve, END_TIMEOUT_MS); }),
+      ]);
     } catch (err) {
       // Already over on the server (e.g. the bot ended it) is fine.
       if (careersErrorCode(err) !== "INVALID_STATE") console.warn("End interview failed", err);
+    } finally {
+      window.clearTimeout(timer);
     }
     setPhase("submitted");
   };
@@ -155,24 +168,23 @@ export function CareerInterviewPage() {
       <VideoInterview
         config={config}
         interviewId={applicationId}
-        onEnd={() => void finish()}
+        onEnd={finish}
+        awaitEnd
         prefetchedSession={{ liveKitUrl: session.url, liveKitToken: session.token, maxInterviewDuration: session.maxInterviewDuration }}
       />
     );
   }
 
-  if (phase === "joining" || phase === "ending") {
+  if (phase === "joining") {
     return (
       <Screen>
         <Loader2 size={28} className="animate-spin text-[#3c77f6]" />
         <p className="text-[18px] font-semibold text-[#1e232f]" style={{ fontFamily: font.semibold }}>
-          {phase === "joining" ? "Reconnecting to your interview…" : "Wrapping up your interview…"}
+          Reconnecting to your interview…
         </p>
-        {phase === "joining" && (
-          <p className="text-[14px] text-[#5a6172]" style={{ fontFamily: font.regular }}>
-            You won't be charged again.
-          </p>
-        )}
+        <p className="text-[14px] text-[#5a6172]" style={{ fontFamily: font.regular }}>
+          You won't be charged again.
+        </p>
       </Screen>
     );
   }

@@ -194,11 +194,9 @@ export function SignupFlowPage() {
       </div>
 
       {/* Progress bar - positioned absolutely at top */}
-      {currentStep !== 'loading' && (
-        <div className="absolute top-20 left-6 right-6">
+      <div className="absolute top-20 left-6 right-6">
           <Progress value={progress} className="h-1" />
         </div>
-      )}
 
       {/* Main content area - centered */}
       <div className="w-full max-w-6xl">

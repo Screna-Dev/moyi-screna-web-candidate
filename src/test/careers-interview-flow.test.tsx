@@ -407,6 +407,39 @@ describe('interview room', () => {
     expect(localStorage.getItem('careerInterviewEnded:app-1')).toBeNull();
   });
 
+  // #318 / card 747: leaving the LiveKit room before /end lands makes the bot
+  // record a disconnect (refunded) instead of a candidate-ended interview.
+  // Unmounting the room leaves it, so the room stays mounted until /end returns.
+  it('keeps the room mounted until /end returns', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    let resolveEnd: () => void = () => {};
+    api.endCareerInterview.mockReturnValue(new Promise<void>((r) => { resolveEnd = r; }));
+    api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'IN_PROGRESS' }));
+    renderRoom({ session, title: 'Backend Engineer', minutes: 20 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'End interview' }));
+    await poll(0);
+    expect(api.endCareerInterview).toHaveBeenCalledWith('app-1');
+    expect(screen.getByRole('button', { name: 'End interview' })).toBeInTheDocument();
+
+    await act(async () => { resolveEnd(); });
+    expect(screen.queryByRole('button', { name: 'End interview' })).not.toBeInTheDocument();
+    expect(screen.getByText('Interview submitted')).toBeInTheDocument();
+  });
+
+  it('leaves the room anyway if /end hangs', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    api.endCareerInterview.mockReturnValue(new Promise<void>(() => {}));
+    api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'IN_PROGRESS' }));
+    renderRoom({ session, title: 'Backend Engineer', minutes: 20 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'End interview' }));
+    await poll(2_900);
+    expect(screen.getByRole('button', { name: 'End interview' })).toBeInTheDocument();
+    await poll(200);
+    expect(screen.getByText('Interview submitted')).toBeInTheDocument();
+  });
+
   it('a reload rejoins with the consent, without asking again (#304)', async () => {
     api.getMyApplication.mockResolvedValue(app({ interviewStatus: 'IN_PROGRESS' }));
     api.startCareerInterview.mockResolvedValue({ ...session, resumed: true, maxInterviewDuration: null });
