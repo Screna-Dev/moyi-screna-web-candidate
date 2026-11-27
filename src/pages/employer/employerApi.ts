@@ -181,7 +181,9 @@ export type EmployerDashboardData = {
   applicants: { totalCount: number; last30DaysCount: number; prior30DaysCount: number };
   interviews: { completedCount: number; completedLast7DaysCount: number };
   unlockedReportCount: number;
-  decisions: { pendingCount: number; movedForwardCount: number; rejectedCount: number; contactedCount: number };
+  // consideringCount (#330): "Still considering", not part of pendingCount. Missing before #330.
+  // pendingCount leaves out jobs Screna removed as FRAUD (#335).
+  decisions: { pendingCount: number; movedForwardCount: number; rejectedCount: number; contactedCount: number; consideringCount?: number };
   daily: EmployerDashboardDay[];
   recentCandidatesJobId: string | null;
 };
@@ -296,6 +298,7 @@ export type ApiQuestion = {
 export type ApiJob = JobDetailsBody & {
   id: string;
   status: ApiJobStatus;
+  applicantLimit?: number; // #332, see JobListItem
   wizardStep: 1 | 2 | 3 | 4; // furthest step reached; only grows
   interviewSettings: ApiInterviewSettings;
   sponsorship: ApiSponsorship | null; // EMPLOYER-paid jobs only
@@ -516,6 +519,16 @@ export type JobActions = {
   editSponsorship: boolean; // published employer-paid jobs (#299)
 };
 
+// ADMIN = Screna took the job down (#333): removalReason says why.
+// APPLICANT_LIMIT_REACHED (#332): the last spot was taken; can't be reopened.
+export type CloseReason = 'DEADLINE' | 'MANUAL' | 'SPONSORSHIP_EXHAUSTED' | 'APPLICANT_LIMIT_REACHED' | 'ADMIN';
+// FRAUD also locks every candidate of the job (#335: 410 JOB_REMOVED).
+export type RemovalReason = 'FRAUD' | 'POLICY' | 'OTHER';
+// #336. ORGANIZATION: the member who pressed Publish (or the org's name when
+// unknown / the account has no name). SCRENA: published by Screna ops for the
+// org, name is always "Screna". null on drafts.
+export type PostedBy = { type: 'ORGANIZATION' | 'SCRENA'; name: string };
+
 export type JobListItem = {
   jobId: string;
   title: string;
@@ -526,9 +539,14 @@ export type JobListItem = {
   opensAt: string | null;
   closesAt: string | null;
   closedAt: string | null;
-  closeReason: 'DEADLINE' | 'MANUAL' | 'SPONSORSHIP_EXHAUSTED' | null;
+  closeReason: CloseReason | null;
+  removalReason?: RemovalReason | null; // set only when closeReason is ADMIN (#333)
   timezone: string | null;
   publishedAt: string | null;
+  // #332: the effective cap, never null (the platform limit, or the employer's
+  // lower maxApplicants). Missing before #332: fall back to the job's maxApplicants.
+  applicantLimit?: number;
+  postedBy?: PostedBy | null;
   applicationCount: number;
   completedCount: number;
   unlockedCount: number; // reports unlocked for this job (#326)
@@ -552,6 +570,8 @@ export async function listJobs(params: { status: JobListFilter; q?: string; sort
 
 // OPEN/SCHEDULED only. Same body as details; opensAt/closesAt are ignored
 // (use updateJobWindow) but still cross-checked, so send the current values.
+// #332: a maxApplicants at or below the applicants so far closes the job at
+// once (status CLOSED, closeReason APPLICANT_LIMIT_REACHED).
 export async function saveJobPosting(jobId: string, body: JobDetailsBody): Promise<ApiJob> {
   return data(await employerApi.put(`${jobPath(jobId)}/posting`, body));
 }
@@ -562,9 +582,9 @@ export async function updateJobWindow(jobId: string, body: { opensAt: string | n
   return data(await employerApi.put(`${jobPath(jobId)}/window`, body));
 }
 
-// OPEN / SCHEDULED, or CLOSED with closeReason SPONSORSHIP_EXHAUSTED (#299):
-// the reason becomes MANUAL and applicants who haven't started can no longer
-// start. Otherwise 409 INVALID_STATE.
+// OPEN / SCHEDULED, or CLOSED with closeReason SPONSORSHIP_EXHAUSTED (#299) or
+// APPLICANT_LIMIT_REACHED (#332): the reason becomes MANUAL and applicants who
+// haven't started can no longer start. Otherwise 409 INVALID_STATE.
 export async function closeJob(jobId: string): Promise<ApiJob> {
   return data(await employerApi.post(`${jobPath(jobId)}/close`));
 }
@@ -605,7 +625,18 @@ export async function listApplicationsJobs(params: { q?: string; status: Applica
 }
 
 export type BoardSummary = {
-  job: { id: string; title: string; status: ApiJobStatus; closesAt: string | null; closedAt: string | null; timezone: string | null };
+  // removalReason FRAUD (#335): every row is "Candidate #N" and unlock /
+  // report / resume / media / decision / outreach answer 410 JOB_REMOVED.
+  job: {
+    id: string;
+    title: string;
+    status: ApiJobStatus;
+    closesAt: string | null;
+    closedAt: string | null;
+    timezone: string | null;
+    closeReason?: CloseReason | null;
+    removalReason?: RemovalReason | null;
+  };
   rankingUpdatedAt: string | null;
   cards: {
     applications: number;
@@ -617,6 +648,7 @@ export type BoardSummary = {
     movedForward: number;
     movedForwardContacted: number;
     rejected: number;
+    considering?: number; // #330
   };
   inProgressCount: number;
 };
@@ -626,7 +658,9 @@ export async function getBoardSummary(jobId: string): Promise<BoardSummary> {
 }
 
 export type ReportStatus = 'LOCKED' | 'UNLOCKED';
-export type HiringStatus = 'AWAITING' | 'MOVED_FORWARD' | 'REJECTED';
+// CONSIDERING (#330): "Still considering", no email, can still become either
+// of the other two. MOVED_FORWARD / REJECTED are final and email the candidate.
+export type HiringStatus = 'AWAITING' | 'CONSIDERING' | 'MOVED_FORWARD' | 'REJECTED';
 export type CriterionScoreDto = { criterionId: string; name: string; score: number | null };
 
 export type BoardCandidate = {
@@ -669,6 +703,11 @@ export async function recordBoardVisit(jobId: string): Promise<void> {
 const appPath = (applicationId: string) => `/employer/applications/${encodeURIComponent(applicationId)}`;
 
 // 1 Report Credit per (org, application). Idempotent: repeats don't charge.
+// #330 (behind a backend switch): 409 FEEDBACK_REQUIRED {pending} while an
+// earlier unlocked candidate of the SAME job has no decision yet. Nothing is
+// charged; give feedback on every pending one, then retry. Only data.pending
+// decides who: candidates unlocked before the switch don't block.
+export type FeedbackPending = { applicationId: string; candidateNo: number };
 export async function unlockApplication(applicationId: string): Promise<{ applicationId: string; unlocked: boolean; reportCreditsBalance: number }> {
   return data(await employerApi.post(`${appPath(applicationId)}/unlock`));
 }
@@ -725,9 +764,20 @@ export async function getQuestionMedia(
   return data(await employerApi.get(`${appPath(applicationId)}/questions/${encodeURIComponent(questionId)}/media`));
 }
 
-// Doesn't notify the candidate and can change any time. Returns the board row.
-export async function setHiringDecision(applicationId: string, decision: HiringStatus): Promise<BoardCandidate> {
-  return data(await employerApi.put(`${appPath(applicationId)}/decision`, { decision }));
+// #330. Returns the updated board row.
+// - MOVED_FORWARD: emails the candidate; shareContact adds the org profile's
+//   contact name + email (409 INVALID_STATE when the profile has no email).
+// - REJECTED: emails the candidate with `reason` verbatim (50–100 words once
+//   the backend switch is on).
+// - CONSIDERING: no email; can later become either of the others.
+// reason only with REJECTED and shareContact only with MOVED_FORWARD, else 400.
+export type DecisionBody =
+  | { decision: 'MOVED_FORWARD'; shareContact?: boolean }
+  | { decision: 'REJECTED'; reason?: string }
+  | { decision: 'CONSIDERING' };
+
+export async function setHiringDecision(applicationId: string, body: DecisionBody): Promise<BoardCandidate> {
+  return data(await employerApi.put(`${appPath(applicationId)}/decision`, body));
 }
 
 // Needs an unlocked, MOVED_FORWARD application (else 403 REPORT_LOCKED / 409).
@@ -754,6 +804,56 @@ export async function saveOutreach(applicationId: string, body: { subject: strin
 
 export async function outreachAction(applicationId: string, action: 'reset' | 'mark-sent' | 'undo-sent'): Promise<Outreach> {
   return data(await employerApi.post(`${appPath(applicationId)}/outreach/${action}`));
+}
+
+// --- Suggested jobs (#334) ---------------------------------------------------
+// Jobs from the job pool linked to the trial code the org signed up with. An
+// org without one gets an empty list. suggestionId is a pool document id
+// (e.g. linkedin-4471933982). Errors: 409 JOB_SUGGESTION_NOT_READY, 409
+// INVALID_STATE, 503 JOB_POOL_UNAVAILABLE, 403 ORGANIZATION_SEAT_INACTIVE.
+// Once a suggestion becomes a job it leaves the list (it comes back only if
+// that draft is deleted).
+
+export type SuggestionStatus = 'NOT_PREPARED' | 'PREPARING' | 'READY' | 'FAILED';
+export type JobSuggestion = {
+  suggestionId: string;
+  title: string;
+  location: string | null;
+  source: string | null;
+  postedAt: string | null;
+  postingUrl: string | null;
+  preparation: { status: SuggestionStatus; missing: string[] };
+};
+
+const suggestionPath = (id: string) => `/employer/job-suggestions/${encodeURIComponent(id)}`;
+
+// 10 per page, newest first. Accepts either page shape ({content} or {items}).
+export async function listJobSuggestions(page: number): Promise<{ items: JobSuggestion[]; pageMeta: Page<unknown>['pageMeta'] | null }> {
+  const d = data<{ content?: JobSuggestion[]; items?: JobSuggestion[]; pageMeta?: Page<unknown>['pageMeta'] }>(
+    await employerApi.get('/employer/job-suggestions', { params: { page } }),
+  );
+  return { items: d?.content ?? d?.items ?? [], pageMeta: d?.pageMeta ?? null };
+}
+
+export async function getJobSuggestion(id: string): Promise<JobSuggestion> {
+  return data(await employerApi.get(suggestionPath(id)));
+}
+
+// Starts the AI preparation (posting, criteria, questions). Poll getJobSuggestion.
+export async function prepareJobSuggestion(id: string): Promise<JobSuggestion> {
+  return data(await employerApi.post(`${suggestionPath(id)}/prepare`));
+}
+
+// Creates and publishes the job in one step; same response as publishJob.
+// 400 JOB_NOT_READY {missing}, 400 ORGANIZATION_PROFILE_INCOMPLETE
+// {missingFields}; nothing is created on failure.
+export async function publishJobSuggestion(id: string): Promise<PublishResult> {
+  return data(await employerApi.post(`${suggestionPath(id)}/publish`));
+}
+
+// Creates a draft (wizardStep 4), or returns the one already made from it.
+export async function draftJobSuggestion(id: string): Promise<ApiJob> {
+  return data(await employerApi.post(`${suggestionPath(id)}/draft`));
 }
 
 // --- Business plan (/employer/plan, ADR-021 / ADR-023) -----------------------

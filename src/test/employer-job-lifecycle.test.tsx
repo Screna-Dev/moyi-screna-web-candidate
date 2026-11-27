@@ -26,6 +26,7 @@ vi.mock('@/pages/employer/employerApi', async (orig) => ({
   getJob: vi.fn(),
   saveSponsorship: vi.fn(),
   closeJob: vi.fn(),
+  listJobSuggestions: vi.fn(),
 }));
 
 const api = vi.mocked(employerApi);
@@ -77,6 +78,7 @@ const dialog = () => within(screen.getByRole('dialog'));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.listJobSuggestions.mockResolvedValue({ items: [], pageMeta: null });
 });
 
 describe('Edit sponsorship', () => {
@@ -155,5 +157,47 @@ describe('Close job', () => {
     renderJobs();
     expect(await screen.findByText('Closed by your team.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close job' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Applicant limit, removal and publisher (#332 / #333 / #336)', () => {
+  it('reads Maximum applicants from applicantLimit and shows who posted the job', async () => {
+    lists(item({ applicantLimit: 60, postedBy: { type: 'ORGANIZATION', name: 'Dana Lee' } }));
+    api.getJob.mockResolvedValue(apiJob({ status: 'OPEN', maxApplicants: null }));
+    renderJobs();
+    expect(await screen.findByText('Dana Lee')).toBeInTheDocument();
+    expect(screen.getByText('Posted by')).toBeInTheDocument();
+    expect(screen.getByText('60')).toBeInTheDocument();
+    expect(screen.queryByText('Unlimited')).not.toBeInTheDocument();
+  });
+
+  it('a job that filled up says so, and closing it stops all interviews', async () => {
+    lists(item({ status: 'CLOSED', closeReason: 'APPLICANT_LIMIT_REACHED', applicantLimit: 60, closesAt: '2099-01-01T00:00:00Z' }));
+    api.getJob.mockResolvedValue(apiJob({ status: 'CLOSED' }));
+    renderJobs();
+    expect(
+      await screen.findByText('Closed automatically when it reached 60 applicants. Applicants can still start their interviews until the deadline.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close job' }));
+    expect(dialog().getByText(/Stop all interviews/)).toBeInTheDocument();
+    expect(dialog().getByText(/reached its applicant limit/)).toBeInTheDocument();
+  });
+
+  it('a job Screna removed says why', async () => {
+    lists(item({ status: 'CLOSED', closeReason: 'ADMIN', removalReason: 'POLICY', actions: { ...ACTIONS, close: false, editSponsorship: false } }));
+    api.getJob.mockResolvedValue(apiJob({ status: 'CLOSED' }));
+    renderJobs();
+    expect(await screen.findByText(/Screna removed this job because it didn't meet our posting guidelines\./)).toBeInTheDocument();
+  });
+
+  it('offers suggested jobs only when there are some', async () => {
+    lists(item());
+    api.getJob.mockResolvedValue(apiJob({ status: 'OPEN' }));
+    api.listJobSuggestions.mockResolvedValue({
+      items: [],
+      pageMeta: { pageNumber: 0, pageSize: 10, totalElements: 2, totalPages: 1, first: true, last: true },
+    });
+    renderJobs();
+    expect(await screen.findByText('2 suggested jobs')).toBeInTheDocument();
   });
 });

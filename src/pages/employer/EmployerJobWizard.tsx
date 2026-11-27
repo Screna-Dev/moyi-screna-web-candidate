@@ -586,12 +586,15 @@ export function EmployerJobWizard({ jobId, checkout }: { jobId?: string; checkou
     }
     setBusy('Saving…');
     try {
-      if (postingChanged) await saveJobPosting(api.id, { ...detailsBody(job, api), opensAt: api.opensAt, closesAt: api.closesAt ?? '' });
+      // #332: lowering maxApplicants to the applicants so far closes the job at once.
+      const posted = postingChanged ? await saveJobPosting(api.id, { ...detailsBody(job, api), opensAt: api.opensAt, closesAt: api.closesAt ?? '' }) : null;
+      const closedNow = posted?.status === 'CLOSED';
       const closesAt = iso(job, 'closesAt');
-      if (windowChanged && closesAt) await updateJobWindow(api.id, { opensAt: opensLocked ? api.opensAt : opensAtIso(job), closesAt });
+      if (windowChanged && closesAt && !closedNow) await updateJobWindow(api.id, { opensAt: opensLocked ? api.opensAt : opensAtIso(job), closesAt });
       setInitial(job);
       setJustSaved(true);
-      toast.success('Job updated');
+      if (closedNow) toast.success('Job updated. It has reached its applicant limit, so it is now closed.');
+      else toast.success('Job updated');
       if (exit) go({ name: 'jobs' });
       return true;
     } catch (err) {

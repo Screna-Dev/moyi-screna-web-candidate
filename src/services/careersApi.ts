@@ -137,7 +137,12 @@ export type CareerApplication = {
   companyLogoUrl: string | null;
   location?: string | null;
   workplaceType?: WorkplaceType | null;
-  jobStatus: string; // the job may have closed since
+  jobStatus: string; // the job may have closed since; a removed job also reads CLOSED
+  // #333: show this, not jobStatus. REMOVED = Screna took the job down. OPEN
+  // doesn't mean it takes applications (see acceptingApplications). Missing
+  // before #333: derive from jobStatus (postingStatusOf).
+  postingStatus?: PostingStatus;
+  removalReason?: RemovalReason | null; // REMOVED only; only FRAUD reads differently
   closesAt: string | null;
   timezone: string | null;
   appliedAt: string;
@@ -163,6 +168,15 @@ export type CareerApplication = {
   // Whether a retake can start now, or the first reason it can't.
   retakeAvailability?: RetakeAvailability;
 };
+
+export type PostingStatus = 'OPEN' | 'CLOSED' | 'REMOVED';
+export type RemovalReason = 'FRAUD' | 'POLICY' | 'OTHER';
+
+export const postingStatusOf = (a: Pick<CareerApplication, 'postingStatus' | 'jobStatus'>): PostingStatus =>
+  a.postingStatus ?? (a.jobStatus === 'OPEN' ? 'OPEN' : 'CLOSED');
+
+// The public job page of a removed job (#333): 410, no posting.
+export const JOB_REMOVED = 'JOB_REMOVED';
 
 export type RetakeAvailability = 'NONE' | 'AVAILABLE' | 'UNAVAILABLE' | 'DECIDED' | 'WINDOW_CLOSED' | 'LIMIT_REACHED';
 

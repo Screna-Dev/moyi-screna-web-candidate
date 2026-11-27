@@ -14,6 +14,7 @@ import { CompanyProfileView } from './CompanyProfileView';
 import { EmployerDashboard } from './EmployerDashboard';
 import { EmployerJobsView } from './EmployerJobsView';
 import { EmployerJobWizard } from './EmployerJobWizard';
+import { EmployerSuggestedJobsView } from './EmployerSuggestedJobsView';
 import { OrgContext, useOrg, type OrgState } from './orgContext';
 import { toast } from 'sonner';
 import { CreditsContext, PLAN_CHECKOUT_KEY, REPORT_CHECKOUT_KEY, hasBusinessIntent, reportUnlocksLeft, takeBusinessIntent } from './creditsContext';
@@ -97,6 +98,8 @@ function ViewBody() {
       return <EmployerDashboard />;
     case 'jobs':
       return <EmployerJobsView />;
+    case 'suggestions':
+      return <EmployerSuggestedJobsView />;
     case 'wizard':
       // Keyed so opening another job (or a new one) starts a fresh wizard.
       return <EmployerJobWizard key={view.jobId ?? 'new'} jobId={view.jobId} checkout={view.checkout} />;

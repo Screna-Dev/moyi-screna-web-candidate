@@ -196,3 +196,31 @@ describe('retake gate and 409 reload message', () => {
     expect(applicationStateMessage(app({ interviewStatus: 'NOT_STARTED', jobStatus: 'CLOSED' }))).toMatch(/no longer accepting/);
   });
 });
+
+describe('job status for candidates (#332 / #333)', () => {
+  it('a job Screna removed as FRAUD reads "No longer available" with the scam warning', () => {
+    const j = toMyJob(app({ jobStatus: 'CLOSED', postingStatus: 'REMOVED', removalReason: 'FRAUD', canStartInterview: false }));
+    expect(j.isClosed).toBe(true);
+    expect(j.jobType).toBe('No longer available');
+    expect(j.closedNote).toMatch(/^Screna removed this job because we couldn't verify it\. Screna never asks for payment or bank details\./);
+  });
+
+  it('POLICY and OTHER read the same', () => {
+    for (const reason of ['POLICY', 'OTHER'] as const) {
+      const j = toMyJob(app({ jobStatus: 'CLOSED', postingStatus: 'REMOVED', removalReason: reason, canStartInterview: false }));
+      expect(j.closedNote).toBe('This job is no longer available.');
+    }
+  });
+
+  it('closed but still interviewable (e.g. applicant limit reached) says the interview can still start', () => {
+    const j = toMyJob(app({ jobStatus: 'CLOSED', postingStatus: 'CLOSED', interviewStatus: 'NOT_STARTED', canStartInterview: true }));
+    expect(j.jobType).toBe('No longer accepting applications');
+    expect(j.closedNote).toBe('Applications are closed; you can still start your interview.');
+    expect(j.actions.map((a) => a.label)).toContain('Start interview');
+  });
+
+  it('without postingStatus (before #333) falls back to jobStatus', () => {
+    expect(toMyJob(app({ jobStatus: 'OPEN', postingStatus: undefined })).isClosed).toBe(false);
+    expect(toMyJob(app({ jobStatus: 'CLOSED', postingStatus: undefined, canStartInterview: false })).jobType).toBe('No longer accepting applications');
+  });
+});

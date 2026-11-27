@@ -1,4 +1,4 @@
-import { fundingOf, type CareerApplication, type CareerJob, type CareerResultStanding, type StandingStatus } from "@/services/careersApi";
+import { fundingOf, postingStatusOf, type CareerApplication, type CareerJob, type CareerResultStanding, type StandingStatus } from "@/services/careersApi";
 import { isBeingScored } from "./careersEnded";
 import { type AssessmentStatus, type MyJob, type OpportunityJob } from "./mockJobs";
 
@@ -141,6 +141,30 @@ export function toOpportunityJob(job: CareerJob): LiveOpportunityJob {
 
 export type LiveMyJob = MyJob & { career: CareerApplication };
 
+// #333, suggested copy (PM decides). Never show the raw values, and never say
+// "spam", "taken down" or "inactive". POLICY and OTHER read the same.
+export const POSTING_LABEL = {
+  OPEN: "Accepting applications",
+  CLOSED: "No longer accepting applications",
+  REMOVED: "No longer available",
+} as const;
+
+export function removedLine(reason: CareerApplication["removalReason"]) {
+  return reason === "FRAUD"
+    ? "Screna removed this job because we couldn't verify it. Screna never asks for payment or bank details. If anyone contacts you about this job asking for them, don't respond."
+    : "This job is no longer available.";
+}
+
+// The line under a closed / removed job for someone who applied; "" for an open one.
+export function closedLine(app: CareerApplication) {
+  const status = postingStatusOf(app);
+  if (status === "REMOVED") return removedLine(app.removalReason);
+  if (status === "OPEN") return "";
+  // #332: closed (e.g. applicant limit reached) but this applicant can still interview.
+  if (app.canStartInterview && app.interviewStatus !== "COMPLETED") return "Applications are closed; you can still start your interview.";
+  return app.interviewStatus === "COMPLETED" ? "This role is closed. Your assessment report remains available." : "This role is closed.";
+}
+
 function updatedLabel(iso: string | null) {
   if (!iso) return "Updated Today";
   const d = new Date(iso);
@@ -149,7 +173,9 @@ function updatedLabel(iso: string | null) {
 }
 
 export function toMyJob(app: CareerApplication): LiveMyJob {
-  const closed = app.jobStatus !== "OPEN";
+  // #333: postingStatus, not jobStatus (a removed job also reads CLOSED).
+  const posting = postingStatusOf(app);
+  const closed = posting !== "OPEN";
   const done = app.interviewStatus === "COMPLETED";
   // Ended in this browser and still being scored: nothing to continue.
   const scoring = isBeingScored(app);
@@ -179,14 +205,13 @@ export function toMyJob(app: CareerApplication): LiveMyJob {
     company: app.companyName,
     title: app.jobTitle,
     location: [app.location, workplaceLabel(app.workplaceType)].filter(Boolean).join(" · "),
-    jobType: closed ? "Job closed" : "Partner Job",
+    jobType: closed ? POSTING_LABEL[posting] : "Partner Job",
     isClosed: closed,
+    closedNote: closed ? closedLine(app) : undefined,
     assessmentStatus,
     applicationStatus: app.hiringDecision === "REJECTED" ? "Not selected" : "Applied",
     bestScore: app.bestScore ?? null,
-    guidance: scoring
-      ? "We're scoring your interview. This updates by itself when your result is ready."
-      : closed ? "This role is closed." : "",
+    guidance: scoring ? "We're scoring your interview. This updates by itself when your result is ready." : "",
     updatedLabel: updatedLabel(app.interviewCompletedAt ?? app.appliedAt),
     actions,
     // Retakes are always candidate-paid.

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { useNavigate, useParams } from "react-router";
 import { languageLabel, useCareerInterviewStarter } from "@/components/newDesign/opportunities/careersShared";
-import { leftToStartLabel, retakeBlockedMessage, seniorityLabel, workplaceLabel, yearsLabel } from "@/components/newDesign/opportunities/careersDesignData";
-import { getCareerJob, type CareerJobDetail, type CareerPosting, type InterviewPayer } from "@/services/careersApi";
+import { POSTING_LABEL, closedLine, leftToStartLabel, retakeBlockedMessage, seniorityLabel, workplaceLabel, yearsLabel } from "@/components/newDesign/opportunities/careersDesignData";
+import { JOB_REMOVED, getCareerJob, postingStatusOf, type CareerJobDetail, type CareerPosting, type InterviewPayer } from "@/services/careersApi";
 
 // Design page (Downloads export), filled from GET /careers/jobs/{id}. Real
 // data only: anything the posting doesn't have is hidden (backend 11-12).
@@ -101,19 +102,29 @@ export function JobDetailPage() {
   const jobId = id ?? "";
   const [detail, setDetail] = useState<CareerJobDetail | null>(null);
   const [missing, setMissing] = useState(false);
+  // 410 JOB_REMOVED: Screna removed the job and this visitor never applied (#333).
+  const [removed, setRemoved] = useState(false);
   const starter = useCareerInterviewStarter((app) => setDetail((d) => (d ? { ...d, myApplication: app } : d)));
 
   useEffect(() => {
     let cancelled = false;
     getCareerJob(jobId)
       .then((d) => !cancelled && setDetail(d))
-      .catch(() => !cancelled && setMissing(true));
+      .catch((err) => {
+        if (cancelled) return;
+        const body = axios.isAxiosError(err) ? (err.response?.data as { errorCode?: string; error?: string } | undefined) : undefined;
+        if ((body?.errorCode ?? body?.error) === JOB_REMOVED) setRemoved(true);
+        setMissing(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [jobId]);
 
   const myApp = detail?.myApplication ?? null;
+  // #333: an applicant still sees a closed or removed job; say so at the top.
+  const posting = myApp ? postingStatusOf(myApp) : "OPEN";
+  const postingNote = myApp && posting !== "OPEN" ? closedLine(myApp) : "";
   const isCompleted = myApp?.interviewStatus === "COMPLETED";
   // Applied: who pays the next interview is the application's funding; a
   // retake is always the candidate's.
@@ -144,7 +155,7 @@ export function JobDetailPage() {
     return (
       <div className="bg-white border border-[#e1e4ea] rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
         <p className="text-[#1e232f] text-[18px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
-          {missing ? "This role isn't open" : "Loading…"}
+          {removed ? POSTING_LABEL.REMOVED : missing ? "This role isn't open" : "Loading…"}
         </p>
         {missing && (
           <button onClick={() => navigate("/opportunities")} className="text-[#3c77f6] text-[14px] hover:underline" style={{ fontFamily: "'Inter:Medium', Inter, sans-serif" }}>
@@ -165,6 +176,24 @@ export function JobDetailPage() {
       >
         ← Back to Opportunities
       </button>
+
+      {posting !== "OPEN" && (
+        <div
+          role="status"
+          className={`rounded-2xl border px-5 py-4 flex flex-col gap-1 ${
+            posting === "REMOVED" && myApp?.removalReason === "FRAUD" ? "bg-[#fef3f2] border-[#fecdca]" : "bg-[#f3f4f7] border-[#e1e4ea]"
+          }`}
+        >
+          <span className="text-[#1e232f] text-[14px] font-semibold" style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}>
+            {POSTING_LABEL[posting]}
+          </span>
+          {postingNote && (
+            <span className="text-[#5a6172] text-[13px] leading-5" style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}>
+              {postingNote}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Job Header Card */}
       <div className="bg-white border border-[#e1e4ea] rounded-2xl p-6 flex flex-col gap-5">

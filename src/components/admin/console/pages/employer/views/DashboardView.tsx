@@ -41,6 +41,7 @@ export type LiveDashboardStats = {
   interviewsLast7Days: number;
   reportsUnlocked: number;
   pending: number;
+  considering?: number; // #330; not part of pending. Missing before #330 (row hidden).
   movedForward: number;
   rejected: number;
   contacted: number;
@@ -322,6 +323,7 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           interviewsHint: `${ls.interviewsLast7Days} completed this week`,
           unlocked: ls.reportsUnlocked,
           pending: ls.pending,
+          considering: ls.considering,
           moved: ls.movedForward,
           rejected: ls.rejected,
           contacted: ls.contacted,
@@ -533,6 +535,7 @@ export function DashboardView({ live }: { live?: LiveDashboard } = {}) {
           <p className="text-[13px] font-semibold text-[#1e232f]">Decision breakdown</p>
           {[
             { k: 'Pending Decision', v: stats.pending, amber: true },
+            ...('considering' in stats && stats.considering !== undefined ? [{ k: 'Still Considering', v: stats.considering, amber: false }] : []),
             { k: 'Moved Forward', v: stats.moved },
             { k: 'Rejected', v: stats.rejected },
           ].map((r) => (

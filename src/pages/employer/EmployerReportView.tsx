@@ -2,19 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Download, Lock, Pause, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
-import { BackLink, Button, Card, Dialog, EmptyBox, Pill, cx } from '@/components/admin/console/pages/employer/ui';
+import { BackLink, Button, Card, EmptyBox, Pill, cx } from '@/components/admin/console/pages/employer/ui';
 import { DecisionPill, ScreeningDots, copyText } from '@/components/admin/console/pages/employer/views/candidateShared';
 import { authErrorCode, authErrorMessage } from './employerAuth';
-import { getCandidateReport, getQuestionMedia, getResumeLink, setHiringDecision, type CandidateReport, type HiringStatus, type ReportQuestion } from './employerApi';
-import { SCREENING_ENABLED, browserZone, clock, dateTimeAt, decisionOf, reportScreeningOf } from './boardFormat';
+import { getCandidateReport, getQuestionMedia, getResumeLink, setHiringDecision, type CandidateReport, type ReportQuestion } from './employerApi';
+import { JOB_REMOVED, JOB_REMOVED_MESSAGE, SCREENING_ENABLED, browserZone, clock, dateTimeAt, decisionOf, reportScreeningOf } from './boardFormat';
 import { EmployerUnlockDialog } from './EmployerUnlockDialog';
+import { EmployerFeedbackDialog, type FeedbackChoice } from './EmployerFeedbackDialog';
 
 // Applications report (Figma "候选人view report"), from GET .../report. The
 // report reflects the candidate's latest completed interview. Questions come
 // in interview order and include the AI's follow-ups. New interviews have no
 // per-question criteria, transcript or audio: the design's buttons stay but
 // are disabled. Resume / transcript / audio links expire after 15 minutes, so
-// they are fetched on each click. Decisions don't notify the candidate.
+// they are fetched on each click. Decisions (#330): Move on and No longer
+// consider are final and email the candidate; Still considering sends nothing.
+// A job Screna removed as FRAUD answers 410 JOB_REMOVED everywhere (#335).
 // Screening: hidden this release (SCREENING_ENABLED in boardFormat).
 // PDF download isn't provided by the API yet.
 
@@ -24,13 +27,12 @@ const notAvailable = (what: string) => () => toast(`${what} isn't available yet`
 export function EmployerReportView({ jobId, applicationId }: { jobId: string; applicationId: string }) {
   const { go } = useEmployerStore();
   const [report, setReport] = useState<CandidateReport | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'locked' | 'missing' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'locked' | 'missing' | 'removed' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
   const [unlocking, setUnlocking] = useState(false);
-  const [confirm, setConfirm] = useState<HiringStatus | null>(null);
-  const [changing, setChanging] = useState(false);
-  const [deciding, setDeciding] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackChoice | null>(null);
+  const [considering, setConsidering] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +47,7 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
       .catch((err) => {
         if (cancelled) return;
         const code = authErrorCode(err);
-        setState(code === 'REPORT_LOCKED' ? 'locked' : code === 'NOT_FOUND' ? 'missing' : 'error');
+        setState(code === 'REPORT_LOCKED' ? 'locked' : code === 'NOT_FOUND' ? 'missing' : code === JOB_REMOVED ? 'removed' : 'error');
       });
     return () => {
       cancelled = true;
@@ -56,11 +58,11 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
 
   if (state === 'loading') return <p className="text-[14px] text-[#5a6172] py-10 text-center">Loading report…</p>;
 
-  if (state === 'missing' || state === 'error') {
+  if (state === 'missing' || state === 'removed' || state === 'error') {
     return (
       <Card className="p-0">
         <EmptyBox
-          title={state === 'missing' ? 'Candidate not found' : "Couldn't load this report"}
+          title={state === 'missing' ? 'Candidate not found' : state === 'removed' ? JOB_REMOVED_MESSAGE : "Couldn't load this report"}
           actions={
             <>
               {state === 'error' && <Button onClick={() => setAttempt((a) => a + 1)}>Try again</Button>}
@@ -101,23 +103,22 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
 
   const r = report;
   const decision = decisionOf(r.hiringStatus);
-  const decided = r.hiringStatus !== 'AWAITING' && !changing;
+  const decided = r.hiringStatus === 'MOVED_FORWARD' || r.hiringStatus === 'REJECTED';
   const screening = SCREENING_ENABLED ? reportScreeningOf(r) : null;
   const questions = [...r.questions].sort((a, b) => a.seq - b.seq);
   const language = LANGUAGES[r.interview.language] ?? r.interview.language;
 
-  const decide = async (to: HiringStatus) => {
-    setDeciding(true);
+  // "Still considering" needs no confirmation.
+  const consider = async () => {
+    setConsidering(true);
     try {
-      await setHiringDecision(applicationId, to);
-      setReport({ ...r, hiringStatus: to });
-      toast.success(to === 'REJECTED' ? 'Candidate rejected' : to === 'MOVED_FORWARD' ? 'Candidate moved forward' : 'Decision cleared');
-      setConfirm(null);
-      setChanging(false);
+      await setHiringDecision(applicationId, { decision: 'CONSIDERING' });
+      setReport({ ...r, hiringStatus: 'CONSIDERING' });
+      toast.success('Marked as still considering');
     } catch (err) {
-      toast.error(authErrorMessage(err) || 'Could not save the decision.');
+      toast.error(authErrorCode(err) === JOB_REMOVED ? JOB_REMOVED_MESSAGE : authErrorMessage(err) || 'Could not save the decision.');
     } finally {
-      setDeciding(false);
+      setConsidering(false);
     }
   };
 
@@ -127,7 +128,7 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
       if (!link.url) return void toast('No resume on file for this candidate');
       window.open(link.url, '_blank', 'noopener');
     } catch (err) {
-      toast.error(authErrorMessage(err) || 'Could not open the resume.');
+      toast.error(authErrorCode(err) === JOB_REMOVED ? JOB_REMOVED_MESSAGE : authErrorMessage(err) || 'Could not open the resume.');
     }
   };
 
@@ -302,29 +303,30 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
             {decided ? (
               <>
                 <p className="text-[13px] text-[#5a6172]">
-                  {r.hiringStatus === 'MOVED_FORWARD' ? 'You moved this candidate forward. Contact them to set up the next step.' : 'You rejected this candidate.'}
+                  {r.hiringStatus === 'MOVED_FORWARD'
+                    ? "You moved this candidate forward and we've emailed them. Contact them to set up the next step."
+                    : "You're no longer considering this candidate. We've emailed them your feedback."}
                 </p>
                 {r.hiringStatus === 'MOVED_FORWARD' && (
                   <Button variant="primary" onClick={() => go({ name: 'contact', jobId, candidateId: applicationId })}>
                     Contact candidate →
                   </Button>
                 )}
-                <Button variant="link" className="w-fit text-[13px]" onClick={() => setChanging(true)}>
-                  Change decision
-                </Button>
               </>
             ) : (
               <>
-                <p className="text-[13px] text-[#5a6172]">Candidates aren&rsquo;t notified of your decision. You can change it at any time.</p>
-                <Button variant="primary" onClick={() => setConfirm('MOVED_FORWARD')}>
-                  Move forward
+                <p className="text-[13px] text-[#5a6172]">
+                  Moving on or no longer considering emails the candidate and can&rsquo;t be undone. Still considering sends nothing.
+                </p>
+                <Button variant="primary" onClick={() => setFeedback('MOVED_FORWARD')}>
+                  Move on
                 </Button>
-                <Button variant="danger" onClick={() => setConfirm('REJECTED')}>
-                  Reject
+                <Button variant="danger" onClick={() => setFeedback('REJECTED')}>
+                  No longer consider
                 </Button>
-                {changing && (
-                  <Button variant="ghost" size="sm" onClick={() => setChanging(false)}>
-                    Keep current decision
+                {r.hiringStatus !== 'CONSIDERING' && (
+                  <Button disabled={considering} onClick={() => void consider()}>
+                    {considering ? 'Saving…' : 'Still considering'}
                   </Button>
                 )}
               </>
@@ -378,25 +380,18 @@ export function EmployerReportView({ jobId, applicationId }: { jobId: string; ap
       </div>
       <p className="text-[12px] text-[#9ba1b0]">AI-generated assessment should support, not replace, the employer's independent review of interview evidence.</p>
 
-      <Dialog
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        title={confirm === 'REJECTED' ? `Reject ${r.candidate.name}?` : `Move ${r.candidate.name} forward?`}
-        actions={
-          <>
-            <Button onClick={() => setConfirm(null)}>Cancel</Button>
-            <Button variant={confirm === 'REJECTED' ? 'danger' : 'primary'} disabled={deciding} onClick={() => confirm && void decide(confirm)}>
-              {confirm === 'REJECTED' ? 'Confirm rejection' : 'Move forward'}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[14px] text-[#5a6172]">
-          {confirm === 'REJECTED'
-            ? "The candidate won't be notified. You can change this decision at any time."
-            : "The candidate won't be notified. You can then contact them with a prepared email."}
-        </p>
-      </Dialog>
+      {feedback && (
+        <EmployerFeedbackDialog
+          applicationId={applicationId}
+          label={r.candidate.name}
+          initial={feedback}
+          onClose={() => setFeedback(null)}
+          onSaved={(_, body) => {
+            setReport({ ...r, hiringStatus: body.decision });
+            setFeedback(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -430,7 +425,7 @@ function QuestionCard({
     try {
       return await getQuestionMedia(applicationId, q.questionId!);
     } catch (err) {
-      toast.error(authErrorMessage(err) || 'Could not load the recording.');
+      toast.error(authErrorCode(err) === JOB_REMOVED ? JOB_REMOVED_MESSAGE : authErrorMessage(err) || 'Could not load the recording.');
       return null;
     }
   }, [applicationId, q.questionId]);

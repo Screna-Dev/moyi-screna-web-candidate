@@ -30,6 +30,7 @@ export function initialsOf(name: string) {
 export function DecisionPill({ decision }: { decision: HiringDecision }) {
   if (decision === 'moved_forward') return <Pill tone="green">Moved forward</Pill>;
   if (decision === 'rejected') return <Pill tone="red">Rejected</Pill>;
+  if (decision === 'considering') return <Pill tone="blue">Still considering</Pill>;
   return <Pill tone="gray">Awaiting decision</Pill>;
 }
 

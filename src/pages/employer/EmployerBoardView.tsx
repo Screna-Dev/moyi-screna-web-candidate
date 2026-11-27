@@ -17,7 +17,7 @@ import {
   type CandidateFilters,
   type Page,
 } from './employerApi';
-import { SCREENING_ENABLED, closingLabel, jobLinkOf, performanceOf, screeningOf, shortDate, updatedLabel, weakestLabelOf } from './boardFormat';
+import { JOB_REMOVED_MESSAGE, SCREENING_ENABLED, closingLabel, jobLinkOf, performanceOf, screeningOf, shortDate, updatedLabel, weakestLabelOf } from './boardFormat';
 import { EmployerUnlockDialog, type UnlockTarget } from './EmployerUnlockDialog';
 
 // Application board (Figma "Candidate Board - Main", "— No Completed
@@ -26,10 +26,22 @@ import { EmployerUnlockDialog, type UnlockTarget } from './EmployerUnlockDialog'
 // records the visit (rank snapshot + resets the job's "New" count); calling it
 // earlier would wipe isNew and movement. 10 rows per page (the API's size).
 // Screening: hidden this release (SCREENING_ENABLED in boardFormat).
+// Decision filter includes CONSIDERING (#330). A job Screna removed as FRAUD
+// (summary job.removalReason, #335) shows every row as "Candidate #N" and
+// hides Unlock / View report: those answer 410. No job link for any job
+// Screna removed (its public page is 410).
 
 type Chip = 'all' | 'unlocked' | 'locked';
 type ScoreFilter = 'Score: All' | '80+' | '70+' | 'Below 70';
 const REPORT: Record<Chip, CandidateFilters['report']> = { all: 'ALL', unlocked: 'UNLOCKED', locked: 'LOCKED' };
+type DecisionFilter = 'Decision: All' | 'Awaiting decision' | 'Still considering' | 'Moved forward' | 'Rejected';
+const DECISION: Record<DecisionFilter, CandidateFilters['hiringStatus']> = {
+  'Decision: All': undefined,
+  'Awaiting decision': 'AWAITING',
+  'Still considering': 'CONSIDERING',
+  'Moved forward': 'MOVED_FORWARD',
+  Rejected: 'REJECTED',
+};
 const SCORE: Record<ScoreFilter, Pick<CandidateFilters, 'minScore' | 'maxScore'>> = {
   'Score: All': {},
   '80+': { minScore: 80 },
@@ -59,6 +71,7 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<Chip>('all');
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('Score: All');
+  const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('Decision: All');
   const [page, setPage] = useState(0);
   const [reload, setReload] = useState(0);
 
@@ -99,13 +112,13 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
   useEffect(() => {
     let cancelled = false;
     setRowsFailed(false);
-    listBoardCandidates(jobId, { q: query, report: REPORT[chip], ...SCORE[scoreFilter], page })
+    listBoardCandidates(jobId, { q: query, report: REPORT[chip], ...SCORE[scoreFilter], hiringStatus: DECISION[decisionFilter], page })
       .then((r) => !cancelled && setRows(r))
       .catch(() => !cancelled && setRowsFailed(true));
     return () => {
       cancelled = true;
     };
-  }, [jobId, query, chip, scoreFilter, page, reload]);
+  }, [jobId, query, chip, scoreFilter, decisionFilter, page, reload]);
 
   // Once, after the first page of candidates has rendered (this effect runs
   // after that render).
@@ -131,6 +144,8 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
   const completed = cards?.interviewsCompleted ?? 0;
   const unlocked = cards?.reportsUnlocked ?? 0;
   const meta = rows?.pageMeta;
+  const fraud = job?.removalReason === 'FRAUD';
+  const removed = !!job?.removalReason || job?.closeReason === 'ADMIN';
 
   const resetPaging = <T,>(fn: (v: T) => void) => (v: T) => {
     fn(v);
@@ -191,16 +206,18 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
                 <>
                   <div className="fixed inset-0 z-[40]" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-full mt-1 z-[50] min-w-[200px] bg-white border border-[#e1e4ea] rounded-xl shadow-[0px_8px_24px_rgba(0,0,0,0.08)] py-1">
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2 text-[13px] hover:bg-[#f3f4f7]"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        void copyText(jobLinkOf(jobId), 'Job link copied');
-                      }}
-                    >
-                      Copy job link
-                    </button>
+                    {!removed && (
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-[13px] hover:bg-[#f3f4f7]"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          void copyText(jobLinkOf(jobId), 'Job link copied');
+                        }}
+                      >
+                        Copy job link
+                      </button>
+                    )}
                     {isOpen && (
                       <button type="button" className="w-full text-left px-3 py-2 text-[13px] text-[#dc2626] hover:bg-[#fef2f2]" onClick={() => void close()}>
                         Close applications
@@ -226,6 +243,10 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
         </span>
       </Card>
 
+      {fraud && (
+        <Card className="px-4 py-3 text-[14px] text-[#b42318] !bg-[#fef3f2] !border-[#fecdca]">{JOB_REMOVED_MESSAGE}</Card>
+      )}
+
       {!summary ? (
         <BoardSkeleton />
       ) : completed === 0 ? (
@@ -246,9 +267,11 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
             actions={
               <>
                 <Button onClick={() => go({ name: 'wizard', jobId })}>View live job</Button>
-                <Button variant="link" onClick={() => void copyText(jobLinkOf(jobId), 'Job link copied')}>
-                  Copy job link
-                </Button>
+                {!removed && (
+                  <Button variant="link" onClick={() => void copyText(jobLinkOf(jobId), 'Job link copied')}>
+                    Copy job link
+                  </Button>
+                )}
               </>
             }
           />
@@ -263,9 +286,12 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
               value={unlocked}
               hint={`${cards!.reportCreditsRemaining} report unlock${cards!.reportCreditsRemaining === 1 ? '' : 's'} remaining`}
             />
-            {/* Decisions don't notify candidates (backend): the hints say who was contacted instead. */}
             <StatCard label="Moved forward" value={cards!.movedForward} hint={`${cards!.movedForwardContacted} contacted`} />
-            <StatCard label="Rejected" value={cards!.rejected} hint="Decisions aren't sent to candidates" />
+            <StatCard
+              label="Rejected"
+              value={cards!.rejected}
+              hint={cards!.considering !== undefined ? `${cards!.considering} still considering` : 'Candidates are emailed your decision'}
+            />
           </div>
 
           <Card className="p-3 flex items-center gap-3">
@@ -289,6 +315,12 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
               ]}
             />
             <Select value={scoreFilter} onChange={(v) => resetPaging(setScoreFilter)(v as ScoreFilter)} options={['Score: All', '80+', '70+', 'Below 70']} className="!w-auto" />
+            <Select
+              value={decisionFilter}
+              onChange={(v) => resetPaging(setDecisionFilter)(v as DecisionFilter)}
+              options={Object.keys(DECISION)}
+              className="!w-auto"
+            />
           </Card>
 
           {rowsFailed ? (
@@ -345,7 +377,9 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
                           </td>
                           {SCREENING_ENABLED && <td className="px-3 py-3">{scr && <ScreeningDots met={scr.met} total={scr.total} />}</td>}
                           <td className="px-3 py-3">
-                            {unlockedRow ? (
+                            {fraud ? (
+                              <span className="text-[13px] text-[#5a6172]">Not available</span>
+                            ) : unlockedRow ? (
                               <div className="flex items-center gap-2">
                                 <Button size="sm" onClick={() => go({ name: 'report', jobId, candidateId: c.applicationId })}>
                                   View report
@@ -401,6 +435,10 @@ export function EmployerBoardView({ jobId }: { jobId: string }) {
         jobId={jobId}
         jobTitle={title}
         onClose={() => setUnlocking(null)}
+        onDecided={() => {
+          setReload((r) => r + 1);
+          loadSummary();
+        }}
         onUnlocked={(applicationId) => {
           setReload((r) => r + 1);
           loadSummary();

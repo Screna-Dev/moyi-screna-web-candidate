@@ -125,6 +125,7 @@ function ViewBody() {
       return <ContactCandidateView jobId={view.jobId} candidateId={view.candidateId} />;
     case 'plan':
     case 'profile':
+    case 'suggestions':
       // Billing and the API-backed company profile are employer-only
       // (/employer); admins never navigate here.
       return <DashboardView />;

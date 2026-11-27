@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Briefcase, ChevronDown, Loader2, Plus, Repeat, Search } from 'lucide-react';
+import { Briefcase, ChevronDown, Loader2, Plus, Repeat, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEmployerStore } from '@/components/admin/console/pages/employer/store';
 import { Card, EmptyBox, cx } from '@/components/admin/console/pages/employer/ui';
@@ -8,6 +8,7 @@ import { CloseJobDialog, EditSponsorshipDialog } from './JobLifecycleDialogs';
 import {
   createJob,
   getJob,
+  listJobSuggestions,
   listJobs,
   saveInterviewSettings,
   saveJobAssessment,
@@ -18,14 +19,16 @@ import {
   type JobListItem,
   type JobListSort,
 } from './employerApi';
+import { REMOVAL_NOTE } from './boardFormat';
 import { apiToJob, assessmentBody, defaultWindow, detailsBody, formatInZone, jobStatusOf, settingsBody, sponsorshipBody, workplaceLabel, zoneAbbr } from './jobMapping';
 
 // Employer Jobs page (Figma 2082:138 "Jobs-Management-Content"), backed by
 // GET /employer/jobs. Layout follows the design: summary cards, filter chips,
 // and Active / Closed / Drafts sections. The list is paged on the server (10
 // per page), so each section loads its own status and has "Show more".
-// Maximum applicants and interview payment aren't in the list rows; each card
-// reads them from GET /employer/jobs/{id}. Repost has no endpoint: it copies
+// Interview payment isn't in the list rows; each card reads it from GET
+// /employer/jobs/{id}. Maximum applicants is the row's applicantLimit (#332),
+// falling back to the job's maxApplicants until #332 is deployed. Repost has no endpoint: it copies
 // the job into a new draft (POST + PUT assessment + PUT interview-settings).
 // The admin console keeps its mock table-style JobsView.
 
@@ -98,6 +101,18 @@ export function EmployerJobsView() {
   const [editing, setEditing] = useState<JobListItem | null>(null);
   const [closing, setClosing] = useState<JobListItem | null>(null);
   const loadId = useRef(0);
+  // #334: orgs that signed up with a trial code linked to job-pool postings.
+  // Others get an empty list, so the entry only shows when there are some.
+  const [suggestions, setSuggestions] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    listJobSuggestions(0)
+      .then((r) => !cancelled && setSuggestions(r.pageMeta?.totalElements ?? r.items.length))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // After Edit sponsorship or Close: re-read the job and the list (status and actions may change).
   const changed = (jobId: string) => {
@@ -174,6 +189,23 @@ export function EmployerJobsView() {
           <span className="text-[12px] font-medium text-[#5a6172]">Publishing a job is free.</span>
         </div>
       </div>
+
+      {suggestions > 0 && (
+        <button
+          type="button"
+          onClick={() => go({ name: 'suggestions' })}
+          className="flex items-center gap-3 rounded-2xl border border-[rgba(60,119,246,0.25)] bg-[rgba(60,119,246,0.06)] px-5 py-4 text-left hover:bg-[rgba(60,119,246,0.1)]"
+        >
+          <Sparkles size={18} className="text-[#3c77f6] shrink-0" />
+          <span className="flex-1 text-[14px] text-[#1e232f]">
+            <span className="font-semibold">
+              {suggestions} suggested job{suggestions === 1 ? '' : 's'}
+            </span>{' '}
+            from roles your company is hiring for. Publish in one click or edit first.
+          </span>
+          <span className="text-[13px] font-semibold text-[#3c77f6] whitespace-nowrap">View suggested jobs →</span>
+        </button>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <SummaryCard dot="bg-[#15a560]" label="Active jobs" value={counts.active} />
@@ -298,7 +330,7 @@ export function EmployerJobsView() {
         <CloseJobDialog
           jobId={closing.jobId}
           title={closing.title}
-          sponsorshipExhausted={closing.closeReason === 'SPONSORSHIP_EXHAUSTED'}
+          stillInterviewing={closing.closeReason === 'SPONSORSHIP_EXHAUSTED' || closing.closeReason === 'APPLICANT_LIMIT_REACHED' ? closing.closeReason : null}
           onClose={() => setClosing(null)}
           onClosed={() => changed(closing.jobId)}
         />
@@ -379,11 +411,24 @@ function Row({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
-const CLOSED_NOTE: Record<NonNullable<JobListItem['closeReason']>, string> = {
-  DEADLINE: 'Application deadline passed.',
-  MANUAL: 'Closed by your team.',
-  SPONSORSHIP_EXHAUSTED: 'Closed automatically when sponsored interviews ran out. Applicants can still start their interviews.',
-};
+// Copy for APPLICANT_LIMIT_REACHED (#332) and ADMIN (#333) pending PM.
+function closedNote(job: JobListItem, limit: number | null): string {
+  switch (job.closeReason) {
+    case 'MANUAL':
+      return 'Closed by your team.';
+    case 'SPONSORSHIP_EXHAUSTED':
+      return 'Closed automatically when sponsored interviews ran out. Applicants can still start their interviews.';
+    case 'APPLICANT_LIMIT_REACHED': {
+      const reached = limit != null ? `Closed automatically when it reached ${limit.toLocaleString('en-US')} applicants.` : 'Closed automatically when it reached its applicant limit.';
+      const beforeDeadline = job.closesAt && Date.parse(job.closesAt) > Date.now();
+      return beforeDeadline ? `${reached} Applicants can still start their interviews until the deadline.` : reached;
+    }
+    case 'ADMIN':
+      return `${REMOVAL_NOTE[job.removalReason ?? 'OTHER']} If you think this is a mistake, contact Screna to ask for a review.`;
+    default:
+      return 'Application deadline passed.';
+  }
+}
 
 function JobCard({
   job,
@@ -404,6 +449,7 @@ function JobCard({
 }) {
   const closed = job.status === 'CLOSED';
   const extras = useExtras(job.jobId);
+  const limit = job.applicantLimit ?? extras?.maxApplicants ?? null;
   const sp = extras?.sponsorship;
   const payer =
     extras?.payer === 'EMPLOYER'
@@ -424,13 +470,14 @@ function JobCard({
       <div className="flex flex-col gap-2.5">
         <Row k="Applications" v={job.applicationCount} />
         <Row k="Application window" v={windowText(job)} />
-        {/* Blank in the wizard means no cap. */}
-        <Row k="Maximum applicants" v={extras ? extras.maxApplicants ?? 'Unlimited' : '—'} />
+        {/* applicantLimit (#332) is never null; before it, blank in the wizard meant no cap. */}
+        <Row k="Maximum applicants" v={limit ?? (extras ? 'Unlimited' : '—')} />
         <Row k="Interview payment" v={payer} />
+        {job.postedBy && <Row k="Posted by" v={job.postedBy.name} />}
       </div>
       {closed ? (
         <>
-          <p className="text-[13px] text-[#5a6172]">{CLOSED_NOTE[job.closeReason ?? 'DEADLINE']}</p>
+          <p className={cx('text-[13px]', job.closeReason === 'ADMIN' ? 'text-[#b42318]' : 'text-[#5a6172]')}>{closedNote(job, limit)}</p>
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap justify-end gap-3">
               {lifecycle}

@@ -2,12 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button, Dialog, TextInput, cx } from '@/components/admin/console/pages/employer/ui';
 import { authErrorCode, authErrorMessage } from './employerAuth';
-import { errorData, startCreditsCheckout, unlockApplication, type PlanLimitReached } from './employerApi';
+import { errorData, startCreditsCheckout, unlockApplication, type FeedbackPending, type PlanLimitReached } from './employerApi';
 import { REPORT_CHECKOUT_KEY, useEmployerCredits } from './creditsContext';
+import { JOB_REMOVED, JOB_REMOVED_MESSAGE } from './boardFormat';
+import { EmployerFeedbackDialog } from './EmployerFeedbackDialog';
 
 // Figma 2451:4352 ("Unlock report"), on Report Credits: 1 credit per
 // candidate and job (POST .../unlock, idempotent). With none left it offers to
 // buy more (Stripe; the return lands back on this job's board).
+// #330: 409 FEEDBACK_REQUIRED lists earlier unlocked candidates of this job
+// still waiting for feedback (data.pending). Each gets the feedback dialog in
+// turn, then the unlock is retried. A blocked unlock costs nothing.
 
 export type UnlockTarget = { applicationId: string; label: string };
 
@@ -17,12 +22,14 @@ export function EmployerUnlockDialog({
   jobTitle,
   onClose,
   onUnlocked,
+  onDecided,
 }: {
   target: UnlockTarget | null;
   jobId: string;
   jobTitle: string;
   onClose: () => void;
   onUnlocked: (applicationId: string) => void;
+  onDecided?: () => void; // feedback was given on another candidate (refresh the board)
 }) {
   const { credits, plan, refresh } = useEmployerCredits();
   // Business unlocks from the monthly allowance first, so 0 prepaid Report
@@ -32,11 +39,14 @@ export function EmployerUnlockDialog({
   // Set when the server says there are no credits (the badge may be stale).
   const [shortOf, setShortOf] = useState<number | null>(null);
   const [quantity, setQuantity] = useState('5');
+  // Candidates to give feedback on before this unlock can go through.
+  const [pending, setPending] = useState<FeedbackPending[]>([]);
 
   useEffect(() => {
     if (target) {
       setShortOf(null);
       setQuantity('5');
+      setPending([]);
     }
   }, [target]);
 
@@ -56,7 +66,14 @@ export function EmployerUnlockDialog({
       onClose();
     } catch (err) {
       const code = authErrorCode(err);
-      if (code === 'INSUFFICIENT_CREDITS') {
+      const waiting = code === 'FEEDBACK_REQUIRED' ? errorData<{ pending?: FeedbackPending[] }>(err)?.pending ?? [] : [];
+      if (waiting.length > 0) {
+        setPending(waiting);
+      } else if (code === 'FEEDBACK_REQUIRED') {
+        toast.error('Give feedback on the candidates you already unlocked for this job first.');
+      } else if (code === JOB_REMOVED) {
+        toast.error(JOB_REMOVED_MESSAGE);
+      } else if (code === 'INSUFFICIENT_CREDITS') {
         setShortOf(errorData<{ available?: number }>(err)?.available ?? 0);
         refresh();
       } else if (code === 'PLAN_LIMIT_REACHED') {
@@ -90,6 +107,25 @@ export function EmployerUnlockDialog({
       setBusy(false);
     }
   };
+
+  const next = pending[0];
+  if (target && next) {
+    return (
+      <EmployerFeedbackDialog
+        key={next.applicationId}
+        applicationId={next.applicationId}
+        label={`Candidate #${next.candidateNo}`}
+        blocking
+        onClose={() => setPending([])}
+        onSaved={() => {
+          onDecided?.();
+          const rest = pending.slice(1);
+          setPending(rest);
+          if (rest.length === 0) void unlock();
+        }}
+      />
+    );
+  }
 
   return (
     <Dialog

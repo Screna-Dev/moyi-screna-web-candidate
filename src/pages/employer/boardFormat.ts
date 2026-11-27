@@ -5,7 +5,22 @@ import { formatInZone, zoneAbbr } from './jobMapping';
 // Mapping helpers for the employer-app Applications / board / report / contact
 // views (backend guide frontend-employer-board-api.md).
 
-export const decisionOf = (s: HiringStatus): HiringDecision => (s === 'MOVED_FORWARD' ? 'moved_forward' : s === 'REJECTED' ? 'rejected' : 'pending');
+export const decisionOf = (s: HiringStatus): HiringDecision =>
+  s === 'MOVED_FORWARD' ? 'moved_forward' : s === 'REJECTED' ? 'rejected' : s === 'CONSIDERING' ? 'considering' : 'pending';
+
+// #335: Screna removed the job as FRAUD. Unlock, report, resume, recordings,
+// decisions and outreach all answer 410 JOB_REMOVED (even for candidates
+// unlocked before). Copy pending PM.
+export const JOB_REMOVED = 'JOB_REMOVED';
+export const JOB_REMOVED_MESSAGE = "Screna removed this job. Its candidates' details are no longer available.";
+
+// #333: why Screna took a job down, for the employer's My Jobs card. Copy
+// pending PM (and which address to ask for a review).
+export const REMOVAL_NOTE: Record<'FRAUD' | 'POLICY' | 'OTHER', string> = {
+  FRAUD: "Screna removed this job because we couldn't verify it.",
+  POLICY: "Screna removed this job because it didn't meet our posting guidelines.",
+  OTHER: 'Screna removed this job.',
+};
 
 // "Sep 17" in the job's zone.
 export const shortDate = (iso: string | null, tz: string | null) =>
@@ -79,3 +94,20 @@ export function reportScreeningOf(report: Pick<CandidateReport, 'screening'>): {
 
 // "4:25" from seconds.
 export const clock = (secs: number | null) => (secs === null ? '0:00' : `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}`);
+
+// #330: the rejection reason, emailed word for word. Counted like the backend
+// (split on whitespace).
+export const REASON_MIN_WORDS = 50;
+export const REASON_MAX_WORDS = 100;
+export const REASON_MAX_CHARS = 2000;
+
+// Same count as the backend: split on whitespace.
+export const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
+
+export function reasonError(text: string): string {
+  const n = wordCount(text);
+  if (text.length > REASON_MAX_CHARS) return `Keep it under ${REASON_MAX_CHARS.toLocaleString('en-US')} characters`;
+  if (n < REASON_MIN_WORDS) return `Write at least ${REASON_MIN_WORDS} words (${n} so far)`;
+  if (n > REASON_MAX_WORDS) return `Keep it to ${REASON_MAX_WORDS} words or fewer (${n} now)`;
+  return '';
+}

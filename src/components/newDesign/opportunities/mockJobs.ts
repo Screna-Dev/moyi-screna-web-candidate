@@ -272,7 +272,8 @@ export type MyJob = {
   company: string;
   title: string;
   location: string;
-  jobType: JobType | "Job closed";
+  // Closed / removed jobs (#333): "No longer accepting applications" / "No longer available".
+  jobType: JobType | "Job closed" | "No longer accepting applications" | "No longer available";
   assessmentStatus: AssessmentStatus;
   applicationStatus: ApplicationStatus;
   bestScore: number | null;
@@ -281,6 +282,8 @@ export type MyJob = {
   actions: { label: string; variant: "primary" | "secondary" }[];
   creditInfo?: string;
   isClosed?: boolean;
+  // The line under a closed or removed job (replaces the old fixed text).
+  closedNote?: string;
 };
 
 export const myJobs: MyJob[] = [

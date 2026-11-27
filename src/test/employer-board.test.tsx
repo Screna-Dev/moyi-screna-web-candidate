@@ -267,8 +267,12 @@ describe('Candidate board', () => {
     fireEvent.click(screen.getByText('Locked 25'));
     await waitFor(() => expect(api.listBoardCandidates).toHaveBeenLastCalledWith('job-1', expect.objectContaining({ report: 'LOCKED', page: 0 })));
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Below 70' } });
+    fireEvent.change(screen.getByDisplayValue('Score: All'), { target: { value: 'Below 70' } });
     await waitFor(() => expect(api.listBoardCandidates).toHaveBeenLastCalledWith('job-1', expect.objectContaining({ maxScore: 69 })));
+
+    // #330: Still considering is a board filter.
+    fireEvent.change(screen.getByDisplayValue('Decision: All'), { target: { value: 'Still considering' } });
+    await waitFor(() => expect(api.listBoardCandidates).toHaveBeenLastCalledWith('job-1', expect.objectContaining({ hiringStatus: 'CONSIDERING', page: 0 })));
 
     fireEvent.change(screen.getByLabelText('Search candidate ID or unlocked name'), { target: { value: '#117' } });
     await waitFor(() => expect(api.listBoardCandidates).toHaveBeenLastCalledWith('job-1', expect.objectContaining({ q: '#117' })));
@@ -319,6 +323,40 @@ describe('Candidate board', () => {
     expect(api.unlockApplication).not.toHaveBeenCalled();
   });
 
+  it('FEEDBACK_REQUIRED asks for feedback on each pending candidate, then retries the unlock', async () => {
+    api.getBoardSummary.mockResolvedValue(summary());
+    api.listBoardCandidates.mockResolvedValue(pageOf([row({ candidate: { label: 'Candidate #119', candidateNo: 119, unlocked: false }, reportStatus: 'LOCKED' })]));
+    api.unlockApplication
+      .mockRejectedValueOnce(apiError('FEEDBACK_REQUIRED', 409, { pending: [{ applicationId: 'app-117', candidateNo: 117 }], pendingCount: 3 }))
+      .mockResolvedValueOnce({ applicationId: 'app-1', unlocked: true, reportCreditsBalance: 13 });
+    api.setHiringDecision.mockResolvedValue(row({ applicationId: 'app-117', hiringStatus: 'CONSIDERING' }));
+    render(withCredits(<EmployerBoardView jobId="job-1" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock Report' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unlock Report' }));
+    expect(await screen.findByText('Give feedback on Candidate #117')).toBeInTheDocument();
+    const feedback = screen.getByRole('dialog');
+    // Still considering: no confirmation step.
+    fireEvent.click(within(feedback).getByRole('button', { name: /Still considering/ }));
+    await waitFor(() => expect(api.setHiringDecision).toHaveBeenCalledWith('app-117', { decision: 'CONSIDERING' }));
+    await waitFor(() => expect(api.unlockApplication).toHaveBeenCalledTimes(2));
+    expect(go).toHaveBeenCalledWith({ name: 'report', jobId: 'job-1', candidateId: 'app-1' });
+  });
+
+  it('a job Screna removed as FRAUD hides unlock and the job link', async () => {
+    const s = summary();
+    api.getBoardSummary.mockResolvedValue({ ...s, job: { ...s.job, status: 'CLOSED', closeReason: 'ADMIN', removalReason: 'FRAUD' } });
+    api.listBoardCandidates.mockResolvedValue(pageOf([row({ candidate: { label: 'Candidate #101', candidateNo: 101, unlocked: true } })]));
+    render(withCredits(<EmployerBoardView jobId="job-1" />));
+
+    expect(await screen.findByText("Screna removed this job. Its candidates' details are no longer available.")).toBeInTheDocument();
+    expect(await screen.findByText('Candidate #101')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View report' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unlock Report' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByText('Copy job link')).not.toBeInTheDocument();
+  });
+
   it('a server INSUFFICIENT_CREDITS switches the dialog to buying', async () => {
     api.getBoardSummary.mockResolvedValue(summary());
     api.listBoardCandidates.mockResolvedValue(pageOf([row({ candidate: { label: 'Candidate #119', candidateNo: 119, unlocked: false }, reportStatus: 'LOCKED' })]));
@@ -363,16 +401,58 @@ describe('Candidate report', () => {
     expect(SCREENING_ENABLED).toBe(false);
   });
 
-  it('moving forward saves the decision and offers to contact the candidate', async () => {
+  it('moving on confirms, saves the decision and offers to contact the candidate', async () => {
     api.getCandidateReport.mockResolvedValue(report());
     api.setHiringDecision.mockResolvedValue(row({ hiringStatus: 'MOVED_FORWARD' }));
     render(withCredits(<EmployerReportView jobId="job-1" applicationId="app-1" />));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Move forward' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Move forward' }));
-    await waitFor(() => expect(api.setHiringDecision).toHaveBeenCalledWith('app-1', 'MOVED_FORWARD'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Move on' }));
+    const dialog = screen.getByRole('dialog');
+    // No company profile contact email in this test: sharing it is disabled.
+    expect(within(dialog).getByRole('checkbox')).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move on' }));
+    await waitFor(() => expect(api.setHiringDecision).toHaveBeenCalledWith('app-1', { decision: 'MOVED_FORWARD', shareContact: false }));
+    // Final: no way to change it afterwards.
+    expect(screen.queryByText('Change decision')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Contact candidate →' }));
     expect(go).toHaveBeenCalledWith({ name: 'contact', jobId: 'job-1', candidateId: 'app-1' });
+  });
+
+  it('no longer considering needs a 50–100 word reason', async () => {
+    api.getCandidateReport.mockResolvedValue(report());
+    api.setHiringDecision.mockResolvedValue(row({ hiringStatus: 'REJECTED' }));
+    render(withCredits(<EmployerReportView jobId="job-1" applicationId="app-1" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'No longer consider' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Too short.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send feedback' }));
+    expect(within(dialog).getByText('Write at least 50 words (2 so far)')).toBeInTheDocument();
+    expect(api.setHiringDecision).not.toHaveBeenCalled();
+
+    const reason = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: reason } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send feedback' }));
+    await waitFor(() => expect(api.setHiringDecision).toHaveBeenCalledWith('app-1', { decision: 'REJECTED', reason }));
+  });
+
+  it('still considering saves at once, with no email and no confirmation', async () => {
+    api.getCandidateReport.mockResolvedValue(report());
+    api.setHiringDecision.mockResolvedValue(row({ hiringStatus: 'CONSIDERING' }));
+    render(withCredits(<EmployerReportView jobId="job-1" applicationId="app-1" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Still considering' }));
+    await waitFor(() => expect(api.setHiringDecision).toHaveBeenCalledWith('app-1', { decision: 'CONSIDERING' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Still open to a final decision.
+    expect(await screen.findByRole('button', { name: 'Move on' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Still considering' })).not.toBeInTheDocument();
+  });
+
+  it('a job removed as FRAUD (410 JOB_REMOVED) explains why, not a generic error', async () => {
+    api.getCandidateReport.mockRejectedValue(apiError('JOB_REMOVED', 410));
+    render(withCredits(<EmployerReportView jobId="job-1" applicationId="app-1" />));
+    expect(await screen.findByText("Screna removed this job. Its candidates' details are no longer available.")).toBeInTheDocument();
   });
 
   it('fetches a fresh resume link on every click (links expire)', async () => {

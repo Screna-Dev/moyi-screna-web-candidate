@@ -75,6 +75,7 @@ function liveStats(d: EmployerDashboardData): LiveDashboardStats {
     interviewsLast7Days: d.interviews.completedLast7DaysCount,
     reportsUnlocked: d.unlockedReportCount,
     pending: d.decisions.pendingCount,
+    considering: d.decisions.consideringCount,
     movedForward: d.decisions.movedForwardCount,
     rejected: d.decisions.rejectedCount,
     contacted: d.decisions.contactedCount,

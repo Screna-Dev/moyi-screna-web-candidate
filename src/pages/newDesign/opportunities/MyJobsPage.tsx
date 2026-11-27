@@ -50,10 +50,11 @@ function JobTypeBadge({ type, isClosed }: { type: string; isClosed?: boolean }) 
   if (isClosed) {
     return (
       <span
-        className="inline-flex items-center px-3 py-0.5 rounded-full text-[12px] font-semibold leading-5 bg-[#f3f4f7] border border-[#e1e4ea] text-[#5a6172]"
+        className="inline-flex items-center px-3 py-0.5 rounded-full text-[12px] font-semibold leading-5 bg-[#f3f4f7] border border-[#e1e4ea] text-[#5a6172] shrink-0 whitespace-nowrap"
         style={{ fontFamily: "'Inter:Semi_Bold', Inter, sans-serif" }}
       >
-        Job closed
+        {/* "No longer accepting applications" / "No longer available" (#333) */}
+        {type === "Partner Job" || type === "Job closed" ? "Job closed" : type}
       </span>
     );
   }
@@ -149,7 +150,7 @@ function MyJobCard({ job, onBrowse, onAction }: { job: MyJob; onBrowse: () => vo
       )}
 
       {/* Guidance */}
-      {job.guidance && (
+      {(job.guidance || (job.isClosed && job.closedNote)) && (
         <div>
           {job.assessmentStatus === "Qualified" && job.applicationStatus === "Not applied yet" ? (
             <div className="flex items-center gap-3">
@@ -167,7 +168,7 @@ function MyJobCard({ job, onBrowse, onAction }: { job: MyJob; onBrowse: () => vo
                 Contact recruiter →
               </a>
             </div>
-          ) : job.applicationStatus === "Not selected" ? (
+          ) : job.applicationStatus === "Not selected" && job.guidance ? (
             <>
               <p
                 className="text-[#5a6172] text-[13px] leading-[19.5px]"
@@ -182,20 +183,20 @@ function MyJobCard({ job, onBrowse, onAction }: { job: MyJob; onBrowse: () => vo
                 Your interview score and report remain available.
               </p>
             </>
-          ) : (
+          ) : job.guidance ? (
             <p
               className="text-[#5a6172] text-[13px] leading-[19.5px]"
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
               {job.guidance}
             </p>
-          )}
-          {job.isClosed && (
+          ) : null}
+          {job.isClosed && job.closedNote && (
             <p
-              className="text-[#5a6172] text-[13px] leading-[19.5px] mt-1"
+              className={`text-[#5a6172] text-[13px] leading-[19.5px] ${job.guidance ? "mt-1" : ""}`}
               style={{ fontFamily: "'Inter:Regular', Inter, sans-serif" }}
             >
-              This role is closed. Your assessment report remains available.
+              {job.closedNote}
             </p>
           )}
         </div>
@@ -284,7 +285,8 @@ export function MyJobsPage() {
 
   const act = (row: LiveMyJob, label: string) => {
     const jobPath = `/opportunities/job/${encodeURIComponent(row.career.jobId)}`;
-    if (label === "View details") return row.career.jobStatus === "OPEN" ? navigate(jobPath) : undefined;
+    // Applicants can open closed and removed jobs too (#333: 200, no time limit).
+    if (label === "View details") return navigate(jobPath);
     if (label === "Start interview" || label === "Continue interview" || label === "Retake interview") return setStarting(row.career);
     if (label === "View report") return navigate(`/opportunities/applications/${encodeURIComponent(row.career.applicationId)}/results`);
   };

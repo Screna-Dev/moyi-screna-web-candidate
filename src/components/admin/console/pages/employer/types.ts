@@ -106,7 +106,8 @@ export type Job = {
   lastEditedLabel?: string;
 };
 
-export type HiringDecision = 'pending' | 'moved_forward' | 'rejected';
+// considering: employer app only (#330), never in the admin mock data.
+export type HiringDecision = 'pending' | 'considering' | 'moved_forward' | 'rejected';
 export type ContactStatus = 'not_contacted' | 'contacted';
 
 export type CriterionScore = {
@@ -184,6 +185,8 @@ export type EmployerPlan = {
 export type EmployerView =
   | { name: 'dashboard' }
   | { name: 'jobs' }
+  // Employer app only (#334): jobs suggested from the trial code's job pool.
+  | { name: 'suggestions' }
   | { name: 'applications' }
   | { name: 'board'; jobId: string }
   | { name: 'report'; jobId: string; candidateId: string }

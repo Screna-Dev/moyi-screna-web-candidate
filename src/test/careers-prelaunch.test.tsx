@@ -171,6 +171,25 @@ describe('Job detail page', () => {
     expect(await screen.findByRole('button', { name: /Start AI interview/ })).toBeInTheDocument();
   });
 
+  it('a job Screna removed as FRAUD: the applicant sees the status and the warning at the top (#333)', async () => {
+    const myApplication = { applicationId: 'a', jobId: 'job-1', jobTitle: 'X', companyName: 'Y', companyLogoUrl: null, jobStatus: 'CLOSED', postingStatus: 'REMOVED', removalReason: 'FRAUD', closesAt: null, timezone: null, appliedAt: '2026-11-01T00:00:00Z', interviewStatus: 'NOT_STARTED', interviewCompletedAt: null, interviewDurationMinutes: 20, interviewLanguage: 'en', questionCount: 3, interviewPayer: 'EMPLOYER', canStartInterview: false } as CareerApplication;
+    api.getCareerJob.mockResolvedValue({ ...detail([]), acceptingApplications: false, myApplication });
+    renderDetail();
+    const status = await screen.findByRole('status');
+    expect(within(status).getByText('No longer available')).toBeInTheDocument();
+    expect(within(status).getByText(/Screna never asks for payment or bank details/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Start AI interview/ })).toBeNull();
+  });
+
+  it('410 JOB_REMOVED for someone who never applied reads "No longer available"', async () => {
+    const { AxiosError, AxiosHeaders } = await import('axios');
+    const err = new AxiosError('gone', '410');
+    err.response = { status: 410, statusText: '', headers: {}, config: { headers: new AxiosHeaders() }, data: { status: 'ERROR', errorCode: 'JOB_REMOVED' } };
+    api.getCareerJob.mockRejectedValue(err);
+    renderDetail();
+    expect(await screen.findByText('No longer available')).toBeInTheDocument();
+  });
+
   it('shows no sample content, recruiter email or qualification copy', async () => {
     api.getCareerJob.mockResolvedValue(detail([]));
     renderDetail();

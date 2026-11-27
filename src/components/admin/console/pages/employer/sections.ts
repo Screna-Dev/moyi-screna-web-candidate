@@ -24,6 +24,7 @@ export function sectionOf(view: EmployerView): EmployerSection {
       return 'employer-dashboard';
     case 'jobs':
     case 'wizard':
+    case 'suggestions':
       return 'employer-jobs';
     default:
       return 'employer-candidates';

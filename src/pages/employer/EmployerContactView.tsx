@@ -6,7 +6,7 @@ import { BackLink, Button, Card, EmptyBox, KV, Pill, TextArea, TextInput } from 
 import { ContactPill, DecisionPill, copyText } from '@/components/admin/console/pages/employer/views/candidateShared';
 import { authErrorCode, authErrorMessage } from './employerAuth';
 import { getCandidateReport, getOutreach, outreachAction, saveOutreach, type CandidateReport, type Outreach } from './employerApi';
-import { decisionOf } from './boardFormat';
+import { JOB_REMOVED, JOB_REMOVED_MESSAGE, decisionOf } from './boardFormat';
 
 // Contact candidate (Figma "contact candidate"), on .../outreach. Screna never
 // sends the email: the draft opens in the employer's own mail app through the
@@ -22,7 +22,7 @@ export function EmployerContactView({ jobId, applicationId }: { jobId: string; a
   const { go } = useEmployerStore();
   const [report, setReport] = useState<CandidateReport | null>(null);
   const [outreach, setOutreach] = useState<Outreach | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'locked' | 'not-forward' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'locked' | 'not-forward' | 'removed' | 'error'>('loading');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -51,7 +51,7 @@ export function EmployerContactView({ jobId, applicationId }: { jobId: string; a
       } catch (err) {
         if (cancelled) return;
         const code = authErrorCode(err);
-        setState(code === 'REPORT_LOCKED' ? 'locked' : code === 'INVALID_STATE' ? 'not-forward' : 'error');
+        setState(code === 'REPORT_LOCKED' ? 'locked' : code === 'INVALID_STATE' ? 'not-forward' : code === JOB_REMOVED ? 'removed' : 'error');
       }
     })();
     return () => {
@@ -75,7 +75,7 @@ export function EmployerContactView({ jobId, applicationId }: { jobId: string; a
       setOutreach(o);
       return o;
     } catch (err) {
-      toast.error(authErrorMessage(err) || 'Could not save the draft.');
+      toast.error(authErrorCode(err) === JOB_REMOVED ? JOB_REMOVED_MESSAGE : authErrorMessage(err) || 'Could not save the draft.');
       return null;
     }
   };
@@ -96,7 +96,7 @@ export function EmployerContactView({ jobId, applicationId }: { jobId: string; a
       take(await outreachAction(applicationId, action));
       toast.success(done);
     } catch (err) {
-      toast.error(authErrorMessage(err) || 'Something went wrong. Please try again.');
+      toast.error(authErrorCode(err) === JOB_REMOVED ? JOB_REMOVED_MESSAGE : authErrorMessage(err) || 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -115,13 +115,15 @@ export function EmployerContactView({ jobId, applicationId }: { jobId: string; a
         ? 'Unlock this report to contact the candidate'
         : state === 'not-forward'
           ? 'Move this candidate forward to contact them'
-          : "Couldn't load the email draft";
+          : state === 'removed'
+            ? JOB_REMOVED_MESSAGE
+            : "Couldn't load the email draft";
     return (
       <Card className="p-0">
         <EmptyBox
           title={msg}
-          body={state === 'not-forward' ? 'Choose "Move forward" on the candidate report, then come back to email them.' : undefined}
-          actions={<Button onClick={toReport}>Back to candidate report</Button>}
+          body={state === 'not-forward' ? 'Choose "Move on" on the candidate report, then come back to email them.' : undefined}
+          actions={state === 'removed' ? <Button onClick={() => go({ name: 'board', jobId })}>Back to candidates</Button> : <Button onClick={toReport}>Back to candidate report</Button>}
         />
       </Card>
     );

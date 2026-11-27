@@ -135,18 +135,19 @@ export function EditSponsorshipDialog({ jobId, onClose, onSaved }: { jobId: stri
   );
 }
 
-// Close job (actions.close). For a job already closed when sponsorship ran
-// out, this stops applicants who haven't started from starting.
+// Close job (actions.close). For a job that already closed by itself while
+// applicants can still interview (sponsorship ran out, or it reached its
+// applicant limit, #332), this stops applicants who haven't started.
 export function CloseJobDialog({
   jobId,
   title,
-  sponsorshipExhausted,
+  stillInterviewing,
   onClose,
   onClosed,
 }: {
   jobId: string;
   title: string;
-  sponsorshipExhausted: boolean;
+  stillInterviewing: 'SPONSORSHIP_EXHAUSTED' | 'APPLICANT_LIMIT_REACHED' | null;
   onClose: () => void;
   onClosed: (job: ApiJob) => void;
 }) {
@@ -166,7 +167,7 @@ export function CloseJobDialog({
     <Dialog
       open
       onClose={onClose}
-      title={sponsorshipExhausted ? `Stop all interviews for ${title || 'this job'}?` : `Close ${title || 'this job'}?`}
+      title={stillInterviewing ? `Stop all interviews for ${title || 'this job'}?` : `Close ${title || 'this job'}?`}
       actions={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -179,8 +180,8 @@ export function CloseJobDialog({
       }
     >
       <p className="text-[14px] text-[#5a6172]">
-        {sponsorshipExhausted
-          ? "This job already closed when sponsored interviews ran out, but applicants can still start their interviews. Closing it stops anyone who hasn't started. Interviews in progress finish normally."
+        {stillInterviewing
+          ? `This job already closed when ${stillInterviewing === 'APPLICANT_LIMIT_REACHED' ? 'it reached its applicant limit' : 'sponsored interviews ran out'}, but applicants can still start their interviews. Closing it stops anyone who hasn't started. Interviews in progress finish normally.`
           : "Candidates can no longer apply, and applicants who haven't started their interview can no longer start it. Interviews in progress finish normally."}
       </p>
     </Dialog>
